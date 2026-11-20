@@ -8,6 +8,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use ncrs_user_verify::{SystemVerifier, Unchecked, UserVerifier};
 use zeroize::Zeroizing;
 
 use crate::crypt::NoteKey;
@@ -132,6 +133,8 @@ pub fn restore_key(store: &dyn KeyStore, recovery_text: &str) -> Result<NoteKey,
 #[derive(Debug, Clone)]
 pub struct Vault {
     store: Arc<dyn KeyStore>,
+    /// Asked before the key is fetched.
+    verifier: Arc<dyn UserVerifier>,
     key: Option<Arc<NoteKey>>,
     /// `None`: never locks by itself.
     timeout: Option<Duration>,
@@ -142,7 +145,7 @@ pub struct Vault {
 
 impl Default for Vault {
     fn default() -> Self {
-        Self::with_store(Arc::new(KeyringKeyStore))
+        Self::with_store(Arc::new(KeyringKeyStore)).with_verifier(Arc::new(SystemVerifier))
     }
 }
 
@@ -150,6 +153,7 @@ impl Vault {
     pub fn with_store(store: Arc<dyn KeyStore>) -> Self {
         Self {
             store,
+            verifier: Arc::new(Unchecked),
             key: None,
             timeout: Some(Duration::from_secs(
                 u64::from(ncrs_core::notes_sync::NOTES_LOCK_DEFAULT_MINUTES) * 60,
@@ -157,6 +161,15 @@ impl Vault {
             last_input: None,
             activity: false,
         }
+    }
+
+    pub fn with_verifier(mut self, verifier: Arc<dyn UserVerifier>) -> Self {
+        self.verifier = verifier;
+        self
+    }
+
+    pub fn verifier(&self) -> Arc<dyn UserVerifier> {
+        Arc::clone(&self.verifier)
     }
 
     pub fn store(&self) -> Arc<dyn KeyStore> {

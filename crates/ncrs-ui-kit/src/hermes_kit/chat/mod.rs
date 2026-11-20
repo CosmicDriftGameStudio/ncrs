@@ -19,17 +19,9 @@ use crate::theme;
 
 use super::*;
 
-/// The widest the conversation gets; the column is centred in a wider window.
-pub const CHAT_COLUMN_WIDTH: f32 = 780.0;
 const CHAT_HEADER_HEIGHT: f32 = 56.0;
 const THREAD_PADDING: f32 = 20.0;
 const FOOTER_PADDING: f32 = 14.0;
-
-fn centred_column<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
-    container(container(content).max_width(CHAT_COLUMN_WIDTH))
-        .center_x(Length::Fill)
-        .into()
-}
 
 /// The whole chat: `header`, the scrolling `thread` that stays at its end when
 /// it grows, and the footer with the `chips` of the last question and the
@@ -42,13 +34,12 @@ pub fn chat_page<'a, M: Clone + 'a>(
     scroll_id: &'static str,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let messages = scrollable(centred_column(
+    let messages = scrollable(
         iced::widget::Column::with_children(thread)
             .spacing(GAP_M)
             .padding(THREAD_PADDING)
-            .width(Length::Fill)
-            .into(),
-    ))
+            .width(Length::Fill),
+    )
     .id(scroll_id)
     .anchor_bottom()
     .width(Length::Fill)
@@ -60,16 +51,15 @@ pub fn chat_page<'a, M: Clone + 'a>(
     footer = footer.push(input);
     let colors = *palette;
     container(column![
-        container(centred_column(header))
+        container(header)
             .width(Length::Fill)
             .height(CHAT_HEADER_HEIGHT)
             .align_y(alignment::Vertical::Center),
         theme::horizontal_rule(colors.border_inactive),
         messages,
-        container(centred_column(
-            container(footer).padding(FOOTER_PADDING).into()
-        ))
-        .width(Length::Fill),
+        container(footer)
+            .padding(FOOTER_PADDING)
+            .width(Length::Fill),
         Space::new().height(GAP_XS),
     ])
     .width(Length::Fill)

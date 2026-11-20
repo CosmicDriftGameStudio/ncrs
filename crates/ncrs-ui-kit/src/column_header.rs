@@ -9,7 +9,7 @@ use iced::{alignment, Background, Element, Length, Point, Theme};
 use ncrs_core::{Column, DateFormat, SizeFormat, SortKey};
 use ncrs_i18n::{Language, Msg};
 
-use crate::git_mark::{GIT_COLUMN_WIDTH, REPOSITORY_SIGN};
+use crate::git_mark::{git_column_title, GIT_COLUMN_WIDTH};
 use crate::layout::{
     standard_column_width, COLUMN_DROP_LINE_WIDTH, COLUMN_GRIP_WIDTH, COLUMN_HEADER_HEIGHT,
     HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, ICON_COLUMN_WIDTH, MAX_COLUMN_WIDTH, MENU_ITEM_HEIGHT,
@@ -249,19 +249,12 @@ pub fn column_header<'a, M: Clone + 'a>(
 
     let mut cells: Vec<Element<'a, M>> = Vec::with_capacity(shown.len() + 1);
     let git_title = || -> Element<'a, M> {
-        container(
-            text(REPOSITORY_SIGN)
-                .size(font_size::SMALL)
-                .color(palette.dim_text)
-                .font(crate::APP_FONT)
-                .wrapping(text::Wrapping::None)
-                .width(Length::Fill)
-                .align_x(alignment::Horizontal::Center),
-        )
-        .width(GIT_COLUMN_WIDTH)
-        .height(Length::Fill)
-        .align_y(alignment::Vertical::Center)
-        .into()
+        container(git_column_title(palette))
+            .width(GIT_COLUMN_WIDTH)
+            .height(Length::Fill)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
+            .into()
     };
     for (index, column) in shown.iter().copied().enumerate() {
         if layout.git && index > 0 && shown.get(index - 1) == Some(&Column::Name) {

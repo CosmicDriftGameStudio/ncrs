@@ -298,6 +298,22 @@ pub fn note_marker<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
         .into()
 }
 
+/// The branch symbol of Git: the mark of a repository, in the Git column, its
+/// legend and the status bar. The font has no glyph for it.
+pub fn git_branch_icon<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
+    static HANDLE: LazyLock<svg::Handle> = LazyLock::new(|| {
+        svg::Handle::from_memory(
+            document(r#"<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>"#)
+                .into_bytes(),
+        )
+    });
+    Svg::new(LazyLock::force(&HANDLE).clone())
+        .width(size)
+        .height(size)
+        .style(move |_: &Theme, _| svg::Style { color: Some(color) })
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

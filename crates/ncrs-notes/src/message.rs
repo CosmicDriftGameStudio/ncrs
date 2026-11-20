@@ -68,6 +68,8 @@ pub enum Message {
     /// The key from the credential store, `None` when none was stored, and
     /// when it came.
     Unlocked(Result<Option<NoteKey>, String>, Instant),
+    /// The person was not verified, so the key was not fetched.
+    UnlockDenied(ncrs_user_verify::Denied),
     /// Drop the key from memory now.
     Lock,
     /// A right press on a row of the tree.

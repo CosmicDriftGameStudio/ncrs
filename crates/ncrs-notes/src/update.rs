@@ -98,14 +98,14 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
             state.refresh_hits();
             nothing
         }
-        Message::SearchSubmit | Message::Enter => (enter(state), None),
+        Message::SearchSubmit | Message::Enter => (enter(state, ctx), None),
         Message::FocusSearch => (operation::focus(SEARCH_ID), None),
         Message::NewNote => new_note(state, ctx),
         Message::NewFolder => (new_folder(state, ctx), None),
         Message::FolderMade(Ok(_)) => nothing,
         Message::FolderMade(Err(reason)) => (Task::none(), Some(failed(ctx, &reason))),
         Message::Saved(path, generation, result) => saved(state, &path, generation, result, ctx),
-        Message::SetMode(mode) => (set_mode(state, mode), None),
+        Message::SetMode(mode) => (set_mode(state, mode, ctx), None),
         Message::Edited(action) => (edited(state, action), None),
         Message::SaveDue(generation) if generation == state.generation => (flush(state), None),
         Message::SaveDue(_) => nothing,
@@ -121,11 +121,12 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
             step(state, 1);
             nothing
         }
-        Message::Escape => escape(state),
+        Message::Escape => escape(state, ctx),
         Message::Close => close(state),
         Message::Tick(_)
         | Message::Unlock
         | Message::Unlocked(..)
+        | Message::UnlockDenied(_)
         | Message::Lock
         | Message::OpenMenu(_)
         | Message::CloseMenu
@@ -532,13 +533,13 @@ fn open_hit(state: &mut State, index: usize) -> Task<Message> {
     select(state, path)
 }
 
-fn enter(state: &mut State) -> Task<Message> {
+fn enter(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if state.searching() {
         return open_hit(state, state.hit_cursor);
     }
     match state.cursor.clone() {
         Some(RowKey::Note(path)) if state.current.as_ref() == Some(&path) => {
-            set_mode(state, Mode::Edit)
+            set_mode(state, Mode::Edit, ctx)
         }
         Some(key) => pressed(state, key),
         None => Task::none(),
@@ -567,12 +568,12 @@ fn step(state: &mut State, by: isize) {
     }
 }
 
-fn set_mode(state: &mut State, mode: Mode) -> Task<Message> {
+fn set_mode(state: &mut State, mode: Mode, ctx: &Ctx) -> Task<Message> {
     if state.current.is_none() {
         return Task::none();
     }
     if mode == Mode::Edit && state.shown_is_locked() {
-        return secure::unlock(state, false);
+        return secure::unlock(state, false, ctx);
     }
     state.mode = mode;
     match mode {
@@ -833,9 +834,9 @@ fn make_file_note_current(
     Ok(Task::batch([saved, written, operation::focus(EDITOR_ID)]))
 }
 
-fn escape(state: &mut State) -> (Task<Message>, Option<Action>) {
+fn escape(state: &mut State, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     if state.editing() {
-        return (set_mode(state, Mode::View), None);
+        return (set_mode(state, Mode::View, ctx), None);
     }
     if state.searching() {
         state.query.clear();

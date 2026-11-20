@@ -231,6 +231,7 @@ impl App {
                 pattern,
                 untag,
             }),
+            Ask::GoToPath(text) => self.update_panel(PanelMessage::GoToPathSubmit(text)),
             Ask::EditFile(path) => {
                 self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
                 Task::none()
@@ -384,6 +385,22 @@ impl App {
         }
         let parent = self.active_panel().path.clone();
         self.open_prompt(Prompt::tag_pattern(parent, untag))
+    }
+
+    /// Cmd/Ctrl+G: the dialog that takes a typed or pasted path for the active
+    /// panel.
+    pub(in crate::app) fn open_go_to_path_prompt(&mut self) -> Task<Message> {
+        if self.overlay_is_open()
+            || self.text_field_has_keys()
+            || self.search_has_keys()
+            || self.trash_has_keys()
+            || self.shown_tab != ShownTab::Panels
+        {
+            return Task::none();
+        }
+        self.command_line.leave();
+        let parent = self.active_panel().path.clone();
+        self.open_prompt(Prompt::go_to_path(parent))
     }
 
     /// "Extract here": the tagged archives, else the one under the cursor.

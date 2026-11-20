@@ -57,6 +57,8 @@ pub enum PromptKind {
     TagByPattern,
     /// The same, to take the tag off the entries that match.
     UntagByPattern,
+    /// Cmd/Ctrl+G: ask for a path and open it in the active panel.
+    GoToPath,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +137,11 @@ impl Prompt {
             name: "*.*".to_owned(),
             ..Self::new(kind, parent)
         }
+    }
+
+    /// The "Go to path" prompt, empty, for the panel whose folder is `parent`.
+    pub fn go_to_path(parent: PathBuf) -> Self {
+        Self::new(PromptKind::GoToPath, parent)
     }
 
     /// The paste prompt for the folder `parent`, with the suggested file name.
@@ -247,6 +254,11 @@ impl Prompt {
         self.error = Some(PromptError::Problem(problem));
     }
 
+    /// Takes the shown complaint away, before the next attempt.
+    pub fn clear_error(&mut self) {
+        self.error = None;
+    }
+
     /// Shows a failure from the filesystem.
     pub fn set_error(&mut self, message: String) {
         self.error = Some(PromptError::Failed(message));
@@ -265,7 +277,7 @@ impl Prompt {
         if self.kind == PromptKind::Pack {
             return self.validate_pack(name);
         }
-        if self.is_pattern() {
+        if self.is_pattern() || self.kind == PromptKind::GoToPath {
             return if name.is_empty() {
                 Err(PromptProblem::EmptyName)
             } else {
@@ -379,6 +391,18 @@ mod tests {
         prompt.set_name("  ".to_owned());
         assert_eq!(prompt.validate(), Err(PromptProblem::EmptyName));
         assert!(!Prompt::create_dir(PathBuf::from("/tmp")).is_pattern());
+    }
+
+    #[test]
+    fn the_go_to_path_prompt_starts_empty_and_takes_any_path_text() {
+        let mut prompt = Prompt::go_to_path(PathBuf::from("/tmp"));
+        assert_eq!(prompt.name(), "");
+        assert_eq!(prompt.validate(), Err(PromptProblem::EmptyName));
+        prompt.set_name("~/Dokumente/Rechnung 1/2.pdf".to_owned());
+        assert_eq!(prompt.validate(), Ok(()));
+        prompt.set_error("Not found".to_owned());
+        prompt.clear_error();
+        assert_eq!(prompt.error(), None);
     }
 
     #[test]

@@ -235,6 +235,7 @@ pub fn start_prompt_job(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
         Some(PromptKind::Paste) => stage_paste(ops),
         Some(PromptKind::TagByPattern) => submit_pattern(ops, false),
         Some(PromptKind::UntagByPattern) => submit_pattern(ops, true),
+        Some(PromptKind::GoToPath) => submit_go_to_path(ops),
         Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => idle(),
     }
 }
@@ -256,6 +257,17 @@ fn submit_pattern(ops: &mut Ops, untag: bool) -> Outcome {
             untag,
         }],
     )
+}
+
+/// Enter in the "Go to path" prompt: it stays open until the panels have said
+/// whether the path leads somewhere, so a wrong path is shown inside it.
+fn submit_go_to_path(ops: &mut Ops) -> Outcome {
+    let Some(prompt) = ops.prompt.as_mut() else {
+        return idle();
+    };
+    prompt.clear_error();
+    let text = prompt.name().trim().to_owned();
+    actions(vec![Action::GoToPath(text)])
 }
 
 /// Alt+F5: the name prompt for a new archive in the other panel's folder,

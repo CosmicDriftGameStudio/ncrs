@@ -4452,6 +4452,7 @@ dependencies = [
  "ncrs-settings",
  "ncrs-ui-kit",
  "ncrs-updates",
+ "ncrs-user-verify",
  "ncrs-viewer",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -4794,6 +4795,7 @@ dependencies = [
  "ncrs-core",
  "ncrs-i18n",
  "ncrs-ui-kit",
+ "ncrs-user-verify",
  "tempfile",
  "tokio",
  "zeroize",
@@ -4961,6 +4963,16 @@ dependencies = [
  "tokio",
  "toml_edit 0.25.18+spec-1.1.0",
  "ureq",
+]
+
+[[package]]
+name = "ncrs-user-verify"
+version = "0.0.0"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "windows 0.62.2",
 ]
 
 [[package]]

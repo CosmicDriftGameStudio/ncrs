@@ -661,7 +661,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 }
             })
             .collect();
-        if rows.is_empty() {
+        if rows.is_empty() && group.intro.is_none() {
             continue;
         }
         let mut content = Column::with_children(rows);

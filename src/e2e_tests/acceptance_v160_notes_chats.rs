@@ -11,9 +11,11 @@ use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 use ncrs_hermes_chat::{ListMessage, Message as ChatMessage};
 use ncrs_notes::tree::RowKey;
-use ncrs_notes::vault::MemoryKeyStore;
+use ncrs_notes::vault::{MemoryKeyStore, Vault};
 use ncrs_notes::Seal;
 use ncrs_settings::message::{NotesEdit, SettingChange, SettingsMessage};
+use ncrs_ui_kit::theme::size;
+use ncrs_user_verify::{Check, Denied, Scripted};
 
 use super::acceptance_v160::{pump_until, shoot, Live, World};
 use super::Session;
@@ -88,10 +90,10 @@ fn notes_sync_encryption_lock_and_recovery_key() {
     let sync = world.root.join("Sync-Ordner");
     let mut session = world.boot();
     let store = Arc::new(MemoryKeyStore::default());
-    session.app.use_notes_key_store_for_test(
-        Arc::clone(&store) as Arc<dyn ncrs_notes::vault::KeyStore>,
-        15,
-    );
+    let mut vault = Vault::with_store(Arc::clone(&store) as Arc<dyn ncrs_notes::vault::KeyStore>)
+        .with_verifier(Arc::new(Scripted::new(Check::TouchId)));
+    vault.set_timeout_minutes(15);
+    session.app.use_notes_vault_for_test(vault);
 
     // Settings > Notizen, a sync folder, one way, and "Jetzt synchronisieren".
     open_notes_page(&mut session);
@@ -141,6 +143,20 @@ fn notes_sync_encryption_lock_and_recovery_key() {
     assert!(session.app.notes_are_shown_for_test());
     press_note(&mut session, RowKey::Folder(PathBuf::from("Haus")));
     press_note(&mut session, RowKey::Note(plain.clone()));
+    let row = session
+        .app
+        .notes_for_test()
+        .rows()
+        .iter()
+        .position(|row| row.key == RowKey::Note(plain.clone()))
+        .expect("the note is a visible row");
+    // The first row of the sidebar starts below the title bar, the search field and the buttons.
+    session.app.set_pointer_for_test(iced::Point::new(
+        120.0,
+        size::TITLE_BAR
+            + ncrs_notes::view::SIDEBAR_ROWS_TOP
+            + (row as f32 + 0.5) * size::SIDEBAR_ITEM,
+    ));
     session.send(Message::Notes(ncrs_notes::Message::OpenMenu(RowKey::Note(
         plain.clone(),
     ))));
@@ -173,6 +189,10 @@ fn notes_sync_encryption_lock_and_recovery_key() {
     press_note(&mut session, RowKey::Note(sealed.clone()));
     assert!(session.app.notes_for_test().shown_is_locked());
     shoot(&session.app, "31-notizen-entsperren-seite");
+    session.send(Message::Notes(ncrs_notes::Message::UnlockDenied(
+        Denied::Cancelled,
+    )));
+    shoot(&session.app, "31b-notizen-entsperren-abgebrochen");
 
     // Unlock through the injected store.
     session.send(Message::Notes(ncrs_notes::Message::Unlock));
@@ -283,8 +303,18 @@ fn two_chats_are_listed_switched_kept_and_deleted() {
     let mut session = boot_ready(&world);
     session.send(Message::HermesChat(ChatMessage::Open));
     say(&mut session, "Sortier mir meine Rechnungen");
+    let old_chat = session
+        .app
+        .hermes_chat_for_test()
+        .chats()
+        .live()
+        .cloned()
+        .expect("the first chat is running");
     session.send(Message::HermesChat(ChatMessage::NewChat));
-    say(&mut session, "Wo liegt der Mietvertrag");
+    say(
+        &mut session,
+        "Wo liegt der Mietvertrag für die Wohnung in der Lindenstraße, den ich damals nach dem Einzug im Frühjahr unterschrieben habe, und gehört das Übergabeprotokoll mit den Fotos der Zählerstände eigentlich zu denselben Unterlagen oder liegt es in einem anderen Ordner bei den Rechnungen vom Vermieter? Ich suche außerdem die Kündigung vom letzten Jahr und alles, was zur Nebenkostenabrechnung 2024 gehört.",
+    );
 
     assert_eq!(chat_files(&world).len(), 2, "both chats are on disk");
     let rows = listed(&session.app);
@@ -293,16 +323,28 @@ fn two_chats_are_listed_switched_kept_and_deleted() {
     assert!(rows.iter().any(|(title, _)| title.contains("Mietvertrag")));
     shoot(&session.app, "33-hermes-chatliste-gruppiert");
 
-    // The list runs newest first: Cmd+Down shows the older first chat, read only.
-    session.press_with(Key::Named(Named::ArrowDown), Modifiers::COMMAND);
+    // Showing the older chat and writing in it goes on in it, with both turns.
+    session.send(Message::HermesChat(ChatMessage::List(ListMessage::Show(
+        old_chat.clone(),
+    ))));
     assert!(session.app.hermes_chat_for_test().chats().is_read_only());
-    assert!(session
-        .app
-        .hermes_chat_for_test()
-        .chats()
+    say(&mut session, "Und die Versicherungen dazu");
+    let chats = session.app.hermes_chat_for_test().chats();
+    assert!(
+        !chats.is_read_only(),
+        "the old chat is the running one again"
+    );
+    assert_eq!(chats.live(), Some(&old_chat));
+    assert!(chats
         .title_of_shown()
         .is_some_and(|title| title.contains("Rechnungen")));
-    shoot(&session.app, "34-hermes-chat-nur-lesen");
+    let thread = crate::hermes_protocol::thread::whole_thread(&session.app);
+    assert!(
+        thread.contains("Rechnungen") && thread.contains("Versicherungen"),
+        "{thread}"
+    );
+    assert_eq!(chat_files(&world).len(), 2, "no third chat");
+    shoot(&session.app, "34-hermes-alter-chat-weitergefuehrt");
 
     // A restart on the same data folder: both are still there.
     drop(session);

@@ -205,6 +205,7 @@ gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 media-tools = []
 
 [dev-dependencies]
+ncrs-user-verify = { path = "crates/ncrs-user-verify", version = "0.0.0" }
 # The host keys the dialog tests build.
 russh = { workspace = true }
 # iced's own UI testing: Simulator (headless), Emulator (end-to-end),
@@ -249,7 +250,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # arboard. In the tree through arboard already.
 clipboard-win = "5.4"
 
-# crates/ncrs-console, ncrs-ocr-vision, ncrs-priority and ncrs-sandbox repeat
+# crates/ncrs-console, ncrs-ocr-vision, ncrs-priority, ncrs-sandbox and ncrs-user-verify repeat
 # these tables in their Cargo.toml with unsafe_code = "deny"; change all together.
 [workspace.lints.rust]
 # A file manager must never execute unchecked code: the whole point is to touch

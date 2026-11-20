@@ -14,22 +14,27 @@ use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
-use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow, TREE_INDENT};
+use ncrs_ui_kit::tree_list::{result_row, tree_row_with_lock, ResultRow, TreeRow, TREE_INDENT};
+use ncrs_user_verify::Check;
 
 use crate::crypt::is_encrypted_path;
 use crate::ctx::ViewCtx;
 use crate::message::{Message, Mode};
+use crate::secure::denied_text;
 use crate::state::{Seal, State};
 use crate::store::{Kind, Note};
 use crate::tree::RowKey;
+
+/// Where the first row of the sidebar tree starts below the notes tab: the
+/// search field, the buttons, the rule and the padding of the list. Measured
+/// from the drawn page, as the layout is made of widgets, not of numbers.
+pub const SIDEBAR_ROWS_TOP: f32 = 84.0;
 
 /// The ids of the fields, for the focus tasks.
 pub const SEARCH_ID: &str = "notes-search";
 pub const EDITOR_ID: &str = "notes-editor";
 const TREE_ID: &str = "notes-tree";
 const NOTE_ID: &str = "notes-note";
-/// Drawn before the name of an encrypted note or folder in the tree.
-const LOCK_MARK: &str = "\u{1f512}";
 
 const SIDEBAR_WIDTH: f32 = size::SIDE_PANE;
 /// From this width of the note pane the editor and the rendered note sit side by side.
@@ -70,15 +75,15 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>, new_note_key: &str) -> Eleme
     }
 }
 
-/// Where the first row of the tree starts below the top of the tab: the
-/// search field and the two buttons above it.
-const TREE_TOP: f32 = 96.0;
-
 /// The menu of the row that was pressed with the right button: encrypt or
 /// decrypt it, and lock everything now.
 fn context_menu<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message>> {
     let key = state.menu.clone()?;
-    let index = state.rows().iter().position(|entry| entry.key == key)?;
+    state
+        .rows()
+        .iter()
+        .any(|entry| entry.key == key)
+        .then_some(())?;
     let sealed = match &key {
         RowKey::Folder(folder) => state.folder_is_sealed(folder),
         RowKey::Note(path) => is_encrypted_path(path),
@@ -99,10 +104,8 @@ fn context_menu<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Option<Element<'a, Me
     if state.vault.is_unlocked() {
         entries.push(entry(Msg::NotesMenuLockNow, Message::Lock));
     }
-    let origin = Point::new(
-        SIDEBAR_WIDTH / 2.0,
-        TREE_TOP + index as f32 * size::SIDEBAR_ITEM,
-    );
+    // The pointer is a position in the window; the tab starts below the title bar.
+    let origin = Point::new(state.menu_pointer.x, state.menu_pointer.y - size::TITLE_BAR);
     Some(popup_layer(
         popup_menu(entries, origin, ctx.palette),
         Some(Message::CloseMenu),
@@ -186,21 +189,17 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             RowKey::Note(path) => is_encrypted_path(path),
             RowKey::Files => false,
         };
-        let shown = if locked {
-            format!("{LOCK_MARK} {label}")
-        } else {
-            label
-        };
         let key = entry.key.clone();
-        let row: Element<'a, Message> = tree_row(
+        let row: Element<'a, Message> = tree_row_with_lock(
             TreeRow {
                 depth: entry.depth,
                 open: entry.open,
-                label: shown,
+                label,
                 chosen: state.cursor.as_ref() == Some(&entry.key),
                 dim: entry.key == RowKey::Files,
                 on_press: Message::Pressed(entry.key),
             },
+            locked,
             ctx.palette,
         );
         Element::from(mouse_area(row).on_right_press(Message::OpenMenu(key)))
@@ -287,7 +286,7 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into();
     };
     if state.is_locked(note) {
-        return locked_page(note, ctx);
+        return locked_page(state, note, ctx);
     }
     let meta = match note.modified {
         Some(modified) => format!(
@@ -368,27 +367,36 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 }
 
 /// What stands where an encrypted note would be shown while the key is not in memory.
-fn locked_page<'a>(note: &'a Note, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+fn locked_page<'a>(state: &State, note: &'a Note, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    container(
-        column![
-            page_heading(&note.title, palette),
-            page_line(
-                ctx.lang.text(Msg::NotesLockedBody),
-                font_size::BODY,
-                palette.dim_text
-            ),
-            button(
-                ctx.lang.text(Msg::NotesUnlock),
-                Some(Message::Unlock),
-                Tone::Primary,
-                palette,
-            ),
-        ]
-        .spacing(spacing::L),
-    )
-    .padding(spacing::XXL)
-    .into()
+    let unlock_label = match state.vault.verifier().check() {
+        Check::TouchId => Msg::NotesUnlockTouchId,
+        Check::WindowsHello => Msg::NotesUnlockWindowsHello,
+        Check::Nothing => Msg::NotesUnlock,
+    };
+    let mut page = column![
+        page_heading(&note.title, palette),
+        page_line(
+            ctx.lang.text(Msg::NotesLockedBody),
+            font_size::BODY,
+            palette.dim_text
+        ),
+        button(
+            ctx.lang.text(unlock_label),
+            Some(Message::Unlock),
+            Tone::Primary,
+            palette,
+        ),
+    ]
+    .spacing(spacing::L);
+    if let Some(denied) = &state.unlock_denied {
+        page = page.push(page_line(
+            denied_text(denied, ctx.lang),
+            font_size::BODY,
+            palette.error,
+        ));
+    }
+    container(page).padding(spacing::XXL).into()
 }
 
 fn rendered<'a>(state: &'a State, palette: &'a Palette) -> Element<'a, Message> {

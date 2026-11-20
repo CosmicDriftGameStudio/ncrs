@@ -873,17 +873,6 @@ impl App {
     pub fn favourite_menu_is_open_for_test(&self) -> bool {
         self.favourite_menu.is_some()
     }
-
-    /// Replaces where the notes find their key, so a run never reaches the
-    /// system keychain. The lock time stays as the settings made it.
-    pub fn use_notes_key_store_for_test(
-        &mut self,
-        store: Arc<dyn ncrs_notes::vault::KeyStore>,
-        lock_minutes: u32,
-    ) {
-        self.notes.vault = ncrs_notes::vault::Vault::with_store(store);
-        self.notes.vault.set_timeout_minutes(lock_minutes);
-    }
 }
 
 impl App {
@@ -892,5 +881,22 @@ impl App {
         &self,
     ) -> Option<ncrs_files::folder_size::FolderSizeProgress> {
         self.panels.folder_size_progress()
+    }
+}
+
+impl App {
+    /// The id and the folder being walked of the running "Compute folder sizes".
+    pub fn folder_size_walk_for_test(&self) -> Option<(u64, Option<std::path::PathBuf>)> {
+        self.panels
+            .folder_size_run
+            .as_ref()
+            .map(|run| (run.id, run.current.clone()))
+    }
+}
+
+impl App {
+    /// Gives the notes a whole vault, to script what the system asks.
+    pub fn use_notes_vault_for_test(&mut self, vault: ncrs_notes::vault::Vault) {
+        self.notes.vault = vault;
     }
 }

@@ -323,11 +323,30 @@ fn folder_sizes_show_progress_and_keep_the_subfolders() {
     let world = World::new("sizes", "");
     let mut session = world.boot();
     go_to(&mut session, "Fotos Urlaub Italien");
+    for name in [
+        "Fotos Urlaub Italien",
+        "Rechnungen 2025",
+        "Verträge",
+        "Steuer 2025",
+    ] {
+        let path = world.downloads.join(name);
+        session
+            .app
+            .panel_mut_for_test(PanelSide::Left)
+            .selection
+            .toggle(&path);
+    }
     let held = session.send_held(Message::ComputeFolderSizes);
     assert!(
         session.app.folder_size_progress_for_test().is_some(),
         "the status bar has the progress while the walk runs"
     );
+    let (run, walked) = session.app.folder_size_walk_for_test().unwrap();
+    session.send(Message::Panel(PanelMessage::FolderSizeRunning {
+        run,
+        folder: walked.expect("one folder is being walked"),
+        bytes: 1_200_000_000,
+    }));
     shoot(&session.app, "04-ordnergroessen-laeuft");
     session.drive(held);
     session.settle();
@@ -419,49 +438,34 @@ fn tag_all_and_tag_or_untag_by_pattern() {
 }
 
 #[test]
-fn cmd_g_selects_the_path_and_a_pasted_file_path_goes_there() {
+fn cmd_g_opens_a_dialog_and_a_pasted_file_path_goes_there() {
     let world = World::new("goto", "");
     let mut session = world.boot();
     session.press_with(Key::Character("g".into()), command());
-    assert_eq!(
-        session.app.path_field_for_test(),
-        Some(world.downloads.to_string_lossy().as_ref())
+    assert!(session.app.prompt_is_open_for_test());
+    assert!(
+        session.app.path_field_for_test().is_none(),
+        "no field in the status bar"
     );
-    shoot_with(&session.app, "10-pfad-feld-markiert", |simulator| {
-        // What Cmd+G does to the widget: focus the field, select all.
-        simulator
-            .click(iced::widget::Id::new(crate::ui::statusbar::PATH_FIELD_ID))
-            .unwrap();
-        let key = Key::Character("a".into());
-        drop(
-            simulator.simulate([iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key: key.clone(),
-                modified_key: key,
-                physical_key: iced::keyboard::key::Physical::Unidentified(
-                    iced::keyboard::key::NativeCode::Unidentified,
-                ),
-                location: iced::keyboard::Location::Standard,
-                modifiers: Modifiers::COMMAND,
-                repeat: false,
-                text: None,
-            })]),
-        );
-    });
-
     let target = world.other.join("Beleg-17.pdf");
-    session.send(Message::Panel(PanelMessage::PathFieldInput(format!(
-        "\"{}\"",
-        target.display()
-    ))));
-    session.send(Message::Panel(PanelMessage::PathFieldSubmit));
-    session.settle();
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptInput(
+        target.display().to_string(),
+    )));
+    shoot(&session.app, "10-gehe-zu-pfad-dialog");
+
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptSubmit));
+    pump_until(&mut session, 5, |app| {
+        app.panel(PanelSide::Left)
+            .selected_entry()
+            .is_some_and(|entry| entry.name == "Beleg-17.pdf")
+    });
     assert_eq!(session.app.panel(PanelSide::Left).path, world.other);
     assert_eq!(
         super::selected(&session.app, PanelSide::Left).as_deref(),
         Some("Beleg-17.pdf")
     );
-    assert!(session.app.path_field_for_test().is_none());
-    shoot(&session.app, "11-pfad-eingefuegt-cursor-auf-datei");
+    assert!(!session.app.prompt_is_open_for_test());
+    shoot(&session.app, "11-gehe-zu-pfad-cursor-auf-datei");
 }
 
 #[test]

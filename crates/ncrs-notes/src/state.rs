@@ -76,6 +76,10 @@ pub struct State {
     pub menu: Option<RowKey>,
     /// The key is being fetched from the credential store.
     pub unlocking: bool,
+    /// Why the last unlock was refused; the locked page says it.
+    pub unlock_denied: Option<ncrs_user_verify::Denied>,
+    /// Where the pointer was when the context menu was opened.
+    pub menu_pointer: iced::Point,
     /// What was asked while the key had to be fetched first: the rows to seal
     /// (`true`) or unseal (`false`).
     pub pending_seal: Option<(Seal, bool)>,

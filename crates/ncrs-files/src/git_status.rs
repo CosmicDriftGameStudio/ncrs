@@ -69,6 +69,16 @@ impl PanelGit {
         self.root.is_some()
     }
 
+    /// Whether the folder holds a repository of its own.
+    pub fn holds_repositories(&self) -> bool {
+        self.marks.values().any(|mark| *mark == GitMark::Repository)
+    }
+
+    /// The Git column shows in a repository and in a folder with repositories.
+    pub fn shows_column(&self) -> bool {
+        self.in_repository() || self.holds_repositories()
+    }
+
     pub fn mark_of(&self, name: &OsString) -> Option<GitMark> {
         self.marks.get(name).copied()
     }

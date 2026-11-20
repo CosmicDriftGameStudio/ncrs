@@ -35,6 +35,16 @@ pub enum PanelMessage {
     PathChecked(crate::path_field::PathChecked),
     /// Escape, Tab or a click elsewhere: back to the panel's own path.
     PathFieldCancel,
+    /// Enter in the "Go to path" dialog with the typed text.
+    GoToPathSubmit(String),
+    /// The look at the path the dialog submitted.
+    GoToPathChecked(crate::path_field::PathChecked),
+    /// What the walk of `folder` has counted so far; only grows.
+    FolderSizeRunning {
+        run: u64,
+        folder: PathBuf,
+        bytes: u64,
+    },
     /// One folder of a size run is measured; `size` is `None` when the walk
     /// was stopped.
     FolderSizeMeasured {

@@ -73,23 +73,6 @@ impl App {
         self.load(side, path, cursor)
     }
 
-    /// Cmd/Ctrl+G: the path field of the active panel takes the focus with
-    /// its text selected, so typing replaces it.
-    pub(in crate::app) fn focus_path_field(&mut self) -> Task<Message> {
-        if self.overlay_is_open()
-            || self.search_has_keys()
-            || self.trash_has_keys()
-            || self.shown_tab != ShownTab::Panels
-        {
-            return Task::none();
-        }
-        self.command_line.leave();
-        let shown = self.active_panel().path.display().to_string();
-        self.panels.set_path_field(Some(shown));
-        let field = crate::ui::statusbar::PATH_FIELD_ID;
-        iced::widget::operation::focus(field).chain(iced::widget::operation::select_all(field))
-    }
-
     pub(in crate::app) fn update_path_field(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ClickedOutside => {
@@ -620,6 +603,23 @@ impl App {
                 Task::none()
             }
             Action::ReleaseFocus => release_focus(),
+            Action::GoToPathAnswer(answer) => {
+                let asks =
+                    self.ops.prompt.as_ref().is_some_and(|prompt| {
+                        prompt.kind() == ncrs_ops::prompt::PromptKind::GoToPath
+                    });
+                match answer {
+                    Ok(()) if asks => {
+                        self.ops.prompt = None;
+                        release_focus()
+                    }
+                    Err(text) if asks => {
+                        self.ops.set_prompt_error_text(&text);
+                        Task::none()
+                    }
+                    Ok(()) | Err(_) => Task::none(),
+                }
+            }
             Action::LeaveCommandLine => {
                 self.command_line.leave();
                 Task::none()

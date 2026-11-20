@@ -81,6 +81,9 @@ pub enum Action {
     OpenTrash(PanelSide),
     /// A server closed from its row in the drive menu.
     Disconnect(ServerId),
+    /// The "Go to path" dialog got its answer: `Ok` closes it (the load of the
+    /// destination came before), `Err` is the text it shows and stays open.
+    GoToPathAnswer(Result<(), String>),
     /// Gives the keyboard focus back to the panels.
     ReleaseFocus,
     /// The command line gives up the keyboard focus.

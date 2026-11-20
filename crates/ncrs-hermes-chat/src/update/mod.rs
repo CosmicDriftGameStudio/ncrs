@@ -10,6 +10,7 @@ use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
+use crate::chat_store::Speaker;
 use crate::ctx::{Availability, Ctx};
 pub use crate::fallback::{
     batch_not_yet, explain_not_yet, fallback, fallback_chips, lost_folder_chips,
@@ -35,14 +36,18 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
 }
 
 fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
-    // A closed chat is only shown: nothing typed or pressed reaches it.
-    if state.chats.is_read_only()
-        && matches!(
-            message,
-            Message::InputChanged(_) | Message::Submit | Message::ChipPressed { .. }
-        )
-    {
-        return None;
+    if state.chats.is_read_only() {
+        match message {
+            // The buttons of an old chat are gone; only its text is kept.
+            Message::ChipPressed { .. } => return None,
+            Message::Submit => {
+                let waits = state.input.trim().is_empty() || is_busy(state);
+                if waits || !continue_old_chat(state, ctx) {
+                    return None;
+                }
+            }
+            _ => {}
+        }
     }
     match message {
         Message::List(list_message) => crate::chat_list_update::handle(state, list_message, ctx),
@@ -275,6 +280,42 @@ pub fn restart_conversation(state: &mut State, ctx: &Ctx) {
     };
     state.chats.start_live(ctx.now.timestamp());
     open_thread(state, ctx);
+}
+
+/// Writing in an old chat goes on in it: its saved turns become the thread
+/// of a fresh conversation, as plain text. Nothing of the old run is
+/// restored as something to press or run, and the chat keeps its id.
+fn continue_old_chat(state: &mut State, ctx: &Ctx) -> bool {
+    if state.chats.live().is_some() {
+        state.sync_chats(ctx.now);
+    }
+    let input = std::mem::take(&mut state.input);
+    let mut chats = std::mem::take(&mut state.chats);
+    let Some(lines) = chats.take_over_shown() else {
+        state.chats = chats;
+        state.input = input;
+        return false;
+    };
+    *state = State {
+        open: state.open,
+        input,
+        picks_running: state.picks_running,
+        picks_stop: Arc::clone(&state.picks_stop),
+        picks_settled_at: state.picks_settled_at,
+        chats,
+        ..State::default()
+    };
+    state.thread = lines
+        .into_iter()
+        .map(|line| match line.speaker {
+            Speaker::User => Entry::User(line.text),
+            Speaker::Hermes => Entry::Hermes {
+                parts: vec![Part::Text(line.text)],
+                chips: Vec::new(),
+            },
+        })
+        .collect();
+    true
 }
 
 /// In these steps every typed text is for the flow, so a text that looks like

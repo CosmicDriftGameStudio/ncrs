@@ -157,6 +157,18 @@
       "de": "{count} geändert"
     },
     {
+      "key": "git.legend_repositories",
+      "context": "Dim line under a file panel that shows a folder containing Git repositories. A small branch symbol is drawn in front of this text by the app, so the text starts with \"=\". It explains that the symbol in the Git column marks a repository; the quoted part is the name of the context-menu entry \"Open Git view\" and must match that entry's translation.",
+      "en": "= Git repository · Enter opens it · context menu/F1 › “Open Git view”",
+      "de": "= Git-Repository · Enter öffnet · Kontextmenü/F1 › „Git-Ansicht öffnen“"
+    },
+    {
+      "key": "git.legend_states",
+      "context": "Dim line under a file panel that is inside a Git repository: what the letters in the Git column mean. M is a changed file, A a newly added one, ? one git does not track yet, D a deleted one, ! one in conflict. Keep the letters M A ? D ! as they are, they are what the column shows; translate only the words after them. Entries git ignores are drawn dimmed without a letter.",
+      "en": "M changed · A added · ? untracked · D deleted · ! conflict · dimmed = ignored",
+      "de": "M geändert · A neu · ? nicht verfolgt · D gelöscht · ! Konflikt · gedimmt = ignoriert"
+    },
+    {
       "key": "shortcut.switch_language",
       "context": "Label of the F9 slot in the function key bar at the bottom of the window. The key switches the interface language; one short word, at most 8 characters, the slot clips longer text.",
       "en": "Lang",
@@ -7363,12 +7375,6 @@
       "de": "Behalten"
     },
     {
-      "key": "hermes_chat.read_only_hint",
-      "context": "Hermes chat (F2): Grey text in the disabled message field of a chat that was closed earlier and is only shown to read.",
-      "en": "This chat is closed. Start a new chat to go on.",
-      "de": "Dieser Chat ist beendet. Starte einen neuen Chat, um weiterzumachen."
-    },
-    {
       "key": "hermes_chat.list_keys_hint",
       "context": "Hermes chat (F2): Hint in the bottom bar below the chat. {mod} is the modifier key of the system (Cmd on a Mac, Ctrl elsewhere); keep the placeholder and the arrows.",
       "en": "{mod}N new chat · {mod}↑/{mod}↓ switch chat · chats stay after a restart",
@@ -9769,6 +9775,12 @@
       "de": "Ordner, die andere Programme öffnen, gehen an ncrs. Beim Ausschalten gilt wieder die frühere Wahl."
     },
     {
+      "key": "settings.programs_macos_open_with",
+      "context": "Dim info line at the end of the programs page on macOS, where the switches of the other systems do not exist. Says where ncrs shows up as a program for folders and files. 'Open With' is the Finder menu entry, use the system's own name for it.",
+      "en": "On macOS, ncrs is listed in the Finder under “Open With” for folders and files.",
+      "de": "Auf macOS steht ncrs im Finder unter „Öffnen mit“ für Ordner und Dateien."
+    },
+    {
       "key": "settings.integration_failed",
       "context": "Status message when the default file manager or Explorer menu switch on the programs page could not be changed. {reason} is the system's own error text.",
       "en": "Could not change this: {reason}",
@@ -10922,7 +10934,7 @@
     },
     {
       "key": "action.go_to_path",
-      "context": "Entry of the command palette and the menu that runs the key action go_to_path: puts the cursor in the path field of the status bar with the path selected, so a typed or pasted path replaces it. Imperative, as short as a menu entry.",
+      "context": "Entry of the command palette and the menu that runs the key action go_to_path: opens a small dialog with one field for a typed or pasted path, which the active panel then opens. Imperative, as short as a menu entry.",
       "en": "Go to path",
       "de": "Zu Pfad gehen"
     },
@@ -10955,6 +10967,24 @@
       "context": "Confirm button in the untag-by-pattern dialog. Verb, what the button does.",
       "en": "Untag",
       "de": "Markierung aufheben"
+    },
+    {
+      "key": "dialog.go_to_path.title",
+      "context": "Title of the small dialog that Cmd+G (Ctrl+G on Linux and Windows) opens: one field for a path that is typed or pasted. Enter opens that folder in the active panel, or the folder of that file with the cursor on it. Imperative, matches the other dialog titles.",
+      "en": "Go to path",
+      "de": "Gehe zu Pfad"
+    },
+    {
+      "key": "dialog.go_to_path.label",
+      "context": "Label next to the text field of the Go to path dialog. The field holds the path of a folder or a file; a leading ~ stands for the home folder. One word, no colon.",
+      "en": "Path",
+      "de": "Pfad"
+    },
+    {
+      "key": "dialog.go_to_path.confirm",
+      "context": "Confirm button in the Go to path dialog. Verb, what the button does.",
+      "en": "Go",
+      "de": "Öffnen"
     },
     {
       "key": "favourites_bar.open_in_other",
@@ -11723,6 +11753,36 @@
       "context": "Notes tab: button on the page of an encrypted note that fetches the key from the system's credential store (Keychain on macOS). Verb, imperative, short.",
       "en": "Unlock",
       "de": "Entsperren"
+    },
+    {
+      "key": "notes.unlock_touch_id",
+      "context": "Notes tab: the unlock button on macOS. The system asks for Touch ID, or for the Mac password when there is no Touch ID; then the key is fetched from the Keychain. Imperative, short.",
+      "en": "Unlock with Touch ID",
+      "de": "Mit Touch ID entsperren"
+    },
+    {
+      "key": "notes.unlock_windows_hello",
+      "context": "Notes tab: the unlock button on Windows. The system asks for Windows Hello (face, fingerprint or PIN); then the key is fetched from the Credential Manager. 'Windows Hello' is the product name. Imperative, short.",
+      "en": "Unlock with Windows Hello",
+      "de": "Mit Windows Hello entsperren"
+    },
+    {
+      "key": "notes.verify_reason",
+      "context": "Notes tab: the line the system's Touch ID or Windows Hello prompt shows while it asks the person to unlock the encrypted notes. Starts after the app name on macOS, so no capital and no full stop.",
+      "en": "unlock your encrypted notes",
+      "de": "deine verschlüsselten Notizen zu entsperren"
+    },
+    {
+      "key": "notes.unlock_cancelled",
+      "context": "Notes tab: line on the page of an encrypted note after the person closed the Touch ID or Windows Hello prompt. The note stays locked.",
+      "en": "Not unlocked: the prompt was cancelled. The note stays locked.",
+      "de": "Nicht entsperrt: Die Abfrage wurde abgebrochen. Die Notiz bleibt gesperrt."
+    },
+    {
+      "key": "notes.unlock_failed",
+      "context": "Notes tab: line on the page of an encrypted note when Touch ID or Windows Hello did not verify the person. {reason} is the system's own text. The note stays locked.",
+      "en": "Not unlocked: {reason} The note stays locked.",
+      "de": "Nicht entsperrt: {reason} Die Notiz bleibt gesperrt."
     },
     {
       "key": "notes.locked_new_note",

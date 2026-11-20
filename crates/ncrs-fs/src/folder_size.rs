@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use ncrs_core::FolderSize;
 
@@ -30,7 +31,21 @@ pub struct MeasuredTree {
 /// through, so entering one shows its size without another walk. A hard link
 /// is counted in the folder the walk met it in first.
 pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of)
+    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX)
+}
+
+/// How often a running walk reports what it has counted so far.
+const RUNNING_REPORT_INTERVAL: Duration = Duration::from_millis(100);
+
+/// [`measure_folder_tree`] that also calls `on_running` with the bytes counted
+/// so far, at most every 100 ms. The bytes only grow and the last value is at
+/// most the final total (hard links and skipped folders are not in it).
+pub fn measure_folder_tree_reporting(
+    root: &Path,
+    cancel: &AtomicBool,
+    on_running: impl FnMut(u64),
+) -> Option<MeasuredTree> {
+    measure_tree_on(root, cancel, device_of, on_running, RUNNING_REPORT_INTERVAL)
 }
 
 #[cfg(unix)]
@@ -49,14 +64,18 @@ fn measure_folder_on(
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
 ) -> Option<FolderSize> {
-    measure_tree_on(root, cancel, device_of).map(|tree| tree.total)
+    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX).map(|tree| tree.total)
 }
 
 fn measure_tree_on(
     root: &Path,
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
+    mut on_running: impl FnMut(u64),
+    report_every: Duration,
 ) -> Option<MeasuredTree> {
+    let mut running: u64 = 0;
+    let mut last_report = Instant::now();
     let root_device = std::fs::symlink_metadata(root)
         .ok()
         .and_then(|metadata| device_of(root, &metadata));
@@ -107,6 +126,11 @@ fn measure_tree_on(
                 }
             } else if seen.first_time(&metadata) {
                 add_bytes(&mut counted, owner, metadata.len());
+                running = running.saturating_add(metadata.len());
+                if last_report.elapsed() >= report_every {
+                    on_running(running);
+                    last_report = Instant::now();
+                }
             }
         }
     }
@@ -319,6 +343,30 @@ mod tests {
                 partial: true
             })
         );
+    }
+
+    #[test]
+    fn running_totals_arrive_before_the_result_and_only_grow() {
+        let root = tempfile::tempdir().unwrap();
+        for n in 0..6 {
+            write(&root.path().join(format!("tree/sub/file-{n}.txt")), 10 + n);
+        }
+        write(&root.path().join("tree/top.txt"), 7);
+        let mut reported = Vec::new();
+
+        let tree = measure_tree_on(
+            &root.path().join("tree"),
+            &running(),
+            device_of,
+            |bytes| reported.push(bytes),
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        assert_eq!(reported.len(), 7, "one report per counted file");
+        assert!(reported.is_sorted());
+        assert!(reported.iter().all(|bytes| *bytes <= tree.total.bytes));
+        assert_eq!(reported.last().copied(), Some(tree.total.bytes));
     }
 
     #[test]

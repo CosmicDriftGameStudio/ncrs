@@ -5,6 +5,7 @@
 use iced::widget::{container, mouse_area, scrollable, text_input, Column, Row, Space};
 use iced::{alignment, Element, Length};
 
+use crate::git_mark::MODIFIED_ORANGE;
 use crate::palette::Palette;
 use crate::popup_menu::{menu_entry_colors, menu_item, PopupEntry};
 use crate::theme::{self, font_size, spacing};
@@ -13,6 +14,15 @@ use super::*;
 
 pub const CHAT_LIST_WIDTH: f32 = 300.0;
 const MARK: &str = "\u{25b8} ";
+/// The width of a character of the monospaced title, per point of its size.
+const TITLE_CHAR_WIDTH_PER_SIZE: f32 = 0.6;
+
+/// How many characters of a title fit on the row, beside the mark of a marked chat.
+fn title_room(marked: bool) -> usize {
+    let mark_chars = if marked { MARK.chars().count() } else { 0 };
+    let room = (CHAT_LIST_WIDTH - GAP_M - GAP_M) / (TEXT_BODY * TITLE_CHAR_WIDTH_PER_SIZE);
+    (room as usize).saturating_sub(mark_chars)
+}
 
 /// One chat of the list.
 #[derive(Debug)]
@@ -85,7 +95,7 @@ struct ChatRowText {
 }
 
 /// A chat row of two lines in the selected-row style of the sidebars; the
-/// mark of a marked chat has the color of a tagged file.
+/// mark of a marked chat is orange.
 fn chat_row<'a, M: Clone + 'a>(
     content: ChatRowText,
     active: bool,
@@ -97,16 +107,14 @@ fn chat_row<'a, M: Clone + 'a>(
     } else {
         (palette.text, palette.dim_text)
     };
-    let mark_ink = if active {
-        palette.cursor_text
-    } else {
-        palette.tagged
-    };
     let mut title_line = Row::new().align_y(alignment::Vertical::Center);
     if content.marked {
-        title_line = title_line.push(body(MARK, mark_ink));
+        title_line = title_line.push(body(MARK, MODIFIED_ORANGE));
     }
-    title_line = title_line.push(body(content.title, title_ink));
+    title_line = title_line.push(body(
+        crate::format::ellipsize_end(&content.title, title_room(content.marked)),
+        title_ink,
+    ));
     let lines = Column::new()
         .push(title_line)
         .push(small(content.detail, detail_ink));

@@ -137,7 +137,6 @@ fn stored_entry<'a>(line: &Line, ctx: ViewCtx<'_>) -> Element<'a, Message> {
 
 pub fn view<'a>(state: &State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let lang = ctx.lang;
-    let read_only = state.chats.is_read_only();
     let (name, tagline) = match state.chats.title_of_shown() {
         Some(title) => (
             title.to_owned(),
@@ -160,21 +159,19 @@ pub fn view<'a>(state: &State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         ctx.palette,
     );
     let waiting_for_answer = !state.chips().is_empty();
-    let placeholder = lang.text(if read_only {
-        Msg::HermesChatReadOnlyHint
-    } else if waiting_for_answer {
+    let placeholder = lang.text(if waiting_for_answer {
         Msg::HermesChatPlaceholderReply
     } else {
         Msg::HermesChatPlaceholder
     });
     let input = chat_input(
         ChatInput {
-            value: if read_only { "" } else { &state.input },
+            value: &state.input,
             placeholder,
             id: INPUT_ID,
             on_input: Message::InputChanged,
             on_submit: Message::Submit,
-            enabled: !read_only && state.pending_work().is_none(),
+            enabled: state.pending_work().is_none(),
             send_label: lang.text(Msg::HermesChatSend),
         },
         ctx.palette,

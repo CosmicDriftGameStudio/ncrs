@@ -2,7 +2,7 @@
 //! searched, renamed or about to be deleted. Plain data and rules; the
 //! conversation itself stays in `State`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use chrono::{Local, NaiveDate, TimeZone as _};
@@ -71,7 +71,7 @@ pub struct ChatList {
     dir: Option<PathBuf>,
     chats: Vec<StoredChat>,
     /// The chat the running conversation of `State` belongs to. The others
-    /// are shown to read only.
+    /// are shown from their saved lines until one is written in.
     live: Option<ChatId>,
     shown: Option<ChatId>,
     marked: BTreeSet<ChatId>,
@@ -81,6 +81,10 @@ pub struct ChatList {
     /// Chats that wait for a yes before they are deleted.
     asking: Option<Vec<ChatId>>,
     keep_days: Option<u32>,
+    /// When a chat was last written to in this session, to order chats whose
+    /// saved `updated` second is the same.
+    touched: BTreeMap<ChatId, u64>,
+    touch_clock: u64,
 }
 
 impl ChatList {
@@ -136,9 +140,22 @@ impl ChatList {
         self.chats.iter_mut().find(|chat| &chat.id == id)
     }
 
-    /// The chat on screen is an old one, to read only.
+    /// The chat on screen is an old one: the running conversation is another.
     pub fn is_read_only(&self) -> bool {
         self.shown.is_some() && self.shown != self.live
+    }
+
+    /// Makes the shown old chat the running conversation, and returns its
+    /// saved lines.
+    pub fn take_over_shown(&mut self) -> Option<Vec<Line>> {
+        let id = self
+            .shown
+            .clone()
+            .filter(|id| Some(id) != self.live.as_ref())?;
+        let lines = self.chat(&id)?.lines.clone();
+        self.live = Some(id);
+        self.prune_empty();
+        Some(lines)
     }
 
     /// The chat on screen when it is not the running conversation.
@@ -208,6 +225,8 @@ impl ChatList {
         chat.lines = lines;
         chat.status = status;
         chat.updated = now;
+        self.touch_clock += 1;
+        self.touched.insert(id.clone(), self.touch_clock);
         self.save(&id);
     }
 
@@ -274,6 +293,7 @@ impl ChatList {
             right
                 .updated
                 .cmp(&left.updated)
+                .then_with(|| self.touched.get(&right.id).cmp(&self.touched.get(&left.id)))
                 .then_with(|| right.id.cmp(&left.id))
         });
         shown
@@ -620,6 +640,27 @@ mod tests {
         list.step(-1);
         list.step(-5);
         assert_eq!(list.title_of_shown(), Some("Scans laufend einsortieren"));
+    }
+
+    #[test]
+    fn of_two_chats_written_in_the_same_second_the_last_written_one_is_on_top() {
+        let mut list = ChatList::default();
+        list.start_live(at(20, 8));
+        say(&mut list, "Erster", ChatStatus::Done, at(20, 8));
+        let first = id_of(&list, "Erster");
+        list.start_live(at(20, 8));
+        say(&mut list, "Zweiter", ChatStatus::Done, at(20, 8));
+        assert_eq!(titles(&list), vec!["Zweiter", "Erster"]);
+
+        list.show(&first);
+        let lines = list.take_over_shown().expect("the old chat is taken over");
+        let mut longer = lines;
+        longer.push(Line {
+            speaker: Speaker::User,
+            text: "Noch ein Satz".to_owned(),
+        });
+        list.sync_live(longer, ChatStatus::Done, at(20, 8));
+        assert_eq!(titles(&list), vec!["Erster", "Zweiter"]);
     }
 
     #[test]

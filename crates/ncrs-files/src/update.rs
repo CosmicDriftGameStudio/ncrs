@@ -261,7 +261,7 @@ pub fn update(
             let git = panels
                 .header_press
                 .as_ref()
-                .is_some_and(|press| panels.panel(press.side).git.in_repository());
+                .is_some_and(|press| panels.panel(press.side).git.shows_column());
             if let Some(press) = panels.header_press.as_mut() {
                 let spans = header_spans(ctx, press.side, git);
                 press.moved_to(position, &spans, ctx.window_size.width);
@@ -350,6 +350,19 @@ pub fn update(
             task = check.map(PanelMessage::PathChecked);
             actions.extend(asked);
         }
+        PanelMessage::GoToPathSubmit(text) => {
+            let typed_path = TypedPathCtx {
+                lang: ctx.lang,
+                home: ctx.home,
+                session_home: ctx.session_home,
+            };
+            let (check, asked) = panels.go_to_path_from_dialog(&text, &typed_path);
+            task = check.map(PanelMessage::GoToPathChecked);
+            actions.extend(asked);
+        }
+        PanelMessage::GoToPathChecked(checked) => {
+            actions.extend(panels.finish_go_to_path_check(ctx.lang, checked));
+        }
         PanelMessage::PathChecked(checked) => {
             actions.extend(panels.finish_path_check(ctx.lang, checked));
         }
@@ -366,6 +379,9 @@ pub fn update(
         } => {
             let walk = panels.folder_size_measured(run, folder, size, below, rows);
             task = walk_task(walk);
+        }
+        PanelMessage::FolderSizeRunning { run, folder, bytes } => {
+            panels.folder_size_running(run, &folder, bytes);
         }
         PanelMessage::RenameStart => task = panels.begin_rename(),
         PanelMessage::RenameInput(typed) => panels.type_rename(typed),

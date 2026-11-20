@@ -7,10 +7,11 @@ use std::time::Instant;
 
 use iced::Task;
 use ncrs_core::notes_sync::NotesSettings;
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_user_verify::{Denied, UserVerifier};
 
 use crate::action::Action;
-use crate::crypt::is_encrypted_path;
+use crate::crypt::{is_encrypted_path, NoteKey};
 use crate::ctx::Ctx;
 use crate::message::{Message, Mode};
 use crate::state::{Options, Seal, State, Write};
@@ -18,7 +19,7 @@ use crate::store::{self, Expect, Kind, Replaced};
 use crate::syncing;
 use crate::tree::RowKey;
 use crate::update::{flush, reload, written};
-use crate::vault::{obtain_key, restore_key};
+use crate::vault::{obtain_key, restore_key, KeyStore};
 
 /// Takes over what the settings say; the lock time applies from now on.
 pub fn apply_settings(state: &mut State, settings: &NotesSettings) {
@@ -34,34 +35,53 @@ pub fn apply_settings(state: &mut State, settings: &NotesSettings) {
 
 /// Starts fetching the key; the answer is [`Message::Unlocked`]. With `create`
 /// a key is made when the credential store has none.
-pub fn unlock(state: &mut State, create: bool) -> Task<Message> {
+pub fn unlock(state: &mut State, create: bool, ctx: &Ctx) -> Task<Message> {
     if state.unlocking {
         return Task::none();
     }
     state.unlocking = true;
+    state.unlock_denied = None;
     let store = state.vault.store();
+    let verifier = state.vault.verifier();
+    let reason = ctx.lang.text(Msg::NotesVerifyReason).to_owned();
     Task::perform(
-        async move { tokio::task::spawn_blocking(move || obtain_key(store.as_ref(), create)).await },
-        |joined| {
-            Message::Unlocked(
-                joined.unwrap_or_else(|err| Err(err.to_string())),
-                Instant::now(),
-            )
+        async move {
+            tokio::task::spawn_blocking(move || {
+                verified_key(verifier.as_ref(), store.as_ref(), &reason, create)
+            })
+            .await
+        },
+        |joined| match joined {
+            Ok(Ok(result)) => Message::Unlocked(result, Instant::now()),
+            Ok(Err(denied)) => Message::UnlockDenied(denied),
+            Err(err) => Message::Unlocked(Err(err.to_string()), Instant::now()),
         },
     )
+}
+
+/// The key, fetched only after the person was verified. Blocking.
+pub fn verified_key(
+    verifier: &dyn UserVerifier,
+    store: &dyn KeyStore,
+    reason: &str,
+    create: bool,
+) -> Result<Result<Option<NoteKey>, String>, Denied> {
+    verifier.verify(reason)?;
+    Ok(obtain_key(store, create))
 }
 
 /// A new note in an encrypted folder needs the key first; it is fetched and
 /// the person asks again.
 pub fn unlock_for_new_note(state: &mut State, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let text = ctx.lang.text(Msg::NotesLockedNewNote).to_owned();
-    (unlock(state, true), Some(Action::Notice(text)))
+    (unlock(state, true, ctx), Some(Action::Notice(text)))
 }
 
 pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     match message {
         Message::Tick(now) => tick(state, now, ctx),
-        Message::Unlock => (unlock(state, false), None),
+        Message::Unlock => (unlock(state, false, ctx), None),
+        Message::UnlockDenied(denied) => unlock_denied(state, denied, ctx),
         Message::Unlocked(result, now) => unlocked(state, result, now, ctx),
         Message::Lock => (lock(state), None),
         Message::OpenMenu(row) => {
@@ -123,6 +143,7 @@ fn unlocked(
     match result {
         Ok(Some(key)) => {
             state.vault.unlock(key, now);
+            state.unlock_denied = None;
             let read = reload(state);
             let sealing = match state.pending_seal.take() {
                 Some((seal, on)) => seal_rows(state, seal, on, ctx),
@@ -138,6 +159,28 @@ fn unlocked(
         Err(reason) => {
             state.pending_seal = None;
             (Task::none(), Some(key_failed(ctx, &reason)))
+        }
+    }
+}
+
+/// The person was not verified: the vault stays locked, the locked page says
+/// why, and anything that was waiting for the key is dropped. When no locked
+/// page is on screen, the notice carries the same words.
+fn unlock_denied(state: &mut State, denied: Denied, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
+    state.unlocking = false;
+    state.pending_seal = None;
+    let text = denied_text(&denied, ctx.lang);
+    state.unlock_denied = Some(denied);
+    let notice = (!state.shown_is_locked()).then_some(Action::Notice(text));
+    (Task::none(), notice)
+}
+
+/// What the person reads when the verification did not pass.
+pub fn denied_text(denied: &Denied, lang: Language) -> String {
+    match denied {
+        Denied::Cancelled => lang.text(Msg::NotesUnlockCancelled).to_owned(),
+        Denied::Failed(reason) => {
+            fill_template(lang.text(Msg::NotesUnlockFailed), &[("{reason}", reason)])
         }
     }
 }
@@ -229,10 +272,10 @@ fn seal_rows(
     if !state.vault.is_unlocked() {
         if on {
             state.pending_seal = Some((seal, on));
-            return (unlock(state, true), None);
+            return (unlock(state, true, ctx), None);
         }
         let text = ctx.lang.text(Msg::NotesUnlockFirst).to_owned();
-        return (unlock(state, false), Some(Action::Notice(text)));
+        return (unlock(state, false, ctx), Some(Action::Notice(text)));
     }
     let mut tasks = vec![flush(state)];
     for old in to_convert(state, &seal, on) {

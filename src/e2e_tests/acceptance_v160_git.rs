@@ -360,6 +360,20 @@ fn git_column_and_status_line_in_a_repository() {
     let world = World::new("git-column", "");
     let parent = build_development_folder(&world.root);
     let repository = parent.join("ncrs-demo");
+    // More changes among the visible rows: a file changed inside `src`, more
+    // modified files, and a file taken out of the index but left on disk, a new staged and an untracked file near the top of the list.
+    append(&repository, "src/main.rs", "// edited");
+    append(&repository, "Cargo.toml", "# edited");
+    append(&repository, "kapitel-03.md", "Neuer Absatz.");
+    run_git(
+        &repository,
+        55,
+        0,
+        &["rm", "-q", "--cached", "CHANGELOG.md"],
+    );
+    write(&repository, "Anhang.md", "# Anhang\n");
+    run_git(&repository, 55, 0, &["add", "Anhang.md"]);
+    write(&repository, "Aufgaben.txt", "offen\n");
     let mut session = world.boot_in(&repository);
     pump_until(&mut session, 20, git_ready);
 
@@ -374,9 +388,15 @@ fn git_column_and_status_line_in_a_repository() {
     assert_eq!(summary.branch.as_deref(), Some("main"));
     assert_eq!((summary.ahead, summary.behind), (3, 1));
     assert_eq!(
-        summary.changed, 3,
+        summary.changed, 9,
         "modified, added and untracked count, the ignored ones do not"
     );
+    assert_eq!(mark(&session.app, "CHANGELOG.md"), Some(GitMark::Deleted));
+    assert_eq!(mark(&session.app, "Anhang.md"), Some(GitMark::Added));
+    assert_eq!(mark(&session.app, "Aufgaben.txt"), Some(GitMark::Untracked));
+    assert_eq!(mark(&session.app, "src"), Some(GitMark::Modified));
+    assert_eq!(mark(&session.app, "Cargo.toml"), Some(GitMark::Modified));
+    assert_eq!(mark(&session.app, "kapitel-03.md"), Some(GitMark::Modified));
     assert_eq!(mark(&session.app, "README.md"), Some(GitMark::Modified));
     assert_eq!(mark(&session.app, "Roadmap.md"), Some(GitMark::Added));
     assert_eq!(mark(&session.app, "scratch.txt"), Some(GitMark::Untracked));

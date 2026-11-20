@@ -58,6 +58,64 @@ impl Panels {
             self.set_path_field(None);
             return (Task::none(), vec![Action::ReleaseFocus]);
         }
+        self.check_typed_path(typed, ctx)
+    }
+
+    /// Enter in the "Go to path" dialog: the same look at the typed path as in
+    /// the path field. The answer is an [`Action::GoToPathAnswer`], so the
+    /// dialog closes on a destination and shows the problem otherwise.
+    pub fn go_to_path_from_dialog(
+        &mut self,
+        text: &str,
+        ctx: &TypedPathCtx<'_>,
+    ) -> (Task<PathChecked>, Vec<Action>) {
+        let typed = strip_quotes(text);
+        if typed.is_empty() {
+            return (Task::none(), Vec::new());
+        }
+        let (task, mut actions) = self.check_typed_path(typed, ctx);
+        let refused = actions.iter().find_map(|action| match action {
+            Action::ShowError(problem) => Some(problem.clone()),
+            _ => None,
+        });
+        if let Some(problem) = refused {
+            return (task, vec![Action::GoToPathAnswer(Err(problem))]);
+        }
+        if !actions.is_empty() {
+            actions.push(Action::GoToPathAnswer(Ok(())));
+        }
+        (task, actions)
+    }
+
+    /// The answer to [`Self::go_to_path_from_dialog`]. An answer to an older
+    /// look is dropped.
+    pub fn finish_go_to_path_check(&mut self, lang: Language, checked: PathChecked) -> Vec<Action> {
+        if checked.request_id != self.path_check_id {
+            return Vec::new();
+        }
+        match checked.result {
+            Ok(destination) => vec![
+                Action::ClearMessages,
+                Action::Load {
+                    side: checked.side,
+                    path: destination.directory,
+                    select: destination.select,
+                },
+                Action::GoToPathAnswer(Ok(())),
+            ],
+            Err(problem) => vec![Action::GoToPathAnswer(Err(problem_text(
+                lang,
+                &problem,
+                &checked.target,
+            )))],
+        }
+    }
+
+    fn check_typed_path(
+        &mut self,
+        typed: &str,
+        ctx: &TypedPathCtx<'_>,
+    ) -> (Task<PathChecked>, Vec<Action>) {
         let side = self.active;
         // Before anything that asks the disk: an address, or a path typed
         // while the panel is on a server, is no path of this computer.

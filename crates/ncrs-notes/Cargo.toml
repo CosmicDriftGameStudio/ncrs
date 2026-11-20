@@ -15,6 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+ncrs-user-verify = { path = "../ncrs-user-verify", version = "0.0.0" }
 tempfile = "3.27"
 aes-gcm = "0.11"
 getrandom = "0.4"

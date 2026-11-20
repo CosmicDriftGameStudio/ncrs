@@ -7,8 +7,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use iced::futures::SinkExt as _;
 use ncrs_core::{FolderSize, PanelSide};
 use ncrs_fs::SortColumn;
+use ncrs_ui_kit::file_row::SizeProgress;
 
 use crate::message::PanelMessage;
 use crate::panel::PanelState;
@@ -27,7 +29,24 @@ pub struct FolderSizeRun {
     /// How many folders the run started with, and the one being walked.
     pub total: usize,
     pub current: Option<PathBuf>,
+    /// Bytes counted so far in `current`, while it is walked.
+    pub running_bytes: u64,
     pub stop: Arc<AtomicBool>,
+}
+
+impl FolderSizeRun {
+    /// What the Size cell of `path`, an entry of `directory`, says.
+    pub fn progress_of(&self, directory: &Path, path: &Path) -> SizeProgress {
+        if self.directory != directory {
+            SizeProgress::Idle
+        } else if self.current.as_deref() == Some(path) {
+            SizeProgress::Running(self.running_bytes)
+        } else if self.waiting.iter().any(|waiting| waiting == path) {
+            SizeProgress::Waiting
+        } else {
+            SizeProgress::Idle
+        }
+    }
 }
 
 /// The walk of one folder the app starts on the blocking pool. Its result
@@ -44,20 +63,40 @@ pub fn walk_task(walk: Option<FolderWalk>) -> iced::Task<PanelMessage> {
     let Some(FolderWalk { run, folder, stop }) = walk else {
         return iced::Task::none();
     };
-    let walked = folder.clone();
-    iced::Task::perform(
-        tokio::task::spawn_blocking(move || ncrs_fs::measure_folder_tree(&walked, &stop)),
-        move |done| {
+    iced::Task::run(
+        iced::stream::channel(RUNNING_REPORTS_KEPT, async move |mut output| {
+            let walked = folder.clone();
+            let mut running_output = output.clone();
+            let running_folder = folder.clone();
+            let done = tokio::task::spawn_blocking(move || {
+                ncrs_fs::measure_folder_tree_reporting(&walked, &stop, |bytes| {
+                    // A full channel drops a report: the next one is larger anyway.
+                    drop(running_output.try_send(PanelMessage::FolderSizeRunning {
+                        run,
+                        folder: running_folder.clone(),
+                        bytes,
+                    }));
+                })
+            })
+            .await;
             let measured = done.ok().flatten();
-            PanelMessage::FolderSizeMeasured {
-                run,
-                folder: folder.clone(),
-                size: measured.as_ref().map(|tree| tree.total),
-                below: measured.map(|tree| tree.below).unwrap_or_default(),
-            }
-        },
+            drop(
+                output
+                    .send(PanelMessage::FolderSizeMeasured {
+                        run,
+                        folder,
+                        size: measured.as_ref().map(|tree| tree.total),
+                        below: measured.map(|tree| tree.below).unwrap_or_default(),
+                    })
+                    .await,
+            );
+        }),
+        std::convert::identity,
     )
 }
+
+/// How many running totals wait for the UI before further ones are dropped.
+const RUNNING_REPORTS_KEPT: usize = 4;
 
 /// How far a run is, for the progress line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +170,7 @@ impl Panels {
             directory: self.active_panel().path.clone(),
             total: targets.len(),
             current: None,
+            running_bytes: 0,
             waiting: targets.into(),
             stop: Arc::new(AtomicBool::new(false)),
         });
@@ -145,6 +185,7 @@ impl Panels {
             return None;
         };
         run.current = Some(folder.clone());
+        run.running_bytes = 0;
         Some(FolderWalk {
             run: run.id,
             folder,
@@ -166,6 +207,26 @@ impl Panels {
             total: run.total,
             name,
         })
+    }
+
+    /// What the Size cell of `path`, an entry of `directory`, says while a run
+    /// is on.
+    pub fn folder_size_progress_of(&self, directory: &Path, path: &Path) -> SizeProgress {
+        self.folder_size_run
+            .as_ref()
+            .map_or(SizeProgress::Idle, |run| run.progress_of(directory, path))
+    }
+
+    /// The total counted so far in the folder being walked; reports of an
+    /// older walk or run are dropped.
+    pub fn folder_size_running(&mut self, run: u64, folder: &Path, bytes: u64) {
+        if let Some(current) = self
+            .folder_size_run
+            .as_mut()
+            .filter(|current| current.id == run && current.current.as_deref() == Some(folder))
+        {
+            current.running_bytes = current.running_bytes.max(bytes);
+        }
     }
 
     /// A walk is done: keeps its size and the sizes of the folders below it,
@@ -241,6 +302,7 @@ mod tests {
             directory: PathBuf::from("/a"),
             total: 1,
             current: Some(PathBuf::from("/a/tree")),
+            running_bytes: 0,
             waiting: VecDeque::new(),
             stop: Arc::new(AtomicBool::new(false)),
         });
@@ -285,6 +347,7 @@ mod tests {
             directory: PathBuf::from("/a"),
             total: 2,
             current: Some(PathBuf::from("/a/tree")),
+            running_bytes: 0,
             waiting: VecDeque::from([PathBuf::from("/a/other")]),
             stop: Arc::new(AtomicBool::new(false)),
         });
@@ -303,5 +366,76 @@ mod tests {
         let progress = panels.folder_size_progress().unwrap();
         assert_eq!((progress.done, progress.total), (2, 2));
         assert_eq!(progress.name, "other");
+    }
+}
+
+#[cfg(test)]
+mod running_tests {
+    use super::*;
+
+    fn panels_with_run() -> Panels {
+        let mut panels = Panels::new(
+            PanelState::new(PathBuf::from("/a")),
+            PanelState::new(PathBuf::from("/b")),
+            PanelSide::Left,
+        );
+        panels.folder_size_run = Some(FolderSizeRun {
+            id: 1,
+            side: PanelSide::Left,
+            directory: PathBuf::from("/a"),
+            total: 2,
+            current: Some(PathBuf::from("/a/tree")),
+            running_bytes: 0,
+            waiting: VecDeque::from([PathBuf::from("/a/other")]),
+            stop: Arc::new(AtomicBool::new(false)),
+        });
+        panels
+    }
+
+    #[test]
+    fn the_running_total_of_the_walked_folder_grows_and_the_waiting_one_says_so() {
+        let mut panels = panels_with_run();
+        let directory = Path::new("/a");
+        assert_eq!(
+            panels.folder_size_progress_of(directory, Path::new("/a/tree")),
+            SizeProgress::Running(0)
+        );
+        panels.folder_size_running(1, Path::new("/a/tree"), 500);
+        panels.folder_size_running(1, Path::new("/a/tree"), 300);
+        panels.folder_size_running(1, Path::new("/a/tree"), 900);
+        assert_eq!(
+            panels.folder_size_progress_of(directory, Path::new("/a/tree")),
+            SizeProgress::Running(900)
+        );
+        assert_eq!(
+            panels.folder_size_progress_of(directory, Path::new("/a/other")),
+            SizeProgress::Waiting
+        );
+        assert_eq!(
+            panels.folder_size_progress_of(directory, Path::new("/a/done")),
+            SizeProgress::Idle
+        );
+        assert_eq!(
+            panels.folder_size_progress_of(Path::new("/b"), Path::new("/a/tree")),
+            SizeProgress::Idle
+        );
+    }
+
+    #[test]
+    fn a_report_of_another_run_or_folder_is_dropped_and_the_next_walk_starts_at_zero() {
+        let mut panels = panels_with_run();
+        panels.folder_size_running(2, Path::new("/a/tree"), 700);
+        panels.folder_size_running(1, Path::new("/a/other"), 700);
+        assert_eq!(
+            panels.folder_size_progress_of(Path::new("/a"), Path::new("/a/tree")),
+            SizeProgress::Running(0)
+        );
+        panels.folder_size_running(1, Path::new("/a/tree"), 700);
+        let next = panels.folder_size_measured(1, PathBuf::from("/a/tree"), None, Vec::new(), 10);
+        assert!(next.is_some());
+        assert_eq!(
+            panels.folder_size_progress_of(Path::new("/a"), Path::new("/a/other")),
+            SizeProgress::Running(0)
+        );
     }
 }

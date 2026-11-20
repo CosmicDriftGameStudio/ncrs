@@ -1,16 +1,17 @@
 //! What git says about a file, as a panel row shows it: a one-glyph column
 //! after the name, and the dimmed ink of an ignored file.
 
-use iced::widget::{container, text};
+use iced::widget::{container, row, text};
 use iced::{alignment, Color, Element, Length};
 
+use crate::file_icon::git_branch_icon;
 use crate::palette::Palette;
-use crate::theme::font_size;
+use crate::theme::{font_size, spacing};
 
 /// The width of the Git column, one glyph.
 pub const GIT_COLUMN_WIDTH: f32 = 18.0;
-/// The title of the Git column and the sign of a repository.
-pub const REPOSITORY_SIGN: &str = "\u{2387}";
+/// The size of the branch symbol in the column, its title and the legend.
+pub const BRANCH_ICON_SIZE: f32 = 12.0;
 
 /// The orange of a changed file and of the unsaved changes of a worktree.
 pub const MODIFIED_ORANGE: Color = Color::from_rgb8(0xff, 0xb8, 0x6c);
@@ -28,12 +29,13 @@ pub enum GitMark {
     Conflicted,
     /// Shown in the row's ink, dimmed, and without a glyph.
     Ignored,
-    /// The folder is a repository of its own.
+    /// The folder is a repository of its own; drawn as the branch symbol.
     Repository,
 }
 
 impl GitMark {
-    /// A renamed file counts as modified before it gets here.
+    /// The letter of the state. A renamed file counts as modified before it
+    /// gets here; a repository has the branch symbol instead of a letter.
     pub const fn glyph(self) -> Option<&'static str> {
         match self {
             Self::Modified => Some("M"),
@@ -41,8 +43,7 @@ impl GitMark {
             Self::Untracked => Some("?"),
             Self::Deleted => Some("D"),
             Self::Conflicted => Some("!"),
-            Self::Repository => Some(REPOSITORY_SIGN),
-            Self::Ignored => None,
+            Self::Repository | Self::Ignored => None,
         }
     }
 
@@ -58,12 +59,10 @@ impl GitMark {
     }
 }
 
-/// What a row says about git: the mark in the Git column of its panel, and
-/// the sign after the name of a repository in a folder outside any.
+/// What a row says about git: the mark in the Git column of its panel.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GitCell {
     pub mark: Option<GitMark>,
-    pub sign_after_name: bool,
 }
 
 /// The ink of a row whose file git ignores.
@@ -81,14 +80,20 @@ pub fn git_cell<'a, M: 'a>(
     on_cursor: Option<Color>,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let shown = mark.and_then(|found| found.glyph().map(|glyph| (glyph, found.color(palette))));
-    let content: Element<'a, M> = match shown {
-        Some((glyph, color)) => text(glyph)
-            .size(font_size::FILE)
-            .font(crate::APP_FONT)
-            .color(on_cursor.unwrap_or(color))
-            .wrapping(text::Wrapping::None)
-            .into(),
+    let content: Element<'a, M> = match mark {
+        Some(GitMark::Repository) => git_branch_icon(
+            on_cursor.unwrap_or_else(|| GitMark::Repository.color(palette)),
+            BRANCH_ICON_SIZE,
+        ),
+        Some(found) => match found.glyph() {
+            Some(glyph) => text(glyph)
+                .size(font_size::FILE)
+                .font(crate::APP_FONT)
+                .color(on_cursor.unwrap_or_else(|| found.color(palette)))
+                .wrapping(text::Wrapping::None)
+                .into(),
+            None => text("").size(font_size::FILE).into(),
+        },
         None => text("").size(font_size::FILE).into(),
     };
     container(content)
@@ -97,14 +102,31 @@ pub fn git_cell<'a, M: 'a>(
         .into()
 }
 
-/// The sign after the name of a repository in a folder that is none.
-pub fn repository_sign<'a, M: 'a>(color: Color) -> Element<'a, M> {
-    text(REPOSITORY_SIGN)
+/// The title of the Git column.
+pub fn git_column_title<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
+    git_branch_icon(palette.dim_text, BRANCH_ICON_SIZE)
+}
+
+/// A line of dim small text under a panel that explains the Git column. With
+/// `with_branch_symbol` the branch symbol stands in front of it.
+pub fn git_legend<'a, M: 'a>(
+    line: String,
+    with_branch_symbol: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let words = text(line)
         .size(font_size::SMALL)
+        .color(palette.dim_text)
         .font(crate::APP_FONT)
-        .color(color)
-        .width(Length::Shrink)
-        .wrapping(text::Wrapping::None)
+        .wrapping(text::Wrapping::None);
+    let content = row![]
+        .extend(with_branch_symbol.then(|| git_branch_icon(palette.dim_text, BRANCH_ICON_SIZE)))
+        .push(words)
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    container(content)
+        .padding([0.0, spacing::L])
+        .width(Length::Fill)
         .into()
 }
 
@@ -113,13 +135,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_state_has_its_glyph_and_an_ignored_file_has_none() {
+    fn every_state_has_its_glyph_and_repository_and_ignored_have_none() {
         assert_eq!(GitMark::Modified.glyph(), Some("M"));
         assert_eq!(GitMark::Added.glyph(), Some("A"));
         assert_eq!(GitMark::Untracked.glyph(), Some("?"));
         assert_eq!(GitMark::Deleted.glyph(), Some("D"));
         assert_eq!(GitMark::Conflicted.glyph(), Some("!"));
-        assert_eq!(GitMark::Repository.glyph(), Some(REPOSITORY_SIGN));
+        assert_eq!(GitMark::Repository.glyph(), None);
         assert_eq!(GitMark::Ignored.glyph(), None);
     }
 

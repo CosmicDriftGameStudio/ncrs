@@ -81,6 +81,11 @@ pub fn view<'a, Message: Clone + 'a>(
             lang.text(Msg::DialogTagPatternLabel),
             lang.text(Msg::DialogTagPatternConfirm),
         ),
+        PromptKind::GoToPath => (
+            lang.text(Msg::DialogGoToPathTitle),
+            lang.text(Msg::DialogGoToPathLabel),
+            lang.text(Msg::DialogGoToPathConfirm),
+        ),
         PromptKind::UntagByPattern => (
             lang.text(Msg::DialogUntagPatternTitle),
             lang.text(Msg::DialogTagPatternLabel),
@@ -144,7 +149,13 @@ pub fn view<'a, Message: Clone + 'a>(
         };
         body = body.push(kit::error_line(message, palette));
     }
-    let mut framed = Frame::new(title, body, DialogSize::Small, window, lang, palette)
+    // A path needs the room of a list dialog; the other prompts take a name or a pattern.
+    let size = if state.kind() == PromptKind::GoToPath {
+        DialogSize::Large
+    } else {
+        DialogSize::Small
+    };
+    let mut framed = Frame::new(title, body, size, window, lang, palette)
         .buttons(vec![cancel_button, confirm_button])
         .hints(KeyHints {
             enter: true,

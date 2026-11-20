@@ -38,6 +38,7 @@ impl App {
                     special_folders: &self.special_folders,
                     noted: &self.notes.noted,
                     header_drag: self.panels.header_drag_view(side),
+                    size_run: self.panels.folder_size_run.as_ref(),
                 },
             )
             .map(Message::Panel)

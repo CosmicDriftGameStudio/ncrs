@@ -182,6 +182,7 @@ fn a_panel_inside_a_repository_has_a_git_column() {
                 special_folders: &[],
                 noted: &noted,
                 header_drag: None,
+                size_run: None,
             },
         ),
     );
@@ -191,4 +192,110 @@ fn a_panel_inside_a_repository_has_a_git_column() {
         .matches_reference_image("tests/snapshots/git-column-in-repository.png")
         .unwrap();
     assert!(matches, "the Git column differs from its image");
+}
+
+fn git(dir: &std::path::Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .current_dir(dir)
+        .args(["-c", "user.name=T", "-c", "user.email=t@example.org"])
+        .args([
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+        ])
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .output()
+        .expect("the git command line");
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn scan_row(folder: &std::path::Path, name: &str) -> ScanRow {
+    let path = folder.join(name);
+    ScanRow {
+        name: OsString::from(name),
+        is_dir: path.is_dir(),
+        path,
+    }
+}
+
+fn repository_with_every_state() -> tempfile::TempDir {
+    let folder = tempfile::tempdir().expect("temp folder");
+    let root = folder.path();
+    git(root, &["init", "-q"]);
+    fs::write(root.join(".gitignore"), "ignored.log\n").expect("write");
+    fs::write(root.join("changed.txt"), "one\n").expect("write");
+    fs::write(root.join("gone.txt"), "one\n").expect("write");
+    fs::create_dir_all(root.join("sub")).expect("folder");
+    fs::write(root.join("sub/inner.txt"), "one\n").expect("write");
+    fs::create_dir_all(root.join("clean")).expect("folder");
+    fs::write(root.join("clean/file.txt"), "one\n").expect("write");
+    git(root, &["add", "-A"]);
+    git(root, &["commit", "-q", "-m", "first"]);
+    fs::write(root.join("changed.txt"), "two\n").expect("write");
+    fs::remove_file(root.join("gone.txt")).expect("remove");
+    fs::write(root.join("sub/inner.txt"), "two\n").expect("write");
+    fs::write(root.join("added.txt"), "new\n").expect("write");
+    git(root, &["add", "added.txt"]);
+    fs::write(root.join("untracked.txt"), "x\n").expect("write");
+    fs::write(root.join("ignored.log"), "x\n").expect("write");
+    folder
+}
+
+#[test]
+fn the_rows_of_a_repository_get_the_letter_of_their_state() {
+    let folder = repository_with_every_state();
+    let root = folder.path();
+    let names = [
+        "changed.txt",
+        "gone.txt",
+        "added.txt",
+        "untracked.txt",
+        "ignored.log",
+        "clean",
+        "sub",
+    ];
+    let rows: Vec<ScanRow> = names.iter().map(|name| scan_row(root, name)).collect();
+    let found = scan(Some(root), &rows, &Arc::new(AtomicBool::new(false))).expect("scan");
+    let mark = |name: &str| found.marks.get(&OsString::from(name)).copied();
+    assert_eq!(mark("changed.txt"), Some(GitMark::Modified));
+    assert_eq!(mark("gone.txt"), Some(GitMark::Deleted));
+    assert_eq!(mark("added.txt"), Some(GitMark::Added));
+    assert_eq!(mark("untracked.txt"), Some(GitMark::Untracked));
+    assert_eq!(mark("ignored.log"), Some(GitMark::Ignored));
+    assert_eq!(mark("clean"), None);
+    assert_eq!(
+        mark("sub"),
+        Some(GitMark::Modified),
+        "a folder shows the change inside it"
+    );
+    assert_eq!(found.summary.expect("summary").changed, 5);
+}
+
+#[test]
+fn a_folder_of_repositories_marks_each_repository_and_shows_the_column() {
+    let folder = tempfile::tempdir().expect("temp folder");
+    fs::create_dir_all(folder.path().join("one/.git")).expect("repository");
+    fs::create_dir_all(folder.path().join("two/.git")).expect("repository");
+    fs::create_dir_all(folder.path().join("plain")).expect("folder");
+    let rows: Vec<ScanRow> = ["one", "two", "plain"]
+        .iter()
+        .map(|name| scan_row(folder.path(), name))
+        .collect();
+    let found = scan(None, &rows, &Arc::new(AtomicBool::new(false))).expect("scan");
+    let mut git = PanelGit::default();
+    assert!(!git.shows_column());
+    git.marks = found.marks;
+    assert!(git.shows_column() && !git.in_repository());
+    assert_eq!(
+        git.mark_of(&OsString::from("one")),
+        Some(GitMark::Repository)
+    );
+    assert_eq!(git.mark_of(&OsString::from("plain")), None);
 }

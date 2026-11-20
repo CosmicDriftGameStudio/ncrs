@@ -13,6 +13,7 @@ use ncrs_ui_kit::file_icon::SpecialFolder;
 use ncrs_ui_kit::file_row::HermesCell;
 use ncrs_ui_kit::palette::Palette;
 
+use crate::folder_size::FolderSizeRun;
 use crate::message::PanelMessage;
 
 /// The `[columns]` setting as the panels read it.
@@ -128,6 +129,8 @@ pub struct ViewCtx<'a> {
     /// The title being dragged in this panel's header, from
     /// [`crate::state::Panels::header_drag_view`].
     pub header_drag: Option<HeaderDrag>,
+    /// The size run that is on: its folders show progress in the Size cell.
+    pub size_run: Option<&'a FolderSizeRun>,
 }
 
 impl std::fmt::Debug for ViewCtx<'_> {

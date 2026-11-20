@@ -382,7 +382,7 @@ impl App {
             }
             Message::PackPrompt => self.open_pack_prompt(),
             Message::TagPatternPrompt { untag } => self.open_tag_pattern_prompt(untag),
-            Message::GoToPath => self.focus_path_field(),
+            Message::GoToPath => self.open_go_to_path_prompt(),
             Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
             Message::Ops(ops_message) => self.update_ops(ops_message),

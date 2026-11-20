@@ -73,6 +73,9 @@ impl App {
 
     pub(in crate::app) fn update_notes(&mut self, message: ncrs_notes::Message) -> Task<Message> {
         let was_open = self.open_pages();
+        if matches!(message, ncrs_notes::Message::OpenMenu(_)) {
+            self.notes.menu_pointer = self.input.lock().pointer;
+        }
         let ctx = self.notes_ctx();
         let (task, asked) = ncrs_notes::update(&mut self.notes, message, &ctx);
         let action_task = match asked {

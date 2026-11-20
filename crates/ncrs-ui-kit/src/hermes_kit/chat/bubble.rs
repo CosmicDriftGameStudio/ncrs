@@ -14,7 +14,6 @@ const BUBBLE_RADIUS: f32 = 16.0;
 const BUBBLE_TIP: f32 = spacing::XS;
 const BUBBLE_PAD_Y: f32 = spacing::L;
 const BUBBLE_PAD_X: f32 = spacing::XL;
-const BUBBLE_MAX_WIDTH: f32 = 620.0;
 const CHAT_TEXT: f32 = 14.0;
 const CHAT_LINE: f32 = 20.0;
 const CHIP_PAD_Y: f32 = spacing::M;
@@ -113,7 +112,6 @@ pub fn hermes_bubble<'a, M: 'a>(parts: Vec<Element<'a, M>>, palette: &Palette) -
     let colors = *palette;
     let body = container(Column::with_children(parts).spacing(GAP_S))
         .padding([BUBBLE_PAD_Y, BUBBLE_PAD_X])
-        .max_width(BUBBLE_MAX_WIDTH)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(colors.dialog)),
             border: Border {
@@ -164,7 +162,6 @@ fn user_bubble_around<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> 
     let (fill, _) = palette.primary_button();
     let body = container(content)
         .padding([BUBBLE_PAD_Y, BUBBLE_PAD_X])
-        .max_width(BUBBLE_MAX_WIDTH)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(fill)),
             border: Border {

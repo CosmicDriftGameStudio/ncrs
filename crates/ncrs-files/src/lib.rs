@@ -16,6 +16,8 @@ pub mod folder_watch;
 pub mod git_status;
 #[cfg(test)]
 mod git_status_tests;
+#[cfg(test)]
+mod go_to_path_tests;
 pub mod header_drag;
 pub mod header_menu;
 pub mod hit_list;

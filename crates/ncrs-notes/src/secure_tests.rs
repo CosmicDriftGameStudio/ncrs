@@ -7,11 +7,13 @@ use ncrs_core::notes_sync::NotesSettings;
 use ncrs_i18n::Language;
 
 use crate::crypt::{decrypt, encrypt, NoteKey};
+use crate::secure::{denied_text, verified_key};
 use crate::state::Seal;
 use crate::store::{scan, scan_with};
 use crate::tree::RowKey;
 use crate::vault::{restore_key, KeyStore as _, MemoryKeyStore, Vault};
 use crate::{apply_settings, flush_now, update, Ctx, Message, State};
+use ncrs_user_verify::{Check, Denied, Scripted};
 
 const CTX: Ctx = Ctx {
     lang: Language::English,
@@ -246,4 +248,69 @@ async fn editing_before_the_keyed_reload_arrived_writes_nothing() {
     assert_ne!(state.mode, crate::Mode::Edit);
     assert_eq!(flush_now(&mut state, &CTX), Vec::<String>::new());
     assert_eq!(fs::read(&sealed).unwrap(), bytes);
+}
+
+fn stored_key_state(dir: &Path) -> (State, Arc<MemoryKeyStore>) {
+    let store = Arc::new(MemoryKeyStore::default());
+    store.store(&NoteKey::generate().unwrap()).unwrap();
+    let mut state = state_with_note(dir, "plain");
+    state.vault = Vault::with_store(Arc::<MemoryKeyStore>::clone(&store));
+    (state, store)
+}
+
+#[test]
+fn the_key_is_only_fetched_after_the_person_was_verified() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, _) = stored_key_state(dir.path());
+    let verifier = Scripted::new(Check::TouchId);
+    let fetched = verified_key(&verifier, state.vault.store().as_ref(), "unlock", false);
+    assert!(matches!(fetched, Ok(Ok(Some(_)))));
+    assert_eq!(verifier.asked(), ["unlock"]);
+}
+
+#[test]
+fn a_cancelled_prompt_fetches_no_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, store) = stored_key_state(dir.path());
+    // A store that would fail shows the key is never asked for.
+    store.failing(Some("must not be asked"));
+    let verifier = Scripted::new(Check::TouchId).answering(Err(Denied::Cancelled));
+    let fetched = verified_key(&verifier, state.vault.store().as_ref(), "unlock", false);
+    assert_eq!(fetched, Err(Denied::Cancelled));
+}
+
+#[tokio::test]
+async fn a_denied_unlock_leaves_the_vault_locked_and_says_why_on_the_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state_with_note(dir.path(), "plain");
+    state.unlocking = true;
+    let _ = update(&mut state, Message::UnlockDenied(Denied::Cancelled), &CTX);
+    assert!(!state.vault.is_unlocked());
+    assert!(!state.unlocking);
+    assert_eq!(state.unlock_denied, Some(Denied::Cancelled));
+    assert!(denied_text(&Denied::Cancelled, CTX.lang).contains("cancelled"));
+    let failed = denied_text(&Denied::Failed("no match".to_owned()), CTX.lang);
+    assert!(failed.contains("no match"));
+}
+
+#[tokio::test]
+async fn a_later_unlock_clears_the_refusal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state_with_note(dir.path(), "plain");
+    state.unlock_denied = Some(Denied::Cancelled);
+    unlock(&mut state, Instant::now());
+    assert_eq!(state.unlock_denied, None);
+}
+
+#[test]
+fn the_unlock_button_names_what_the_system_asks() {
+    let touch = Vault::with_store(Arc::new(MemoryKeyStore::default()))
+        .with_verifier(Arc::new(Scripted::new(Check::TouchId)));
+    assert_eq!(touch.verifier().check(), Check::TouchId);
+    assert_eq!(
+        Vault::with_store(Arc::new(MemoryKeyStore::default()))
+            .verifier()
+            .check(),
+        Check::Nothing
+    );
 }

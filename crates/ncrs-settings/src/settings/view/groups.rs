@@ -393,6 +393,16 @@ pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let opener_rows = folder_opener_rows(view);
     if !opener_rows.is_empty() {
         groups.push(plain(opener_rows));
+    } else if cfg!(target_os = "macos") {
+        groups.push(Group {
+            intro: Some(
+                view.lang
+                    .text(Msg::SettingsProgramsMacosOpenWith)
+                    .to_owned(),
+            ),
+            title: String::new(),
+            rows: Vec::new(),
+        });
     }
     groups
 }
