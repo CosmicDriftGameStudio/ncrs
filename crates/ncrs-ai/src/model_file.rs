@@ -185,6 +185,7 @@ impl From<&ModelPin> for ncrs_model_file::PinnedFile {
 #[cfg(test)]
 mod tests {
     use std::fs::OpenOptions;
+    #[cfg(unix)]
     use std::io::Write as _;
     use std::sync::atomic::AtomicBool;
 

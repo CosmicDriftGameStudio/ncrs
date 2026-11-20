@@ -52,9 +52,9 @@ fn the_grant_action_is_not_listed_outside_the_sandbox() {
         .rows()
         .iter()
         .all(|row| row.action != KeyAction::GrantFolderAccess));
-    // The Finder's trash command is the other action only a Mac lists; the
-    // old document search is listed nowhere.
-    let hidden = if cfg!(target_os = "macos") { 2 } else { 3 };
+    // The Finder's trash command and the privacy settings are only listed on
+    // a Mac; the old document search is listed nowhere.
+    let hidden = if cfg!(target_os = "macos") { 2 } else { 4 };
     assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - hidden);
 }
 
