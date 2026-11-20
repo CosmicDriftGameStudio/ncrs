@@ -275,6 +275,7 @@ fn build_main_repository(parent: &Path) -> PathBuf {
     );
 
     // A second branch, ahead by two, in a linked worktree with two changes.
+    // Relative, since git on Windows cannot create the canonical `\\?\` path.
     let linked = parent.join("ncrs-demo-logo");
     run_git(
         &root,
@@ -286,7 +287,7 @@ fn build_main_repository(parent: &Path) -> PathBuf {
             "-q",
             "-b",
             "fix/logo",
-            linked.to_str().unwrap(),
+            "../ncrs-demo-logo",
             "main",
         ],
     );
