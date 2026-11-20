@@ -187,7 +187,7 @@ impl World {
             .prefix(&format!("ncrs-acc-{label}-"))
             .tempdir()
             .unwrap();
-        let root = ncrs_intake::canonical_path(data.path()).unwrap();
+        let root = std::fs::canonicalize(data.path()).unwrap();
         let downloads = root.join("Downloads");
         let other = root.join("Dokumente");
         let notes = root.join("Notizen");

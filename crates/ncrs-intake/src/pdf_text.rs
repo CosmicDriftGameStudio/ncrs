@@ -447,7 +447,7 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
 
 /// `canonicalize` returns `\\?\C:\...` on Windows, `current_exe` plain `C:\...`;
 /// without this the same folder would count as two.
-pub fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
+fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
     let plain = dir.to_str().and_then(|text| {
         let rest = text.strip_prefix(r"\\?\")?;
         let mut chars = rest.chars();

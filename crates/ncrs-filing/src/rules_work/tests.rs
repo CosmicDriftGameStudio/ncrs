@@ -343,7 +343,9 @@ impl Fixture {
             let id = index
                 .insert_document(&NewDocument {
                     hash: ContentHash(hash),
-                    path: location.path.join(name),
+                    path: name
+                        .split('/')
+                        .fold(location.path.clone(), |path, part| path.join(part)),
                     source: if location.mode == LocationMode::Archive {
                         DocumentSource::Archive
                     } else {

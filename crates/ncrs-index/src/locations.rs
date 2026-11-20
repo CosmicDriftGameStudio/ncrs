@@ -514,9 +514,13 @@ mod tests {
     #[test]
     fn documents_missing_for_long_are_purged_with_their_text_and_ids_are_not_reused() {
         let (_dir, mut index) = encrypted_index();
-        let old = index.insert_document(&new_document(1)).unwrap();
-        let recent = index.insert_document(&new_document(2)).unwrap();
-        let present = index.insert_document(&new_document(3)).unwrap();
+        let in_inbox = |seed| crate::NewDocument {
+            path: native(&format!("inbox/scan-{seed}.pdf")),
+            ..new_document(seed)
+        };
+        let old = index.insert_document(&in_inbox(1)).unwrap();
+        let recent = index.insert_document(&in_inbox(2)).unwrap();
+        let present = index.insert_document(&in_inbox(3)).unwrap();
         for id in [old, recent, present] {
             index.set_document_text(id, "Kontoauszug").unwrap();
         }
@@ -546,7 +550,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(violations, 0);
-        let next = index.insert_document(&new_document(4)).unwrap();
+        let next = index.insert_document(&in_inbox(4)).unwrap();
         assert!(next.get() > present.get());
     }
 

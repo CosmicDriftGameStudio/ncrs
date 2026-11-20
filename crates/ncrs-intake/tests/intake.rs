@@ -63,8 +63,16 @@ mod tests {
         Location::new(dir.path(), mode, images).unwrap()
     }
 
+    /// `relative` is written with `/`; each part is joined so the separators
+    /// are the ones the walk reports on Windows too.
+    fn below(root: &Path, relative: &str) -> PathBuf {
+        relative
+            .split('/')
+            .fold(root.to_path_buf(), |path, part| path.join(part))
+    }
+
     fn put(location: &Location, relative: &str, bytes: &[u8]) -> PathBuf {
-        let path = location.path.join(relative);
+        let path = below(&location.path, relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
@@ -521,7 +529,7 @@ mod tests {
         let before = put(&archive, "2025/a.pdf", INVOICE);
         fixture.scan_settled(&archive);
         let id = fixture.index.document_by_path(&before).unwrap().unwrap().id;
-        let after = archive.path.join("2026/Company A/a.pdf");
+        let after = below(&archive.path, "2026/Company A/a.pdf");
         fs::create_dir_all(after.parent().unwrap()).unwrap();
         fs::rename(&before, &after).unwrap();
 

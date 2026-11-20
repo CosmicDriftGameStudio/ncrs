@@ -235,6 +235,9 @@ mod tests {
         "/home/marc"
     };
 
+    // `/etc/b` is not absolute on Windows without a drive.
+    const SYSTEM_FILE: &str = if cfg!(windows) { r"C:\etc\b" } else { "/etc/b" };
+
     fn settings(text: &str, alias: &str) -> HostSettings {
         settings_for(text, alias, Some(Path::new(HOME)))
     }
@@ -246,13 +249,15 @@ mod tests {
     #[test]
     fn known_hosts_files_come_from_the_first_value_and_none_means_no_file() {
         let found = settings(
-            "Host web\n  UserKnownHostsFile ~/.ssh/a /etc/b\n  GlobalKnownHostsFile none\n\
-             Host *\n  UserKnownHostsFile ~/.ssh/c\n",
+            &format!(
+                "Host web\n  UserKnownHostsFile ~/.ssh/a {SYSTEM_FILE}\n  GlobalKnownHostsFile none\n\
+                 Host *\n  UserKnownHostsFile ~/.ssh/c\n"
+            ),
             "web",
         );
         assert_eq!(
             found.user_known_hosts,
-            Some(vec![below_home(".ssh/a"), PathBuf::from("/etc/b")])
+            Some(vec![below_home(".ssh/a"), PathBuf::from(SYSTEM_FILE)])
         );
         assert_eq!(found.global_known_hosts, Some(Vec::new()));
         assert_eq!(settings("Host x\n  User u\n", "x").user_known_hosts, None);

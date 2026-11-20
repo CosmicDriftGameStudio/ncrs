@@ -142,7 +142,7 @@ pub fn locations_with_role(
 /// Blocking. The canonical path of the folder a panel shows: the rules
 /// compare canonical paths, and the intake works on them too.
 pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {
-    let canonical = ncrs_intake::canonical_path(folder).map_err(|err| err.to_string())?;
+    let canonical = std::fs::canonicalize(folder).map_err(|err| err.to_string())?;
     if !canonical.is_dir() {
         return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory).to_string());
     }
@@ -160,8 +160,7 @@ pub fn write_locations(
     let canonical: Vec<FilingLocation> = chosen
         .iter()
         .map(|location| FilingLocation {
-            path: ncrs_intake::canonical_path(&location.path)
-                .unwrap_or_else(|_| location.path.clone()),
+            path: std::fs::canonicalize(&location.path).unwrap_or_else(|_| location.path.clone()),
             ..location.clone()
         })
         .collect();

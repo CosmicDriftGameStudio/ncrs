@@ -735,16 +735,17 @@ fn an_excluded_folder_leaves_the_index_and_a_note_link_finds_its_file_again_by_h
         received_at: chrono::Utc::now(),
         stamp: None,
     };
-    let first = PathBuf::from("/archive/old/offer.pdf");
+    let archive = dir.path().join("archive");
+    let first = archive.join("old").join("offer.pdf");
     let first_id = index.insert_document(&document_at(&first)).unwrap();
-    let neighbour = PathBuf::from("/archive/older/offer.pdf");
+    let neighbour = archive.join("older").join("offer.pdf");
     index
         .insert_document(&NewDocument {
             hash: ContentHash([8; 32]),
             ..document_at(&neighbour)
         })
         .unwrap();
-    index.exclude_path(Path::new("/archive/old")).unwrap();
+    index.exclude_path(&archive.join("old")).unwrap();
     assert_eq!(index.document_by_path(&first).unwrap(), None);
     assert!(index.document_by_path(&neighbour).unwrap().is_some());
     put_index(&module.index, index);
@@ -757,7 +758,7 @@ fn an_excluded_folder_leaves_the_index_and_a_note_link_finds_its_file_again_by_h
         .resolve(std::slice::from_ref(&link));
     assert_eq!(while_gone, Ok(vec![link.clone()]));
 
-    let again = PathBuf::from("/archive/kept/offer.pdf");
+    let again = archive.join("kept").join("offer.pdf");
     let again_id = lock(&module.index)
         .as_ref()
         .unwrap()

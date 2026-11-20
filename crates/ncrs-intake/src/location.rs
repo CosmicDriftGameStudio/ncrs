@@ -40,19 +40,13 @@ pub fn location_of<'a>(path: &Path, roots: &'a [PathBuf]) -> Option<&'a Path> {
         .map(PathBuf::as_path)
 }
 
-/// `fs::canonicalize` without the `\\?\` prefix Windows adds, so a stored or
-/// compared path reads like the ones the panels show.
-pub fn canonical_path(path: &Path) -> io::Result<PathBuf> {
-    fs::canonicalize(path).map(crate::pdf_text::without_verbatim_prefix)
-}
-
 impl Location {
     /// The path is canonicalised and must be an existing directory. Walk and
     /// watcher both work on this root: on macOS FSEvents reports
     /// `/private/var/...` for a directory that is spelled `/var/...`, and two
     /// spellings of one file would be recorded as a fake copy.
     pub fn new(path: &Path, mode: LocationMode, images: bool) -> Result<Self, IntakeError> {
-        let canonical = canonical_path(path).map_err(IntakeError::io(path))?;
+        let canonical = fs::canonicalize(path).map_err(IntakeError::io(path))?;
         if !canonical.is_dir() {
             return Err(IntakeError::io(path)(io::Error::new(
                 io::ErrorKind::NotADirectory,
