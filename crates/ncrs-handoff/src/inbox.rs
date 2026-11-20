@@ -79,7 +79,7 @@ pub fn discard_stale(data_dir: &Path) {
             .and_then(|meta| meta.modified())
             .ok()
             .and_then(|modified| modified.elapsed().ok());
-        if age.is_some_and(|age| age > STALE_AFTER) {
+        if age.is_some_and(|elapsed| elapsed > STALE_AFTER) {
             drop(fs::remove_file(&path));
         }
     }
@@ -110,8 +110,8 @@ fn decode(content: &[u8]) -> Vec<Request> {
     content
         .split(|byte| *byte == SEPARATOR)
         .filter_map(|record| {
-            let (kind, path) = record.split_first()?;
-            let path = PathBuf::from(os_string_of(path.to_vec()));
+            let (kind, raw) = record.split_first()?;
+            let path = PathBuf::from(os_string_of(raw.to_vec()));
             match *kind {
                 OPEN => Some(Request::Open(path)),
                 REVEAL => Some(Request::Reveal(path)),

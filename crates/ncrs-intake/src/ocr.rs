@@ -243,7 +243,7 @@ impl ImageTextSource for OcrText {
         for page in images {
             let text = self
                 .read_page(page)
-                .map_err(|reason| TextError::Unreadable {
+                .map_err(|reason| TextError::EngineUnavailable {
                     path: PathBuf::new(),
                     reason: format!("text recognition failed: {reason}"),
                 })?;
@@ -446,7 +446,7 @@ mod tests {
         };
         assert!(matches!(
             engine().recognise(&[broken]),
-            Err(TextError::Unreadable { .. })
+            Err(TextError::EngineUnavailable { .. })
         ));
     }
 

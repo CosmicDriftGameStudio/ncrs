@@ -64,7 +64,7 @@ hmac = "0.13"
 sha1 = "0.11"
 data-encoding = "2"
 # A typed password is wiped from memory when it is dropped.
-zeroize = "1"
+zeroize.workspace = true
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 # The trash on Windows and Linux. macOS talks to NSFileManager itself, because

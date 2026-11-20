@@ -92,8 +92,8 @@ fn walk(root: &Path, relative: &Path, depth: usize, found: &mut BTreeMap<PathBuf
             if depth < MAX_DEPTH {
                 walk(root, &below, depth + 1, found);
             }
-        } else if kind.is_file() && is_note_name(&name) {
-            if let Ok(meta) = entry.metadata() {
+        } else if is_note_name(&name) {
+            if let Some(meta) = entry.metadata().ok().filter(|meta| meta.is_file()) {
                 if let Ok(modified) = meta.modified() {
                     found.insert(
                         below,
@@ -151,12 +151,12 @@ fn read_manifest(path: &Path) -> Manifest {
 fn write_manifest(path: &Path, manifest: &Manifest) -> std::io::Result<()> {
     let mut text = String::new();
     for (name, record) in manifest {
-        let name = name.to_string_lossy();
-        if name.contains(['\t', '\n']) {
+        let shown = name.to_string_lossy();
+        if shown.contains(['\t', '\n']) {
             continue;
         }
         text += &format!(
-            "{name}\t{}\t{}\t{}\t{}\n",
+            "{shown}\t{}\t{}\t{}\t{}\n",
             record.local.0, record.local.1, record.remote.0, record.remote.1
         );
     }
@@ -201,7 +201,7 @@ fn conflict_name(relative: &Path, suffix: &str, taken: impl Fn(&Path) -> bool) -
     let split = name.len().saturating_sub(ending);
     let (stem, tail) = name.split_at_checked(split).unwrap_or((name.as_str(), ""));
     let folder = relative.parent().unwrap_or(Path::new(""));
-    let mut number = 1_u32;
+    let mut number: u32 = 1;
     loop {
         let label = if number == 1 {
             suffix.to_owned()
@@ -381,8 +381,8 @@ fn conflicted(
     for side in [&job.local, &job.target] {
         let path = side.join(&copy_name);
         write_file(&path, older_bytes, older_time).map_err(|err| describe(&path, err))?;
-        let path = side.join(name);
-        write_file(&path, newer_bytes, newer_time).map_err(|err| describe(&path, err))?;
+        let named = side.join(name);
+        write_file(&named, newer_bytes, newer_time).map_err(|err| describe(&named, err))?;
     }
     report.conflicts += 1;
     report.copied += 4;

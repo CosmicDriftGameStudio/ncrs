@@ -10981,6 +10981,12 @@
       "de": "Favoriten verwalten …"
     },
     {
+      "key": "favourites_bar.programs_folder",
+      "context": "Name of the folder of the installed programs (/Applications) on macOS, shown in the favourites bar and its overflow menu instead of the folder's English name on disk. Short, one word.",
+      "en": "Applications",
+      "de": "Programme"
+    },
+    {
       "key": "favourites_bar.overflow_tooltip",
       "context": "Tooltip of the button at the right end of the favourites bar under the path tabs. The bar shows as many favourites as fit; the button opens a menu with the others. Short, no full stop.",
       "en": "More favourites",
@@ -12407,12 +12413,6 @@
       "context": "Git tab: segment that lists the changed files of a commit as a tree of folders. Noun, short.",
       "en": "Tree",
       "de": "Baum"
-    },
-    {
-      "key": "git_view.detail_files",
-      "context": "Git tab: number of files a commit changed, above the file list. {count} is the number.",
-      "en": "{count} files",
-      "de": "{count} Dateien"
     },
     {
       "key": "git_view.diff_back",

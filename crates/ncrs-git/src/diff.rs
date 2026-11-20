@@ -75,7 +75,7 @@ pub fn file_diff(
             let parent_tree = match commit.parent_ids().next() {
                 Some(parent) => repository
                     .find_commit(parent.detach())
-                    .and_then(|parent| parent.tree())
+                    .and_then(|found| found.tree())
                     .map_err(GitError::read)?,
                 None => repository.empty_tree(),
             };
@@ -100,7 +100,7 @@ pub fn file_diff(
     Ok(diff_bytes(&target.path, &old, &new, ignore_whitespace))
 }
 
-pub(crate) fn blob_at(repository: &gix::Repository, tree: &gix::Tree<'_>, path: &str) -> Vec<u8> {
+pub fn blob_at(repository: &gix::Repository, tree: &gix::Tree<'_>, path: &str) -> Vec<u8> {
     tree.lookup_entry_by_path(path)
         .ok()
         .flatten()
@@ -110,12 +110,12 @@ pub(crate) fn blob_at(repository: &gix::Repository, tree: &gix::Tree<'_>, path: 
 }
 
 /// Added and removed line counts, or `None` for a binary or oversized file.
-pub(crate) fn line_counts(old: &[u8], new: &[u8]) -> Option<(u32, u32)> {
+pub fn line_counts(old: &[u8], new: &[u8]) -> Option<(u32, u32)> {
     let diff = diff_bytes("", old, new, false);
     (!diff.binary && !diff.too_large).then_some((diff.added, diff.removed))
 }
 
-pub(crate) fn diff_bytes(path: &str, old: &[u8], new: &[u8], ignore_whitespace: bool) -> FileDiff {
+pub fn diff_bytes(path: &str, old: &[u8], new: &[u8], ignore_whitespace: bool) -> FileDiff {
     let mut result = FileDiff {
         path: path.to_string(),
         ..FileDiff::default()
@@ -195,10 +195,10 @@ fn hunk_of(
     let last = group.last()?;
     let lead = CONTEXT_LINES.min(first.0.start).min(first.1.start);
     let mut rows = Vec::new();
-    let context = |old_from: u32, new_from: u32, count: u32, rows: &mut Vec<DiffRow>| {
+    let context = |old_from: u32, new_from: u32, count: u32, out: &mut Vec<DiffRow>| {
         for offset in 0..count {
             let old_index = old_from + offset;
-            rows.push(DiffRow {
+            out.push(DiffRow {
                 kind: RowKind::Context,
                 old_line: Some(old_index + 1),
                 new_line: Some(new_from + offset + 1),

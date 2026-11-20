@@ -4,16 +4,21 @@
 use std::path::{Path, PathBuf};
 
 use ncrs_core::PanelSide;
-use ncrs_i18n::Language;
+use ncrs_i18n::{Language, Msg};
 
 use crate::action::Action;
+use crate::platform::Platform;
+use crate::special_folders::programs_folder;
 use crate::state::Panels;
 use crate::volume_flow::favourite_target;
 use crate::volumes_view::FavouriteRow;
 
-fn last_component(path: &Path, home: Option<&Path>) -> String {
+fn last_component(path: &Path, home: Option<&Path>, lang: Language) -> String {
     if home == Some(path) {
         return "~".to_owned();
+    }
+    if Platform::current() == Platform::Mac && programs_folder().as_deref() == Some(path) {
+        return lang.text(Msg::FavouritesBarProgramsFolder).to_owned();
     }
     path.file_name().map_or_else(
         || path.display().to_string(),
@@ -23,11 +28,11 @@ fn last_component(path: &Path, home: Option<&Path>) -> String {
 
 /// The labels of the favourites: the last path component, `~` for home, and
 /// `parent/name` where two of them share a name.
-pub fn slot_labels(favourites: &[PathBuf], home: Option<&Path>) -> Vec<String> {
+pub fn slot_labels(favourites: &[PathBuf], home: Option<&Path>, lang: Language) -> Vec<String> {
     let shown: Vec<&PathBuf> = favourites.iter().collect();
     let names: Vec<String> = shown
         .iter()
-        .map(|path| last_component(path, home))
+        .map(|path| last_component(path, home, lang))
         .collect();
     shown
         .iter()
@@ -36,7 +41,7 @@ pub fn slot_labels(favourites: &[PathBuf], home: Option<&Path>) -> Vec<String> {
             let is_shared = names.iter().filter(|other| *other == name).count() > 1;
             match path.parent().filter(|_| is_shared) {
                 Some(parent) if parent.file_name().is_some() => {
-                    format!("{}/{name}", last_component(parent, home))
+                    format!("{}/{name}", last_component(parent, home, lang))
                 }
                 _ => name.clone(),
             }
@@ -126,25 +131,34 @@ mod tests {
         let labels = slot_labels(
             &paths(&["/Users/me", "/", "/data/docs"]),
             Some(Path::new("/Users/me")),
+            Language::English,
         );
         assert_eq!(labels, ["~", "/", "docs"]);
     }
 
     #[test]
     fn equal_names_get_their_parent() {
-        let labels = slot_labels(&paths(&["/a/src", "/b/src", "/c/docs"]), None);
+        let labels = slot_labels(
+            &paths(&["/a/src", "/b/src", "/c/docs"]),
+            None,
+            Language::English,
+        );
         assert_eq!(labels, ["a/src", "b/src", "docs"]);
     }
 
     #[test]
     fn every_favourite_gets_a_label_without_a_limit() {
-        let many: Vec<String> = (0..30).map(|number| format!("/{number}")).collect();
-        let many: Vec<&str> = many.iter().map(String::as_str).collect();
-        assert_eq!(slot_labels(&paths(&many), None).len(), 30);
+        let owned: Vec<String> = (0..30).map(|number| format!("/{number}")).collect();
+        let many: Vec<&str> = owned.iter().map(String::as_str).collect();
+        assert_eq!(
+            slot_labels(&paths(&many), None, Language::English).len(),
+            30
+        );
         // A twin far down the list still gets its parent.
         let twins = slot_labels(
             &paths(&["/1", "/2", "/3", "/4", "/5", "/6", "/x/7", "/y/7"]),
             None,
+            Language::English,
         );
         assert_eq!(twins[6], "x/7");
     }

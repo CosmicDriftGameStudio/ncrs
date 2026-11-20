@@ -10,7 +10,7 @@ use crate::crypt::{decrypt, encrypt, NoteKey};
 use crate::state::Seal;
 use crate::store::{scan, scan_with};
 use crate::tree::RowKey;
-use crate::vault::{restore_key, KeyStore, MemoryKeyStore, Vault};
+use crate::vault::{restore_key, KeyStore as _, MemoryKeyStore, Vault};
 use crate::{apply_settings, flush_now, update, Ctx, Message, State};
 
 const CTX: Ctx = Ctx {
@@ -43,12 +43,12 @@ fn a_note_comes_back_with_the_same_key_and_not_with_another() {
     let bytes = encrypt(&key, "plan: öl & äpfel").unwrap();
     assert_eq!(decrypt(&key, &bytes).unwrap(), "plan: öl & äpfel");
     let other = NoteKey::generate().unwrap();
-    assert!(decrypt(&other, &bytes).is_err());
-    assert!(decrypt(&key, b"not a note").is_err());
+    decrypt(&other, &bytes).unwrap_err();
+    decrypt(&key, b"not a note").unwrap_err();
     let mut damaged = bytes;
     let last = damaged.len() - 1;
     damaged[last] ^= 1;
-    assert!(decrypt(&key, &damaged).is_err());
+    decrypt(&key, &damaged).unwrap_err();
 }
 
 #[test]
@@ -59,9 +59,9 @@ fn the_recovery_key_opens_the_notes_on_a_computer_without_a_key() {
     let restored = restore_key(&elsewhere, &key.recovery_text()).unwrap();
     assert_eq!(decrypt(&restored, &bytes).unwrap(), "kept");
     assert!(elsewhere.load().unwrap().is_some());
-    assert!(restore_key(&elsewhere, "not a key").is_err());
+    restore_key(&elsewhere, "not a key").unwrap_err();
     let another = NoteKey::generate().unwrap();
-    assert!(restore_key(&elsewhere, &another.recovery_text()).is_err());
+    restore_key(&elsewhere, &another.recovery_text()).unwrap_err();
 }
 
 #[tokio::test]
@@ -194,8 +194,8 @@ fn a_wrong_key_leaves_the_note_out_instead_of_breaking() {
     let key = NoteKey::generate().unwrap();
     fs::write(dir.path().join("a.md.enc"), encrypt(&key, "mine").unwrap()).unwrap();
     let other = NoteKey::generate().unwrap();
-    let read = scan_with(dir.path(), Some(&other)).unwrap();
-    assert!(read.notes.is_empty());
+    let unreadable = scan_with(dir.path(), Some(&other)).unwrap();
+    assert!(unreadable.notes.is_empty());
     let read = scan_with(dir.path(), Some(&key)).unwrap();
     assert_eq!(
         read.notes.first().map(|note| note.text.as_str()),

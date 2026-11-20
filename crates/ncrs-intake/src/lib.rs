@@ -73,7 +73,9 @@ pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUn
 pub use placement::{Candidate, NeighbourIndex, Placement, Signal};
 pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
-pub use reorganisation::{plan_reorganisation, PlanFile, ReorganisationInput};
+pub use reorganisation::{
+    duplicate_copies, plan_reorganisation, DuplicateCopy, PlanFile, ReorganisationInput,
+};
 pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
 pub use sanitise::{is_plain_literal, sanitise_value, stays_below};

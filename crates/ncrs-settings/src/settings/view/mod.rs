@@ -328,7 +328,8 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
 }
 
 use ncrs_ui_kit::setting_rows::{
-    button_row, pressable, simple_row, status_text, with_button, RowButton, RowKey,
+    button_row, pressable, simple_row, status_text, with_button, wrapped_value_text, RowButton,
+    RowKey,
 };
 
 /// Left and Right step through `messages`, one per value, and stop at the ends.

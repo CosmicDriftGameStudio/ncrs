@@ -149,7 +149,7 @@ fn failed(ctx: &Ctx, reason: &str) -> Action {
 /// Writes go one at a time, in the order they were asked for: a later write
 /// of a note must not be overtaken by an earlier one, and a rename's removal of
 /// the old file must come after the first write of it.
-pub(crate) fn written(state: &mut State, write: Write) -> Task<Message> {
+pub fn written(state: &mut State, write: Write) -> Task<Message> {
     if state.writing() {
         state.queue(write);
         return Task::none();
@@ -360,7 +360,7 @@ fn loaded(
 /// Writes the shown note when it has changes, and tries again what failed
 /// earlier. A note made here that takes its title from its first line is
 /// renamed with the write.
-pub(crate) fn flush(state: &mut State) -> Task<Message> {
+pub fn flush(state: &mut State) -> Task<Message> {
     let mut tasks = Vec::new();
     if let Some(write) = pending_write(state) {
         tasks.push(written(state, write));

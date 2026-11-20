@@ -78,6 +78,52 @@ pub struct ChatListProps<'a, M> {
     pub footer: Option<ChatListFooter<'a, M>>,
 }
 
+struct ChatRowText {
+    title: String,
+    detail: String,
+    marked: bool,
+}
+
+/// A chat row of two lines in the selected-row style of the sidebars; the
+/// mark of a marked chat has the color of a tagged file.
+fn chat_row<'a, M: Clone + 'a>(
+    content: ChatRowText,
+    active: bool,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let (title_ink, detail_ink) = if active {
+        (palette.cursor_text, palette.cursor_text)
+    } else {
+        (palette.text, palette.dim_text)
+    };
+    let mark_ink = if active {
+        palette.cursor_text
+    } else {
+        palette.tagged
+    };
+    let mut title_line = Row::new().align_y(alignment::Vertical::Center);
+    if content.marked {
+        title_line = title_line.push(body(MARK, mark_ink));
+    }
+    title_line = title_line.push(body(content.title, title_ink));
+    let lines = Column::new()
+        .push(title_line)
+        .push(small(content.detail, detail_ink));
+    let cell = container(lines)
+        .padding([0.0, GAP_M])
+        .width(Length::Fill)
+        .clip(true)
+        .center_y(Length::Fill);
+    iced::widget::button(cell)
+        .on_press(on_press)
+        .width(Length::Fill)
+        .height(ROW_TWO_LINE)
+        .padding(0.0)
+        .style(theme::feature_item(palette, active, false))
+        .into()
+}
+
 fn row_of<'a, M: Clone + 'a>(row: ChatListRow<M>, palette: &Palette) -> Element<'a, M> {
     let ChatListRow {
         title,
@@ -105,27 +151,18 @@ fn row_of<'a, M: Clone + 'a>(row: ChatListRow<M>, palette: &Palette) -> Element<
                 .center_y(ROW_TWO_LINE)
                 .into()
         }
-        None => {
-            let primary = if marked {
-                format!("{MARK}{title}")
-            } else {
-                title
-            };
-            mouse_area(list_row_two(
-                RowTwo {
-                    primary,
-                    secondary: detail,
-                    right: None,
-                    lead: None,
-                    muted: false,
-                },
-                active,
-                Some(on_press),
-                palette,
-            ))
-            .on_right_press(on_right_press)
-            .into()
-        }
+        None => mouse_area(chat_row(
+            ChatRowText {
+                title,
+                detail,
+                marked,
+            },
+            active,
+            on_press,
+            palette,
+        ))
+        .on_right_press(on_right_press)
+        .into(),
     };
     if menu.is_empty() {
         return shown;
@@ -162,7 +199,12 @@ fn footer_of<'a, M: Clone + 'a>(
         } => Row::new()
             .push(small(text, palette.dim_text))
             .push(Space::new().width(Length::Fill))
-            .push(secondary(delete_label, Some(on_delete), palette)),
+            .push(crate::kit::button(
+                delete_label,
+                Some(on_delete),
+                crate::kit::Tone::Danger,
+                palette,
+            )),
         ChatListFooter::Ask {
             text,
             yes_label,

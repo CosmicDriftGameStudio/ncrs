@@ -173,7 +173,7 @@ pub fn file_row<'a, M: Clone + 'a>(
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
-    let color = theme::row_text_color(
+    let base_color = theme::row_text_color(
         palette,
         entry.is_dir,
         highlighted,
@@ -181,9 +181,9 @@ pub fn file_row<'a, M: Clone + 'a>(
         panel_active,
     );
     let color = if git.mark == Some(GitMark::Ignored) && !highlighted {
-        ignored_ink(color)
+        ignored_ink(base_color)
     } else {
-        color
+        base_color
     };
     let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
@@ -258,14 +258,14 @@ pub fn file_row<'a, M: Clone + 'a>(
         .shown()
         .map(|shown| match shown {
             Column::Name => {
-                let name = name_element.take().unwrap_or_else(|| Space::new().into());
+                let name_slot = name_element.take().unwrap_or_else(|| Space::new().into());
                 if columns.git {
                     let on_cursor = highlighted.then_some(color);
-                    row![name, git_cell(git.mark, on_cursor, palette)]
+                    row![name_slot, git_cell(git.mark, on_cursor, palette)]
                         .width(Length::Fill)
                         .into()
                 } else {
-                    name
+                    name_slot
                 }
             }
             Column::Icon => container(file_icon(kind, symbol_color, FILE_ICON_SIZE))

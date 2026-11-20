@@ -81,8 +81,8 @@ pub fn git_cell<'a, M: 'a>(
     on_cursor: Option<Color>,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let glyph = mark.and_then(|mark| mark.glyph().map(|glyph| (glyph, mark.color(palette))));
-    let content: Element<'a, M> = match glyph {
+    let shown = mark.and_then(|found| found.glyph().map(|glyph| (glyph, found.color(palette))));
+    let content: Element<'a, M> = match shown {
         Some((glyph, color)) => text(glyph)
             .size(font_size::FILE)
             .font(crate::APP_FONT)

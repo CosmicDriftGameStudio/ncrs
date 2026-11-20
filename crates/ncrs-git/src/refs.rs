@@ -85,7 +85,7 @@ pub fn refs(root: &std::path::Path, stop: &Arc<AtomicBool>) -> Result<RefsOvervi
         let upstream_distance = distance_to_upstream(&repository, full_name.as_ref(), tip, stop)?;
         let has_upstream = repository
             .branch_remote_tracking_ref_name(full_name.as_ref(), gix::remote::Direction::Fetch)
-            .is_some_and(|name| name.is_ok());
+            .is_some_and(|tracking| tracking.is_ok());
         let is_main = main
             .as_ref()
             .is_some_and(|(main_name, _)| *main_name == name);
@@ -148,9 +148,9 @@ fn worktrees(
     let all = repository
         .worktrees_including_main()
         .map_err(GitError::read)?;
-    for (index, worktree) in all.enumerate() {
+    for (index, candidate) in all.enumerate() {
         check_stop(stop)?;
-        let Ok(worktree) = worktree else { continue };
+        let Ok(worktree) = candidate else { continue };
         let Some(path) = worktree.workdir().map(std::path::Path::to_path_buf) else {
             continue;
         };
@@ -160,11 +160,11 @@ fn worktrees(
         let Ok(state) = status(&path, stop) else {
             continue;
         };
-        let head = worktree
+        let head_id = worktree
             .head()
             .ok()
             .and_then(|head| head.id().map(|id| id.detach()));
-        let (ahead, behind) = match (index, head, main_tip) {
+        let (ahead, behind) = match (index, head_id, main_tip) {
             (1.., Some(head), Some(main)) => (
                 count_commits(repository, head, main, stop)?,
                 count_commits(repository, main, head, stop)?,
@@ -183,7 +183,7 @@ fn worktrees(
             head_short: state.head_short,
             ahead,
             behind,
-            merged: !is_main && ahead == 0 && head.is_some() && main_tip.is_some(),
+            merged: !is_main && ahead == 0 && head_id.is_some() && main_tip.is_some(),
             is_main,
             is_current: canonical == current,
             path,
@@ -193,7 +193,7 @@ fn worktrees(
 }
 
 /// Which names point at which commit, for the chips of the commit list.
-pub(crate) fn labels_by_commit(repository: &gix::Repository) -> HashMap<ObjectId, Vec<RefLabel>> {
+pub fn labels_by_commit(repository: &gix::Repository) -> HashMap<ObjectId, Vec<RefLabel>> {
     let mut labels: HashMap<ObjectId, Vec<RefLabel>> = HashMap::new();
     let Ok(platform) = repository.references() else {
         return labels;
@@ -206,10 +206,10 @@ pub(crate) fn labels_by_commit(repository: &gix::Repository) -> HashMap<ObjectId
 
 fn add_labels<E>(
     labels: &mut HashMap<ObjectId, Vec<RefLabel>>,
-    references: Result<gix::reference::iter::Iter<'_, '_>, E>,
+    listed: Result<gix::reference::iter::Iter<'_, '_>, E>,
     kind: RefKind,
 ) {
-    let Ok(references) = references else { return };
+    let Ok(references) = listed else { return };
     for reference in references.flatten() {
         let name = reference.name().shorten().to_string();
         if name.ends_with("/HEAD") {

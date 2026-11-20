@@ -8,9 +8,9 @@
 use std::fmt;
 use std::path::Path;
 
-use aes_gcm::aead::{Aead, KeyInit, Payload};
+use aes_gcm::aead::{Aead as _, KeyInit as _, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use zeroize::Zeroize;
+use zeroize::Zeroize as _;
 
 /// The ending of an encrypted note: `Name.md.enc`.
 pub const ENCRYPTED_SUFFIX: &str = ".md.enc";
@@ -71,7 +71,7 @@ impl fmt::Debug for NoteKey {
 
 impl NoteKey {
     pub fn generate() -> Result<Self, CryptError> {
-        let mut bytes = [0_u8; KEY_LEN];
+        let mut bytes: [u8; KEY_LEN] = [0; KEY_LEN];
         getrandom::fill(&mut bytes).map_err(|err| CryptError::Random(err.to_string()))?;
         Ok(Self(bytes))
     }
@@ -105,15 +105,15 @@ impl NoteKey {
             .collect();
         let mut bytes = data_encoding::BASE32_NOPAD
             .decode(cleaned.as_bytes())
-            .map_err(|_| CryptError::BadRecoveryKey)?;
+            .map_err(|_not_base32| CryptError::BadRecoveryKey)?;
         let key = Self::from_bytes(&bytes).ok_or(CryptError::BadRecoveryKey);
         bytes.zeroize();
         key
     }
 
     fn cipher(&self) -> Result<Aes256Gcm, CryptError> {
-        let key =
-            Key::<Aes256Gcm>::try_from(self.0.as_slice()).map_err(|_| CryptError::NotANote)?;
+        let key = Key::<Aes256Gcm>::try_from(self.0.as_slice())
+            .map_err(|_wrong_length| CryptError::NotANote)?;
         Ok(Aes256Gcm::new(&key))
     }
 }
@@ -127,9 +127,10 @@ pub fn is_encrypted_path(path: &Path) -> bool {
 
 /// `text` as the bytes of an encrypted note.
 pub fn encrypt(key: &NoteKey, text: &str) -> Result<Vec<u8>, CryptError> {
-    let mut nonce_bytes = [0_u8; NONCE_LEN];
+    let mut nonce_bytes: [u8; NONCE_LEN] = [0; NONCE_LEN];
     getrandom::fill(&mut nonce_bytes).map_err(|err| CryptError::Random(err.to_string()))?;
-    let nonce = Nonce::try_from(nonce_bytes.as_slice()).map_err(|_| CryptError::NotANote)?;
+    let nonce =
+        Nonce::try_from(nonce_bytes.as_slice()).map_err(|_wrong_length| CryptError::NotANote)?;
     let mut header = MAGIC.to_vec();
     header.push(VERSION);
     let sealed = key
@@ -141,7 +142,7 @@ pub fn encrypt(key: &NoteKey, text: &str) -> Result<Vec<u8>, CryptError> {
                 aad: &header,
             },
         )
-        .map_err(|_| CryptError::WrongKeyOrDamaged)?;
+        .map_err(|_aead_failure| CryptError::WrongKeyOrDamaged)?;
     let mut file = header;
     file.extend_from_slice(&nonce_bytes);
     file.extend_from_slice(&sealed);
@@ -163,7 +164,7 @@ pub fn decrypt(key: &NoteKey, bytes: &[u8]) -> Result<String, CryptError> {
     }
     let (header, rest) = bytes.split_at(HEADER_LEN);
     let (nonce_bytes, sealed) = rest.split_at(NONCE_LEN);
-    let nonce = Nonce::try_from(nonce_bytes).map_err(|_| CryptError::NotANote)?;
+    let nonce = Nonce::try_from(nonce_bytes).map_err(|_wrong_length| CryptError::NotANote)?;
     let plain = key
         .cipher()?
         .decrypt(
@@ -173,8 +174,8 @@ pub fn decrypt(key: &NoteKey, bytes: &[u8]) -> Result<String, CryptError> {
                 aad: header,
             },
         )
-        .map_err(|_| CryptError::WrongKeyOrDamaged)?;
-    String::from_utf8(plain).map_err(|_| CryptError::WrongKeyOrDamaged)
+        .map_err(|_aead_failure| CryptError::WrongKeyOrDamaged)?;
+    String::from_utf8(plain).map_err(|_not_text| CryptError::WrongKeyOrDamaged)
 }
 
 /// Whether `bytes` start like an encrypted note.

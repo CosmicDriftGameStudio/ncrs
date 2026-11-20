@@ -71,15 +71,15 @@ pub fn rename_row<'a, M: Clone + 'a>(
         .shown()
         .map(|shown| match shown {
             Column::Name => {
-                let input: Element<'a, M> = name_input
+                let field: Element<'a, M> = name_input
                     .take()
                     .map_or_else(|| Space::new().into(), Element::from);
                 if columns.git {
-                    row![input, Space::new().width(GIT_COLUMN_WIDTH)]
+                    row![field, Space::new().width(GIT_COLUMN_WIDTH)]
                         .width(Length::Fill)
                         .into()
                 } else {
-                    input
+                    field
                 }
             }
             Column::Icon => container(file_icon(

@@ -23,9 +23,9 @@ pub fn update(
             None
         }),
         NotesEdit::SyncFolderSubmit => in_settings(settings, ctx, |state| {
-            let typed = state.notes.sync_folder_draft.take()?;
+            let draft = state.notes.sync_folder_draft.take()?;
             let mut next = state.config()?.notes.settings();
-            let typed = typed.trim();
+            let typed = draft.trim();
             next.sync_folder = (!typed.is_empty()).then(|| PathBuf::from(typed));
             Some(SettingChange::Notes(next))
         }),

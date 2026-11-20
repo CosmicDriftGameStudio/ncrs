@@ -264,7 +264,7 @@ pub fn column_header<'a, M: Clone + 'a>(
         .into()
     };
     for (index, column) in shown.iter().copied().enumerate() {
-        if layout.git && index > 0 && shown[index - 1] == Column::Name {
+        if layout.git && index > 0 && shown.get(index - 1) == Some(&Column::Name) {
             cells.push(git_title());
         }
         if matches!(drag, Some(HeaderDrag::Reorder { drop_before, .. }) if drop_before == index) {

@@ -148,11 +148,11 @@ fn graph_of(commit: &LogCommit) -> GraphCell {
     }
 }
 
-pub(super) fn date_of(commit: &LogCommit, ctx: ViewCtx<'_>) -> String {
+pub(in crate::view) fn date_of(commit: &LogCommit, ctx: ViewCtx<'_>) -> String {
     moment(commit.time, ctx)
 }
 
-pub(super) fn moment(seconds: i64, ctx: ViewCtx<'_>) -> String {
+pub(in crate::view) fn moment(seconds: i64, ctx: ViewCtx<'_>) -> String {
     let at = UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap_or_default());
     format::time_in(Some(at), ctx.date_format, ctx.lang)
 }

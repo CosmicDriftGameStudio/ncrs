@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use chrono::{Local, NaiveDate, TimeZone};
+use chrono::{Local, NaiveDate, TimeZone as _};
 
 use crate::chat_store::{self, ChatId, ChatStatus, Line, Speaker, StoredChat};
 
@@ -143,10 +143,11 @@ impl ChatList {
 
     /// The chat on screen when it is not the running conversation.
     pub fn shown_stored(&self) -> Option<&StoredChat> {
-        self.shown
+        let id = self
+            .shown
             .as_ref()
-            .filter(|id| Some(*id) != self.live.as_ref())
-            .and_then(|id| self.chat(id))
+            .filter(|id| Some(*id) != self.live.as_ref())?;
+        self.chat(id)
     }
 
     pub fn title_of_shown(&self) -> Option<&str> {
@@ -630,8 +631,8 @@ mod tests {
             vec![DayGroup::Today, DayGroup::Yesterday, DayGroup::Earlier]
         );
         let later = NaiveDate::from_ymd_opt(2031, 3, 21).expect("a date");
-        let days: Vec<DayGroup> = list.groups(later).iter().map(|group| group.day).collect();
-        assert_eq!(days, vec![DayGroup::Yesterday, DayGroup::Earlier]);
+        let later_days: Vec<DayGroup> = list.groups(later).iter().map(|group| group.day).collect();
+        assert_eq!(later_days, vec![DayGroup::Yesterday, DayGroup::Earlier]);
     }
 
     #[test]

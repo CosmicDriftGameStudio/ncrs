@@ -133,16 +133,21 @@ fn user_key_store() -> Arc<dyn KeyStore + Send + Sync> {
 }
 
 impl App {
-    /// Initial state plus tasks that load both panels. The panels open where
-    /// `saved` left them; without a saved folder the left panel starts in the
-    /// working directory and the right in `$HOME`.
-    pub fn new(environment: Environment, mut saved: SessionState) -> (Self, Task<Message>) {
-        // Version 0 is no state file at all: the first start of ncrs.
+    /// Version 0 is no state file at all: the first start of ncrs, which
+    /// begins with the programs folder among the favourites.
+    pub(crate) fn with_first_start_favourites(mut saved: SessionState) -> SessionState {
         if saved.version == 0 && saved.favourites.is_empty() {
             saved.favourites = crate::session_state::record_paths(
                 &ncrs_files::special_folders::first_start_favourites(),
             );
         }
+        saved
+    }
+
+    /// Initial state plus tasks that load both panels. The panels open where
+    /// `saved` left them; without a saved folder the left panel starts in the
+    /// working directory and the right in `$HOME`.
+    pub fn new(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
         // The system language is the start; a `lang` entry in the config
         // replaces it in `with_config`, so a config written without one (a
         // column width, a server) keeps the system language.
@@ -150,7 +155,11 @@ impl App {
             .config_path
             .is_some()
             .then(ncrs_i18n::Language::from_system);
-        let (app, loading) = Self::restored_in(environment, saved, start_language);
+        let (app, loading) = Self::restored_in(
+            environment,
+            Self::with_first_start_favourites(saved),
+            start_language,
+        );
         (app, then_install_native_menu(loading))
     }
 

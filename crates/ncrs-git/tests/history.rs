@@ -1,3 +1,8 @@
+#![allow(
+    clippy::tests_outside_test_module,
+    reason = "an integration test file: the tests are the file"
+)]
+
 mod common;
 
 use std::fs;
@@ -98,13 +103,13 @@ fn a_worktree_counts_its_changes_and_its_distance_to_main() {
     let main_tree = overview
         .worktrees
         .iter()
-        .find(|tree| tree.is_main)
+        .find(|worktree| worktree.is_main)
         .expect("main worktree");
     assert!(main_tree.is_current);
     let feature = overview
         .worktrees
         .iter()
-        .find(|tree| !tree.is_main)
+        .find(|worktree| !worktree.is_main)
         .expect("linked worktree");
     assert_eq!(feature.branch.as_deref(), Some("feature"));
     assert_eq!(feature.wip, 1);
@@ -333,7 +338,7 @@ fn the_working_copy_is_diffed_against_head() {
 #[test]
 fn a_binary_file_has_no_hunks() {
     let (dir, _repository, _) = repository_with(&[("a.txt", "a\n")]);
-    fs::write(dir.path().join("bin.dat"), [0_u8, 1, 2]).expect("binary");
+    fs::write(dir.path().join("bin.dat"), b"\x00\x01\x02").expect("binary");
     let target = DiffTarget {
         commit: None,
         path: "bin.dat".to_string(),

@@ -146,7 +146,7 @@ impl App {
             behind: summary.behind,
             changed: ncrs_i18n::fill_template(
                 self.lang.text(Msg::StatusGitChanged),
-                &[("count", &summary.changed.to_string())],
+                &[("{count}", &summary.changed.to_string())],
             ),
         })
     }

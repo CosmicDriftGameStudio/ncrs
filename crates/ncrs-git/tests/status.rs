@@ -1,4 +1,11 @@
 //! Fixture repositories are built with gix itself, so no git binary is needed.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::tests_outside_test_module,
+    reason = "test code: a failing assertion is the signal; an integration test file: the tests are the file"
+)]
 
 use std::fs;
 use std::path::Path;

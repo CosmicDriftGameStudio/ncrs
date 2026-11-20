@@ -25,6 +25,7 @@ russh-sftp = "=3.0.1"
 ureq = { version = "=3.5.2", default-features = false, features = ["rustls"] }
 zip = { version = "=9.6.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonc-parser = { version = "=0.34.0", default-features = false }
+zeroize = "1"
 
 [package]
 name = "ncrs"

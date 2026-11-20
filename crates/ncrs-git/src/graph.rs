@@ -30,12 +30,16 @@ pub struct GraphRow {
 
 /// Assigns lanes to commits handed in newest first, children before parents.
 #[derive(Debug, Default)]
-pub(crate) struct LaneLayout {
+pub struct LaneLayout {
     expected: Vec<Option<ObjectId>>,
-    pub(crate) lane_count: usize,
+    lane_count: usize,
 }
 
 impl LaneLayout {
+    pub(crate) fn lane_count(&self) -> usize {
+        self.lane_count
+    }
+
     pub(crate) fn place(&mut self, id: ObjectId, parents: &[ObjectId]) -> GraphRow {
         let incoming: Vec<usize> = self
             .expected

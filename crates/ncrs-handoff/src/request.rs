@@ -85,8 +85,8 @@ fn path_from_file_uri(uri: &str) -> Option<PathBuf> {
     if !(authority.is_empty() || authority.eq_ignore_ascii_case("localhost")) || path.is_empty() {
         return None;
     }
-    let path = path.split(['?', '#']).next().unwrap_or(path);
-    Some(path_of_bytes(decode_percent(path)))
+    let without_query = path.split(['?', '#']).next().unwrap_or(path);
+    Some(path_of_bytes(decode_percent(without_query)))
 }
 
 fn decode_percent(text: &str) -> Vec<u8> {

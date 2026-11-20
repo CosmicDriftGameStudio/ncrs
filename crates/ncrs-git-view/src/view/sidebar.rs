@@ -135,7 +135,11 @@ fn worktree_row_of<'a>(
                 )
             }),
             distance: (!worktree.is_main).then_some((worktree.ahead, worktree.behind)),
-            detail: format!("{branch} \u{b7} {state}"),
+            detail: if worktree.branch.as_deref() == main {
+                branch
+            } else {
+                format!("{branch} \u{b7} {state}")
+            },
             chosen,
             on_press: Message::SidebarPressed(index),
         },

@@ -43,7 +43,7 @@ pub fn refs(state: &mut State) -> Task<Message> {
     let (generation, stop) = state.loads.refs.begin();
     blocking(
         stop,
-        move |stop| ncrs_git::refs(&root, stop),
+        move |cancelled| ncrs_git::refs(&root, cancelled),
         move |result| Message::RefsLoaded(generation, Box::new(result)),
     )
 }
@@ -56,7 +56,7 @@ pub fn log(state: &mut State) -> Task<Message> {
     let (generation, stop) = state.loads.log.begin();
     blocking(
         stop,
-        move |stop| ncrs_git::log(&root, limit, &filter, stop),
+        move |cancelled| ncrs_git::log(&root, limit, &filter, cancelled),
         move |result| Message::LogLoaded(generation, Box::new(result)),
     )
 }
@@ -68,7 +68,7 @@ pub fn commit_detail(state: &mut State, sha: String) -> Task<Message> {
     let (generation, stop) = state.loads.detail.begin();
     blocking(
         stop,
-        move |stop| ncrs_git::commit_detail(&root, &sha, stop),
+        move |cancelled| ncrs_git::commit_detail(&root, &sha, cancelled),
         move |result| Message::DetailLoaded(generation, Box::new(result)),
     )
 }
@@ -80,7 +80,7 @@ pub fn working_changes(state: &mut State) -> Task<Message> {
     let (generation, stop) = state.loads.detail.begin();
     blocking(
         stop,
-        move |stop| ncrs_git::working_changes(&root, stop),
+        move |cancelled| ncrs_git::working_changes(&root, cancelled),
         move |result| Message::WorkingLoaded(generation, result),
     )
 }
@@ -92,7 +92,7 @@ pub fn file_diff(state: &mut State, target: DiffTarget, ignore_whitespace: bool)
     let (generation, stop) = state.loads.diff.begin();
     blocking(
         stop,
-        move |stop| ncrs_git::file_diff(&root, &target, ignore_whitespace, stop),
+        move |cancelled| ncrs_git::file_diff(&root, &target, ignore_whitespace, cancelled),
         move |result| Message::DiffLoaded(generation, Box::new(result)),
     )
 }

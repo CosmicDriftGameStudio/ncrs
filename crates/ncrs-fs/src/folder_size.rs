@@ -75,7 +75,7 @@ fn measure_tree_on(
             return None;
         }
         let Ok(children) = std::fs::read_dir(&folder) else {
-            counted[owner].partial = true;
+            mark_partial(&mut counted, owner);
             continue;
         };
         for listed in children {
@@ -83,17 +83,17 @@ fn measure_tree_on(
                 return None;
             }
             let Ok(child) = listed else {
-                counted[owner].partial = true;
+                mark_partial(&mut counted, owner);
                 continue;
             };
             let path = child.path();
             let Ok(metadata) = std::fs::symlink_metadata(&path) else {
-                counted[owner].partial = true;
+                mark_partial(&mut counted, owner);
                 continue;
             };
             if metadata.is_dir() {
                 if root_device.is_some() && device_of(&path, &metadata) != root_device {
-                    counted[owner].partial = true;
+                    mark_partial(&mut counted, owner);
                 } else if counted.len() <= KEPT_FOLDERS {
                     counted.push(Counted {
                         path: path.clone(),
@@ -106,30 +106,47 @@ fn measure_tree_on(
                     pending.push((path, owner));
                 }
             } else if seen.first_time(&metadata) {
-                counted[owner].bytes = counted[owner].bytes.saturating_add(metadata.len());
+                add_bytes(&mut counted, owner, metadata.len());
             }
         }
     }
     // A folder is pushed after its parent, so walking backwards adds every
     // folder to its parent once its own subfolders are in.
     for index in (1..counted.len()).rev() {
-        if let Some(parent) = counted[index].parent {
-            let (bytes, partial) = (counted[index].bytes, counted[index].partial);
-            counted[parent].bytes = counted[parent].bytes.saturating_add(bytes);
-            counted[parent].partial |= partial;
+        let Some((parent, bytes, partial)) = counted
+            .get(index)
+            .and_then(|entry| Some((entry.parent?, entry.bytes, entry.partial)))
+        else {
+            continue;
+        };
+        add_bytes(&mut counted, parent, bytes);
+        if partial {
+            mark_partial(&mut counted, parent);
         }
     }
     let size_of = |entry: &Counted| FolderSize {
         bytes: entry.bytes,
         partial: entry.partial,
     };
-    let total = size_of(&counted[0]);
+    let total = size_of(counted.first()?);
     let below = counted
         .iter()
         .skip(1)
         .map(|entry| (entry.path.clone(), size_of(entry)))
         .collect();
     Some(MeasuredTree { total, below })
+}
+
+fn mark_partial(counted: &mut [Counted], index: usize) {
+    if let Some(entry) = counted.get_mut(index) {
+        entry.partial = true;
+    }
+}
+
+fn add_bytes(counted: &mut [Counted], index: usize, bytes: u64) {
+    if let Some(entry) = counted.get_mut(index) {
+        entry.bytes = entry.bytes.saturating_add(bytes);
+    }
 }
 
 struct Counted {

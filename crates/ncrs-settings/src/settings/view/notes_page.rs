@@ -54,7 +54,11 @@ fn folder_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
     let mut row = SettingRow::text(
         lang.text(Msg::SettingsRowNotesFolder).to_owned(),
         Some(lang.text(Msg::SettingsRowNotesFolderNote).to_owned()),
-        status_text(shown_path(&folder, view.home), view.palette.text),
+        wrapped_value_text(
+            shown_path(&folder, view.home),
+            font_size::BODY,
+            view.palette.text,
+        ),
     );
     row.config_key = Some("notes.folder".to_owned());
     row
@@ -249,7 +253,7 @@ fn encryption_rows<'a>(view: &SettingsView<'a>, current: &NotesSettings) -> Vec<
         lang.text(Msg::SettingsRowNotesRecovery).to_owned(),
         Some(lang.text(Msg::SettingsRowNotesRecoveryNote).to_owned()),
         with_button(
-            mono(shown, palette.text),
+            wrapped_value_text(shown, font_size::FILE, palette.text),
             lang.text(label),
             message,
             palette,

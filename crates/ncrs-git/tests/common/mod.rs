@@ -1,4 +1,8 @@
 //! Fixture repositories built with gix itself, so no git binary is needed.
+#![allow(
+    clippy::expect_used,
+    reason = "test fixtures: a failing setup is the signal"
+)]
 
 use std::fs;
 use std::path::Path;

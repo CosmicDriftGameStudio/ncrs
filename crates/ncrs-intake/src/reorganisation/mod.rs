@@ -92,10 +92,88 @@ struct Resolved {
 
 /// One item per file with at least one finding, sorted by source.
 pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
-    let mut files: Vec<&PlanFile> = input.files.iter().collect();
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    with_context(
+        input.files,
+        input.profile,
+        input.unordered,
+        input.rules,
+        input.sender_aliases,
+        input.kinds,
+        |context| {
+            let files = context.files;
+            let keepers = duplicate_keepers(context);
+            let mut resolved = Vec::new();
+            for (index, file) in files.iter().enumerate() {
+                let mut candidates = Vec::new();
+                candidates.extend(context.duplicate(keepers.get(&index)));
+                candidates.extend(context.misplaced(file));
+                candidates.extend(context.year_mismatch(file));
+                candidates.extend(context.name_outlier(file, index));
+                if let Some(decided) = decide(candidates) {
+                    resolved.push(Resolved {
+                        index,
+                        findings: decided.0,
+                        proposal: decided.1,
+                    });
+                }
+            }
+            outcomes(&resolved, files, input.existing)
+        },
+    )
+}
 
-    let documents: Vec<ArchiveDocument> = files
+/// A surplus copy in an unordered folder and the copy that stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DuplicateCopy {
+    pub source: PathBuf,
+    pub hash: ContentHash,
+    pub keeper: PathBuf,
+}
+
+/// Only the duplicate findings of `plan_reorganisation`, sorted by source,
+/// without the rule, year and name checks of the full plan.
+pub fn duplicate_copies(
+    files: &[PlanFile],
+    profile: &[SubtreePattern],
+    unordered: &LocationStructure,
+    kinds: &Kinds,
+) -> Vec<DuplicateCopy> {
+    with_context(
+        files,
+        profile,
+        unordered,
+        &[],
+        &SenderAliases::default(),
+        kinds,
+        |context| {
+            duplicate_keepers(context)
+                .into_iter()
+                .filter_map(|(copy, keeper)| {
+                    let file = context.files.get(copy)?;
+                    Some(DuplicateCopy {
+                        source: file.relative_path.clone(),
+                        hash: file.hash,
+                        keeper: context.files.get(keeper)?.relative_path.clone(),
+                    })
+                })
+                .collect()
+        },
+    )
+}
+
+fn with_context<R>(
+    files: &[PlanFile],
+    profile: &[SubtreePattern],
+    unordered: &LocationStructure,
+    rules: &[PlanRule],
+    sender_aliases: &SenderAliases,
+    kinds: &Kinds,
+    run: impl FnOnce(&Context<'_>) -> R,
+) -> R {
+    let mut ordered: Vec<&PlanFile> = files.iter().collect();
+    ordered.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+
+    let documents: Vec<ArchiveDocument> = ordered
         .iter()
         .map(|file| ArchiveDocument {
             relative_path: file.relative_path.clone(),
@@ -104,36 +182,19 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
         .collect();
     let patterns = pattern_per_document(&documents);
     let mut learned: BTreeMap<&str, &SubtreePattern> = BTreeMap::new();
-    for entry in input.profile.iter().filter(|entry| entry.pattern.is_some()) {
+    for entry in profile.iter().filter(|entry| entry.pattern.is_some()) {
         learned.entry(entry.subtree.as_str()).or_insert(entry);
     }
     let context = Context {
         learned,
-        unordered: input.unordered,
-        eligible: eligible_rules(input.rules, files.len()),
-        sender_aliases: input.sender_aliases,
-        files: &files,
+        unordered,
+        eligible: eligible_rules(rules, ordered.len()),
+        sender_aliases,
+        files: &ordered,
         patterns: &patterns,
-        kinds: input.kinds,
+        kinds,
     };
-    let keepers = duplicate_keepers(&context);
-
-    let mut resolved = Vec::new();
-    for (index, file) in files.iter().enumerate() {
-        let mut candidates = Vec::new();
-        candidates.extend(context.duplicate(keepers.get(&index)));
-        candidates.extend(context.misplaced(file));
-        candidates.extend(context.year_mismatch(file));
-        candidates.extend(context.name_outlier(file, index));
-        if let Some(decided) = decide(candidates) {
-            resolved.push(Resolved {
-                index,
-                findings: decided.0,
-                proposal: decided.1,
-            });
-        }
-    }
-    outcomes(&resolved, &files, input.existing)
+    run(&context)
 }
 
 /// All findings, and the proposal of the one with the highest priority.

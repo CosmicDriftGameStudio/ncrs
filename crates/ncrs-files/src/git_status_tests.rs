@@ -91,9 +91,9 @@ fn the_column_exists_only_inside_a_repository() {
 
     let inside = tempfile::tempdir().expect("temp folder");
     fs::create_dir_all(inside.path().join(".git")).expect("repository");
-    let mut panels = panels_in(inside.path().to_path_buf());
-    let _ = panels.start_git_scan(PanelSide::Left);
-    assert!(panels.left.git.in_repository());
+    let mut inside_panels = panels_in(inside.path().to_path_buf());
+    let _ = inside_panels.start_git_scan(PanelSide::Left);
+    assert!(inside_panels.left.git.in_repository());
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn an_answer_is_shown_and_one_from_before_a_folder_change_is_dropped() {
     let mut panels = panels_in(first.path().to_path_buf());
     let _ = panels.start_git_scan(PanelSide::Left);
     let first_id = panels.left.git.request_id;
-    let first_stop = panels.left.git.stop.clone();
+    let first_stop = Arc::clone(&panels.left.git.stop);
 
     panels.left.path = second.path().to_path_buf();
     let _ = panels.start_git_scan(PanelSide::Left);

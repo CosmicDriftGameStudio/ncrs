@@ -100,12 +100,12 @@ pub fn update(
                 arrived = true;
                 actions.push(Action::CloseMenuOfReloaded(side));
             }
-            if let Some(old) = left_archive {
-                actions.push(Action::DropViewCopies(old));
-            }
-            if let Some(server) = left_server {
-                actions.push(Action::DropViewCopies(server.root_path()));
-            }
+            actions.extend(
+                left_archive
+                    .into_iter()
+                    .chain(left_server.map(|server| server.root_path()))
+                    .map(Action::DropViewCopies),
+            );
             actions.push(Action::StopFolderSizeRunIfLeft(side));
             panels.drop_rename_of_missing_entry();
             if arrived {
@@ -120,7 +120,7 @@ pub fn update(
             side,
             request_id,
             scan,
-        } => panels.apply_git_scan(side, request_id, scan.map(|scan| *scan)),
+        } => panels.apply_git_scan(side, request_id, scan.map(|boxed| *boxed)),
 
         PanelMessage::FolderChangedOnDisk(side) => {
             let panel = panels.panel_mut(side);

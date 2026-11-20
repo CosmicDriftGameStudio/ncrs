@@ -103,7 +103,7 @@ fn summary_of(status: &RepoStatus) -> GitSummary {
 /// `stop` ended it.
 pub fn scan(root: Option<&Path>, rows: &[ScanRow], stop: &Arc<AtomicBool>) -> Option<GitScan> {
     let status = match root {
-        Some(root) => match ncrs_git::status(root, stop) {
+        Some(repository) => match ncrs_git::status(repository, stop) {
             Ok(status) => Some(status),
             Err(ncrs_git::GitError::Interrupted) => return None,
             // A repository git cannot read keeps its column, without marks.
@@ -122,13 +122,13 @@ pub fn scan(root: Option<&Path>, rows: &[ScanRow], stop: &Arc<AtomicBool>) -> Op
             status
                 .as_ref()
                 .zip(root)
-                .and_then(|(status, root)| {
-                    ncrs_git::state_of_entry(status, root, &row.path, row.is_dir)
+                .and_then(|(read, repository)| {
+                    ncrs_git::state_of_entry(read, repository, &row.path, row.is_dir)
                 })
                 .map(mark_of_state)
         };
-        if let Some(mark) = mark {
-            marks.insert(row.name.clone(), mark);
+        if let Some(found) = mark {
+            marks.insert(row.name.clone(), found);
         }
     }
     Some(GitScan {
@@ -169,7 +169,7 @@ impl Panels {
             summary,
             marks,
             request_id,
-            stop: stop.clone(),
+            stop: Arc::clone(&stop),
         };
         let rows = scan_rows(panel);
         let delay = if stays_in_folder {
@@ -201,9 +201,9 @@ impl Panels {
     /// Takes the answer of a scan, unless the panel moved on since.
     pub fn apply_git_scan(&mut self, side: PanelSide, request_id: u64, scan: Option<GitScan>) {
         let git = &mut self.panel_mut(side).git;
-        if let (true, Some(scan)) = (git.request_id == request_id, scan) {
-            git.summary = scan.summary;
-            git.marks = scan.marks;
+        if let (true, Some(answer)) = (git.request_id == request_id, scan) {
+            git.summary = answer.summary;
+            git.marks = answer.marks;
         }
     }
 }

@@ -48,8 +48,8 @@ pub fn slots_that_fit(labels: &[String], width: f32) -> usize {
     let room = available - OVERFLOW_WIDTH - HINT_GAP;
     let mut used = 0.0;
     let mut count = 0;
-    for width in widths {
-        let next = used + width + if count > 0 { HINT_GAP } else { 0.0 };
+    for slot in widths {
+        let next = used + slot + if count > 0 { HINT_GAP } else { 0.0 };
         if next > room {
             break;
         }
@@ -57,6 +57,22 @@ pub fn slots_that_fit(labels: &[String], width: f32) -> usize {
         count += 1;
     }
     count
+}
+
+/// The bottom-left corner of the overflow button in the window, for a bar that
+/// shows the first `fitting` of the slots with these `labels`, estimated like
+/// `slots_that_fit`. The bar sits right under the title bar.
+pub fn overflow_anchor(labels: &[String], fitting: usize) -> iced::Point {
+    let slots: f32 = labels
+        .iter()
+        .take(fitting)
+        .enumerate()
+        .map(|(index, label)| slot_width(label, index < FAVOURITE_KEYS) + HINT_GAP)
+        .sum();
+    iced::Point::new(
+        ROW_PADDING_X + slots,
+        size::TITLE_BAR + FAVOURITES_BAR_HEIGHT,
+    )
 }
 
 #[derive(Debug)]
@@ -115,16 +131,16 @@ pub fn view<'a, M: Clone + 'a>(
     let mut line = Row::new()
         .push(Row::with_children(slot_views).spacing(HINT_GAP))
         .align_y(alignment::Vertical::Center);
-    if let Some(overflow) = overflow {
+    if let Some(rest) = overflow {
         let more = button(text("\u{bb}").size(font_size::SMALL))
-            .on_press(overflow.on_press)
+            .on_press(rest.on_press)
             .padding([0.0, spacing::XS])
             .style(theme::favourite_slot(palette, false));
         line = line
             .push(Space::new().width(HINT_GAP))
             .push(crate::kit::tooltip(
                 more,
-                overflow.tooltip,
+                rest.tooltip,
                 iced::widget::tooltip::Position::Bottom,
                 palette,
             ));

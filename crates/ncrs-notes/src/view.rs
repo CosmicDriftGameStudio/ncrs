@@ -186,7 +186,7 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             RowKey::Note(path) => is_encrypted_path(path),
             RowKey::Files => false,
         };
-        let label = if locked {
+        let shown = if locked {
             format!("{LOCK_MARK} {label}")
         } else {
             label
@@ -196,7 +196,7 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             TreeRow {
                 depth: entry.depth,
                 open: entry.open,
-                label,
+                label: shown,
                 chosen: state.cursor.as_ref() == Some(&entry.key),
                 dim: entry.key == RowKey::Files,
                 on_press: Message::Pressed(entry.key),

@@ -1,7 +1,7 @@
 //! What the list of chats shows: the rows with their status and time, the
 //! menu of a row and the footer.
 
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone as _};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     ChatListFooter, ChatListGroup, ChatListProps, ChatListRename, ChatListRow,
@@ -157,7 +157,7 @@ pub fn list_props(state: &State, ctx: ViewCtx<'_>) -> ChatListProps<'static, Mes
                             .map(|(_, draft)| ChatListRename {
                                 draft: draft.to_owned(),
                                 id: RENAME_ID,
-                                on_input: |draft| list(ListMessage::RenameInput(draft)),
+                                on_input: |typed| list(ListMessage::RenameInput(typed)),
                                 on_submit: list(ListMessage::RenameSubmit),
                             });
                     let menu = if chats.menu() == Some(&row.id) {

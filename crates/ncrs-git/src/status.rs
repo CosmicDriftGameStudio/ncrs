@@ -85,7 +85,7 @@ pub fn state_of_entry(
         .reduce(FileState::strongest)
 }
 
-pub(crate) fn check_stop(stop: &AtomicBool) -> Result<(), GitError> {
+pub fn check_stop(stop: &AtomicBool) -> Result<(), GitError> {
     if stop.load(Ordering::Relaxed) {
         Err(GitError::Interrupted)
     } else {
@@ -93,7 +93,7 @@ pub(crate) fn check_stop(stop: &AtomicBool) -> Result<(), GitError> {
     }
 }
 
-pub(crate) fn distance_to_upstream(
+pub fn distance_to_upstream(
     repository: &gix::Repository,
     branch: &gix::refs::FullNameRef,
     head_id: gix::ObjectId,
@@ -107,10 +107,10 @@ pub(crate) fn distance_to_upstream(
     let Ok(tracking) = repository.find_reference(&tracking_name) else {
         return Ok((0, 0));
     };
-    let Ok(upstream_id) = tracking.into_fully_peeled_id() else {
+    let Ok(peeled) = tracking.into_fully_peeled_id() else {
         return Ok((0, 0));
     };
-    let upstream_id = upstream_id.detach();
+    let upstream_id = peeled.detach();
     let ahead = count_commits(repository, head_id, upstream_id, stop)?;
     let behind = count_commits(repository, upstream_id, head_id, stop)?;
     Ok((ahead, behind))
@@ -119,7 +119,7 @@ pub(crate) fn distance_to_upstream(
 /// Commits reachable from `tip` but not from `hidden`. A history that cannot be
 /// walked to the end (a shallow clone) counts as no distance rather than failing
 /// the whole status.
-pub(crate) fn count_commits(
+pub fn count_commits(
     repository: &gix::Repository,
     tip: gix::ObjectId,
     hidden: gix::ObjectId,
@@ -128,7 +128,7 @@ pub(crate) fn count_commits(
     let Ok(walk) = repository.rev_walk([tip]).with_hidden([hidden]).all() else {
         return Ok(0);
     };
-    let mut count = 0_u32;
+    let mut count: u32 = 0;
     for commit in walk {
         check_stop(stop)?;
         if commit.is_err() {
@@ -153,9 +153,9 @@ fn file_states(
         .map_err(GitError::read)?;
 
     let mut entries: HashMap<PathBuf, FileState> = HashMap::new();
-    for item in items {
+    for next in items {
         check_stop(stop)?;
-        let item = item.map_err(GitError::read)?;
+        let item = next.map_err(GitError::read)?;
         let Some(state) = state_of_item(&item) else {
             continue;
         };

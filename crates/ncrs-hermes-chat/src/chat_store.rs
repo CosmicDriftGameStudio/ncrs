@@ -32,7 +32,7 @@ impl ChatId {
     /// The id for a chat made at `seconds`; `taken` says which ids exist, so
     /// two chats made in the same second still differ.
     pub fn from_time(seconds: i64, taken: impl Fn(&Self) -> bool) -> Self {
-        let mut counter = 0_u32;
+        let mut counter: u32 = 0;
         loop {
             let candidate = Self(format!("{seconds:012}-{counter:03}"));
             if !taken(&candidate) {

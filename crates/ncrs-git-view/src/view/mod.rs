@@ -54,7 +54,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         right: loaded.as_deref(),
     };
     let body: Element<'a, Message> = match &state.diff {
-        Some(shown) => diff::view(shown, ctx),
+        Some(shown) => diff::view(shown, state.detail.as_ref(), ctx),
         None => row![
             container(sidebar::view(state, ctx)).width(size::SIDE_PANE),
             theme::vertical_rule(palette.border_inactive),

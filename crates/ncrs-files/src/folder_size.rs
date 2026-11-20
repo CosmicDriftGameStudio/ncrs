@@ -48,12 +48,12 @@ pub fn walk_task(walk: Option<FolderWalk>) -> iced::Task<PanelMessage> {
     iced::Task::perform(
         tokio::task::spawn_blocking(move || ncrs_fs::measure_folder_tree(&walked, &stop)),
         move |done| {
-            let tree = done.ok().flatten();
+            let measured = done.ok().flatten();
             PanelMessage::FolderSizeMeasured {
                 run,
                 folder: folder.clone(),
-                size: tree.as_ref().map(|tree| tree.total),
-                below: tree.map(|tree| tree.below).unwrap_or_default(),
+                size: measured.as_ref().map(|tree| tree.total),
+                below: measured.map(|tree| tree.below).unwrap_or_default(),
             }
         },
     )

@@ -55,9 +55,11 @@ fn worktree(path: &str, wip: usize, is_current: bool) -> WorktreeInfo {
 }
 
 fn opened(commits: &[&str], wip: usize) -> State {
-    let mut state = State::default();
-    state.root = Some(PathBuf::from("/repo"));
-    state.name = "repo".to_owned();
+    let mut state = State {
+        root: Some(PathBuf::from("/repo")),
+        name: "repo".to_owned(),
+        ..State::default()
+    };
     let (generation, _) = state.loads.log.begin();
     let log = Log {
         commits: commits.iter().map(|id| commit(id)).collect(),
@@ -70,7 +72,7 @@ fn opened(commits: &[&str], wip: usize) -> State {
         Message::LogLoaded(generation, Box::new(Ok(log))),
         &CTX,
     );
-    let (generation, _) = state.loads.refs.begin();
+    let (refs_generation, _) = state.loads.refs.begin();
     let overview = RefsOverview {
         worktrees: vec![
             worktree("/repo", wip, true),
@@ -80,7 +82,7 @@ fn opened(commits: &[&str], wip: usize) -> State {
     };
     let _ = update(
         &mut state,
-        Message::RefsLoaded(generation, Box::new(Ok(overview))),
+        Message::RefsLoaded(refs_generation, Box::new(Ok(overview))),
         &CTX,
     );
     state

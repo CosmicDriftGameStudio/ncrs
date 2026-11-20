@@ -193,7 +193,7 @@ impl App {
                         test_folder: config::data_dir_override().map(|dir| {
                             ncrs_i18n::fill_template(
                                 self.lang.text(Msg::StatusTestFolder),
-                                &[("dir", &dir.display().to_string())],
+                                &[("{dir}", &dir.display().to_string())],
                             )
                         }),
                         date_format: self.columns.date_format,

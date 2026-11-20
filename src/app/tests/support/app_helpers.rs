@@ -862,3 +862,35 @@ fn is_check_answer(message: &Message) -> bool {
             )
     )
 }
+
+impl App {
+    /// The Git tab's state, for the acceptance run that reads the shown commit.
+    pub fn git_view_for_test(&self) -> &ncrs_git_view::State {
+        &self.git_view
+    }
+
+    /// Whether a menu of the favourites bar is up.
+    pub fn favourite_menu_is_open_for_test(&self) -> bool {
+        self.favourite_menu.is_some()
+    }
+
+    /// Replaces where the notes find their key, so a run never reaches the
+    /// system keychain. The lock time stays as the settings made it.
+    pub fn use_notes_key_store_for_test(
+        &mut self,
+        store: Arc<dyn ncrs_notes::vault::KeyStore>,
+        lock_minutes: u32,
+    ) {
+        self.notes.vault = ncrs_notes::vault::Vault::with_store(store);
+        self.notes.vault.set_timeout_minutes(lock_minutes);
+    }
+}
+
+impl App {
+    /// What the status bar says about a running "Compute folder sizes".
+    pub fn folder_size_progress_for_test(
+        &self,
+    ) -> Option<ncrs_files::folder_size::FolderSizeProgress> {
+        self.panels.folder_size_progress()
+    }
+}

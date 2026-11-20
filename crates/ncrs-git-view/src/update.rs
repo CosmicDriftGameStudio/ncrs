@@ -210,7 +210,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 .root
                 .as_ref()
                 .zip(file)
-                .map(|(root, file)| Action::ViewFile(root.join(&file.path)));
+                .map(|(root, changed)| Action::ViewFile(root.join(&changed.path)));
             (Task::none(), action)
         }
         Message::Escape => escape(state),

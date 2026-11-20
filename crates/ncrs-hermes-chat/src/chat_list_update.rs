@@ -138,11 +138,11 @@ impl State {
 fn delete(state: &mut State, ctx: &Ctx, ids: Vec<ChatId>) {
     let busy = is_busy(state);
     let live = state.chats.live().cloned();
-    let ids = ids
+    let kept = ids
         .into_iter()
         .filter(|id| !(busy && Some(id) == live.as_ref()))
         .collect();
-    state.chats.request_delete(ids);
+    state.chats.request_delete(kept);
     after_delete(state, ctx, live.is_some());
 }
 

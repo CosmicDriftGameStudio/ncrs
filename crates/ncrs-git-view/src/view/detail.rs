@@ -3,7 +3,7 @@
 use iced::widget::{column, container, row, Column, Space};
 use iced::{Element, Length, Padding};
 use ncrs_git::ChangeKind;
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::Msg;
 use ncrs_ui_kit::git_rows::{change_row, ChangeRow};
 use ncrs_ui_kit::kit::segmented;
 use ncrs_ui_kit::page_scroll::page_scroll;
@@ -74,10 +74,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         true,
         palette,
     );
-    let count = fill_template(
-        ctx.lang.text(Msg::GitViewDetailFiles),
-        &[("{count}", &detail.files.len().to_string())],
-    );
+    let count = ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang);
     let files = state.detail_rows().into_iter().map(|entry| match entry {
         DetailRow::Folder { depth, name } => container(page_line(
             format!("{name}/"),

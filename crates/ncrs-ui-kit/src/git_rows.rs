@@ -251,7 +251,7 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
 
 fn number_text<'a, M: 'a>(number: Option<u32>, palette: &Palette) -> Element<'a, M> {
     container(
-        text(number.map(|number| number.to_string()).unwrap_or_default())
+        text(number.map(|count| count.to_string()).unwrap_or_default())
             .size(font_size::SMALL)
             .color(palette.dim_text),
     )

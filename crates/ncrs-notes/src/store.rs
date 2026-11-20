@@ -122,7 +122,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool, key: Option<&NoteKey
     let base = Some(content_hash(&bytes));
     let text = if is_encrypted_path(path) {
         match key {
-            Some(key) => crypt::decrypt(key, &bytes).ok()?,
+            Some(note_key) => crypt::decrypt(note_key, &bytes).ok()?,
             None => String::new(),
         }
     } else {

@@ -56,7 +56,7 @@ pub fn commit_detail(
     let parent_tree = match parents.first() {
         Some(parent) => repository
             .find_commit(*parent)
-            .and_then(|parent| parent.tree())
+            .and_then(|found| found.tree())
             .map_err(GitError::read)?,
         None => repository.empty_tree(),
     };
@@ -81,8 +81,8 @@ pub fn commit_detail(
             path,
             old_path,
             kind,
-            added: counts.map_or(0, |counts| counts.0),
-            removed: counts.map_or(0, |counts| counts.1),
+            added: counts.map_or(0, |(added, _)| added),
+            removed: counts.map_or(0, |(_, removed)| removed),
             binary: counts.is_none(),
         });
     }
@@ -152,7 +152,10 @@ pub fn working_changes(root: &Path, stop: &Arc<AtomicBool>) -> Result<Vec<Change
         Err(_) => repository.empty_tree(),
     };
     let mut files = Vec::new();
-    for (relative, state) in &current.entries {
+    // In key order, so a stop midway does not depend on the hash seed.
+    let mut ordered: Vec<_> = current.entries.iter().collect();
+    ordered.sort_by(|a, b| a.0.cmp(b.0));
+    for (relative, state) in ordered {
         check_stop(stop)?;
         let kind = match state {
             FileState::Ignored => continue,
@@ -170,8 +173,8 @@ pub fn working_changes(root: &Path, stop: &Arc<AtomicBool>) -> Result<Vec<Change
                 path,
                 old_path: None,
                 kind,
-                added: counts.map_or(0, |counts| counts.0),
-                removed: counts.map_or(0, |counts| counts.1),
+                added: counts.map_or(0, |(added, _)| added),
+                removed: counts.map_or(0, |(_, removed)| removed),
                 binary: counts.is_none(),
             });
         }

@@ -258,7 +258,7 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
 }
 
 /// Starts a new conversation. The old one stays in the list as a closed chat.
-pub(crate) fn restart_conversation(state: &mut State, ctx: &Ctx) {
+pub fn restart_conversation(state: &mut State, ctx: &Ctx) {
     if state.chats.live().is_some() {
         state.sync_chats(ctx.now);
     }
@@ -285,7 +285,7 @@ fn words_are_taken_as_text(step: Step) -> bool {
 
 /// Work or the model is running, or something waits for Hermes to start;
 /// typing and buttons wait for it.
-pub(crate) fn is_busy(state: &State) -> bool {
+pub fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
         || state.pending.is_some()
         || state.thinking.is_some()

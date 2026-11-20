@@ -79,9 +79,9 @@ pub fn log(
         .map_err(GitError::read)?;
     let mut layout = LaneLayout::default();
 
-    for info in walk {
+    for walked in walk {
         check_stop(stop)?;
-        let info = info.map_err(GitError::read)?;
+        let info = walked.map_err(GitError::read)?;
         let parents: Vec<ObjectId> = info.parent_ids.iter().copied().collect();
         let graph = layout.place(info.id, &parents);
         let commit = info.object().map_err(GitError::read)?;
@@ -125,7 +125,7 @@ pub fn log(
     result.lane_count = if filtered {
         1
     } else {
-        layout.lane_count.max(1)
+        layout.lane_count().max(1)
     };
     Ok(result)
 }

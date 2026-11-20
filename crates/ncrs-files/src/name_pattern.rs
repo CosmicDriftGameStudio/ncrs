@@ -27,10 +27,10 @@ impl NamePattern {
     }
 
     pub fn matches(&self, name: &OsStr) -> bool {
-        let name: Vec<char> = type_ahead_key(name).chars().collect();
+        let letters: Vec<char> = type_ahead_key(name).chars().collect();
         self.patterns.iter().any(|pattern| {
             // A name without a dot is a name of `*.*` too, as in Total Commander.
-            pattern == &['*', '.', '*'] || glob_matches(pattern, &name)
+            pattern == &['*', '.', '*'] || glob_matches(pattern, &letters)
         })
     }
 }
@@ -49,7 +49,7 @@ fn glob_matches(pattern: &[char], name: &[char]) -> bool {
                 p += 1;
                 n += 1;
             }
-            Some(&literal) if literal == name[n] => {
+            Some(&literal) if name.get(n) == Some(&literal) => {
                 p += 1;
                 n += 1;
             }
@@ -63,7 +63,7 @@ fn glob_matches(pattern: &[char], name: &[char]) -> bool {
             },
         }
     }
-    pattern[p..].iter().all(|&rest| rest == '*')
+    pattern.iter().skip(p).all(|&rest| rest == '*')
 }
 
 /// Tags (or, with `untag`, untags) the entries of `entries` whose name matches

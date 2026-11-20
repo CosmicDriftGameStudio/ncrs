@@ -146,7 +146,7 @@ pub struct BarFacts<'a> {
 
 /// The bar: the favourites that fit, then the button for the rest.
 pub fn bar_view<'a>(facts: &BarFacts<'_>, palette: &Palette) -> Element<'a, FavouritesBarMessage> {
-    let labels = crate::favourites::slot_labels(facts.favourites, Some(facts.home));
+    let labels = crate::favourites::slot_labels(facts.favourites, Some(facts.home), facts.lang);
     let fitting = slots_that_fit(&labels, facts.width);
     let all_fit = fitting == labels.len();
     let slots = facts
@@ -204,23 +204,28 @@ pub fn menu_view<'a>(
         on_press: message,
         on_hover: None,
     };
-    let entries = match menu.target {
-        MenuTarget::Slot(index) => slot_menu_entries(index, favourites.len(), lang, entry),
+    let (entries, at) = match menu.target {
+        MenuTarget::Slot(index) => (
+            slot_menu_entries(index, favourites.len(), lang, entry),
+            menu.at,
+        ),
         MenuTarget::Overflow => {
-            let labels = crate::favourites::slot_labels(favourites, Some(home));
+            let labels = crate::favourites::slot_labels(favourites, Some(home), lang);
             let fitting = slots_that_fit(&labels, window.width);
-            labels
+            let under_the_button = bar::overflow_anchor(&labels, fitting);
+            let entries = labels
                 .into_iter()
                 .enumerate()
                 .skip(fitting)
                 .map(|(index, label)| entry(label, Some(FavouritesBarMessage::Open(index))))
-                .collect()
+                .collect();
+            (entries, under_the_button)
         }
     };
     let height = popup_menu_height(entries.len());
     let origin = Point::new(
-        place(menu.at.x, POPUP_MENU_WIDTH, window.width),
-        place(menu.at.y, height, window.height),
+        place(at.x, POPUP_MENU_WIDTH, window.width),
+        place(at.y, height, window.height),
     );
     // A right press passes through to another slot, whose menu replaces this
     // one.

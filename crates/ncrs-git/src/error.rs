@@ -21,11 +21,11 @@ impl GitError {
 }
 
 impl fmt::Display for GitError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Open(cause) => write!(formatter, "cannot open the repository: {cause}"),
-            Self::Read(cause) => write!(formatter, "cannot read the repository: {cause}"),
-            Self::Interrupted => formatter.write_str("the git status was stopped"),
+            Self::Open(cause) => write!(f, "cannot open the repository: {cause}"),
+            Self::Read(cause) => write!(f, "cannot read the repository: {cause}"),
+            Self::Interrupted => f.write_str("the git status was stopped"),
         }
     }
 }

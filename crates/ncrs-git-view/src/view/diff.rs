@@ -5,6 +5,7 @@ use iced::widget::{column, container, row, Column, Space};
 use iced::{alignment, Element, Length};
 use ncrs_git::{FileDiff, RowKind};
 use ncrs_i18n::Msg;
+use ncrs_ui_kit::format::ellipsize_end;
 use ncrs_ui_kit::git_rows::{
     change_row, diff_cell, diff_hunk_header, diff_unified_line, ChangeRow, DiffTone,
 };
@@ -17,40 +18,84 @@ use super::DIFF_ID;
 use crate::ctx::ViewCtx;
 use crate::diff_layout::pairs;
 use crate::message::Message;
-use crate::state::DiffState;
+use crate::state::{Detail, DiffState};
 
-pub fn view<'a>(shown: &'a DiffState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+const COMMIT_LINE_CHARS: usize = 48;
+
+/// The commit line of the header: the short hash and the first line of the
+/// message, as far as `detail` is the commit this diff is about.
+fn commit_line(shown: &DiffState, detail: Option<&Detail>) -> Option<String> {
+    let info = detail
+        .filter(|candidate| candidate.subject == shown.subject)?
+        .info
+        .as_ref()?;
+    let title = info.message.lines().next().unwrap_or_default();
+    Some(format!(
+        "{} \u{b7} {}",
+        info.short,
+        ellipsize_end(title, COMMIT_LINE_CHARS)
+    ))
+}
+
+pub fn view<'a>(
+    shown: &'a DiffState,
+    detail: Option<&Detail>,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
     let palette = ctx.palette;
     let path = shown
         .files
         .get(shown.file)
         .map(|file| file.path.clone())
         .unwrap_or_default();
-    let bar = container(
-        row![
-            page_line(
-                ctx.lang.text(Msg::GitViewDiffBack),
+    let (added, removed) = shown
+        .files
+        .get(shown.file)
+        .filter(|file| !file.binary)
+        .map_or((0, 0), |file| (file.added, file.removed));
+    let mut header = row![
+        page_line(
+            ctx.lang.text(Msg::GitViewDiffBack),
+            font_size::BODY,
+            palette.dim_text
+        ),
+        page_heading(&path, palette),
+    ];
+    if let Some(commit) = commit_line(shown, detail) {
+        header = header.push(page_line(commit, font_size::BODY, palette.dim_text));
+    }
+    if added + removed > 0 {
+        header = header
+            .push(page_line(
+                format!("+{added}"),
                 font_size::BODY,
-                palette.dim_text
-            ),
-            page_heading(&path, palette),
-            Space::new().width(Length::Fill),
-            segmented(
+                palette.success,
+            ))
+            .push(page_line(
+                format!("\u{2212}{removed}"),
+                font_size::BODY,
+                palette.error,
+            ));
+    }
+    let bar = container(
+        header
+            .push(Space::new().width(Length::Fill))
+            .push(segmented(
                 &[
                     (
                         ctx.lang.text(Msg::GitViewDiffSideBySide),
-                        Message::SetUnified(false)
+                        Message::SetUnified(false),
                     ),
                     (
                         ctx.lang.text(Msg::GitViewDiffUnified),
-                        Message::SetUnified(true)
+                        Message::SetUnified(true),
                     ),
                 ],
                 usize::from(shown.unified),
                 true,
                 palette,
-            ),
-            labelled_checkbox(
+            ))
+            .push(labelled_checkbox(
                 if shown.ignore_whitespace {
                     Check::On
                 } else {
@@ -59,10 +104,9 @@ pub fn view<'a>(shown: &'a DiffState, ctx: ViewCtx<'a>) -> Element<'a, Message> 
                 Some(Message::ToggleIgnoreWhitespace),
                 Some(ctx.lang.text(Msg::GitViewDiffIgnoreWhitespace)),
                 palette,
-            ),
-        ]
-        .spacing(spacing::XL)
-        .align_y(alignment::Vertical::Center),
+            ))
+            .spacing(spacing::XL)
+            .align_y(alignment::Vertical::Center),
     )
     .padding([0.0, spacing::XXL])
     .height(size::HEADER)
@@ -146,7 +190,7 @@ fn lines<'a>(diff: &'a FileDiff, unified: bool, ctx: ViewCtx<'a>) -> Element<'a,
             }
         } else {
             for pair in pairs(hunk) {
-                let side = |line: Option<&ncrs_git::DiffRow>, old: bool| match line {
+                let side = |cell: Option<&ncrs_git::DiffRow>, old: bool| match cell {
                     Some(line) => diff_cell(
                         if old { line.old_line } else { line.new_line },
                         line.text.clone(),
