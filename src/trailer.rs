@@ -17,7 +17,9 @@ use iced::keyboard::{key::Code, key::Named, key::Physical, Key, Modifiers};
 
 use crate::app::{route_press, App};
 use crate::fs::FileEntry;
-use crate::messages::{BatchRenameMessage, CommandPaletteMessage, Message, PanelSide};
+use crate::messages::{
+    BatchRenameMessage, CommandPaletteMessage, Message, PanelMessage, PanelSide,
+};
 use crate::palette::ThemePreset;
 use crate::shot_file::write_view_to;
 use crate::trailer_data::{

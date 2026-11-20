@@ -618,7 +618,6 @@ impl App {
     }
 
     /// Replaces the folder picker, so a protocol run answers it without a dialog.
-    #[cfg(unix)]
     pub fn with_folder_picker(mut self, pick: fn(&Path) -> Task<Option<PathBuf>>) -> Self {
         self.pick_folder = pick;
         self
@@ -630,21 +629,18 @@ impl App {
     }
 
     /// The filing tab: the protocol run reads what it plans.
-    #[cfg(unix)]
     pub fn filing_session_for_test(&self) -> Option<&ncrs_filing_view::Session> {
         self.filing_view.session.as_ref()
     }
 
     /// The same, writable: the protocol run clears the readings to measure a
     /// cold read again.
-    #[cfg(unix)]
     pub fn hermes_chat_mut_for_test(&mut self) -> &mut ncrs_hermes_chat::State {
         &mut self.hermes_chat
     }
 
     /// Starts the filing module of an app that is already running (the
     /// protocol run needs the tokio context of its session for it).
-    #[cfg(unix)]
     pub fn start_filing_for_test(
         &mut self,
         filing: &crate::config::Filing,
@@ -657,7 +653,6 @@ impl App {
     }
 
     /// The filing module, for the protocol run that waits for its start.
-    #[cfg(unix)]
     pub fn filing_module_for_test(&self) -> Option<&FilingModule> {
         self.hermes.filing.as_ref()
     }

@@ -13,8 +13,8 @@ use ncrs_i18n::Language;
 use crate::app::{fixed_result_entry, App};
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{
-    BatchRenameMessage, FavouritesBarMessage, Message, PanelMessage, PanelSide, SettingField,
-    SettingsFeature, SettingsMessage,
+    BatchRenameMessage, FavouritesBarMessage, MenuMessage, Message, PanelMessage, PanelSide,
+    SettingField, SettingsFeature, SettingsMessage,
 };
 use crate::shot_file::write_screenshot_to;
 use ncrs_core::CompareMark;
