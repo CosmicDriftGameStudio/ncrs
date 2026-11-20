@@ -6,12 +6,12 @@
 //! test put there. Linux re-runs each test in a child process whose
 //! `XDG_DATA_HOME` is inside the test folder, so the trash is a private one.
 
-// reason: a failing assertion is the signal in a test
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 
 use std::ffi::OsStr;
@@ -53,8 +53,13 @@ fn is_from_this_test(original: &Path, marker: &OsStr) -> bool {
 /// Takes everything this test put into the trash out again, also when an
 /// assertion panicked. Never panics itself.
 struct TrashCleanup {
-    // reason: only the macOS cleanup reads the trash through ncrs
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(
+            dead_code,
+            reason = "only the macOS cleanup reads the trash through ncrs"
+        )
+    )]
     trash: Arc<dyn Trash>,
     marker: std::ffi::OsString,
 }
@@ -190,6 +195,13 @@ impl Scene {
     }
 }
 
+/// The path the test harness knows a test by: `module` is the caller's
+/// `module_path!()`, whose first segment is the crate name.
+pub fn test_path(module: &str, test: &str) -> String {
+    let inside_crate = module.split_once("::").map_or("", |(_, rest)| rest);
+    format!("{inside_crate}::{test}")
+}
+
 /// `test_name` is the full path of the calling test, for the Linux re-run.
 pub fn on_the_real_trash(test_name: &str, scenario: impl FnOnce(&Scene)) {
     #[cfg(target_os = "linux")]
@@ -295,7 +307,7 @@ mod tests {
     #[test]
     fn a_file_and_a_folder_come_back_whole() {
         on_the_real_trash(
-            "real_trash_tests::tests::a_file_and_a_folder_come_back_whole",
+            &test_path(module_path!(), "a_file_and_a_folder_come_back_whole"),
             |scene| {
                 let alpha = scene.write("alpha.txt", "alpha");
                 let docs = scene.work.join("docs");
@@ -355,7 +367,7 @@ mod tests {
     #[test]
     fn a_missing_original_folder_is_recreated() {
         on_the_real_trash(
-            "real_trash_tests::tests::a_missing_original_folder_is_recreated",
+            &test_path(module_path!(), "a_missing_original_folder_is_recreated"),
             |scene| {
                 let inner = scene.write("gone/inner.txt", "inner");
                 scene.trash.trash(&inner).unwrap();
@@ -373,7 +385,7 @@ mod tests {
     #[test]
     fn a_taken_name_is_reported_and_left_alone() {
         on_the_real_trash(
-            "real_trash_tests::tests::a_taken_name_is_reported_and_left_alone",
+            &test_path(module_path!(), "a_taken_name_is_reported_and_left_alone"),
             |scene| {
                 let taken = scene.write("taken.txt", "old");
                 scene.trash.trash(&taken).unwrap();
@@ -546,7 +558,10 @@ mod tests {
     #[test]
     fn a_file_and_a_folder_on_another_volume_come_back_from_its_trash() {
         on_another_volume(
-            "real_trash_tests::tests::a_file_and_a_folder_on_another_volume_come_back_from_its_trash",
+            &test_path(
+                module_path!(),
+                "a_file_and_a_folder_on_another_volume_come_back_from_its_trash",
+            ),
             |scene, volume_trash| {
                 let alpha = scene.write("alpha.txt", "alpha");
                 let docs = scene.work.join("docs");

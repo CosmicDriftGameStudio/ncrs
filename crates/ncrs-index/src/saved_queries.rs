@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -219,26 +219,84 @@ impl Index {
         spec: &QuerySpec,
         under: Option<&Path>,
     ) -> Result<Vec<Document>, IndexError> {
-        let Some((conditions, values)) = self.query_filter(spec, under)? else {
+        self.documents_of(spec, under, None)
+    }
+
+    /// Like [`Self::run_query_under`], but only the documents whose file is
+    /// still there, and at most `limit` of them in the same order.
+    pub fn run_present_query_under(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+        limit: usize,
+    ) -> Result<Vec<Document>, IndexError> {
+        self.documents_of(spec, under, Some(limit))
+    }
+
+    /// With a `limit`, missing documents are left out in the database, so
+    /// they do not use up the limit.
+    fn documents_of(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Document>, IndexError> {
+        let Some((mut conditions, mut values)) = self.query_filter(spec, under)? else {
             return Ok(Vec::new());
         };
+        if let Some(row_limit) = limit {
+            conditions.push("d.missing_since IS NULL".to_owned());
+            values.push(Value::Integer(i64::try_from(row_limit).unwrap_or(i64::MAX)));
+        }
         let mut sql = DOCUMENT_COLUMNS.to_owned();
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
         sql.push_str(" ORDER BY d.document_date IS NULL, d.document_date, d.path, d.id");
+        if limit.is_some() {
+            sql.push_str(" LIMIT ?");
+        }
 
         let mut statement = self.connection().prepare(&sql)?;
         let rows = statement
             .query_map(params_from_iter(values), DocumentRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
-        let mut documents = Vec::new();
-        for row in rows {
-            let tags = self.document_tags(row.id())?;
-            documents.push(row.into_document(tags)?);
+        let mut tags_by_document = self.own_tags_of(rows.iter().map(DocumentRow::id))?;
+        rows.into_iter()
+            .map(|row| {
+                let tags = tags_by_document.remove(&row.id()).unwrap_or_default();
+                row.into_document(tags)
+            })
+            .collect()
+    }
+
+    /// The tags the user set, for many documents in a few statements instead of
+    /// one per document.
+    fn own_tags_of(
+        &self,
+        ids: impl Iterator<Item = i64>,
+    ) -> Result<HashMap<i64, BTreeSet<String>>, IndexError> {
+        const IDS_PER_STATEMENT: usize = 500;
+        let id_list: Vec<i64> = ids.collect();
+        let mut by_document: HashMap<i64, BTreeSet<String>> = HashMap::new();
+        for chunk in id_list.chunks(IDS_PER_STATEMENT) {
+            let marks = vec!["?"; chunk.len()].join(",");
+            let mut statement = self.connection().prepare_cached(&format!(
+                "SELECT dt.document_id, t.name FROM document_tag dt
+                 JOIN tag t ON t.id = dt.tag_id
+                 WHERE dt.automatic = 0 AND dt.document_id IN ({marks})"
+            ))?;
+            let rows = statement
+                .query_map(params_from_iter(chunk), |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (id, tag) in rows {
+                by_document.entry(id).or_default().insert(tag);
+            }
         }
-        Ok(documents)
+        Ok(by_document)
     }
 
     /// How many documents [`Self::run_query`] would return, counted by the
@@ -283,7 +341,7 @@ impl Index {
         }
         if let Some(sender) = blank_to_none(&spec.sender) {
             conditions.push("s.name_key = ?".to_owned());
-            values.push(Value::Text(sender.to_lowercase()));
+            values.push(Value::Text(crate::names::name_key(sender)));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
             let keys = self.kinds().kind_name_keys(kind);
@@ -341,12 +399,6 @@ impl Index {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use chrono::NaiveDate;
 
@@ -730,6 +782,35 @@ mod tests {
 
         assert_eq!(documents.len(), 1);
         assert!(documents[0].missing_since.is_some());
+    }
+
+    #[test]
+    fn the_present_query_leaves_out_missing_documents_before_it_cuts_at_the_limit() {
+        let (_dir, index, ids) = stocked();
+        index
+            .connection()
+            .execute(
+                "UPDATE document SET missing_since = 1 WHERE id = ?1",
+                [ids[3].get()],
+            )
+            .unwrap();
+        let everything = QuerySpec::default();
+        let present = |limit| -> Vec<DocumentId> {
+            index
+                .run_present_query_under(&everything, None, limit)
+                .unwrap()
+                .into_iter()
+                .map(|document| document.id)
+                .collect()
+        };
+        let all_present: Vec<DocumentId> = found(&index, &everything)
+            .into_iter()
+            .filter(|id| *id != ids[3])
+            .collect();
+
+        assert_eq!(present(100), all_present);
+        assert_eq!(present(2), all_present[..2].to_vec());
+        assert!(present(0).is_empty());
     }
 
     #[test]

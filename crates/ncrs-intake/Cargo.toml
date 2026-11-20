@@ -12,9 +12,14 @@ publish = false
 workspace = true
 
 [dependencies]
+ncrs-model-file = { path = "../ncrs-model-file", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+# One list of the names Windows reads as devices, shared with the archive unpacking.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 sha2 = "0.11"
+# Text with decomposed umlauts is composed once before the fields are read.
+unicode-normalization = "0.1.26"
 walkdir = "2.5"
 same-file = "1.0"
 # One recursive watcher per location; the backends (FSEvents, inotify,
@@ -42,6 +47,8 @@ quick-xml = { version = "=0.42.0", default-features = false }
 # Decodes photos and scans (jpeg, png, tiff) into the page image OCR reads. Same
 # features as the root package: no other formats are built.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
+# The pages after the first of a TIFF scan; the version image already uses.
+tiff = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tempfile = { version = "3.27", optional = true }
 

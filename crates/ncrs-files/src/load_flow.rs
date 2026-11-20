@@ -1,6 +1,7 @@
 //! Starting the read of a folder into a panel, and the reload that waits for
 //! an operation.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use iced::Task;
@@ -22,29 +23,13 @@ pub enum LoadStart {
     Local(Task<PanelMessage>),
 }
 
-/// A pending reload that is due now.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReloadNow {
-    pub side: PanelSide,
-    /// The folder the panel shows.
-    pub path: PathBuf,
-    /// The name to select, which is also the name just created in `path`.
-    pub name: String,
-}
-
-impl ReloadNow {
-    pub fn created(&self) -> PathBuf {
-        self.path.join(&self.name)
-    }
-}
-
 impl Panels {
     /// Starts the read of `path` into `side`.
     pub fn start_load(
         &mut self,
         side: PanelSide,
         path: PathBuf,
-        select: Option<String>,
+        select: Option<OsString>,
     ) -> LoadStart {
         if self.panel(side).is_hit_list() {
             if path == self.panel(side).path {
@@ -72,15 +57,5 @@ impl Panels {
                 archive: listing.archive,
             },
         ))
-    }
-
-    /// Takes the reload that waited for its create to report.
-    pub fn take_pending_reload(&mut self) -> Option<ReloadNow> {
-        let pending = self.pending_reload.take()?;
-        Some(ReloadNow {
-            path: self.panel(pending.side).path.clone(),
-            side: pending.side,
-            name: pending.name,
-        })
     }
 }

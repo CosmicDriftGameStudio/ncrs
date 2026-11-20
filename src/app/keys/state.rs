@@ -14,22 +14,22 @@ impl App {
         input.path_editing = state.path_editing;
         input.command_line = state.command_line;
         input.search_open = search_open;
-        input.hermes_chat = self.hermes_chat_shown();
+        input.hermes_chat = state.hermes_chat;
         input.job_running = job_running;
-        input.quick_open = self.quick_open.is_some();
-        input.command_palette = self.command_palette.is_some();
+        input.quick_open = state.quick_open;
+        input.command_palette = state.command_palette;
         input.key_bindings = self
             .settings
             .key_bindings
             .as_ref()
             .is_some_and(|shortcuts| !shortcuts.is_recording());
-        input.theme_fetch = self.settings.theme_fetch.is_some();
-        input.transfer_dialog = self.ops.transfer_dialog.is_some();
-        input.permissions_dialog = self.ops.permissions_dialog.is_some();
-        input.batch_rename_dialog = self.ops.batch_rename.is_some();
+        input.theme_fetch = state.theme_fetch;
+        input.transfer_dialog = state.transfer_dialog;
+        input.permissions_dialog = state.permissions_dialog;
+        input.batch_rename_dialog = state.batch_rename_dialog;
         input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
-        input.monitor = self.monitor_shown();
-        input.viewer = self.viewer_shown();
+        input.monitor = state.monitor;
+        input.viewer = state.viewer;
         input.notes = self.notes_shown() && !self.blocking_overlay_is_open();
         input.filing = self.filing_shown() && !self.blocking_overlay_is_open();
         input.filing_renaming = input.filing
@@ -63,6 +63,7 @@ impl App {
         let job_running = self.jobs.is_busy();
         let config_error = self.config_error.is_some();
         let volume_menu = self.panels.volume_menu.is_some();
+        let header_menu = self.panels.header_menu.is_some();
         let context_menu = self.panels.context_menu.is_some();
         let favourite_menu = self.favourite_menu.is_some();
         let context_submenu = self
@@ -104,6 +105,8 @@ impl App {
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
         let monitor_menu = monitor && self.monitor.menu_is_open();
+        let monitor_drive_focused = monitor && self.monitor.drive_list_has_focus();
+        let monitor_drives_listed = monitor && self.monitor.drives_are_listed();
         let viewer = self.viewer_shown();
         let viewer_markdown = viewer && self.viewer.shows_markdown();
         let notes = self.notes_shown();
@@ -127,111 +130,69 @@ impl App {
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
             Some(_) => DeleteKeys::Trash,
         };
+        let shared = PromptKeyState {
+            keymap: Arc::clone(&self.keymap),
+            job_running,
+            config_error,
+            delete_dialog,
+            open_file_dialog,
+            quit_dialog,
+            start_over_dialog,
+            volume_menu,
+            header_menu,
+            context_menu,
+            favourite_menu,
+            context_submenu,
+            quick_fix,
+            confirm_again,
+            path_editing,
+            command_line,
+            search,
+            hermes_chat,
+            trash,
+            hit_list,
+            quick_open,
+            command_palette,
+            key_bindings,
+            key_bindings_recording,
+            filing_card,
+            theme_fetch,
+            about,
+            ocr_models,
+            ai_model,
+            grant_dialog,
+            connect_dialog,
+            compare_dialog,
+            settings,
+            monitor,
+            monitor_filter,
+            monitor_dialog,
+            monitor_menu,
+            monitor_drive_focused,
+            monitor_drives_listed,
+            viewer,
+            viewer_markdown,
+            notes,
+            notes_editing,
+            filing,
+            filing_renaming,
+            // A conflict is asked while no prompt is open — the prompt is
+            // gone by then, the transfer is what is running. Without this
+            // the dialog's keys would fall through to the panels.
+            conflict_open: self.ops.conflict_is_open(),
+            transfer_dialog,
+            transfer_progress,
+            permissions_dialog,
+            batch_rename_dialog,
+            ..PromptKeyState::default()
+        };
         match &self.ops.prompt {
-            None => PromptKeyState {
-                keymap: Arc::clone(&self.keymap),
-                job_running,
-                config_error,
-                delete_dialog,
-                open_file_dialog,
-                quit_dialog,
-                start_over_dialog,
-                volume_menu,
-                context_menu,
-                favourite_menu,
-                context_submenu,
-                quick_fix,
-                confirm_again,
-                path_editing,
-                command_line,
-                search,
-                hermes_chat,
-                trash,
-                hit_list,
-                quick_open,
-                command_palette,
-                key_bindings,
-                key_bindings_recording,
-                filing_card,
-                theme_fetch,
-                about,
-                ocr_models,
-                ai_model,
-                grant_dialog,
-                connect_dialog,
-                compare_dialog,
-                settings,
-                monitor,
-                monitor_filter,
-                monitor_dialog,
-                monitor_menu,
-                viewer,
-                viewer_markdown,
-                notes,
-                notes_editing,
-                filing,
-                filing_renaming,
-                // A conflict is asked while no prompt is open — the prompt is
-                // gone by then, the transfer is what is running. Without this
-                // the dialog's keys would fall through to the panels.
-                conflict_open: self.ops.conflict_is_open(),
-                transfer_dialog,
-                transfer_progress,
-                permissions_dialog,
-                batch_rename_dialog,
-                ..PromptKeyState::default()
-            },
+            None => shared,
             Some(prompt) => PromptKeyState {
-                keymap: Arc::clone(&self.keymap),
                 open: true,
-                job_running,
-                config_error,
-                delete_dialog,
-                open_file_dialog,
-                quit_dialog,
-                start_over_dialog,
-                volume_menu,
-                context_menu,
-                favourite_menu,
-                context_submenu,
-                quick_fix,
-                confirm_again,
-                path_editing,
-                command_line,
-                search,
-                hermes_chat,
-                trash,
-                hit_list,
-                quick_open,
-                command_palette,
-                key_bindings,
-                key_bindings_recording,
-                filing_card,
-                theme_fetch,
-                about,
-                ocr_models,
-                ai_model,
-                grant_dialog,
-                connect_dialog,
-                compare_dialog,
-                settings,
-                monitor,
-                monitor_filter,
-                monitor_dialog,
-                monitor_menu,
-                viewer,
-                viewer_markdown,
-                notes,
-                notes_editing,
-                filing,
-                filing_renaming,
-                conflict_open: self.ops.conflict_is_open(),
-                transfer_dialog,
-                transfer_progress,
-                permissions_dialog,
-                batch_rename_dialog,
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
+                ..shared
             },
         }
     }

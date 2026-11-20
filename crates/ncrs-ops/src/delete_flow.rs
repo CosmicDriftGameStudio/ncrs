@@ -79,17 +79,11 @@ pub fn delete_subject(lang: Language, deletion: &Deletion) -> String {
     const LISTED: usize = 5;
     let name_of = |path: &PathBuf| {
         path.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
+            .map(|n| ncrs_ui_kit::format::shown_name(&n.to_string_lossy()))
             .unwrap_or_default()
     };
     match deletion.sources.as_slice() {
-        [only] => lang.text(Msg::DeleteOne).replace(
-            "{name}",
-            &only
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-        ),
+        [only] => lang.text(Msg::DeleteOne).replace("{name}", &name_of(only)),
         many => {
             let mut lines = vec![lang
                 .text(Msg::DeleteMany)
@@ -117,6 +111,7 @@ pub fn confirm_delete(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
     if in_archive.is_some() || !deletion.permanent {
         ops.last_deletion.clear();
     }
+    ops.stopped_delete = None;
     if let Some(archive) = in_archive {
         return start_archive_delete(ops, archive, deletion, ctx);
     }
@@ -134,6 +129,11 @@ pub fn delete_row_done(
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
     if generation != ops.generation {
+        // The delete was stopped while this entry was on the blocking pool; if
+        // it reached the trash anyway, the restore key must know it.
+        if result.is_ok() {
+            remember_trashed_after_stop(ops, index, generation);
+        }
         return idle();
     }
     let (task, mut rest) = match result {
@@ -168,6 +168,7 @@ fn run_delete_row(ops: &mut Ops, index: usize, ctx: &FlowCtx<'_>) -> Outcome {
     let total = deletion.sources.len();
     let generation = ops.generation;
     let trash = Arc::clone(ctx.trash);
+    let lang = ctx.lang;
     let job = Job {
         kind: JobKind::Delete,
         path: path.clone(),
@@ -177,7 +178,9 @@ fn run_delete_row(ops: &mut Ops, index: usize, ctx: &FlowCtx<'_>) -> Outcome {
         Task::perform(
             tokio::task::spawn_blocking(move || {
                 if deletion.permanent {
-                    fs::remove_permanently(&path).map_err(|err| err.to_string())
+                    fs::remove_permanently(&path).map_err(|err| {
+                        ncrs_ui_kit::io_reason::io_reason_text(err.kind(), &err.to_string(), lang)
+                    })
                 } else {
                     trash.trash(&path)
                 }
@@ -198,14 +201,20 @@ fn run_delete_row(ops: &mut Ops, index: usize, ctx: &FlowCtx<'_>) -> Outcome {
 /// Ends the delete, finished, failed or stopped: the tags refer to entries
 /// that may be gone, so they go, and both panels are re-read.
 pub fn end_delete(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
-    let side = ops.deleting.take().map_or(ctx.source_side, |d| d.side);
+    let stopped = ops.deleting.take();
+    let side = stopped.as_ref().map_or(ctx.source_side, |d| d.side);
+    ops.stopped_delete = stopped.map(|deletion| (ops.generation, deletion));
     ops.bump_generation();
-    actions(vec![
+    let mut asked = vec![
         Action::ClearJobProgress,
         Action::ClearSelection(side),
         Action::ReloadPanels,
         Action::RestartSearch,
-    ])
+    ];
+    if ops.trash_view.is_some() {
+        asked.push(Action::ListTrash);
+    }
+    actions(asked)
 }
 
 /// Notes that the entry at `index` of a delete went to the trash, for the
@@ -215,6 +224,20 @@ fn remember_trashed(ops: &mut Ops, index: usize) {
     let Some(deletion) = ops.deleting.as_ref().filter(|d| !d.permanent) else {
         return;
     };
+    if let Some(path) = deletion.sources.get(index) {
+        ops.last_deletion.push(path.clone());
+    }
+}
+
+/// The entry that was on the blocking pool when the delete was stopped may
+/// still have reached the trash; it belongs to the latest deletion then.
+fn remember_trashed_after_stop(ops: &mut Ops, index: usize, generation: u64) {
+    let Some((stopped_generation, deletion)) = ops.stopped_delete.take() else {
+        return;
+    };
+    if stopped_generation != generation || deletion.permanent {
+        return;
+    }
     if let Some(path) = deletion.sources.get(index) {
         ops.last_deletion.push(path.clone());
     }
@@ -262,4 +285,96 @@ pub fn delete_failure(ops: &Ops, ctx: &FlowCtx<'_>, index: usize, reason: &str) 
             ("{key}", permanent_key.as_deref().unwrap_or_default()),
         ],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stopped(generation: u64, permanent: bool) -> Ops {
+        Ops {
+            stopped_delete: Some((
+                generation,
+                Deletion {
+                    sources: vec![PathBuf::from("/a"), PathBuf::from("/b")],
+                    permanent,
+                    side: PanelSide::Left,
+                },
+            )),
+            ..Ops::default()
+        }
+    }
+
+    #[test]
+    fn a_name_with_a_line_break_stays_one_name_in_the_question() {
+        let deletion = Deletion {
+            sources: vec![PathBuf::from("/x/a\nb.txt")],
+            permanent: true,
+            side: PanelSide::Left,
+        };
+        let subject = delete_subject(Language::default(), &deletion);
+        assert!(!subject.contains('\n'));
+        assert!(subject.contains("a\u{240a}b.txt"));
+    }
+
+    #[test]
+    fn a_new_delete_forgets_the_entry_still_running_from_the_stopped_one() {
+        use ncrs_fs::remote::session::Pool;
+        use ncrs_fs::remote::KnownHostsFiles;
+
+        let trash = fs::system_trash(None);
+        let sandbox = fs::SandboxAccess::inactive();
+        let remote = Arc::new(Pool::over_tcp(KnownHostsFiles::default()));
+        let ctx = FlowCtx {
+            lang: Language::default(),
+            trash: &trash,
+            trash_rows: 10,
+            jobs_busy: false,
+            start_blocked: false,
+            transfer_dialog_open: false,
+            has_job_error: false,
+            sandbox: &sandbox,
+            source_side: PanelSide::Left,
+            left_archive: None,
+            right_archive: None,
+            left_server: None,
+            right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
+            remote: &remote,
+            permanent_delete_key: None,
+            restore_last_key: None,
+            index: None,
+            model: None,
+        };
+        let mut ops = stopped(7, false);
+        ops.delete_dialog = Some(Deletion {
+            sources: vec![PathBuf::from("/c")],
+            permanent: false,
+            side: PanelSide::Left,
+        });
+
+        drop(confirm_delete(&mut ops, &ctx));
+        remember_trashed_after_stop(&mut ops, 0, 7);
+
+        assert!(ops.stopped_delete.is_none());
+        assert!(ops.last_deletion.is_empty());
+    }
+
+    #[test]
+    fn an_entry_trashed_after_the_stop_still_counts_for_the_restore_key() {
+        let mut ops = stopped(7, false);
+        remember_trashed_after_stop(&mut ops, 1, 7);
+        assert_eq!(ops.last_deletion, vec![PathBuf::from("/b")]);
+    }
+
+    #[test]
+    fn a_result_of_another_run_or_a_permanent_delete_is_not_remembered() {
+        let mut other_run = stopped(7, false);
+        remember_trashed_after_stop(&mut other_run, 0, 6);
+        let mut permanent = stopped(7, true);
+        remember_trashed_after_stop(&mut permanent, 0, 7);
+        assert!(other_run.last_deletion.is_empty());
+        assert!(permanent.last_deletion.is_empty());
+    }
 }

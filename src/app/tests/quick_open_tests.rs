@@ -90,7 +90,6 @@ fn enter_closes_it_and_loads_the_hit_into_the_active_panel() {
     let before = app.panel(PanelSide::Left).request_id;
     drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
     assert!(app.quick_open_for_test().is_none());
-    assert!(app.quick_open_walk.is_none());
     assert!(app.panel(PanelSide::Left).loading);
     assert_ne!(app.panel(PanelSide::Left).request_id, before);
 }
@@ -132,12 +131,43 @@ fn a_conflict_closes_it() {
         targets: Vec::new(),
     };
     app.ops.transfer = Some(transfer);
-    drop(app.update(Message::TransferRowDone {
-        skipped: Vec::new(),
-        result: Err(RowFailure::Conflict("exists".to_string())),
-        index: 0,
-        generation: app.ops.generation,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
+            skipped: Vec::new(),
+            result: Err(RowFailure::Conflict("exists".to_string())),
+            index: 0,
+            generation: app.ops.generation,
+        })),
+    );
     assert!(app.ops.pending_conflict.is_some());
     assert!(app.quick_open_for_test().is_none());
+}
+
+#[test]
+fn the_keys_go_to_the_overlay_the_view_draws_on_top() {
+    let none = Modifiers::default();
+    let both = PromptKeyState {
+        quick_open: true,
+        command_palette: true,
+        ..PromptKeyState::default()
+    };
+    assert_eq!(
+        both.modal_stack(),
+        vec![Modal::QuickOpen, Modal::CommandPalette]
+    );
+    assert_eq!(
+        route(&both, Named::ArrowDown, none),
+        Some(Message::QuickOpen(QuickOpenMessage::Move(1)))
+    );
+
+    let conflict_over_prompt = PromptKeyState {
+        open: true,
+        conflict_open: true,
+        ..PromptKeyState::default()
+    };
+    assert_eq!(conflict_over_prompt.top_modal(), Some(Modal::Conflict));
+    assert_ne!(
+        route_key(&conflict_over_prompt, Key::Character("x".into()), none),
+        Some(Message::Ops(OpsMessage::PromptInput("x".to_owned())))
+    );
 }

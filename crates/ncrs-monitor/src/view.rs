@@ -1,6 +1,6 @@
 //! The System page, and the menu and the dialog that stand over it.
 
-use iced::widget::{column, container, mouse_area, row, Space, Stack};
+use iced::widget::{column, container, mouse_area, row, Space};
 use iced::{alignment, Element, Length};
 
 use ncrs_config::system_monitor::{DriveColumn, NetworkUnit};
@@ -12,7 +12,7 @@ use ncrs_ui_kit::meter::{level_text_color, meter, meter_level, Meter};
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_band, page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::popup_menu::{popup_menu, PopupEntry};
+use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 use crate::ctx::ViewCtx;
@@ -215,7 +215,8 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
     ];
     let rows = drives
         .into_iter()
-        .map(|drive| {
+        .enumerate()
+        .map(|(position, drive)| {
             let shown = if free { drive.available } else { drive.used() };
             let color = level_text_color(meter_level(drive.used_percent()), palette);
             TableRow {
@@ -233,7 +234,7 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
                     TableCell::plain(rate_or_dash(drive.read_per_second, bits)),
                     TableCell::plain(rate_or_dash(drive.written_per_second, bits)),
                 ],
-                is_cursor: false,
+                is_cursor: state.drive_focus == Some(position),
                 on_press: Some(MonitorMessage::OpenDrive(drive.mount.clone())),
                 on_right_press: None,
             }
@@ -398,15 +399,23 @@ fn tasks_block<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Page<'a> {
         head = head.push(label(counts, palette.dim_text));
     }
     head = head.push(Space::new().width(Length::Fill)).push(filter);
-    column![
-        container(head)
-            .height(TASKS_HEAD_HEIGHT)
-            .align_y(alignment::Vertical::Center),
-        mouse_area(data_table(&columns, rows, palette)).on_scroll(MonitorMessage::Scroll),
-    ]
+    let table = mouse_area(data_table(&columns, rows, palette)).on_scroll(MonitorMessage::Scroll);
+    let mut block = column![container(head)
+        .height(TASKS_HEAD_HEIGHT)
+        .align_y(alignment::Vertical::Center)]
     .spacing(TASKS_HEAD_GAP)
     .width(Length::Fill)
-    .into()
+    .push(table);
+    if state.snapshot().is_some() && state.order.is_empty() && !state.filter.trim().is_empty() {
+        block = block.push(label(
+            fill_template(
+                lang.text(Msg::MonitorNoMatch),
+                &[("{filter}", state.filter.trim())],
+            ),
+            palette.dim_text,
+        ));
+    }
+    block.into()
 }
 
 fn status_bar<'a>(state: &'a State, lang: Language, palette: &Palette) -> Page<'a> {
@@ -549,15 +558,11 @@ pub fn menu_view<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Moni
             }
         })
         .collect();
-    let catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-        .on_press(MonitorMessage::MenuClose)
-        .on_right_press(MonitorMessage::MenuClose);
-    Some(
-        Stack::new()
-            .push(catcher)
-            .push(popup_menu(entries, menu.origin, ctx.palette))
-            .into(),
-    )
+    Some(popup_layer(
+        popup_menu(entries, menu.origin, ctx.palette),
+        Some(MonitorMessage::MenuClose),
+        RightPress::Dismiss,
+    ))
 }
 
 /// The kill confirmation; the app puts it over a scrim.

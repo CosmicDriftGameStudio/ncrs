@@ -1,17 +1,21 @@
 //! Plain data types several features share. No logic beyond what a type needs
-//! to be built, and no UI.
+//! to be built, and no UI: the palette is colors as data, drawn by the kit.
 
 mod column;
 mod compare_mark;
 mod details;
 mod entry;
+pub mod facts;
 mod folder_size;
 mod found_document;
 mod function_keys;
 mod index_not_open;
+mod note_link;
+pub mod palette;
 mod panel_side;
 pub mod selection;
 mod sort_key;
+pub mod tags;
 mod transfer_kind;
 
 pub use column::{Column, DateFormat, SizeFormat};
@@ -22,6 +26,7 @@ pub use folder_size::FolderSize;
 pub use found_document::{FoundDocument, TextSource};
 pub use function_keys::FUNCTION_KEY_COUNT;
 pub use index_not_open::INDEX_NOT_OPEN;
+pub use note_link::NoteLink;
 pub use panel_side::PanelSide;
 pub use selection::{Selection, SelectionSet};
 pub use sort_key::{SortColumn, SortKey};

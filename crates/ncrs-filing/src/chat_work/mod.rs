@@ -6,6 +6,7 @@
 //! through the journal, so `Undo` can put them back.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError, TryLockError};
 
 use ncrs_ai::ChatModel;
@@ -33,7 +34,7 @@ mod words;
 #[cfg(test)]
 mod tests;
 
-pub use change::branch_example;
+pub use change::{branch_example, segments};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
@@ -105,6 +106,10 @@ pub enum ChatWork {
     Undo {
         batch: BatchId,
     },
+    /// The batches of one tidy-up, newest first.
+    UndoAll {
+        batches: Vec<BatchId>,
+    },
     WaitingCount,
     WaitingLoad,
     WaitingFile {
@@ -150,6 +155,9 @@ pub struct RuleTrial {
     pub not_indexed: usize,
     /// The archive documents the rule renames or moves.
     pub archive_moves: Vec<ArchiveMove>,
+    /// The archive documents that lie wrong but cannot move in one run: two
+    /// want the same name, or they swap names.
+    pub archive_blocked: usize,
 }
 
 /// How many matching documents the chat shows.
@@ -167,6 +175,8 @@ pub struct ChatAccess {
     rules: Option<RulesAccess>,
     load: Load,
     model: Option<Arc<dyn ChatModel>>,
+    copy_roots: Vec<PathBuf>,
+    index_work: crate::index_work::IndexWork,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -190,7 +200,33 @@ impl ChatAccess {
             rules: None,
             load: Load::default(),
             model: None,
+            copy_roots: Vec::new(),
+            index_work: crate::index_work::IndexWork::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_index_work(mut self, index_work: crate::index_work::IndexWork) -> Self {
+        self.index_work = index_work;
+        self
+    }
+
+    /// The work of the caller counts as running until the guard is dropped.
+    pub fn begin_work(&self) -> crate::index_work::IndexWorkGuard {
+        self.index_work.begin()
+    }
+
+    /// The read folders whose files are copied, never emptied: a run out of
+    /// one of them copies, and duplicates in it are not trashed.
+    #[must_use]
+    pub fn with_copy_roots(mut self, copy_roots: Vec<PathBuf>) -> Self {
+        self.copy_roots = copy_roots;
+        self
+    }
+
+    /// Whether the files below `folder` are copied out, not moved.
+    pub fn copies_from(&self, folder: &Path) -> bool {
+        runs::lies_in_copy_root(&self.copy_roots, folder)
     }
 
     /// The model that picks a folder for the files the neighbours cannot place.
@@ -278,6 +314,7 @@ impl ChatAccess {
     }
 
     pub fn run(&self, work: ChatWork) -> ChatResult {
+        let _running = self.index_work.begin();
         match work {
             ChatWork::Read { folder, progress } => {
                 ChatResult::Read(reading::read_folder(self, &folder, &progress).map(Arc::new))
@@ -316,6 +353,7 @@ impl ChatAccess {
             }
             ChatWork::LastRun => ChatResult::LastRun(runs::last_run(self)),
             ChatWork::Undo { batch } => ChatResult::Undone(runs::undo(self, batch)),
+            ChatWork::UndoAll { batches } => ChatResult::Undone(runs::undo_all(self, &batches)),
             ChatWork::WaitingCount => ChatResult::WaitingCount(waiting::count(self)),
             ChatWork::WaitingLoad => ChatResult::WaitingLoaded(waiting::load(self)),
             ChatWork::WaitingFile { items } => {
@@ -375,7 +413,9 @@ impl ChatAccess {
         let tried = rules.try_rule_with(&RuleTry { replaces, spec }, files)?;
         Ok(RuleTrial {
             matches: tried.documents.len() + tried.more,
-            right: tried.in_archive - tried.archive_moves.len(),
+            right: tried
+                .in_archive
+                .saturating_sub(tried.archive_moves.len() + tried.archive_blocked),
             from_inbox: tried.documents.len() + tried.more - tried.in_archive,
             examples: tried
                 .documents
@@ -384,6 +424,7 @@ impl ChatAccess {
                 .take(RULE_TRIAL_EXAMPLES)
                 .collect(),
             archive_moves: tried.archive_moves,
+            archive_blocked: tried.archive_blocked,
             not_indexed: tried.not_indexed,
         })
     }

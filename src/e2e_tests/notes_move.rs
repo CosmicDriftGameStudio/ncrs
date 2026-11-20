@@ -2,9 +2,6 @@
 //! the file inside an indexed location. Hermes runs over a read-only location
 //! with a plain index; the move is the user's own F6.
 
-#![cfg(unix)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
-
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -33,6 +30,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Live for P {}
 /// An indexed location with a file and a subfolder, and a note on the file.
 pub(in crate::e2e_tests) struct NoteOnIndexedFile {
     pub _data: tempfile::TempDir,
+    pub _archive: tempfile::TempDir,
     pub notes: PathBuf,
     pub before: PathBuf,
     pub after: PathBuf,
@@ -43,8 +41,16 @@ pub(in crate::e2e_tests) struct NoteOnIndexedFile {
 fn index_knows(app: &App, file: &std::path::Path) -> bool {
     app.filing_module_for_test()
         .and_then(|module| module.note_link_finder())
-        .and_then(|finder| finder.resolve(&[(None, file.to_path_buf())]).ok())
-        .is_some_and(|resolved| resolved.first().is_some_and(|(id, _)| id.is_some()))
+        .and_then(|finder| {
+            finder
+                .resolve(&[ncrs_core::NoteLink {
+                    document: None,
+                    hash: None,
+                    file: file.to_path_buf(),
+                }])
+                .ok()
+        })
+        .is_some_and(|resolved| resolved.first().is_some_and(|link| link.document.is_some()))
 }
 
 fn has_document(app: &App, file: &std::path::Path) -> bool {
@@ -65,7 +71,8 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
     language: &str,
 ) -> (NoteOnIndexedFile, Session<impl Live>) {
     let data = tempfile::TempDir::new().unwrap();
-    let root = std::fs::canonicalize(tempfile::TempDir::new().unwrap().keep()).unwrap();
+    let archive = tempfile::TempDir::new().unwrap();
+    let root = std::fs::canonicalize(archive.path()).unwrap();
     write(
         &root.join("offer.txt"),
         "Angebot Heizung Vaillant, gueltig bis Dezember",
@@ -149,6 +156,7 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
     (
         NoteOnIndexedFile {
             _data: data,
+            _archive: archive,
             notes,
             before,
             after,

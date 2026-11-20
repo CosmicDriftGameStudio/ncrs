@@ -198,7 +198,9 @@ async fn a_name_taken_on_the_server_asks_and_overwrite_replaces_it() {
 
     settle(
         &mut app,
-        Message::TransferConflict(ConflictChoice::ThisOverwrite),
+        Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::ThisOverwrite,
+        )),
     )
     .await;
 
@@ -281,13 +283,14 @@ async fn confirming_a_bad_address_shows_the_refusal_and_starts_nothing() {
     open(&mut app, PanelSide::Left, local.path().to_path_buf(), None).await;
     select(&mut app, PanelSide::Left, "a.txt");
     drop(app.update(Message::Transfer(TransferKind::Copy)));
-    drop(
-        app.update(Message::TransferDialog(TransferDialogMessage::TargetInput(
-            "sftp://host:99999/x".to_owned(),
-        ))),
-    );
+    drop(app.update(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::TargetInput("sftp://host:99999/x".to_owned()),
+    ))));
 
-    drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+    app.settle_checks_for_test(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::Confirm,
+    )))
+    .await;
 
     let dialog = app.ops.transfer_dialog.as_ref().unwrap();
     assert_eq!(dialog.refusal(), Some(transfer_dialog::Refusal::BadAddress));
@@ -352,10 +355,10 @@ async fn nothing_is_counted_on_a_server_before_the_copy() {
     assert!(
         !reported.iter().any(|message| matches!(
             message,
-            Message::TransferDialog(
+            Message::Ops(OpsMessage::TransferDialog(
                 TransferDialogMessage::Scanned { .. }
                     | TransferDialogMessage::ConflictsCounted { .. }
-            )
+            ))
         )),
         "{reported:?}"
     );
@@ -371,13 +374,14 @@ async fn confirming_a_move_from_a_server_shows_the_refusal_and_keeps_the_dialog(
     open(&mut app, PanelSide::Right, local.path().to_path_buf(), None).await;
     select(&mut app, PanelSide::Left, "tester");
     drop(app.update(Message::Transfer(TransferKind::Copy)));
-    drop(
-        app.update(Message::TransferDialog(TransferDialogMessage::SetKind(
-            TransferKind::Move,
-        ))),
-    );
+    drop(app.update(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::SetKind(TransferKind::Move),
+    ))));
 
-    drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+    app.settle_checks_for_test(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::Confirm,
+    )))
+    .await;
 
     let dialog = app.ops.transfer_dialog.as_ref().unwrap();
     assert_eq!(

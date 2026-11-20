@@ -1,14 +1,5 @@
 use crate::app::*;
 
-/// Runs one job and reports what happens as messages.
-///
-/// Separate from `App` so the queue can hand it to `Task::abortable` without
-/// borrowing the app. The real work of F5/F6/F8 runs per row in `App`; a job
-/// that reaches the queue's `start_next` here has nothing left to do.
-pub(in crate::app) fn run_job(_job: jobs::Job) -> Task<Message> {
-    Task::done(Message::JobFinished(JobEvent::Done))
-}
-
 impl App {
     /// F8 / Shift+F8: ask before deleting.
     pub(in crate::app) fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
@@ -24,14 +15,6 @@ impl App {
 
     pub(in crate::app) fn confirm_delete(&mut self) -> Task<Message> {
         self.with_ops(ncrs_ops::confirm_delete)
-    }
-
-    fn end_delete(&mut self) -> Task<Message> {
-        self.with_ops(ncrs_ops::end_delete)
-    }
-
-    pub(in crate::app) fn end_restore(&mut self) -> Task<Message> {
-        self.with_ops(|ops, ctx| ncrs_ops::end_restore(ops, ctx, false))
     }
 
     /// Runs `step` on the file operation flows and then what they ask of the app.
@@ -57,12 +40,7 @@ impl App {
         &mut self,
         step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>, &Panels) -> R,
     ) -> R {
-        let start_blocked = self.jobs.is_busy()
-            || self.ops.prompt.is_some()
-            || self.ops.conflict_is_open()
-            || self.ops.permissions_dialog.is_some()
-            || self.ops.batch_rename.is_some()
-            || self.ops.batch_running.is_some();
+        let start_blocked = self.jobs.is_busy() || self.ops.is_busy();
         let transfer_dialog_open = self.ops.transfer_dialog.is_some();
         let permanent_delete_key = self
             .keymap
@@ -77,6 +55,7 @@ impl App {
             &ncrs_ops::FlowCtx {
                 lang: self.lang,
                 trash: &self.trash,
+                trash_rows: self.trash_rows(),
                 jobs_busy: self.jobs.is_busy(),
                 start_blocked,
                 transfer_dialog_open,
@@ -87,6 +66,8 @@ impl App {
                 right_archive: self.panel(PanelSide::Right).archive.as_deref(),
                 left_server: self.panel(PanelSide::Left).remote().map(|s| s.root_path()),
                 right_server: self.panel(PanelSide::Right).remote().map(|s| s.root_path()),
+                left_folder: self.panel(PanelSide::Left).path.clone(),
+                right_folder: self.panel(PanelSide::Right).path.clone(),
                 remote: &self.remote,
                 permanent_delete_key,
                 restore_last_key,
@@ -182,7 +163,7 @@ impl App {
                 self.panels.folder_sizes.clear();
                 let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
                     let path = self.panel(each).path.clone();
-                    let select = (path == folder).then(|| name.clone());
+                    let select = (path == folder).then(|| OsString::from(name.clone()));
                     self.load(each, path, select)
                 });
                 Task::batch(tasks)
@@ -209,14 +190,14 @@ impl App {
             }
             Ask::ReloadPanels => {
                 self.panels.folder_sizes.clear();
-                let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
-                    let path = self.panel(each).path.clone();
-                    self.load(each, path, None)
-                });
+                let tasks = [PanelSide::Left, PanelSide::Right]
+                    .map(|each| self.reload_keeping_cursor(each));
                 Task::batch(tasks)
             }
             Ask::RenameRefused { from, text } => {
-                self.panels.refuse_rename(&from, text);
+                if !self.panels.refuse_rename(&from, text.clone()) {
+                    self.set_status_error(&text);
+                }
                 Task::none()
             }
             Ask::RenameEnded {
@@ -231,8 +212,25 @@ impl App {
             }
             Ask::OpenTrash(side) => self.open_trash_on(side),
             Ask::OpenTrashInFinder => self.open_trash_in_finder(),
+            Ask::DropFiles(paths) => {
+                if self.blocking_overlay_is_open() {
+                    let text = self.lang.text(Msg::StatusDropBusy).to_owned();
+                    self.show_notice(text)
+                } else {
+                    self.copy_external_files_into_active_panel(paths)
+                }
+            }
+            Ask::AbortJob => self.abort_job(),
+            Ask::ConfirmQuit => self.confirm_quit_with_job(),
+            Ask::EditFile(path) => {
+                self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
+                Task::none()
+            }
             Ask::ShowErrorWithFinderPress(text) => {
-                self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
+                self.set_status_error_with_press(
+                    &text,
+                    Message::Ops(OpsMessage::Trash(TrashMessage::OpenInFinder)),
+                );
                 Task::none()
             }
         }
@@ -252,9 +250,7 @@ impl App {
         };
         self.panels.rename_hits(from, &to);
         self.panels.folder_sizes.clear();
-        let name = to
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned());
+        let name = to.file_name().map(OsStr::to_os_string);
         let other = side.other();
         let own_path = self.panel(side).path.clone();
         let inside_renamed = self
@@ -274,12 +270,11 @@ impl App {
         ])
     }
 
-    // --- the trash ---
-
-    pub(in crate::app) fn update_trash(&mut self, message: TrashMessage) -> Task<Message> {
-        let rows = self.trash_rows();
-        self.with_ops(|ops, flow| ncrs_ops::update_trash_flow(ops, message, rows, flow))
+    pub(in crate::app) fn update_ops(&mut self, message: OpsMessage) -> Task<Message> {
+        self.with_ops(|ops, ctx| ncrs_ops::update(ops, message, ctx))
     }
+
+    // --- the trash ---
 
     /// Rows of the trash view that fit the window.
     pub(in crate::app) fn trash_rows(&self) -> usize {
@@ -296,7 +291,7 @@ impl App {
         if reach == fs::TrashReach::FinderOnly {
             return self.open_trash_in_finder();
         }
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.job_error = None;
         self.notice = None;
         let closed_search = if self.search.open && self.search.side == side {
@@ -306,13 +301,19 @@ impl App {
         };
         self.panels.active = side;
         let listing = self.ops.show_trash(side, reach, &self.trash);
-        Task::batch([closed_search, listing.map(Message::Trash)])
+        Task::batch([
+            closed_search,
+            listing.map(OpsMessage::Trash).map(Message::Ops),
+        ])
     }
 
     /// Reads the trash on the blocking pool; the answer carries the generation,
     /// so a late one finds the view closed or read again.
     fn list_trash(&mut self) -> Task<Message> {
-        self.ops.list_trash(&self.trash).map(Message::Trash)
+        self.ops
+            .list_trash(&self.trash)
+            .map(OpsMessage::Trash)
+            .map(Message::Ops)
     }
 
     pub(in crate::app) fn trash_panel(&self, side: PanelSide) -> Element<'_, Message> {
@@ -325,6 +326,7 @@ impl App {
             is_active: self.panels.active == side,
             panel_width: self.window_size.width / 2.0,
             lang: self.lang,
+            date_format: self.columns.date_format,
             palette: &self.palette,
             finder_key: self
                 .keymap
@@ -363,17 +365,10 @@ impl App {
 
     /// "Extract here": the tagged archives, else the one under the cursor.
     pub(in crate::app) fn extract_here(&mut self) -> Task<Message> {
-        let panel = self.active_panel();
-        let rows: Vec<&fs::FileEntry> = if panel.selection.any_tagged() {
-            panel.selection.ordered(&panel.entries)
-        } else {
-            panel.selected_entry().into_iter().collect()
-        };
-        let archives: Vec<PathBuf> = rows
+        let archives: Vec<PathBuf> = self
+            .action_rows()
             .into_iter()
-            .filter(|entry| {
-                !entry.is_dir && !entry.is_parent && fs::archive::is_archive_name(&entry.name)
-            })
+            .filter(|entry| !entry.is_dir && fs::archive::is_archive_name(&entry.name))
             .map(|entry| entry.path.clone())
             .collect();
         let side = self.panels.active;
@@ -387,17 +382,7 @@ impl App {
         if self.search_has_keys() || self.trash_has_keys() {
             return Task::none();
         }
-        let panel = self.active_panel();
-        let entries: Vec<fs::FileEntry> = if panel.selection.any_tagged() {
-            panel
-                .selection
-                .ordered(&panel.entries)
-                .into_iter()
-                .cloned()
-                .collect()
-        } else {
-            panel.selected_entry().cloned().into_iter().collect()
-        };
+        let entries: Vec<fs::FileEntry> = self.action_rows().into_iter().cloned().collect();
         let targets = ncrs_ops::targets_of(&entries);
         self.with_ops(|ops, ctx| ncrs_ops::open_permissions(ops, targets, ctx))
     }
@@ -442,12 +427,7 @@ impl App {
         self.with_ops(|ops, ctx| ncrs_ops::open_batch_rename(ops, request, ctx))
     }
 
-    pub(in crate::app) fn toggle_keep_folders(&mut self) -> Task<Message> {
-        self.ops.toggle_keep_folders();
-        Task::none()
-    }
-
-    /// Stops the running job, see `Message::AbortJob`.
+    /// Stops the running job, see `OpsMessage::AbortJob`.
     pub(in crate::app) fn abort_job(&mut self) -> Task<Message> {
         // The folder size walks do not run through the queue.
         self.panels.stop_folder_size_run();
@@ -455,23 +435,7 @@ impl App {
             return Task::none();
         }
         self.drop_progress_channel();
-        if self.ops.extracting.is_some() {
-            ncrs_ops::end_extraction(&mut self.ops);
-            Task::none()
-        } else if let Some(outcome) = ncrs_ops::abort_archive_write(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if let Some(outcome) = ncrs_ops::abort_batch_rename(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if let Some(outcome) = ncrs_ops::abort_permissions(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if self.ops.deleting.is_some() {
-            self.end_delete()
-        } else if self.ops.restoring.is_some() {
-            self.end_restore()
-        } else {
-            let outcome = ncrs_ops::end_transfer(&mut self.ops, self.lang);
-            self.run_ops_outcome(outcome)
-        }
+        self.with_ops(ncrs_ops::abort_running)
     }
 
     /// Both halves of the progress channel go together: a sender kept without
@@ -507,23 +471,9 @@ impl App {
         })
     }
 
-    pub(in crate::app) fn update_transfer_dialog(
-        &mut self,
-        message: TransferDialogMessage,
-    ) -> Task<Message> {
-        self.with_ops(|ops, ctx| ncrs_ops::update_transfer_dialog_flow(ops, message, ctx))
-    }
-
     #[cfg(test)]
     pub(in crate::app) fn prompt_error(&self, err: &CreateDirError) -> String {
         self.ops.prompt_error(self.lang, err)
-    }
-
-    pub(in crate::app) fn start_prompt_job(&mut self) -> Task<Message> {
-        let active = self.panels.active;
-        self.with_ops_and_panels(|ops, ctx, panels| {
-            ncrs_ops::start_prompt_job(ops, panel_facts(panels, active), ctx)
-        })
     }
 
     fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {

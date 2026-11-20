@@ -14,7 +14,6 @@ use crate::header_drag::HeaderPress;
 use crate::header_menu::HeaderMenu;
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
-use crate::reload::PendingReload;
 use crate::volumes::VolumeMenu;
 use ncrs_ui_kit::column_header::HeaderDrag;
 
@@ -76,8 +75,8 @@ pub struct Panels {
     pub path_field: Option<String>,
     /// Id of the latest path check; an older answer is ignored.
     pub path_check_id: u64,
-    /// Reload queued by `PromptSubmit`, run once the create has reported.
-    pub pending_reload: Option<PendingReload>,
+    /// Number of the latest read for the drive menu; an older answer is ignored.
+    pub volume_menu_request: u64,
     /// The folders pinned in the drive menu.
     pub favourites: Vec<PathBuf>,
 }
@@ -100,7 +99,7 @@ impl Panels {
             header_menu: None,
             path_field: None,
             path_check_id: 0,
-            pending_reload: None,
+            volume_menu_request: 0,
             favourites: Vec::new(),
         }
     }

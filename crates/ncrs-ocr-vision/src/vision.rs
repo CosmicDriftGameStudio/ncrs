@@ -126,12 +126,6 @@ fn bounding_box(observation: &VNRecognizedTextObservation) -> CGRect {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use ncrs_intake::test_support::{pdf_text, rendered_pages, text_pdf, write};
     use tempfile::TempDir;

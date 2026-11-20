@@ -13,13 +13,6 @@ publish = false
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-# The crates behind ripgrep, as in the app.
-ignore = "0.4.33"
-globset = "0.4.20"
-grep-regex = "0.1.14"
-grep-searcher = "0.1.17"
-grep-matcher = "0.1.9"
-unicode-normalization = "0.1.26"
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }

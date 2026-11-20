@@ -1,11 +1,12 @@
 //! Starting, replacing and stopping the filing module and its pipeline, and
 //! the steps of the cards that lead there.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use iced::widget::operation;
 use iced::Task;
-use ncrs_config::config::Filing;
+use ncrs_config::config::{Filing, FilingLocation};
 use ncrs_filing::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work};
 use ncrs_i18n::{fill_template, Msg};
 
@@ -43,13 +44,39 @@ pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) 
 }
 
 /// Dropping the runner stops it and lets go of the index before the new
-/// module opens it again.
+/// module opens it again. A runner that exists is joined on the blocking pool,
+/// so a step still running does not freeze the window; the new module starts
+/// when that is done.
 fn replace_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
-    hermes.pipeline = None;
-    hermes.filing = None;
-    let task = start_filing_module(hermes, filing, ctx);
+    if let Some((_, pending)) = hermes.filing_restart.as_mut() {
+        hermes.filing_config = filing.clone();
+        *pending = filing.clone();
+        return Task::none();
+    }
+    drop(hermes.reading_again.give_up());
+    if hermes.pipeline.is_none() && hermes.filing.is_none() {
+        let task = start_filing_module(hermes, filing, ctx);
+        hermes.refresh_filing_snapshot(ctx.now);
+        return task;
+    }
+    restart_in_background(hermes, filing.clone(), ctx)
+}
+
+fn restart_in_background(hermes: &mut Hermes, filing: Filing, ctx: &Ctx<'_>) -> Task<Message> {
+    hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);
+    let generation = hermes.filing_restart_generation;
+    hermes.filing_config = filing.clone();
+    hermes.filing_restart = Some((generation, filing));
+    let pipeline = hermes.pipeline.take();
+    let old_module = hermes.filing.take();
     hermes.refresh_filing_snapshot(ctx.now);
-    task
+    Task::perform(
+        tokio::task::spawn_blocking(move || {
+            drop(pipeline);
+            drop(old_module);
+        }),
+        move |_| Message::FilingStatus(FilingStatusMessage::Restarted(generation)),
+    )
 }
 
 pub fn saved_filing_notice(applies: SavedFilingApplies, ctx: &Ctx<'_>) -> String {
@@ -76,6 +103,7 @@ pub fn apply_saved_filing(
     filing: Filing,
     ctx: &Ctx<'_>,
 ) -> (SavedFilingApplies, Task<Message>) {
+    let forget = forget_removed_locations(hermes, &filing);
     let replaceable = hermes.key_store.is_some()
         && hermes
             .filing
@@ -83,11 +111,42 @@ pub fn apply_saved_filing(
             .is_none_or(|module| !module.has_configured_locations() && module.can_be_replaced());
     if !replaceable {
         hermes.filing_config = filing;
-        return (SavedFilingApplies::AtNextStart, Task::none());
+        return (SavedFilingApplies::AtNextStart, forget);
     }
     (
         SavedFilingApplies::Now,
-        replace_module(hermes, &filing, ctx),
+        Task::batch([forget, replace_module(hermes, &filing, ctx)]),
+    )
+}
+
+/// The locations of the old list that the new one no longer has, without
+/// those that overlap a location that stays: their documents are still the
+/// ones of a location.
+fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<PathBuf> {
+    old.iter()
+        .map(|location| location.path.clone())
+        .filter(|path| {
+            !new.iter()
+                .any(|kept| kept.path.starts_with(path) || path.starts_with(&kept.path))
+        })
+        .collect()
+}
+
+/// Runs at save time: a module that keeps the old list until the next start
+/// may still index a file that arrives in a removed location.
+fn forget_removed_locations(hermes: &Hermes, filing: &Filing) -> Task<Message> {
+    let removed = removed_locations(&hermes.filing_config.locations, &filing.locations);
+    let review_access = hermes.filing.as_ref().and_then(FilingModule::review_access);
+    let (false, Some(access)) = (removed.is_empty(), review_access) else {
+        return Task::none();
+    };
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.forget_locations(&removed)),
+        |joined| {
+            Message::FilingStatus(FilingStatusMessage::LocationsForgotten(
+                joined.unwrap_or_else(|err| Err(err.to_string())),
+            ))
+        },
     )
 }
 
@@ -120,22 +179,11 @@ pub fn apply_ai_change(
         }
         return (SavedFilingApplies::AtNextStart, Task::none());
     }
-    hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);
-    let generation = hermes.filing_restart_generation;
-    hermes.filing_config = filing.clone();
-    hermes.filing_restart = Some((generation, filing));
     drop(hermes.reading_again.give_up());
-    let pipeline = hermes.pipeline.take();
-    let old_module = hermes.filing.take();
-    hermes.refresh_filing_snapshot(ctx.now);
-    let dropped = Task::perform(
-        tokio::task::spawn_blocking(move || {
-            drop(pipeline);
-            drop(old_module);
-        }),
-        move |_| Message::FilingStatus(FilingStatusMessage::Restarted(generation)),
-    );
-    (SavedFilingApplies::Now, dropped)
+    (
+        SavedFilingApplies::Now,
+        restart_in_background(hermes, filing, ctx),
+    )
 }
 
 /// The old module and runner are gone from the blocking pool: the new one
@@ -176,7 +224,11 @@ pub fn change_protection(
     begin: ProtectionStep,
     ctx: &Ctx<'_>,
 ) -> Task<Message> {
-    if ctx.jobs_busy || hermes.is_restarting() {
+    let index_work_running = hermes
+        .filing
+        .as_ref()
+        .is_some_and(FilingModule::index_work_running);
+    if ctx.jobs_busy || hermes.is_restarting() || index_work_running {
         return Task::none();
     }
     let Some(work) = hermes.filing.as_mut().and_then(begin) else {
@@ -202,6 +254,27 @@ fn first_run_creation(module: &mut FilingModule) -> Option<Work> {
     }
 }
 
+const CLIPBOARD_KEY_LIFETIME: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Puts the key on the clipboard and takes it off again after a minute,
+/// unless the user copied something else meanwhile.
+fn copy_and_clear_later(key_text: String) -> Task<Message> {
+    let copied = key_text.clone();
+    let clear = Task::perform(
+        async { tokio::time::sleep(CLIPBOARD_KEY_LIFETIME).await },
+        |()| (),
+    )
+    .then(|()| iced::clipboard::read())
+    .then(move |current| {
+        if current.as_deref() == Some(copied.as_str()) {
+            iced::clipboard::write(String::new())
+        } else {
+            Task::none()
+        }
+    });
+    Task::batch([iced::clipboard::write(key_text), clear])
+}
+
 pub fn update_filing(
     hermes: &mut Hermes,
     message: FilingMessage,
@@ -218,13 +291,23 @@ pub fn update_filing(
         actions.push(Action::ShowNotice(
             ctx.lang.text(Msg::FilingKeyCopied).to_owned(),
         ));
-        return iced::clipboard::write(key_text);
+        return copy_and_clear_later(key_text);
     }
     let work_finished = matches!(message, FilingMessage::WorkDone { .. });
     let was_starting = matches!(module.phase(), Phase::Starting);
     let was_starting_over = matches!(module.phase(), Phase::StartingOver);
+    let was_settling = module.is_settling();
     let work = module.update(message);
+    if (was_starting || was_starting_over || was_settling) && work_finished {
+        if let Some(reason) = module.settle_problem() {
+            actions.push(Action::ShowError(fill_template(
+                ctx.lang.text(Msg::StatusIndexSettleFailed),
+                &[("{reason}", &reason)],
+            )));
+        }
+    }
     if was_starting_over && !matches!(module.phase(), Phase::StartingOver) {
+        actions.push(Action::IndexReplaced);
         actions.push(Action::OpenChat);
     }
     let mut pipeline_started = false;
@@ -281,4 +364,40 @@ pub fn update_filing(
         actions.push(Action::ShowNotice(text));
     }
     Task::batch(tasks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(path: &str) -> FilingLocation {
+        FilingLocation {
+            path: PathBuf::from(path),
+            mode: ncrs_intake::LocationMode::Archive,
+            images: false,
+            is_target: false,
+            transfer: Default::default(),
+        }
+    }
+
+    #[test]
+    fn only_a_location_that_no_kept_one_overlaps_counts_as_removed() {
+        let old = [
+            at("/docs/inbox"),
+            at("/docs/archive"),
+            at("/docs/old"),
+            at("/scans"),
+        ];
+        let new = [
+            at("/docs/archive"),
+            at("/docs/old/kept"),
+            at("/docs/inbox2"),
+        ];
+
+        assert_eq!(
+            removed_locations(&old, &new),
+            vec![PathBuf::from("/docs/inbox"), PathBuf::from("/scans")]
+        );
+        assert_eq!(removed_locations(&old, &old), Vec::<PathBuf>::new());
+    }
 }

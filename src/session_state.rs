@@ -5,6 +5,7 @@
 //! changes only when a setting is changed; this file is written by ncrs on every
 //! quit and shortly after changes, and may be deleted at any time to start fresh. Where it lives
 //! is decided once, by `config::default_state_path`.
+use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -184,11 +185,30 @@ pub fn load(path: &Path) -> SessionState {
                 version: state.version.max(FIRST_STATE_VERSION),
                 ..state
             },
-            Err(err) => fall_back(err.to_string()),
+            Err(err) => {
+                // The next save replaces the file; what the user typed into
+                // it stays beside it, and the favourites are the part worth
+                // keeping.
+                drop(std::fs::copy(path, path.with_extension("toml.broken")));
+                SessionState {
+                    favourites: salvaged_favourites(&text),
+                    ..fall_back(err.to_string())
+                }
+            }
         },
         Err(err) if err.kind() == io::ErrorKind::NotFound => SessionState::default(),
         Err(err) => fall_back(err.to_string()),
     }
+}
+
+/// The favourites of a state file whose other fields do not parse.
+fn salvaged_favourites(text: &str) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct Stored {
+        #[serde(default)]
+        favourites: Vec<String>,
+    }
+    toml_edit::de::from_str::<Stored>(text).map_or_else(|_| Vec::new(), |stored| stored.favourites)
 }
 
 /// Whether the file at `path` is a state of a newer ncrs, which `load` left
@@ -264,11 +284,12 @@ impl PanelRecord {
     /// The entry to put the cursor on in the first listing. Only for the saved
     /// folder itself: a name from a folder that has gone says nothing about its
     /// parent.
-    pub fn start_cursor(&self) -> Option<String> {
+    pub fn start_cursor_in(&self, start_directory: Option<&Path>) -> Option<OsString> {
         let saved = Path::new(self.path.as_deref()?);
-        (self.start_directory()? == saved)
+        (start_directory? == saved)
             .then(|| self.cursor.clone())
             .flatten()
+            .map(OsString::from)
     }
 
     /// The saved Back and Forward stacks, capped again.
@@ -295,12 +316,6 @@ impl PanelRecord {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,6 +450,20 @@ mod tests {
         let file = scratch.path().join("state.toml");
         std::fs::write(&file, "version = 1\nleft = 5\n").unwrap();
         assert_eq!(load(&file), SessionState::default());
+    }
+
+    #[test]
+    fn a_broken_field_keeps_the_favourites_and_a_copy_of_the_file() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("state.toml");
+        let text = "version = 1\nfavourites = [\"/a\", \"/b\"]\nleft = 5\n";
+        std::fs::write(&file, text).unwrap();
+        let state = load(&file);
+        assert_eq!(state.favourites, vec!["/a".to_owned(), "/b".to_owned()]);
+        assert_eq!(
+            std::fs::read_to_string(scratch.path().join("state.toml.broken")).unwrap(),
+            text
+        );
     }
 
     #[test]

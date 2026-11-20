@@ -35,7 +35,7 @@ can be agreed before the work is done.
 cargo test -p <crate>                         # the crate you changed; CI runs the whole workspace
 cargo clippy -p <crate> --all-targets -- -D warnings
 cargo fmt --all --check
-cargo test -p ncrs readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
+cargo test -p ncrs --features media-tools readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
 ```
 
 The default build compiles llama.cpp (the built-in AI model), which needs cmake, a

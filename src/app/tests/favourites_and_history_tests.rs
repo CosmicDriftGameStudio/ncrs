@@ -209,15 +209,15 @@ fn two_drives() -> Vec<fs::Volume> {
         .collect()
 }
 
-#[test]
-fn the_favourites_action_needs_a_favourite_and_opens_on_the_first() {
+#[tokio::test]
+async fn the_favourites_action_needs_a_favourite_and_opens_on_the_first() {
     let mut app = App::with_fixed_panels().with_volumes(two_drives);
-    drop(app.update(Message::OpenFavourites));
+    app.settle_checks_for_test(Message::OpenFavourites).await;
     assert_eq!(app.notice.as_deref(), Some("No favourites yet"));
     assert!(!app.volume_menu_is_open());
 
     app.panels.favourites = vec![PathBuf::from("/nowhere/at/all")];
-    drop(app.update(Message::OpenFavourites));
+    app.settle_checks_for_test(Message::OpenFavourites).await;
     assert_eq!(app.volume_menu_selected(), Some(2));
 }
 
@@ -227,32 +227,35 @@ async fn a_click_on_a_favourite_row_opens_its_folder() {
     let favourite = scratch.path().join("c");
     let mut app = started_in(scratch.path()).with_volumes(two_drives);
     app.panels.favourites = vec![favourite.clone()];
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
 
-    settle(&mut app, Message::VolumeMenuClick(2)).await;
+    settle(&mut app, Message::Panel(PanelMessage::VolumeMenuClick(2))).await;
 
     assert!(!app.volume_menu_is_open());
     assert_eq!(app.panels.left.path, favourite);
 }
 
-#[test]
-fn the_menu_opens_with_a_favourite_and_no_drives() {
+#[tokio::test]
+async fn the_menu_opens_with_a_favourite_and_no_drives() {
     let mut app = App::with_fixed_panels().with_volumes(Vec::new);
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
     assert!(!app.volume_menu_is_open());
 
     app.panels.favourites = vec![PathBuf::from("/nowhere/at/all")];
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
     assert!(app.volume_menu_is_open());
 }
 
-#[test]
-fn a_missing_favourite_reports_and_stays_in_the_list() {
+#[tokio::test]
+async fn a_missing_favourite_reports_and_stays_in_the_list() {
     let mut app = App::with_fixed_panels().with_volumes(two_drives);
     app.panels.favourites = vec![PathBuf::from("/nowhere/at/all")];
-    drop(app.update(Message::OpenFavourites));
+    app.settle_checks_for_test(Message::OpenFavourites).await;
 
-    drop(app.update(Message::VolumeMenuActivate));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuActivate)));
 
     assert!(!app.volume_menu_is_open());
     assert_eq!(
@@ -262,22 +265,23 @@ fn a_missing_favourite_reports_and_stays_in_the_list() {
     assert_eq!(app.panels.favourites, [PathBuf::from("/nowhere/at/all")]);
 }
 
-#[test]
-fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
+#[tokio::test]
+async fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
     let mut app = App::with_fixed_panels().with_volumes(two_drives);
     app.panels.favourites = vec![PathBuf::from("/x/one"), PathBuf::from("/x/two")];
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
-    drop(app.update(Message::VolumeMenuFirst));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuFirst)));
 
-    drop(app.update(Message::VolumeMenuRemove));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuRemove)));
     assert_eq!(
         app.panels.favourites.len(),
         2,
         "a drive row is not removable"
     );
 
-    drop(app.update(Message::VolumeMenuLast));
-    drop(app.update(Message::VolumeMenuRemove));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuLast)));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuRemove)));
     assert_eq!(
         app.panels.favourites.len(),
         2,
@@ -286,7 +290,7 @@ fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
     if let Some(menu) = app.panels.volume_menu.as_mut() {
         menu.selected = menu.last_row().saturating_sub(1);
     }
-    drop(app.update(Message::VolumeMenuRemove));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuRemove)));
     assert_eq!(app.panels.favourites, [PathBuf::from("/x/one")]);
     assert!(app.volume_menu_is_open(), "the menu stays open");
     assert_eq!(
@@ -296,13 +300,14 @@ fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
     );
 }
 
-#[test]
-fn removing_the_last_favourite_without_drives_leaves_the_trash_row_open() {
+#[tokio::test]
+async fn removing_the_last_favourite_without_drives_leaves_the_trash_row_open() {
     let mut app = App::with_fixed_panels().with_volumes(Vec::new);
     app.panels.favourites = vec![PathBuf::from("/x/one")];
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
 
-    drop(app.update(Message::VolumeMenuRemove));
+    drop(app.update(Message::Panel(PanelMessage::VolumeMenuRemove)));
 
     assert!(app.panels.favourites.is_empty());
     assert!(app.volume_menu_is_open(), "the trash row is still there");
@@ -317,7 +322,7 @@ fn delete_and_backspace_in_the_menu_remove_and_alt_left_is_the_panels() {
     for key in [Named::Delete, Named::Backspace] {
         assert_eq!(
             route_key(&in_menu, Key::Named(key), Modifiers::default()),
-            Some(Message::VolumeMenuRemove)
+            Some(Message::Panel(PanelMessage::VolumeMenuRemove))
         );
     }
     let panels = PromptKeyState::default();

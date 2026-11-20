@@ -3,11 +3,8 @@
 
 #![cfg(test)]
 #![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::integer_division
+    clippy::integer_division,
+    reason = "arithmetic on small counts in a test"
 )]
 
 use std::collections::BTreeMap;

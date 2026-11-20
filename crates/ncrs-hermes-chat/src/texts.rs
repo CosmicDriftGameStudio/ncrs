@@ -1,8 +1,9 @@
 //! The sentences of the chat, filled in.
 
-use std::path::{Component, Path};
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+pub use ncrs_filing::chat_work::segments;
 use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_intake::{branch_plain, Area, Branch, ConditionProblem, RuleProblem};
@@ -65,15 +66,6 @@ pub fn rule_problem_text(lang: Language, problem: &RuleProblem) -> String {
 
 pub fn number(value: usize) -> String {
     value.to_string()
-}
-
-pub fn segments(path: &Path) -> Vec<String> {
-    path.components()
-        .filter_map(|component| match component {
-            Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The folder as the user knows it: the well-known ones by their name in the
@@ -226,7 +218,10 @@ pub fn when_text(ctx: &Ctx, unix_seconds: i64) -> String {
     let at = u64::try_from(unix_seconds)
         .ok()
         .map(|seconds| SystemTime::UNIX_EPOCH + Duration::from_secs(seconds));
-    let formatted = format::time(at);
+    let formatted = at
+        .and_then(format::local_time)
+        .map(|moment| format::date_text(moment, ctx.now, format::DateFormat::Iso, ctx.lang))
+        .unwrap_or_default();
     let (date, time) = formatted.split_once(' ').unwrap_or((&formatted, ""));
     if date == ctx.now.format("%Y-%m-%d").to_string() {
         fill(ctx.lang, Msg::HermesChatWhenToday, &[("time", time)])

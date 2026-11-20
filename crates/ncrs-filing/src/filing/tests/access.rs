@@ -1,4 +1,5 @@
 use super::*;
+use ncrs_core::NoteLink;
 
 #[test]
 fn the_pipeline_is_refused_in_every_phase_but_ready() {
@@ -290,26 +291,32 @@ fn a_ready_module_stays_ready_whatever_it_is_sent() {
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::NoIndexYet,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::Opened,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::PlainFileWithKeyEntry,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::KeyMissing,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::KeyMismatch,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::Failed("broken".to_owned()),
+            damage: None,
         },
         WorkOutcome::Created(Ok(None)),
         WorkOutcome::Created(Ok(Some(FilingModule::fixed_recovery_key()))),
@@ -518,6 +525,14 @@ fn the_process_again_finder_exists_in_ready_only_and_fails_without_an_index() {
     assert_eq!(finder.find(&[]), Err(INDEX_NOT_OPEN.to_owned()));
 }
 
+fn note_link(document: Option<i64>, hash: Option<&str>, file: &Path) -> NoteLink {
+    NoteLink {
+        document,
+        hash: hash.map(str::to_owned),
+        file: file.to_owned(),
+    }
+}
+
 #[test]
 fn the_note_link_finder_follows_a_moved_file_by_its_id_and_falls_back_to_the_path() {
     use ncrs_index::{ContentHash, DocumentSource, FileStamp, NewDocument};
@@ -538,13 +553,20 @@ fn the_note_link_finder_follows_a_moved_file_by_its_id_and_falls_back_to_the_pat
     put_index(&module.index, index);
     let finder = || module.note_link_finder().unwrap();
     let stranger = PathBuf::from("/elsewhere/other.pdf");
+    let hash_of_nine = "09".repeat(32);
 
     let by_path = finder()
-        .resolve(&[(None, old.clone()), (None, stranger.clone())])
+        .resolve(&[
+            note_link(None, None, &old),
+            note_link(None, None, &stranger),
+        ])
         .unwrap();
     assert_eq!(
         by_path,
-        vec![(Some(id.number()), old.clone()), (None, stranger)]
+        vec![
+            note_link(Some(id.number()), Some(&hash_of_nine), &old),
+            note_link(None, None, &stranger)
+        ]
     );
 
     let moved = PathBuf::from("/archive/2026/offer.pdf");
@@ -559,8 +581,74 @@ fn the_note_link_finder_follows_a_moved_file_by_its_id_and_falls_back_to_the_pat
         .set_document_path(id, &moved, stamp)
         .unwrap();
     drop(guard);
-    let after_move = finder().resolve(&[(Some(id.number()), old)]).unwrap();
-    assert_eq!(after_move, vec![(Some(id.number()), moved)]);
+    let after_move = finder()
+        .resolve(&[note_link(Some(id.number()), None, &old)])
+        .unwrap();
+    assert_eq!(
+        after_move,
+        vec![note_link(Some(id.number()), Some(&hash_of_nine), &moved)]
+    );
+    let by_hash = finder()
+        .resolve(&[note_link(Some(id.number() + 40), Some(&hash_of_nine), &old)])
+        .unwrap();
+    assert_eq!(by_hash, after_move);
+}
+
+#[test]
+fn a_stored_id_that_names_another_file_after_a_start_over_is_not_trusted() {
+    use ncrs_index::{ContentHash, DocumentSource, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let stranger = PathBuf::from("/archive/stranger.pdf");
+    let stranger_id = index
+        .insert_document(&NewDocument {
+            hash: ContentHash([1; 32]),
+            path: stranger.clone(),
+            source: DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    let wanted = dir.path().join("wanted.pdf");
+    std::fs::write(&wanted, b"x").unwrap();
+    let wanted_id = index
+        .insert_document(&NewDocument {
+            hash: ContentHash([2; 32]),
+            path: wanted.clone(),
+            source: DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    put_index(&module.index, index);
+    let wanted_hash = "02".repeat(32);
+
+    let resolved = module
+        .note_link_finder()
+        .unwrap()
+        .resolve(&[note_link(
+            Some(stranger_id.number()),
+            Some(&wanted_hash),
+            &wanted,
+        )])
+        .unwrap();
+
+    assert_eq!(
+        resolved,
+        vec![note_link(
+            Some(wanted_id.number()),
+            Some(&wanted_hash),
+            &wanted
+        )]
+    );
+    let by_path_only = module
+        .note_link_finder()
+        .unwrap()
+        .resolve(&[note_link(Some(stranger_id.number()), None, &wanted)])
+        .unwrap();
+    assert_eq!(by_path_only, resolved);
 }
 
 #[test]
@@ -631,4 +719,58 @@ fn new_kinds_wait_for_the_index_while_a_run_holds_it() {
         lock(&module.index).as_ref().unwrap().kinds(),
         &kinds
     ));
+}
+
+#[test]
+fn an_excluded_folder_leaves_the_index_and_a_note_link_finds_its_file_again_by_hash() {
+    use ncrs_index::{ContentHash, DocumentSource, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let document_at = |path: &Path| NewDocument {
+        hash: ContentHash([7; 32]),
+        path: path.to_path_buf(),
+        source: DocumentSource::Archive,
+        received_at: chrono::Utc::now(),
+        stamp: None,
+    };
+    let archive = dir.path().join("archive");
+    let first = archive.join("old").join("offer.pdf");
+    let first_id = index.insert_document(&document_at(&first)).unwrap();
+    let neighbour = archive.join("older").join("offer.pdf");
+    index
+        .insert_document(&NewDocument {
+            hash: ContentHash([8; 32]),
+            ..document_at(&neighbour)
+        })
+        .unwrap();
+    index.exclude_path(&archive.join("old")).unwrap();
+    assert_eq!(index.document_by_path(&first).unwrap(), None);
+    assert!(index.document_by_path(&neighbour).unwrap().is_some());
+    put_index(&module.index, index);
+    let hash_of_seven = "07".repeat(32);
+    let link = note_link(Some(first_id.number()), Some(&hash_of_seven), &first);
+
+    let while_gone = module
+        .note_link_finder()
+        .unwrap()
+        .resolve(std::slice::from_ref(&link));
+    assert_eq!(while_gone, Ok(vec![link.clone()]));
+
+    let again = archive.join("kept").join("offer.pdf");
+    let again_id = lock(&module.index)
+        .as_ref()
+        .unwrap()
+        .insert_document(&document_at(&again))
+        .unwrap();
+    let found = module.note_link_finder().unwrap().resolve(&[link]).unwrap();
+    assert_eq!(
+        found,
+        vec![note_link(
+            Some(again_id.number()),
+            Some(&hash_of_seven),
+            &again
+        )]
+    );
 }

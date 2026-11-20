@@ -1,12 +1,10 @@
 //! Acceptance shots for 1.5.0: the real app, headless, each new flow driven
-//! through its messages and keys. The asserts are the check, the pictures in
-//! `target/acceptance/v150/` are the evidence for the acceptance.
+//! through its messages and keys. The asserts always run; the pictures in
+//! `target/acceptance/v150/` are only taken when `NCRS_ACCEPTANCE_SHOTS` is set.
 //!
-//! Run: `cargo test -p ncrs --bin ncrs acceptance_v150 -- --ignored --test-threads=1`.
+//! Pictures: `NCRS_ACCEPTANCE_SHOTS=1 cargo test -p ncrs --bin ncrs acceptance_v150 -- --test-threads=1`.
 
-#![cfg(unix)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
-
+use crate::messages::MenuMessage;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -34,6 +32,9 @@ trait Live: iced::Program<State = App, Message = Message> + 'static {}
 impl<P: iced::Program<State = App, Message = Message> + 'static> Live for P {}
 
 fn shoot(app: &App, name: &str) {
+    if std::env::var_os("NCRS_ACCEPTANCE_SHOTS").is_none() {
+        return;
+    }
     std::fs::create_dir_all(SHOT_DIR).unwrap();
     let shot = PathBuf::from(SHOT_DIR);
     drop(std::fs::remove_file(
@@ -259,7 +260,6 @@ fn paste<P: Live>(session: &mut Session<P>, text: &str) {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn viewer_markdown_and_source() {
     let world = World::new("viewer", "");
     let mut session = world.boot();
@@ -292,7 +292,6 @@ fn open_programs_page<P: Live>(session: &mut Session<P>) {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn programs_page_by_type() {
     let world = World::new("programs", THREE_RULES);
     let mut session = world.boot();
@@ -301,7 +300,6 @@ fn programs_page_by_type() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn a_txt_rule_sends_f3_to_the_viewer() {
     let rules = "[open]\nby_type = [\n\
         { extensions = [\"md\", \"markdown\"], with = \"internal\" },\n\
@@ -342,8 +340,17 @@ fn a_txt_rule_sends_f3_to_the_viewer() {
     shoot(&session.app, "04-f3-txt-intern");
 }
 
+/// How many documents the index knows below `folder`: what "process again"
+/// would find there. The scan indexes in no fixed order and takes as long as
+/// the machine takes.
+fn indexed_below(app: &App, folder: &Path) -> usize {
+    app.filing_module_for_test()
+        .and_then(|module| module.process_again_finder())
+        .and_then(|finder| finder.find(&[folder.to_path_buf()]).ok())
+        .map_or(0, |found| found.len())
+}
+
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn process_again_asks_before_many_inbox_files() {
     let world = World::new("again", "");
     let inbox = world.downloads.parent().unwrap().join("Eingang");
@@ -390,7 +397,18 @@ fn process_again_asks_before_many_inbox_files() {
         }
     }
     pump_until(&mut session, 1, is_ready);
-    pump_for(&mut session, Duration::from_secs(5), |_| false);
+    let scans = inbox.join("Scans Oktober");
+    for _ in 0..300 {
+        pump_for(&mut session, Duration::from_millis(200), |_| false);
+        if indexed_below(&session.app, &scans) == 3 {
+            break;
+        }
+    }
+    assert_eq!(
+        indexed_below(&session.app, &scans),
+        3,
+        "the index never learned the scans"
+    );
 
     go_to(&mut session, "Scans Oktober");
     session.press(Key::Named(Named::Insert));
@@ -469,7 +487,6 @@ fn press_note<P: Live>(session: &mut Session<P>, key: ncrs_notes::tree::RowKey) 
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn notes_view_edit_and_search() {
     use ncrs_notes::tree::RowKey;
     let world = notes_world("notes");
@@ -505,15 +522,14 @@ fn notes_view_edit_and_search() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn note_on_file_menu_and_marker() {
     let world = notes_world("note-on-file");
     let mut session = world.boot();
     go_to(&mut session, "Rechnung-Telekom-2025-10.pdf");
-    session.send(Message::ContextMenuKey);
+    session.send(Message::Files(MenuMessage::ContextMenuKey));
     assert!(session.app.context_menu_for_test().is_some());
     shoot(&session.app, "09-notiz-zur-datei-menue");
-    session.send(Message::ContextMenuClose);
+    session.send(Message::Files(MenuMessage::ContextMenuClose));
 
     session.press_with(
         Key::Character("n".into()),
@@ -538,15 +554,14 @@ fn note_on_file_menu_and_marker() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn archive_menu_and_extract_here() {
     let world = World::new("extract", "");
     let mut session = world.boot();
     go_to(&mut session, "Backup-Dokumente-2024.zip");
-    session.send(Message::ContextMenuKey);
+    session.send(Message::Files(MenuMessage::ContextMenuKey));
     assert!(session.app.context_menu_for_test().is_some());
     shoot(&session.app, "11-archiv-menue");
-    session.send(Message::ContextMenuClose);
+    session.send(Message::Files(MenuMessage::ContextMenuClose));
 
     go_to(&mut session, "Fotos-Urlaub.zip");
     session.send(Message::ExtractHere);
@@ -569,7 +584,6 @@ fn archive_menu_and_extract_here() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn pack_three_files_as_7z() {
     let world = World::new("pack", "");
     let mut session = world.boot();
@@ -582,11 +596,13 @@ fn pack_three_files_as_7z() {
         session.press(Key::Named(Named::Insert));
     }
     session.send(Message::PackPrompt);
-    session.send(Message::PromptFormat(ArchiveFormat::SevenZip));
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptFormat(
+        ArchiveFormat::SevenZip,
+    )));
     assert!(session.app.prompt_is_open_for_test());
     shoot(&session.app, "13-packen-dialog");
 
-    session.send(Message::PromptSubmit);
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptSubmit));
     session.settle();
     let packed: Vec<PathBuf> = std::fs::read_dir(&world.other)
         .unwrap()
@@ -607,7 +623,6 @@ fn pack_three_files_as_7z() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn a_note_follows_its_file_when_it_is_moved() {
     let (moved, mut session) = super::notes_move::boot_with_a_note_on_an_indexed_file("de");
     let front_before = std::fs::read_to_string(

@@ -257,35 +257,72 @@ impl fmt::Debug for NoteLinkFinder {
 }
 
 impl NoteLinkFinder {
-    /// For each `(document id, file path)` as the note has it, the id and the
-    /// current path of the file, in the same order. The id survives a move, so
-    /// it wins over the path; a note without an id gets the id of the document
-    /// at its path, and a file the index does not know keeps what it had.
-    pub fn resolve(
-        self,
-        links: &[(Option<i64>, PathBuf)],
-    ) -> Result<Vec<(Option<i64>, PathBuf)>, String> {
+    /// For each note link, where its file is now, in the same order. The
+    /// stored id is trusted only when the document it names still has the
+    /// stored path or hash (an index started over hands out the numbers
+    /// again); then a file with the stored hash wins over the stored path, so a
+    /// moved file is found again. A note from before hashes were stored trusts
+    /// the id when the document lies at the stored path or that path is gone.
+    /// A file the index does not know keeps what it had.
+    pub fn resolve(self, links: &[NoteLink]) -> Result<Vec<NoteLink>, String> {
         let guard = lock(&self.slot);
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         links
             .iter()
-            .map(|(known, file)| {
-                let document = match known {
-                    Some(id) => index
-                        .document(ncrs_index::DocumentId::from_number(*id))
-                        .map_err(|err| err.to_string())?
-                        .filter(|document| document.missing_since.is_none()),
-                    None => index
-                        .document_by_path(file)
-                        .map_err(|err| err.to_string())?,
-                };
-                Ok(match document {
-                    Some(found) => (Some(found.id.number()), found.path),
-                    None => (*known, file.clone()),
-                })
-            })
+            .map(|link| resolve_link(index, link).map_err(|err| err.to_string()))
             .collect()
     }
+}
+
+fn resolve_link(index: &Index, link: &NoteLink) -> Result<NoteLink, IndexError> {
+    let present = |document: Option<Document>| document.filter(|d| d.missing_since.is_none());
+    let by_id = match link.document {
+        Some(id) => present(index.document(ncrs_index::DocumentId::from_number(id))?),
+        None => None,
+    };
+    let trusted = by_id.filter(|document| {
+        document.path == link.file
+            || match &link.hash {
+                Some(hash) => hash_hex(&document.hash) == *hash,
+                None => !link.file.exists(),
+            }
+    });
+    let by_hash = match (&trusted, &link.hash) {
+        (None, Some(hash)) => match parse_hash(hash) {
+            Some(parsed) => present(index.document_by_hash(&parsed)?),
+            None => None,
+        },
+        _ => None,
+    };
+    let found = match trusted.or(by_hash) {
+        Some(document) => Some(document),
+        None => index.document_by_path(&link.file)?,
+    };
+    Ok(match found {
+        Some(document) => NoteLink {
+            document: Some(document.id.number()),
+            hash: Some(hash_hex(&document.hash)),
+            file: document.path,
+        },
+        None => link.clone(),
+    })
+}
+
+fn hash_hex(hash: &ContentHash) -> String {
+    hash.0.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn parse_hash(hex: &str) -> Option<ContentHash> {
+    let bytes = hex.as_bytes();
+    if bytes.len() != 64 {
+        return None;
+    }
+    let mut out: [u8; 32] = [0; 32];
+    for (slot, pair) in out.iter_mut().zip(bytes.chunks(2)) {
+        let text = std::str::from_utf8(pair).ok()?;
+        *slot = u8::from_str_radix(text, 16).ok()?;
+    }
+    Some(ContentHash(out))
 }
 
 impl FilingModule {

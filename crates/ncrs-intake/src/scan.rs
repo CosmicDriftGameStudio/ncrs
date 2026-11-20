@@ -5,10 +5,11 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use chrono::Utc;
 use ncrs_index::Index;
 use walkdir::WalkDir;
 
-use crate::classify::{is_hidden_name, Skip};
+use crate::classify::{classify, is_hidden_name, Skip};
 use crate::error::IntakeError;
 use crate::location::Location;
 use crate::stability::StabilityTracker;
@@ -199,8 +200,28 @@ fn settle_vanished_documents(
     location: &Location,
     report: &mut ScanReport,
 ) -> Result<(), IntakeError> {
-    for (id, path) in index.documents_under(&location.path)? {
+    let documents = index.documents_under(&location.path)?;
+    // A drive that is not mounted can leave its folder behind empty: every
+    // document would be marked missing and purged after the retention time.
+    let every_file_gone = !documents.is_empty()
+        && fs::read_dir(&location.path).is_ok_and(|mut entries| entries.next().is_none())
+        && documents
+            .iter()
+            .all(|(_, path)| matches!(path_exists(path), Ok(false)));
+    if every_file_gone {
+        return Err(IntakeError::Io {
+            path: location.path.clone(),
+            source: io::Error::other(
+                "the folder is empty but the index holds documents of it; it may be a drive that is not mounted",
+            ),
+        });
+    }
+    for (id, path) in documents {
         match path_exists(&path) {
+            // Mail texts read before they were left out of the index.
+            Ok(true) if classify(location, &path) == Err(Skip::MailBody) => {
+                index.delete_document(id)?;
+            }
             Ok(true) => {}
             Ok(false) => {
                 let Some(document) = index.document(id)? else {
@@ -218,5 +239,11 @@ fn settle_vanished_documents(
             Err(_unreadable) => report.count_error(&path),
         }
     }
+    let cutoff = Utc::now().timestamp() - MISSING_DOCUMENTS_KEPT_DAYS * 24 * 60 * 60;
+    index.purge_missing_beneath(&location.path, cutoff)?;
     Ok(())
 }
+
+/// How long the text and fields of a document whose file is gone stay in the
+/// index, in case the file comes back or was only moved.
+const MISSING_DOCUMENTS_KEPT_DAYS: i64 = 30;

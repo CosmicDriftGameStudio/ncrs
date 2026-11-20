@@ -1,7 +1,7 @@
 //! The trial: where each file of a folder would go, decided without touching
 //! anything.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -164,6 +164,9 @@ pub fn trial(
         .collect();
 
     let folder_list = FolderList::of(&target.files);
+    // Where the first file of each content in the source goes: a second file
+    // with the same content is a duplicate of it and is not filed again.
+    let mut filed_from_source: HashMap<ContentHash, PathBuf> = HashMap::new();
     let mut candidate_lists = Vec::with_capacity(source.files.len());
     let mut entries = Vec::with_capacity(source.files.len());
     for file in &source.files {
@@ -173,7 +176,11 @@ pub fn trial(
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         let mut decided = Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
-        if let Some(at) = target.hashes.get(&file.hash) {
+        if let Some(at) = target
+            .hashes
+            .get(&file.hash)
+            .or_else(|| filed_from_source.get(&file.hash))
+        {
             decided.outcome = TrialOutcome::AlreadyThere { at: at.clone() };
         } else {
             let ctx = Deciding {
@@ -186,6 +193,9 @@ pub fn trial(
                 folder_list: &folder_list,
             };
             decided = decide(&ctx, file, &name, &mut taken);
+            if let TrialOutcome::Filed { to } = &decided.outcome {
+                filed_from_source.insert(file.hash, to.clone());
+            }
         }
         candidate_lists.push(decided.candidates);
         entries.push(TrialEntry {

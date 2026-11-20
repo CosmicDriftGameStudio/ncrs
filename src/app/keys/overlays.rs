@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::MenuMessage;
 
 /// Which keys the open delete dialog answers to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -11,22 +12,20 @@ pub enum DeleteKeys {
     Permanent,
 }
 
-/// What Escape sends while one of the small button dialogs is up: the about
-/// card, the OCR models card, the AI model card or the folder grant dialog.
+/// What Escape sends while one of the small button dialogs is on top: the
+/// about card, the OCR models card, the AI model card, the folder grant dialog
+/// or the question before the Hermes index is removed.
 pub(in crate::app) fn card_close_message(prompt: &PromptKeyState) -> Option<Message> {
-    if let Some(hermes) = ncrs_hermes_ui::keys::hermes_card_close_message(&hermes_key_facts(prompt))
-    {
-        Some(hermes.into())
-    } else if prompt.about {
-        Some(Message::About(AboutMessage::Close))
-    } else if prompt.ocr_models {
-        Some(Message::OcrModels(OcrModelsMessage::Close))
-    } else if prompt.ai_model {
-        Some(Message::AiModel(AiModelMessage::Close))
-    } else if prompt.grant_dialog {
-        Some(Message::Grant(GrantMessage::Later))
-    } else {
-        None
+    match prompt.top_modal()? {
+        Modal::StartOver => {
+            ncrs_hermes_ui::keys::hermes_card_close_message(&hermes_key_facts(prompt))
+                .map(Message::from)
+        }
+        Modal::About => Some(Message::About(AboutMessage::Close)),
+        Modal::OcrModels => Some(Message::OcrModels(OcrModelsMessage::Close)),
+        Modal::AiModel => Some(Message::AiModel(AiModelMessage::Close)),
+        Modal::Grant => Some(Message::Grant(GrantMessage::Later)),
+        _ => None,
     }
 }
 
@@ -66,11 +65,15 @@ pub(in crate::app) fn conflict_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    let aborts =
-        || bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob);
+    let aborts = || {
+        bound_message(&prompt.keymap, &key, key_modifiers, scope)
+            == Some(Message::Ops(OpsMessage::AbortJob))
+    };
     ncrs_ops::keys::conflict_key(&key, key_modifiers, aborts).map(|pressed| match pressed {
-        ConflictKey::Answer(choice) => Message::TransferConflict(choice),
-        ConflictKey::ToggleAll => Message::ToggleConflictAll,
+        ConflictKey::Answer(choice) => {
+            Message::from(ncrs_ops::OpsMessage::TransferConflict(choice))
+        }
+        ConflictKey::ToggleAll => Message::from(ncrs_ops::OpsMessage::ToggleConflictAll),
         ConflictKey::Dialog(dialog) => dialog_message(dialog),
     })
 }
@@ -83,7 +86,7 @@ pub(in crate::app) fn transfer_overlay_key(
 ) -> Option<Message> {
     let bound = || match bound_message(&prompt.keymap, key, key_modifiers, scope) {
         Some(Message::Quit) => OpsBound::Quit,
-        Some(Message::AbortJob) => OpsBound::AbortJob,
+        Some(Message::Ops(OpsMessage::AbortJob)) => OpsBound::AbortJob,
         _ => OpsBound::Other,
     };
     ncrs_ops::keys::transfer_overlay_key(
@@ -93,21 +96,22 @@ pub(in crate::app) fn transfer_overlay_key(
         bound,
     )
     .map(|pressed| match pressed {
-        TransferOverlayKey::Dialog(message) => Message::TransferDialog(message),
-        TransferOverlayKey::AbortJob => Message::AbortJob,
+        TransferOverlayKey::Dialog(message) => Message::Ops(OpsMessage::TransferDialog(message)),
+        TransferOverlayKey::Button(button) => dialog_message(button),
+        TransferOverlayKey::AbortJob => Message::Ops(OpsMessage::AbortJob),
         TransferOverlayKey::Quit => Message::Quit,
     })
 }
 
 pub(in crate::app) fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
     ncrs_files::keys::context_menu_key(prompt.context_submenu, key).map(|pressed| match pressed {
-        ContextMenuKey::CloseSub => Message::ContextMenuCloseSub,
-        ContextMenuKey::Close => Message::ContextMenuClose,
-        ContextMenuKey::OpenSub => Message::ContextMenuOpenSub,
-        ContextMenuKey::Activate => Message::ContextMenuActivate,
-        ContextMenuKey::Move(delta) => Message::ContextMenuMove(delta),
-        ContextMenuKey::First => Message::ContextMenuFirst,
-        ContextMenuKey::Last => Message::ContextMenuLast,
+        ContextMenuKey::CloseSub => Message::Files(MenuMessage::ContextMenuCloseSub),
+        ContextMenuKey::Close => Message::Files(MenuMessage::ContextMenuClose),
+        ContextMenuKey::OpenSub => Message::Files(MenuMessage::ContextMenuOpenSub),
+        ContextMenuKey::Activate => Message::Files(MenuMessage::ContextMenuActivate),
+        ContextMenuKey::Move(delta) => Message::Files(MenuMessage::ContextMenuMove(delta)),
+        ContextMenuKey::First => Message::Files(MenuMessage::ContextMenuFirst),
+        ContextMenuKey::Last => Message::Files(MenuMessage::ContextMenuLast),
     })
 }
 
@@ -225,6 +229,27 @@ fn settings_focus_key(key: &Key, modifiers: Modifiers) -> Option<FocusKey> {
     }
 }
 
+/// The bindings that reach past a page (Settings, System, viewer, notes,
+/// filing, chat): quitting, the command list and every key that opens another
+/// page or a card that stands over pages.
+pub(in crate::app) fn is_page_spanning(message: &Message) -> bool {
+    *message == Message::Quit
+        || [
+            KeyAction::CommandPalette,
+            KeyAction::SystemMonitor,
+            KeyAction::Settings,
+            KeyAction::HermesChat,
+            KeyAction::NextTab,
+            KeyAction::PreviousTab,
+            KeyAction::KeyBindings,
+            KeyAction::FilingStatus,
+            KeyAction::Rules,
+            KeyAction::SavedQueries,
+        ]
+        .into_iter()
+        .any(|action| *message == action.message())
+}
+
 /// The tab shows no panel, so the panel keys do nothing. Of the bindings the
 /// command list, the keys of the other pages and quitting reach through. A
 /// card opened from the tab has the Escape first.
@@ -236,16 +261,7 @@ pub(in crate::app) fn settings_key(
 ) -> Option<Message> {
     let bound = || {
         bound_message(&prompt.keymap, key, key_modifiers, scope)
-            .filter(|message| {
-                *message == Message::Quit
-                    || *message == KeyAction::CommandPalette.message()
-                    || *message == KeyAction::Settings.message()
-                    || *message == KeyAction::SystemMonitor.message()
-                    || *message == KeyAction::HermesChat.message()
-                    || *message == KeyAction::NextTab.message()
-                    || *message == KeyAction::PreviousTab.message()
-                    || *message == KeyAction::KeyBindings.message()
-            })
+            .filter(is_page_spanning)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
@@ -269,27 +285,19 @@ pub(in crate::app) fn monitor_page_key(
     scope: KeyScope,
 ) -> Option<Message> {
     let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
-    let passes = |message: &Message| {
-        *message == Message::Quit
-            || *message == KeyAction::CommandPalette.message()
-            || *message == KeyAction::SystemMonitor.message()
-            || *message == KeyAction::Settings.message()
-            || *message == KeyAction::HermesChat.message()
-            || *message == KeyAction::NextTab.message()
-            || *message == KeyAction::PreviousTab.message()
-            || *message == KeyAction::KeyBindings.message()
-    };
     let facts = ncrs_monitor::KeyFacts {
         filter_focused: prompt.monitor_filter,
         dialog_open: prompt.monitor_dialog,
         menu_open: prompt.monitor_menu,
+        drive_focused: prompt.monitor_drive_focused,
+        drives_listed: prompt.monitor_drives_listed,
         context_menu_pressed: bound == Some(KeyAction::ContextMenu.message()),
-        bound_untyped: bound.as_ref().is_some_and(passes)
+        bound_untyped: bound.as_ref().is_some_and(is_page_spanning)
             && is_not_typed_by_text_field(key, key_modifiers),
     };
     match ncrs_monitor::monitor_key(key, key_modifiers, facts)? {
         ncrs_monitor::MonitorKey::Message(message) => Some(Message::Monitor(message)),
-        ncrs_monitor::MonitorKey::Bound => bound.filter(passes),
+        ncrs_monitor::MonitorKey::Bound => bound.filter(is_page_spanning),
     }
 }
 
@@ -302,7 +310,7 @@ pub(in crate::app) fn escape_message(prompt: &PromptKeyState) -> Option<Message>
     if prompt.filing_card {
         Some(Message::Filing(FilingMessage::Dismiss))
     } else if prompt.job_running {
-        Some(Message::AbortJob)
+        Some(Message::Ops(OpsMessage::AbortJob))
     } else if prompt.config_error {
         Some(Message::DismissConfigError)
     } else if prompt.hit_list {
@@ -365,8 +373,8 @@ pub(in crate::app) fn trash_key(
     };
     let pressed = ncrs_ops::keys::trash_key(prompt.job_running, key, key_modifiers, kind)?;
     match pressed {
-        TrashKey::Message(message) => Some(Message::Trash(message)),
-        TrashKey::AbortJob => Some(Message::AbortJob),
+        TrashKey::Message(message) => Some(Message::Ops(OpsMessage::Trash(message))),
+        TrashKey::AbortJob => Some(Message::Ops(OpsMessage::AbortJob)),
         TrashKey::Bound(_) => bound,
     }
 }
@@ -420,16 +428,7 @@ pub(in crate::app) fn viewer_page_key(
     if let Some(message) = ncrs_viewer::viewer_key(key, key_modifiers, prompt.viewer_markdown) {
         return Some(Message::Viewer(message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
-        *message == Message::Quit
-            || *message == KeyAction::CommandPalette.message()
-            || *message == KeyAction::SystemMonitor.message()
-            || *message == KeyAction::Settings.message()
-            || *message == KeyAction::HermesChat.message()
-            || *message == KeyAction::NextTab.message()
-            || *message == KeyAction::PreviousTab.message()
-            || *message == KeyAction::KeyBindings.message()
-    })
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
 }
 
 /// The notes tab is up: it takes its own keys; of the bindings only the ones
@@ -443,16 +442,7 @@ pub(in crate::app) fn notes_page_key(
     if let Some(message) = ncrs_notes::notes_key(key, key_modifiers, prompt.notes_editing) {
         return Some(Message::Notes(message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
-        *message == Message::Quit
-            || *message == KeyAction::CommandPalette.message()
-            || *message == KeyAction::SystemMonitor.message()
-            || *message == KeyAction::Settings.message()
-            || *message == KeyAction::HermesChat.message()
-            || *message == KeyAction::NextTab.message()
-            || *message == KeyAction::PreviousTab.message()
-            || *message == KeyAction::KeyBindings.message()
-    })
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
 }
 
 /// The filing tab is up: it takes its own keys; of the bindings only the ones
@@ -467,16 +457,7 @@ pub(in crate::app) fn filing_page_key(
     {
         return Some(Message::FilingView(message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
-        *message == Message::Quit
-            || *message == KeyAction::CommandPalette.message()
-            || *message == KeyAction::SystemMonitor.message()
-            || *message == KeyAction::Settings.message()
-            || *message == KeyAction::HermesChat.message()
-            || *message == KeyAction::NextTab.message()
-            || *message == KeyAction::PreviousTab.message()
-            || *message == KeyAction::KeyBindings.message()
-    })
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
 }
 
 pub(in crate::app) fn viewer_or_monitor_key(
@@ -493,14 +474,5 @@ pub(in crate::app) fn viewer_or_monitor_key(
         viewer_page_key(prompt, key, key_modifiers, scope)
     } else {
         monitor_page_key(prompt, key, key_modifiers, scope)
-    }
-}
-
-/// The question about many files, else the quick-fix menu, takes the keys.
-pub(in crate::app) fn hermes_popup_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
-    if prompt.confirm_again {
-        ncrs_hermes_ui::keys::confirm_again_key(key).map(Message::from)
-    } else {
-        ncrs_hermes_ui::keys::quick_fix_key(key).map(Message::from)
     }
 }

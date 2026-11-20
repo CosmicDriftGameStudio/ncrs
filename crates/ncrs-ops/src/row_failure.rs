@@ -23,11 +23,31 @@ pub enum RowFailure {
     /// A server sent a name that cannot be created here; the text is chosen in
     /// the user's language when it is shown.
     UnsafeName(String),
+    /// The system refused; the reason is told in the user's language when it
+    /// is shown, by its kind.
+    Io {
+        kind: std::io::ErrorKind,
+        text: String,
+    },
     /// Anything else, shown as it came.
     Other(String),
 }
 
 impl RowFailure {
+    /// The reason of an `Io` failure in `lang`; the text of any other one as it
+    /// came.
+    pub fn reason_text(&self, lang: ncrs_i18n::Language) -> String {
+        match self {
+            RowFailure::Io { kind, text } => {
+                ncrs_ui_kit::io_reason::io_reason_text(*kind, text, lang)
+            }
+            RowFailure::Conflict(text) | RowFailure::UnsafeName(text) | RowFailure::Other(text) => {
+                text.clone()
+            }
+            RowFailure::Refused(_) => String::new(),
+        }
+    }
+
     pub fn from_io(err: std::io::Error) -> Self {
         use std::io::ErrorKind;
         let unsafe_name = err
@@ -41,7 +61,10 @@ impl RowFailure {
         } else if let Some(refusal) = fs::archive::refusal_of(&err) {
             RowFailure::Refused(refusal)
         } else {
-            RowFailure::Other(err.to_string())
+            RowFailure::Io {
+                kind: err.kind(),
+                text: err.to_string(),
+            }
         }
     }
 }

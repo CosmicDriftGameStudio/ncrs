@@ -1,5 +1,6 @@
 //! The part of `~/.ssh/config` a login needs: where a host alias really points
-//! (`HostName`, `Port`, `User`) and which keys (`IdentityFile`) to offer. Read
+//! (`HostName`, `Port`, `User`), which keys (`IdentityFile`) to offer and which
+//! host key files (`UserKnownHostsFile`, `GlobalKnownHostsFile`) to ask. Read
 //! only, and forgiving: a file that is missing, unreadable or odd gives less,
 //! never an error, because the login works without it.
 
@@ -13,6 +14,17 @@ pub struct HostSettings {
     pub port: Option<u16>,
     /// In the order of the file, `~` expanded.
     pub identity_files: Vec<PathBuf>,
+    /// `UserKnownHostsFile`: the files that replace `~/.ssh/known_hosts`;
+    /// empty for `none`. `None` when the config does not say.
+    pub user_known_hosts: Option<Vec<PathBuf>>,
+    /// `GlobalKnownHostsFile`: the files that replace the system-wide one.
+    pub global_known_hosts: Option<Vec<PathBuf>>,
+}
+
+/// The text of `~/.ssh/config` below `home`; `None` for no home or a file that
+/// cannot be read. Blocks on the file system.
+pub fn read_config_text(home: Option<&Path>) -> Option<String> {
+    std::fs::read_to_string(home?.join(".ssh").join("config")).ok()
 }
 
 /// The settings of `alias` in `~/.ssh/config` below `home`. Nothing for no
@@ -84,10 +96,35 @@ pub fn settings_for(text: &str, alias: &str, home: Option<&Path>) -> HostSetting
                     .filter(|file| file.is_absolute());
                 found.identity_files.extend(expanded);
             }
+            "userknownhostsfile" => {
+                if found.user_known_hosts.is_none() {
+                    found.user_known_hosts = files_of(&values, home);
+                }
+            }
+            "globalknownhostsfile" if found.global_known_hosts.is_none() => {
+                found.global_known_hosts = files_of(&values, home);
+            }
             _ => {}
         }
     }
     found
+}
+
+/// The absolute files a list value names. Only the word `none` gives no file
+/// at all; names that cannot be used (`%` expansion, a relative path) are left
+/// out, and when nothing is left the config does not say: `None`, so the
+/// default file is read and a changed host key is not taken for an unknown one.
+fn files_of(values: &[String], home: Option<&Path>) -> Option<Vec<PathBuf>> {
+    if !values.is_empty() && values.iter().all(|file| file.eq_ignore_ascii_case("none")) {
+        return Some(Vec::new());
+    }
+    let files: Vec<PathBuf> = values
+        .iter()
+        .filter(|file| !file.eq_ignore_ascii_case("none") && !file.contains('%'))
+        .filter_map(|file| expand_home(Path::new(file), home))
+        .filter(|file| file.is_absolute())
+        .collect();
+    (!files.is_empty()).then_some(files)
 }
 
 /// The keyword and the rest of a line: `key value` or `key=value`. `None` for
@@ -188,12 +225,6 @@ fn glob(pattern: &[char], text: &[char]) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -204,12 +235,42 @@ mod tests {
         "/home/marc"
     };
 
+    // `/etc/b` is not absolute on Windows without a drive.
+    const SYSTEM_FILE: &str = if cfg!(windows) { r"C:\etc\b" } else { "/etc/b" };
+
     fn settings(text: &str, alias: &str) -> HostSettings {
         settings_for(text, alias, Some(Path::new(HOME)))
     }
 
     fn below_home(path: &str) -> PathBuf {
         Path::new(HOME).join(path)
+    }
+
+    #[test]
+    fn known_hosts_files_come_from_the_first_value_and_none_means_no_file() {
+        let found = settings(
+            &format!(
+                "Host web\n  UserKnownHostsFile ~/.ssh/a {SYSTEM_FILE}\n  GlobalKnownHostsFile none\n\
+                 Host *\n  UserKnownHostsFile ~/.ssh/c\n"
+            ),
+            "web",
+        );
+        assert_eq!(
+            found.user_known_hosts,
+            Some(vec![below_home(".ssh/a"), PathBuf::from(SYSTEM_FILE)])
+        );
+        assert_eq!(found.global_known_hosts, Some(Vec::new()));
+        assert_eq!(settings("Host x\n  User u\n", "x").user_known_hosts, None);
+    }
+
+    #[test]
+    fn known_hosts_names_that_cannot_be_used_leave_the_default_file_in_place() {
+        let found = settings(
+            "Host x\n  UserKnownHostsFile %d/known relative/file\n  GlobalKnownHostsFile %h\n",
+            "x",
+        );
+        assert_eq!(found.user_known_hosts, None);
+        assert_eq!(found.global_known_hosts, None);
     }
 
     #[test]

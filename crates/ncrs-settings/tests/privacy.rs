@@ -1,7 +1,10 @@
 //! PRIVACY.md names every host the settings crate can reach, and the consent
 //! card for an AI server says the same as the list in it.
 
-#![allow(clippy::tests_outside_test_module)]
+#![allow(
+    clippy::tests_outside_test_module,
+    reason = "an integration test file: the tests are the file"
+)]
 use ncrs_i18n::Language;
 use ncrs_settings::ai_consent::MODEL_CALL_SITES;
 use ncrs_settings::ai_model::AI_MODEL_HOSTS;

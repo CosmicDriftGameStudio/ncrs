@@ -331,7 +331,9 @@ async fn escape_closes_it_and_the_running_job_keeps_going() {
     let mut app = app_with_files();
     let _started = app.start_transfer(TransferKind::Copy);
     assert!(app.jobs.is_busy(), "no job to keep");
-    drop(app.update(Message::TransferDialog(TransferDialogMessage::Background)));
+    drop(app.update(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::Background,
+    ))));
     open_palette(&mut app);
     assert!(app.command_palette_for_test().is_some());
 

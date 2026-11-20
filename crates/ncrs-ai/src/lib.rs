@@ -60,6 +60,7 @@ pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]
 pub use testing::{FakeProvider, ScriptedChatModel};
 pub use usage_log::{
-    append_usage, parse_usage, read_usage_log, summarize, usage_log_path, usage_summaries,
-    DayUsage, ModelUsage, Totals, Usage, UsageRecord, UsageSummary, CHART_MODELS, USAGE_LOG_FILE,
+    append_usage, parse_usage, read_usage_log, read_usage_log_noting, summarize, usage_log_path,
+    usage_summaries, DayUsage, ModelUsage, Totals, Usage, UsageRecord, UsageSummary, CHART_MODELS,
+    USAGE_LOG_FILE,
 };

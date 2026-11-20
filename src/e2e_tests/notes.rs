@@ -38,7 +38,11 @@ fn command_shift_n_makes_a_note_on_the_file_and_the_note_follows_a_moved_file() 
     let moved = file.with_file_name("archive").join("offer.pdf");
     session.send(Message::Notes(ncrs_notes::Message::LinksResolved(
         vec![file.clone()],
-        Ok(vec![(Some(7), moved.clone())]),
+        Ok(vec![ncrs_core::NoteLink {
+            document: Some(7),
+            hash: None,
+            file: moved.clone(),
+        }]),
     )));
     session.settle();
     assert!(session.app.noted_for_test().contains(&moved));

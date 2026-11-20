@@ -5,22 +5,6 @@ impl App {
         ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx(), ocr_models_present)
     }
 
-    pub(in crate::app) fn update_hermes_overview(
-        &mut self,
-        message: HermesOverviewMessage,
-    ) -> Task<Message> {
-        let before = match &message {
-            HermesOverviewMessage::EnterRecoveryKey => {
-                self.update_filing(FilingMessage::AskKeyAgain)
-            }
-            _ => Task::none(),
-        };
-        let after = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_hermes_overview(hermes, message, ctx)
-        });
-        Task::batch([before, after])
-    }
-
     /// Opens the settings on the page of Settings that shows this Hermes page.
     pub(in crate::app) fn show_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
         self.show_setting(settings_feature_of(page), None)
@@ -58,28 +42,24 @@ impl App {
         self.run_hermes_outcome(outcome)
     }
 
-    pub(in crate::app) fn update_rules(&mut self, message: RulesMessage) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), |hermes, _ctx| {
-            ncrs_hermes_ui::update_rules(hermes, message)
-        });
-        self.run_hermes_outcome(outcome)
-    }
-
-    pub(in crate::app) fn update_saved_queries(
-        &mut self,
-        message: SavedQueriesMessage,
-    ) -> Task<Message> {
+    /// The messages of the Hermes pages that the pages answer on their own.
+    pub(in crate::app) fn update_hermes_plain(&mut self, message: Message) -> Task<Message> {
+        use ncrs_hermes_ui::Message as Page;
+        let page = match message {
+            Message::Filing(inner) => Page::Filing(inner),
+            Message::FilingStatus(inner) => Page::FilingStatus(inner),
+            Message::HermesOverview(inner) => Page::HermesOverview(inner),
+            Message::Rules(inner) => Page::Rules(inner),
+            Message::SavedQueries(inner) => Page::SavedQueries(inner),
+            Message::Tags(inner) => Page::Tags(inner),
+            Message::DocumentsFiled(result) => Page::DocumentsFiled(result),
+            Message::HermesColumn(inner) => Page::HermesColumn(inner),
+            _ => return Task::none(),
+        };
         let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_saved_queries(hermes, message, ctx)
+            ncrs_hermes_ui::update(hermes, page, ctx)
         });
-        self.run_hermes_outcome(outcome)
-    }
-
-    pub(in crate::app) fn update_tags(&mut self, message: TagsMessage) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_tags(hermes, message, ctx)
-        });
-        self.run_hermes_outcome(outcome)
+        outcome.map_or_else(Task::none, |ran| self.run_hermes_outcome(ran))
     }
 
     pub(in crate::app) fn open_saved_queries(&mut self) -> Task<Message> {

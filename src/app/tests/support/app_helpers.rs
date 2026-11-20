@@ -2,6 +2,27 @@ use super::fixed::*;
 use crate::app::*;
 
 impl App {
+    /// Runs `message` and then the answers of the checks that ran off the UI
+    /// thread (the drive menu, and before a job start the target, pack name and staged paste), but not the
+    /// jobs those start.
+    pub async fn settle_checks_for_test(&mut self, message: Message) {
+        use iced_test::futures::futures::StreamExt as _;
+        use iced_test::runtime::{task, Action};
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(self.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    if is_check_answer(&reported) {
+                        queue.push(reported);
+                    }
+                }
+            }
+        }
+    }
+
     /// Fixed panels with the connect dialog up.
     pub fn with_connect_dialog(dialog: ncrs_remote::dialog::ConnectDialog) -> Self {
         let mut app = Self::with_fixed_panels();
@@ -314,6 +335,7 @@ impl App {
         self.panels.left.selection.toggle(&path);
     }
 
+    #[cfg(target_os = "macos")]
     pub fn tag_all_for_test(&mut self) {
         let mut selection = crate::selection::SelectionSet::new();
         selection.tag_all(&self.panels.left.entries);
@@ -412,16 +434,19 @@ impl App {
         self.visible_rows
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn with_favourites_for_test(mut self, list: &[&str]) -> Self {
         self.panels.favourites = list.iter().map(PathBuf::from).collect();
         self
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn activate_panel_for_test(&mut self, side: PanelSide) {
         self.panels.active = side;
     }
 
     /// A finished comparison of the two panels' folders, as if it had been scanned.
+    #[cfg(feature = "media-tools")]
     pub fn with_comparison_for_test(mut self, compared: ncrs_compare::Compared) -> Self {
         self.compare.run = Some(ncrs_compare::state::Run {
             folders: ncrs_compare::state::Folders {
@@ -438,12 +463,14 @@ impl App {
     }
 
     /// The commands the command list shows under "Recent", most recent first.
+    #[cfg(feature = "media-tools")]
     pub fn with_recent_commands_for_test(mut self, recent: &[KeyAction]) -> Self {
         self.recent_commands = recent.to_vec();
         self
     }
 
     /// Shows the look of `preset`, as the settings page does after a change.
+    #[cfg(feature = "media-tools")]
     pub fn show_theme_preset_for_test(&mut self, preset: ThemePreset) {
         self.theme_preset = preset;
         self.palette = preset.palette();
@@ -451,6 +478,7 @@ impl App {
 
     /// The settings tab on the colour scheme row, as running "Color scheme"
     /// from the command list opens it, on a config that loads.
+    #[cfg(feature = "media-tools")]
     pub fn with_colour_scheme_row_for_test() -> Self {
         let mut app = Self::with_settings_file(
             crate::messages::SettingsFeature::Look,
@@ -465,6 +493,7 @@ impl App {
 
     /// What the key subscription would know now, so a recorded key takes the
     /// route it takes in the window.
+    #[cfg(feature = "media-tools")]
     pub fn prompt_key_state_for_test(&self) -> PromptKeyState {
         self.prompt_key_state()
     }
@@ -589,7 +618,6 @@ impl App {
     }
 
     /// Replaces the folder picker, so a protocol run answers it without a dialog.
-    #[cfg(unix)]
     pub fn with_folder_picker(mut self, pick: fn(&Path) -> Task<Option<PathBuf>>) -> Self {
         self.pick_folder = pick;
         self
@@ -601,21 +629,18 @@ impl App {
     }
 
     /// The filing tab: the protocol run reads what it plans.
-    #[cfg(unix)]
     pub fn filing_session_for_test(&self) -> Option<&ncrs_filing_view::Session> {
         self.filing_view.session.as_ref()
     }
 
     /// The same, writable: the protocol run clears the readings to measure a
     /// cold read again.
-    #[cfg(unix)]
     pub fn hermes_chat_mut_for_test(&mut self) -> &mut ncrs_hermes_chat::State {
         &mut self.hermes_chat
     }
 
     /// Starts the filing module of an app that is already running (the
     /// protocol run needs the tokio context of its session for it).
-    #[cfg(unix)]
     pub fn start_filing_for_test(
         &mut self,
         filing: &crate::config::Filing,
@@ -628,7 +653,6 @@ impl App {
     }
 
     /// The filing module, for the protocol run that waits for its start.
-    #[cfg(unix)]
     pub fn filing_module_for_test(&self) -> Option<&FilingModule> {
         self.hermes.filing.as_ref()
     }
@@ -789,6 +813,7 @@ impl App {
     }
 
     /// Takes the progress mask of a finished copy away again.
+    #[cfg(feature = "media-tools")]
     pub fn finish_progress_for_test(&mut self) {
         self.ops.transfer = None;
         self.job_progress = None;
@@ -822,4 +847,18 @@ impl App {
             index: 0,
         });
     }
+}
+
+fn is_check_answer(message: &Message) -> bool {
+    use ncrs_ops::OpsMessage;
+    matches!(
+        message,
+        Message::Files(MenuMessage::VolumeMenuFacts { .. })
+            | Message::Ops(
+                OpsMessage::TransferChecked { .. }
+                    | OpsMessage::ExternalChecked { .. }
+                    | OpsMessage::PackChecked { .. }
+                    | OpsMessage::PasteStaged { .. }
+            )
+    )
 }

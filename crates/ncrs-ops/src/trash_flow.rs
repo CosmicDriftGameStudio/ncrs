@@ -20,12 +20,8 @@ use crate::trash::TrashView;
 use crate::update::update_trash;
 
 /// A message of the trash view, and what it starts.
-pub fn update_trash_flow(
-    ops: &mut Ops,
-    message: TrashMessage,
-    rows: usize,
-    flow: &FlowCtx<'_>,
-) -> Outcome {
+pub fn update_trash_flow(ops: &mut Ops, message: TrashMessage, flow: &FlowCtx<'_>) -> Outcome {
+    let rows = flow.trash_rows;
     let ctx = Ctx {
         trash_rows: rows,
         trash_generation: ops.trash_generation,

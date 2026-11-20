@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::collections::BTreeSet;
 
 use chrono::{TimeZone as _, Utc};
@@ -350,7 +343,9 @@ impl Fixture {
             let id = index
                 .insert_document(&NewDocument {
                     hash: ContentHash(hash),
-                    path: location.path.join(name),
+                    path: name
+                        .split('/')
+                        .fold(location.path.clone(), |path, part| path.join(part)),
                     source: if location.mode == LocationMode::Archive {
                         DocumentSource::Archive
                     } else {
@@ -621,4 +616,76 @@ fn a_document_without_text_is_not_listed() {
         .unwrap();
 
     assert_eq!(result.documents.len(), 1);
+}
+
+#[test]
+fn only_the_target_archive_gets_moves_and_a_read_only_one_is_left_alone() {
+    let fixture = fixture();
+    fixture.document(&fixture.archive, "old/rent.pdf", "rent 2020");
+    let read_only = {
+        let path = fixture.archive.path.with_file_name("read-only");
+        std::fs::create_dir_all(&path).unwrap();
+        Location::new(&path, LocationMode::Archive, false).unwrap()
+    };
+    fixture.document(&read_only, "rent.pdf", "rent 2019");
+    let access = RulesAccess::new(
+        Arc::clone(&fixture.slot),
+        vec![fixture.archive.clone(), read_only.clone()],
+    );
+
+    let without_target = access.try_rule(&candidate(None, "rent", "{kind}")).unwrap();
+    let with_target = access
+        .clone()
+        .with_target(Some(fixture.archive.path.clone()))
+        .try_rule(&candidate(None, "rent", "{kind}"))
+        .unwrap();
+
+    assert_eq!(without_target.in_archive, 2);
+    assert!(without_target.archive_moves.is_empty());
+    assert_eq!(with_target.in_archive, 2);
+    assert_eq!(
+        with_target
+            .archive_moves
+            .iter()
+            .map(|found| found.root.clone())
+            .collect::<Vec<_>>(),
+        vec![fixture.archive.path.clone()]
+    );
+}
+
+fn archive_move(from: &str, to: &str) -> ArchiveMove {
+    ArchiveMove {
+        root: PathBuf::from("/archive"),
+        from: PathBuf::from(from),
+        to: PathBuf::from(to),
+        hash: ContentHash([0; 32]),
+    }
+}
+
+#[test]
+fn a_chain_of_moves_runs_from_its_end_and_the_name_two_want_goes_to_the_first() {
+    let (ordered, blocked) = order_moves(vec![
+        archive_move("a.pdf", "b.pdf"),
+        archive_move("b.pdf", "c.pdf"),
+        archive_move("x.pdf", "c.pdf"),
+    ]);
+
+    let steps: Vec<_> = ordered
+        .iter()
+        .map(|found| (found.from.to_str().unwrap(), found.to.to_str().unwrap()))
+        .collect();
+    assert_eq!(steps, vec![("b.pdf", "c.pdf"), ("a.pdf", "b.pdf")]);
+    assert_eq!(blocked, 1);
+}
+
+#[test]
+fn a_swap_of_two_names_cannot_run_and_is_counted() {
+    let (ordered, blocked) = order_moves(vec![
+        archive_move("a.pdf", "b.pdf"),
+        archive_move("b.pdf", "a.pdf"),
+        archive_move("c.pdf", "d.pdf"),
+    ]);
+
+    assert_eq!(ordered, vec![archive_move("c.pdf", "d.pdf")]);
+    assert_eq!(blocked, 2);
 }

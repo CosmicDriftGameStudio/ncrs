@@ -2,13 +2,6 @@
 //! levels, what goes into the folder, the trial, and the click that stores the
 //! rule. Nothing is saved before that click.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]
@@ -178,7 +171,14 @@ mod tests {
         );
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "4")])],
+            vec![format!(
+                "{} {}",
+                say(
+                    Msg::HermesChatRuleArchiveMoves,
+                    &[("count", "4"), ("folder", "archive")]
+                ),
+                say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "4")])
+            )],
             "the four archive documents would move under the new levels"
         );
         assert!(has_chip(&talk, &ChipReply::RuleNow));
@@ -582,10 +582,10 @@ mod tests {
 
         let card = talk.proposal().expect("the proposal card");
         let moves = card.moves.as_ref().expect("examples");
-        assert_eq!(moves.rows.len(), 3, "{:?}", moves.rows);
+        assert_eq!(moves.rows.len(), 6, "{:?}", moves.rows);
         assert_eq!(
             moves.more,
-            Some(say(Msg::HermesChatRuleExamplesMore, &[("count", "5")]))
+            Some(say(Msg::HermesChatRuleExamplesMore, &[("count", "2")]))
         );
         assert_eq!(
             card.counts,

@@ -47,6 +47,7 @@ pub mod frame;
 mod gallery_tests;
 pub mod hermes_kit;
 pub mod hermes_state;
+pub mod io_reason;
 pub mod key_intercept;
 pub mod kit;
 pub mod layout;
@@ -62,7 +63,7 @@ pub mod open_list;
 pub mod page_scroll;
 pub mod page_status_bar;
 pub mod page_text;
-pub mod palette;
+pub use ncrs_core::palette;
 pub mod panel_footer;
 pub mod permission_grid;
 pub mod picker;
@@ -71,17 +72,12 @@ pub mod popup_menu;
 pub mod rename_row;
 pub mod row_scroll;
 pub mod setting_rows;
-pub mod tags;
+#[cfg(any(test, feature = "test-support"))]
+pub mod snapshot_support;
+pub use ncrs_core::tags;
 pub mod theme;
 pub mod tree_list;
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

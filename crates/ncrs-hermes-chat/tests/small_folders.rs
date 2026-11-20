@@ -1,13 +1,6 @@
 //! The paths of the chat the test archive does not reach, on small folders
 //! built by hand, driven through `update`.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

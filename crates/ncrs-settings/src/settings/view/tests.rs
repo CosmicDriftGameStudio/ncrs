@@ -107,16 +107,16 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
     }
     assert!(targets
         .iter()
-        .any(|target| target.row.as_deref() == Some("Viewer (F3)")));
+        .any(|target| target.row.as_deref() == Some("Viewer")));
 }
 
 #[test]
 fn showing_a_row_filters_to_it_and_marks_it_and_showing_a_page_clears_both() {
     let mut state = state_of("");
-    state.show(SettingsFeature::Programs, Some("Viewer (F3)".to_owned()));
+    state.show(SettingsFeature::Programs, Some("Viewer".to_owned()));
     assert_eq!(state.feature, SettingsFeature::Programs);
-    assert_eq!(state.query, "Viewer (F3)");
-    assert_eq!(state.marked_row.as_deref(), Some("Viewer (F3)"));
+    assert_eq!(state.query, "Viewer");
+    assert_eq!(state.marked_row.as_deref(), Some("Viewer"));
 
     state.show(SettingsFeature::Keys, None);
     assert_eq!(state.query, "");

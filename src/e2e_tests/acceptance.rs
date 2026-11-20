@@ -144,7 +144,7 @@ fn permissions_folder_contents_without_execute() {
         P::SetForFiles(ForFiles::WithoutExecute),
         P::SetForFolders(ForFolders::AsAbove),
     ] {
-        session.send(Message::Permissions(message));
+        session.send(Message::from(ncrs_ops::OpsMessage::Permissions(message)));
     }
     session.press(Key::Named(Named::Enter));
     session.settle();

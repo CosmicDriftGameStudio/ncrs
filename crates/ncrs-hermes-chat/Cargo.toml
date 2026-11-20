@@ -14,7 +14,6 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
-ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-filing = { path = "../ncrs-filing", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }

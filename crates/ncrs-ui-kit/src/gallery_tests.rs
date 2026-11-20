@@ -2,9 +2,7 @@
 //! style guide made visible. A widget that changes its look changes the
 //! picture, and the diff is the review.
 
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
+use crate::snapshot_support::ReferenceSnapshot as _;
 use iced::widget::{button, column, container, text, Row, Space};
 use iced::{alignment, Element, Length, Size};
 use iced_test::Simulator;
@@ -414,7 +412,7 @@ fn matches_image(preset: ThemePreset) {
     let matches = simulator
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .unwrap();
     assert!(matches, "{name} differs from its image");
 }
@@ -477,7 +475,7 @@ mod favourites_bar_ui_tests {
         )
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .unwrap();
         assert!(matches, "{name} differs from its image");
     }

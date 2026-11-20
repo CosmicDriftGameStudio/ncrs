@@ -57,7 +57,7 @@ async fn escape_stops_a_running_job() {
 async fn a_copy_after_a_stop_gets_a_live_progress_channel() {
     let mut app = app_with_files();
     let _first = app.start_transfer(TransferKind::Copy);
-    let _stopped = app.update(Message::AbortJob);
+    let _stopped = app.update(Message::Ops(OpsMessage::AbortJob));
 
     let _second = app.start_transfer(TransferKind::Copy);
 
@@ -69,7 +69,7 @@ async fn a_copy_after_a_stop_gets_a_live_progress_channel() {
 #[test]
 fn aborting_an_idle_app_does_nothing() {
     let mut app = app_with_files();
-    let _task = app.update(Message::AbortJob);
+    let _task = app.update(Message::Ops(OpsMessage::AbortJob));
     assert!(!app.jobs.is_busy());
 }
 
@@ -87,6 +87,6 @@ async fn the_bar_mentions_the_abort_key_only_while_a_job_runs() {
         "a running job does not offer a way to stop it"
     );
 
-    let _task = app.update(Message::AbortJob);
+    let _task = app.update(Message::Ops(OpsMessage::AbortJob));
     assert!(app.job_status().is_none());
 }

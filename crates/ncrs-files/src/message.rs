@@ -20,9 +20,27 @@ pub enum PanelMessage {
         /// The order the reader put `entries` in.
         sorted_by: SortKey,
         /// Entry name to select after loading (e.g. the dir we came from).
-        select: Option<String>,
+        select: Option<OsString>,
         /// The archive file, when `path` lies inside one.
         archive: Option<PathBuf>,
+    },
+
+    /// The path field's text changed: from then on it shows what was typed
+    /// instead of the panel's path.
+    PathFieldInput(String),
+    /// Enter in the field: go to the typed path.
+    PathFieldSubmit,
+    /// The background look at the path that Enter submitted. A result whose
+    /// `request_id` is not the latest is dropped.
+    PathChecked(crate::path_field::PathChecked),
+    /// Escape, Tab or a click elsewhere: back to the panel's own path.
+    PathFieldCancel,
+    /// One folder of a size run is measured; `size` is `None` when the walk
+    /// was stopped.
+    FolderSizeMeasured {
+        run: u64,
+        folder: PathBuf,
+        size: Option<ncrs_core::FolderSize>,
     },
 
     /// Another program added, removed or renamed something in the folder the
@@ -56,6 +74,20 @@ pub enum PanelMessage {
     TagAll,
     /// Ctrl+`*`: drop every tag.
     ClearTags,
+
+    // --- The drive menu ---
+    /// Up or Down in the open menu.
+    VolumeMenuMove(isize),
+    VolumeMenuFirst,
+    VolumeMenuLast,
+    /// Enter in the open menu: go to the highlighted drive.
+    VolumeMenuActivate,
+    /// A click on the entry at this index: highlight it and go there.
+    VolumeMenuClick(usize),
+    VolumeMenuClose,
+    /// Delete or Backspace in the drive menu: take the highlighted favourite
+    /// out of the list. A drive row ignores it.
+    VolumeMenuRemove,
 
     // --- Panel handling ---
     /// Wheel or trackpad over a panel.
@@ -127,6 +159,10 @@ pub enum PanelMessage {
     HeaderMenuConfigure,
     HeaderMenuRestore,
     HeaderMenuClose,
+    /// An arrow key in the open header menu.
+    HeaderMenuMove(isize),
+    /// Enter in the open header menu: the highlighted entry.
+    HeaderMenuChoose,
 
     // --- Renaming in place ---
     /// Shift+F6: the name of the cursor entry becomes an input.

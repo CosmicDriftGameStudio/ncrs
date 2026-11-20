@@ -57,6 +57,8 @@ pub enum FilingStatusMessage {
     ProcessOneAgain(PathBuf),
     /// The button under the list: every file of the list is read again.
     ProcessAllAgain,
+    /// The documents of locations removed from the settings left the index.
+    LocationsForgotten(Result<(), String>),
 }
 
 /// What the background reads for the Hermes column answer with.

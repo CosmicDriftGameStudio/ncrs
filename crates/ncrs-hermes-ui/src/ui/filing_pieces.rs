@@ -6,13 +6,12 @@ use iced::widget::{column, row, Row};
 use iced::{alignment, Element};
 
 use crate::filing_pieces::{
-    FileName, FileNameField, FileNamePiece, FilingTarget, FolderField, FolderPiece, TargetEdit,
-    TargetEditor,
+    FileName, FileNameField, FilingTarget, FolderField, FolderPiece, TargetEdit, TargetEditor,
 };
 use crate::message::Message;
 use ncrs_config::palette::Palette;
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::hermes_kit::{self as kit, MenuItem, MenuLook, GAP_S, GAP_XS, TEXT_SMALL};
+use ncrs_ui_kit::hermes_kit::{self, MenuItem, MenuLook, GAP_S, GAP_XS, TEXT_SMALL};
 
 /// The id of the field for the text of a piece of the file name.
 pub const FILE_NAME_TEXT_FIELD_ID: &str = "filing-pieces-file-name-text";
@@ -53,10 +52,10 @@ pub fn target_view<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<
         folder_cell = folder_cell.push(own_name_row(editor, host));
     }
     if let Some(problem) = editor.name_problem {
-        folder_cell = folder_cell.push(kit::error_line(problem.text(lang), palette));
+        folder_cell = folder_cell.push(hermes_kit::error_line(problem.text(lang), palette));
     }
     if editor.target.is_empty() {
-        folder_cell = folder_cell.push(kit::error_line(
+        folder_cell = folder_cell.push(hermes_kit::error_line(
             lang.text(Msg::FilingPiecesProblemEmpty),
             palette,
         ));
@@ -66,19 +65,19 @@ pub fn target_view<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<
         name_cell = name_cell.push(name_text_row(editor, host));
     }
     if let Some(problem) = editor.name_text_problem {
-        name_cell = name_cell.push(kit::error_line(problem.text(lang), palette));
+        name_cell = name_cell.push(hermes_kit::error_line(problem.text(lang), palette));
     }
     let example = || example_line(&editor.target, lang, palette);
     let mut rows = column![
-        kit::form_row(
+        hermes_kit::form_row(
             lang.text(Msg::ReviewListMoveTo),
             folder_cell.into(),
             host.folder_hint
                 .clone()
-                .map(|note| kit::hint(note, palette)),
+                .map(|note| hermes_kit::hint(note, palette)),
             palette
         ),
-        kit::form_row(
+        hermes_kit::form_row(
             lang.text(Msg::FilingPiecesFileNameLabel),
             name_cell.into(),
             (host.example == ExampleLine::UnderFileName).then(example),
@@ -99,14 +98,14 @@ pub fn example_line<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let Some(path) = target.example(lang) else {
-        return kit::hint(lang.text(Msg::FilingPiecesExampleNone), palette);
+        return hermes_kit::hint(lang.text(Msg::FilingPiecesExampleNone), palette);
     };
     let template = lang.text(Msg::FilingPiecesExample);
     let (before, after) = template.split_once("{path}").unwrap_or((template, ""));
     row![
-        kit::hint(before.to_owned(), palette),
-        kit::mono(path, TEXT_SMALL, palette.text),
-        kit::hint(after.to_owned(), palette),
+        hermes_kit::hint(before.to_owned(), palette),
+        hermes_kit::mono(path, TEXT_SMALL, palette.text),
+        hermes_kit::hint(after.to_owned(), palette),
     ]
     .align_y(alignment::Vertical::Center)
     .into()
@@ -118,38 +117,6 @@ fn folder_label(piece: &FolderPiece, lang: Language) -> String {
         file_name: FileName::Automatic,
     }
     .in_words(lang)
-}
-
-/// The folders of a target as the parts of a path; the parts that stand for a
-/// field are marked, and `/` separates them.
-pub fn folder_path_parts(target: &FilingTarget, lang: Language) -> Vec<(String, bool)> {
-    let mut parts = Vec::new();
-    for (position, piece) in target.folders.iter().enumerate() {
-        if position > 0 {
-            parts.push((FOLDER_SEPARATOR.to_owned(), false));
-        }
-        let is_field = matches!(piece, FolderPiece::Field(_));
-        parts.push((folder_label(piece, lang), is_field));
-    }
-    parts
-}
-
-/// The file name of a target as the parts of a name, `_` between them.
-pub fn file_name_path_parts(target: &FilingTarget, lang: Language) -> Vec<(String, bool)> {
-    let pieces = match &target.file_name {
-        FileName::Automatic => FileName::automatic_pieces(),
-        FileName::Pieces(pieces) => pieces.clone(),
-        FileName::Own(_) => return vec![(target.file_name_in_words(lang), false)],
-    };
-    let mut parts = Vec::new();
-    for (position, piece) in pieces.iter().enumerate() {
-        if position > 0 {
-            parts.push((FILE_NAME_SEPARATOR.to_owned(), false));
-        }
-        let is_field = matches!(piece, FileNamePiece::Field(_));
-        parts.push((piece.label(lang).to_owned(), is_field));
-    }
-    parts
 }
 
 fn add_label(lang: Language) -> String {
@@ -169,7 +136,7 @@ fn folder_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a
         .iter()
         .enumerate()
         .map(|(position, piece)| {
-            kit::piece(
+            hermes_kit::piece(
                 &folder_label(piece, lang),
                 Some(wrap(TargetEdit::Remove(position))),
                 palette,
@@ -186,8 +153,8 @@ fn folder_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a
             wrap(TargetEdit::StartOwnName),
         ));
     }
-    let add = kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette);
-    kit::pieces(pieces, FOLDER_SEPARATOR, Some(add), palette)
+    let add = hermes_kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette);
+    hermes_kit::pieces(pieces, FOLDER_SEPARATOR, Some(add), palette)
 }
 
 fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
@@ -212,7 +179,7 @@ fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element
         .iter()
         .enumerate()
         .map(|(position, label)| {
-            kit::piece(
+            hermes_kit::piece(
                 label,
                 Some(wrap(TargetEdit::RemoveNamePiece(position))),
                 palette,
@@ -230,9 +197,9 @@ fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element
                 wrap(TargetEdit::StartNameText),
             ));
         }
-        kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette)
+        hermes_kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette)
     });
-    kit::pieces(pieces, FILE_NAME_SEPARATOR, add, palette)
+    hermes_kit::pieces(pieces, FILE_NAME_SEPARATOR, add, palette)
 }
 
 fn typing_row<'a>(
@@ -246,7 +213,7 @@ fn typing_row<'a>(
 ) -> Element<'a, Message> {
     let (lang, palette) = (host.lang, host.palette);
     Row::new()
-        .push(kit::text_field(
+        .push(hermes_kit::text_field(
             placeholder,
             typed,
             id,
@@ -254,7 +221,7 @@ fn typing_row<'a>(
             wrap(submit.clone()),
             palette,
         ))
-        .push(kit::secondary(
+        .push(hermes_kit::secondary(
             lang.text(Msg::FilingPiecesAddOwnConfirm),
             Some(wrap(submit)),
             palette,

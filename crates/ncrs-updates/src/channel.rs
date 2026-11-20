@@ -38,19 +38,53 @@ const MARKERS: [(&str, PackageManager); 5] = [
     ("/usr/local/Caskroom/ncrs", PackageManager::Homebrew),
 ];
 
+/// Whether a program at `exe_path` is where `manager` installs it. Not knowing the
+/// location counts as yes.
+fn installed_by(manager: PackageManager, exe_path: Option<&Path>) -> bool {
+    let Some(exe) = exe_path else {
+        return true;
+    };
+    match manager {
+        PackageManager::Apt | PackageManager::Dnf | PackageManager::Zypper => {
+            exe.starts_with("/usr")
+        }
+        PackageManager::Homebrew => in_applications_folder(exe),
+    }
+}
+
+/// `/Applications`, or the `Applications` folder of a user: a cask installed
+/// with `--appdir ~/Applications` lands there.
+fn in_applications_folder(exe: &Path) -> bool {
+    if exe.starts_with("/Applications") {
+        return true;
+    }
+    let mut parts = exe.components().skip(1);
+    parts.next().is_some_and(|top| top.as_os_str() == "Users")
+        && parts
+            .nth(1)
+            .is_some_and(|folder| folder.as_os_str() == "Applications")
+}
+
 impl Channel {
-    pub fn detect(development: bool, exists: impl Fn(&Path) -> bool) -> Self {
+    /// `exe` is where the running program lives: a package marker only counts
+    /// when this copy sits where that package manager puts it, so a repository
+    /// set up next to a downloaded copy does not turn it into a package install.
+    pub fn detect(development: bool, exists: impl Fn(&Path) -> bool, exe: Option<&Path>) -> Self {
         if development {
             return Self::Development;
         }
         MARKERS
             .iter()
-            .find(|(path, _)| exists(Path::new(path)))
+            .find(|(path, manager)| exists(Path::new(path)) && installed_by(*manager, exe))
             .map_or(Self::Direct, |(_, manager)| Self::PackageManager(*manager))
     }
 
     pub fn detect_here(development: bool) -> Self {
-        Self::detect(development, Path::exists)
+        Self::detect(
+            development,
+            Path::exists,
+            std::env::current_exe().ok().as_deref(),
+        )
     }
 
     /// The check is on by default only for a direct download: the package
@@ -77,7 +111,7 @@ mod tests {
 
     #[test]
     fn a_dev_build_is_development_even_when_a_marker_exists() {
-        let channel = Channel::detect(true, |_| true);
+        let channel = Channel::detect(true, |_| true, None);
         assert_eq!(channel, Channel::Development);
     }
 
@@ -85,7 +119,7 @@ mod tests {
     fn each_marker_names_its_package_manager() {
         for (path, manager) in MARKERS.iter() {
             assert_eq!(
-                Channel::detect(false, only(path)),
+                Channel::detect(false, only(path), None),
                 Channel::PackageManager(*manager),
                 "{path}"
             );
@@ -93,8 +127,42 @@ mod tests {
     }
 
     #[test]
+    fn a_marker_does_not_count_for_a_copy_outside_the_package_location() {
+        let apt = only("/etc/apt/sources.list.d/ncrs.list");
+        assert_eq!(
+            Channel::detect(false, &apt, Some(Path::new("/home/me/Downloads/ncrs"))),
+            Channel::Direct
+        );
+        assert_eq!(
+            Channel::detect(false, &apt, Some(Path::new("/usr/lib/ncrs/ncrs"))),
+            Channel::PackageManager(PackageManager::Apt)
+        );
+        let cask = only("/opt/homebrew/Caskroom/ncrs");
+        assert_eq!(
+            Channel::detect(
+                false,
+                &cask,
+                Some(Path::new(
+                    "/Users/me/Downloads/ncrs.app/Contents/MacOS/ncrs"
+                ))
+            ),
+            Channel::Direct
+        );
+        assert_eq!(
+            Channel::detect(
+                false,
+                &cask,
+                Some(Path::new(
+                    "/Users/me/Applications/ncrs.app/Contents/MacOS/ncrs"
+                ))
+            ),
+            Channel::PackageManager(PackageManager::Homebrew)
+        );
+    }
+
+    #[test]
     fn without_a_marker_it_is_a_direct_download() {
-        assert_eq!(Channel::detect(false, |_| false), Channel::Direct);
+        assert_eq!(Channel::detect(false, |_| false, None), Channel::Direct);
     }
 
     #[test]

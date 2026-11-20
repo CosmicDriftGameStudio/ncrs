@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use chrono::NaiveDate;
 use ncrs_index::{ContentHash, KindCatalog, KindLanguage, Kinds, SenderAliases};
 use sha2::{Digest as _, Sha256};
@@ -203,14 +196,14 @@ fn the_same_iban_decides_when_no_number_does() {
         "Bank/Statements",
         1..3,
         &none,
-        Some("IBAN DE12 8705 0000 0712 3456 78"),
+        Some("IBAN DE51 8705 0000 0712 3456 78"),
     );
 
     let placement = place(
         &documents,
         &ordered(),
         &none,
-        Some("Kontoauszug\nIBAN DE12870500000712345678"),
+        Some("Kontoauszug\nIBAN DE51870500000712345678"),
     )
     .unwrap();
 

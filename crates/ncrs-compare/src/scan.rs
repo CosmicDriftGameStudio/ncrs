@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +25,9 @@ pub enum ScanError {
     Cancelled,
     /// A folder or a file could not be read; the text names why.
     Failed(String),
+    /// The disk or a server refused; the kind is told in the language, the
+    /// system's text is kept for what has no wording of its own.
+    Io { kind: io::ErrorKind, text: String },
 }
 
 impl From<io::Error> for ScanError {
@@ -32,7 +35,10 @@ impl From<io::Error> for ScanError {
         if error.kind() == io::ErrorKind::Interrupted {
             Self::Cancelled
         } else {
-            Self::Failed(error.to_string())
+            Self::Io {
+                kind: error.kind(),
+                text: error.to_string(),
+            }
         }
     }
 }
@@ -254,51 +260,15 @@ fn files_have_same_content(
     let scratch = tempfile::tempdir()?;
     let left_file = local_file(pool, stop, left, &scratch.path().join("left"))?;
     let right_file = local_file(pool, stop, right, &scratch.path().join("right"))?;
-    Ok(same_bytes(
+    let stop_check = StopCheck(Arc::clone(stop));
+    Ok(ncrs_fs::transfer::same_bytes(
         &mut File::open(left_file)?,
         &mut File::open(right_file)?,
-        &StopCheck(Arc::clone(stop)),
+        || stop_check.check(),
     )?)
 }
 
-const BLOCK: usize = 64 * 1024;
-
-/// Reads until `buffer` is full or the file ends; how much it holds.
-fn fill(reader: &mut impl Read, buffer: &mut [u8]) -> io::Result<usize> {
-    let mut held = 0;
-    while let Some(room) = buffer.get_mut(held..).filter(|room| !room.is_empty()) {
-        let read = reader.read(room)?;
-        if read == 0 {
-            break;
-        }
-        held += read;
-    }
-    Ok(held)
-}
-
-fn same_bytes(left: &mut impl Read, right: &mut impl Read, stop: &StopCheck) -> io::Result<bool> {
-    let mut left_block: Vec<u8> = vec![0; BLOCK];
-    let mut right_block: Vec<u8> = vec![0; BLOCK];
-    loop {
-        stop.check()?;
-        let left_held = fill(left, &mut left_block)?;
-        let right_held = fill(right, &mut right_block)?;
-        if left_block.get(..left_held) != right_block.get(..right_held) {
-            return Ok(false);
-        }
-        if left_held < BLOCK {
-            return Ok(true);
-        }
-    }
-}
-
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::time::{Duration, SystemTime};
 

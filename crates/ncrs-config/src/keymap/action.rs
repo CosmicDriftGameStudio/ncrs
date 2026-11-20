@@ -46,6 +46,7 @@ key_actions! {
     TagAll => "tag_all",
     ClearTags => "clear_tags",
     AbortJob => "abort_job",
+    ShowProgress => "show_progress",
     CopyPath => "copy_path",
     CopyName => "copy_name",
     CopyFiles => "copy_files",
@@ -118,6 +119,7 @@ key_actions! {
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
     GrantFolderAccess => "grant_folder_access",
+    OpenPrivacySettings => "open_privacy_settings",
     ConnectServer => "connect_server",
     DisconnectServer => "disconnect_server",
     SearchCase => "search_case",
@@ -199,6 +201,7 @@ impl KeyAction {
             | Self::ClearTags => Reach::Both,
             Self::GoUp
             | Self::Open
+            | Self::ShowProgress
             | Self::OpenTerminal
             | Self::CopyPath
             | Self::CopyName
@@ -241,6 +244,7 @@ impl KeyAction {
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
+            | Self::OpenPrivacySettings
             | Self::ConnectServer
             | Self::DisconnectServer
             | Self::DriveMenuLeft
@@ -341,6 +345,8 @@ impl KeyAction {
     fn is_offered_where(self, system_reads_scans: bool) -> bool {
         match self {
             Self::GrantFolderAccess => ncrs_fs::sandbox_active(),
+            // Full Disk Access does not reach into the sandbox.
+            Self::OpenPrivacySettings => cfg!(target_os = "macos") && !ncrs_fs::sandbox_active(),
             Self::DownloadOcrModels => !system_reads_scans,
             Self::OpenTrashInFinder => cfg!(target_os = "macos"),
             Self::SearchDocuments => false,
@@ -372,6 +378,7 @@ impl KeyAction {
             | Self::TagAll
             | Self::ClearTags
             | Self::AbortJob
+            | Self::ShowProgress
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
@@ -418,6 +425,7 @@ impl KeyAction {
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
+            | Self::OpenPrivacySettings
             | Self::ConnectServer
             | Self::DisconnectServer
             | Self::SearchCase
@@ -480,6 +488,7 @@ impl KeyAction {
             | Self::TagAll
             | Self::ClearTags
             | Self::AbortJob
+            | Self::ShowProgress
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
@@ -523,6 +532,7 @@ impl KeyAction {
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
+            | Self::OpenPrivacySettings
             | Self::ConnectServer
             | Self::DisconnectServer
             | Self::SearchCase

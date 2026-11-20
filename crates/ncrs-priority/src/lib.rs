@@ -39,7 +39,6 @@ pub fn set_current_thread_priority(priority: ThreadPriority) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     #[cfg(target_os = "macos")]
     mod qos {

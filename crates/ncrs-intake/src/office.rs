@@ -59,9 +59,14 @@ pub struct PlainText;
 
 impl PlainText {
     fn extract_within(path: &Path, limits: Limits) -> Result<Extracted, TextError> {
+        let file = File::open(path).map_err(|err| io_failure(path, err))?;
+        Self::extract_from_file(path, &file, limits)
+    }
+
+    fn extract_from_file(path: &Path, file: &File, limits: Limits) -> Result<Extracted, TextError> {
         let mut bytes = Vec::new();
-        File::open(path)
-            .and_then(|file| file.take(limits.text_bytes as u64).read_to_end(&mut bytes))
+        file.take(limits.text_bytes as u64)
+            .read_to_end(&mut bytes)
             .map_err(|err| io_failure(path, err))?;
         Ok(Self::decode(&bytes))
     }
@@ -75,6 +80,14 @@ impl TextSource for PlainText {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
         if has_extension(path, &["txt", "md"]) {
             Self::extract_within(path, LIMITS)
+        } else {
+            Ok(Extracted::NotApplicable)
+        }
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if has_extension(path, &["txt", "md"]) {
+            Self::extract_from_file(path, file, LIMITS)
         } else {
             Ok(Extracted::NotApplicable)
         }
@@ -155,6 +168,13 @@ impl TextSource for OfficeText {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
         match Package::of(path) {
             Some(package) => Self::extract_within(path, package, LIMITS),
+            None => Ok(Extracted::NotApplicable),
+        }
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        match Package::of(path) {
+            Some(package) => Self::extract_from_reader(path, file, package, LIMITS),
             None => Ok(Extracted::NotApplicable),
         }
     }
@@ -275,12 +295,6 @@ fn push_reference(reference: &BytesRef<'_>, out: &mut String) -> Result<(), Stri
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::io::{Cursor, Write as _};
 

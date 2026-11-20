@@ -17,6 +17,8 @@ pub struct HeaderMenu {
     pub side: PanelSide,
     /// Top left corner, already kept inside the window.
     pub origin: Point,
+    /// The entry the arrow keys stand on, counted over the entries only.
+    pub selected: Option<usize>,
 }
 
 /// The columns the menu lists: every one this system can show.
@@ -46,6 +48,7 @@ impl HeaderMenu {
                     window.height,
                 ),
             ),
+            selected: None,
         }
     }
 }
@@ -63,6 +66,7 @@ fn items(
                 checked: columns.contains(&column),
                 note: is_name.then(|| lang.text(Msg::ColumnMenuAlways).to_owned()),
                 on_press: (!is_name).then_some(PanelMessage::HeaderMenuToggleColumn(column)),
+                is_selected: false,
             }
         })
         .collect();
@@ -71,6 +75,7 @@ fn items(
         checked,
         note: None,
         on_press: Some(message),
+        is_selected: false,
     };
     items.push(ColumnMenuItem::Separator);
     items.push(command(
@@ -92,6 +97,42 @@ fn items(
     items
 }
 
+/// What each entry sends when pressed, in order; `None` for one that is
+/// disabled.
+pub fn entry_messages(columns: &[Column], same_in_both: bool) -> Vec<Option<PanelMessage>> {
+    items(columns, same_in_both, Language::default())
+        .into_iter()
+        .filter_map(|item| match item {
+            ColumnMenuItem::Entry { on_press, .. } => Some(on_press),
+            ColumnMenuItem::Separator => None,
+        })
+        .collect()
+}
+
+/// The entry `step` places on from `selected`, skipping disabled ones and
+/// wrapping round. Nothing selected yet: down starts at the first, up at the
+/// last.
+pub fn step_selection(
+    selected: Option<usize>,
+    entries: &[Option<PanelMessage>],
+    step: isize,
+) -> Option<usize> {
+    let count = isize::try_from(entries.len()).ok()?;
+    let mut at = match selected.and_then(|index| isize::try_from(index).ok()) {
+        Some(index) => index,
+        None if step > 0 => -1,
+        None => 0,
+    };
+    for _ in 0..count {
+        at = (at + step.signum()).rem_euclid(count);
+        let index = usize::try_from(at).ok()?;
+        if entries.get(index).is_some_and(Option::is_some) {
+            return Some(index);
+        }
+    }
+    selected
+}
+
 /// The menu as an overlay for the whole window; the app lays it over the
 /// panels while `Panels::header_menu` is set.
 pub fn header_menu_view<'a>(
@@ -100,21 +141,17 @@ pub fn header_menu_view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> iced::Element<'a, PanelMessage> {
-    column_menu(
-        items(columns.of(menu.side), columns.same_in_both, lang),
-        menu.origin,
-        PanelMessage::HeaderMenuClose,
-        palette,
-    )
+    let mut items = items(columns.of(menu.side), columns.same_in_both, lang);
+    let mut entry = 0;
+    for item in &mut items {
+        if let ColumnMenuItem::Entry { is_selected, .. } = item {
+            *is_selected = menu.selected == Some(entry);
+            entry += 1;
+        }
+    }
+    column_menu(items, menu.origin, PanelMessage::HeaderMenuClose, palette)
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +167,7 @@ mod tests {
                     checked,
                     note,
                     on_press,
+                    ..
                 } if label == "Name" => Some((*checked, note.clone(), on_press.clone())),
                 _ => None,
             })
@@ -151,6 +189,17 @@ mod tests {
             item,
             ColumnMenuItem::Entry { label, .. } if label == "Owner" && !cfg!(unix)
         )));
+    }
+
+    #[test]
+    fn the_arrows_skip_the_name_and_wrap_round() {
+        let entries = entry_messages(&Column::DEFAULT, true);
+        let first = entries.iter().position(Option::is_some).unwrap();
+        let last = entries.len() - 1;
+        assert_eq!(step_selection(None, &entries, 1), Some(first));
+        assert_eq!(step_selection(None, &entries, -1), Some(last));
+        assert_eq!(step_selection(Some(last), &entries, 1), Some(first));
+        assert_eq!(step_selection(Some(first), &entries, -1), Some(last));
     }
 
     #[test]

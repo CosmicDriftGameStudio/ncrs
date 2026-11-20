@@ -1,7 +1,6 @@
 use crate::app::*;
 
 /// How long a confirmation stays in the status bar.
-/// per file, all in one burst, so the burst becomes one transfer.
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// What a click on the "access blocked" error sends. Only macOS has a privacy
@@ -124,10 +123,8 @@ impl App {
     /// A shell command ended: its report goes to the status bar and both panels
     /// are re-read, as the command may have changed what they show.
     fn finish_shell_command(&mut self, report: Result<String, String>) -> Task<Message> {
-        let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
-            let path = self.panel(each).path.clone();
-            self.load(each, path, None)
-        });
+        let reloads =
+            [PanelSide::Left, PanelSide::Right].map(|each| self.reload_keeping_cursor(each));
         let notice = match report {
             Ok(text) => {
                 self.job_error = None;
@@ -141,14 +138,14 @@ impl App {
         Task::batch(reloads.into_iter().chain([notice]))
     }
 
-    /// Shows `text` in the status bar for [`NOTICE_DURATION`]. The timer carries
-    /// the generation, so it cannot clear a notice that came after it.
     /// F7 and Shift+F4: the name prompt for the active panel's folder.
     pub(in crate::app) fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
         let side = self.panels.active;
         self.ops.open_prompt(prompt, side)
     }
 
+    /// Shows `text` in the status bar for [`NOTICE_DURATION`]. The timer carries
+    /// the generation, so it cannot clear a notice that came after it.
     pub(in crate::app) fn show_notice(&mut self, text: String) -> Task<Message> {
         self.notice_generation = self.notice_generation.wrapping_add(1);
         self.notice = Some(text);
@@ -175,6 +172,8 @@ impl App {
             2
         } else if self.ops.conflict_is_open() {
             3
+        } else if self.ops.progress_mask_is_open() {
+            2
         } else {
             0
         }
@@ -184,7 +183,9 @@ impl App {
     pub(in crate::app) fn activate_dialog_button(&mut self) -> Task<Message> {
         if self.start_over_dialog {
             return if self.dialog_focus == hermes_overview_ui::START_OVER_CONFIRM_FOCUS {
-                self.update_hermes_overview(HermesOverviewMessage::ConfirmStartOver)
+                self.update_hermes_plain(Message::HermesOverview(
+                    HermesOverviewMessage::ConfirmStartOver,
+                ))
             } else {
                 self.start_over_dialog = false;
                 Task::none()
@@ -265,6 +266,15 @@ impl App {
             let choice = choice_of_focus(self.dialog_focus);
             return self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx));
         }
+        if self.ops.progress_mask_is_open() {
+            return if self.dialog_focus == transfer_ui::ABORT_FOCUS {
+                self.abort_job()
+            } else {
+                self.update_ops(OpsMessage::TransferDialog(
+                    TransferDialogMessage::Background,
+                ))
+            };
+        }
         Task::none()
     }
 
@@ -302,9 +312,9 @@ impl App {
         self.ops.prompt.is_some()
             || self.ops.conflict_is_open()
             || self.ops.transfer_dialog.is_some()
-            || self.ops.progress_mask_is_open()
             || self.ops.delete_dialog.is_some()
             || self.ops.open_file_dialog.is_some()
+            || self.ops.progress_mask_is_open()
             || self.ops.quit_dialog
             || self.ops.permissions_dialog.is_some()
             || self.ops.batch_rename.is_some()
@@ -321,31 +331,6 @@ impl App {
             || self.grant_dialog
             || self.remote_ui.dialog.is_some()
             || self.compare.dialog_is_open()
-    }
-
-    /// The create of the name prompt has reported: close the prompt or show
-    /// why it failed, and reload the folder.
-    pub(in crate::app) fn finish_prompt(
-        &mut self,
-        kind: PromptKind,
-        request_id: u64,
-        result: Result<(), fs::CreateDirError>,
-    ) -> Task<Message> {
-        if !self.ops.is_current_prompt_request(request_id) {
-            return Task::none();
-        }
-        // The queued reload runs here, after the create has reported, never
-        // beside it. On success it selects the new entry; on failure it still
-        // re-reads, because the name may belong to something else that
-        // appeared meanwhile.
-        let pending = self.panels.take_pending_reload();
-        let created = pending.as_ref().map(ReloadNow::created);
-        let reload = pending.map(|due| self.load(due.side, due.path, Some(due.name)));
-        let lang = self.lang;
-        if let Some(path) = self.ops.finish_prompt(kind, result, created, lang) {
-            self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
-        }
-        reload.unwrap_or_else(Task::none)
     }
 
     /// The quit question was answered with "stop and quit".
@@ -376,10 +361,38 @@ impl App {
         true
     }
 
+    /// While the index is being encrypted or started over, or its recovery key
+    /// is on screen, a quit would lose the key. It is held back once; asking
+    /// again quits.
+    pub(in crate::app) fn protection_holds_quit(&mut self) -> bool {
+        let pending = self
+            .hermes
+            .filing
+            .as_ref()
+            .map(|module| module.phase())
+            .filter(|phase| {
+                matches!(
+                    phase,
+                    crate::filing::Phase::ShowRecoveryKey { .. }
+                        | crate::filing::Phase::Encrypting
+                        | crate::filing::Phase::StartingOver
+                )
+            })
+            .map(std::mem::discriminant);
+        let already_warned = pending.is_some() && self.protection_quit_warned == pending;
+        self.protection_quit_warned = pending;
+        if already_warned || pending.is_none() {
+            return false;
+        }
+        let text = self.lang.text(Msg::HermesQuitProtectionPending).to_string();
+        self.set_status_error(&text);
+        true
+    }
+
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
-        if self.notes_hold_quit() {
+        if self.notes_hold_quit() || self.protection_holds_quit() {
             return Task::none();
         }
         ncrs_hermes_ui::closing(&self.hermes);
@@ -407,41 +420,22 @@ impl App {
     pub(in crate::app) fn open_privacy_settings(&mut self) {
         self.job_error = None;
         let command = fs::privacy_settings_command();
-        if let Err(reason) = self.launcher.launch(&command) {
-            let failure = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", self.lang.text(Msg::StatusSystemSettings))
-                .replace("{reason}", &reason);
-            self.set_status_error(&failure);
-        }
+        let name = self.lang.text(Msg::StatusSystemSettings);
+        self.launch_or_report(&command, name);
     }
 
     pub(in crate::app) fn update_about(&mut self, message: AboutMessage) -> Task<Message> {
-        match message {
-            AboutMessage::Open => {
-                if self.blocking_overlay_is_open() {
-                    return Task::none();
-                }
-                self.panels.context_menu = None;
-                self.dialog_focus = about_ui::CLOSE_FOCUS;
-                self.about = Some(AboutCard::new());
+        if message == AboutMessage::Open {
+            if self.blocking_overlay_is_open() {
+                return Task::none();
             }
-            AboutMessage::Close => self.about = None,
-            AboutMessage::OpenLicenses => match (self.find_third_party_licenses)() {
-                Some(path) => {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy();
-                    self.launch_from_about(path.clone().into_os_string(), &name);
-                }
-                None => {
-                    if let Some(card) = self.about.as_mut() {
-                        card.report_licenses_missing();
-                    }
-                }
-            },
-            AboutMessage::OpenRepository => {
-                self.launch_from_about(REPOSITORY_URL.into(), REPOSITORY_URL);
-            }
+            self.close_context_menu();
+            self.dialog_focus = about_ui::CLOSE_FOCUS;
+        }
+        if let Some(about_ui::Action::Launch { target, name }) =
+            about_ui::update(&mut self.about, message, self.find_third_party_licenses)
+        {
+            self.launch_from_about(target, &name);
         }
         Task::none()
     }
@@ -450,14 +444,8 @@ impl App {
     /// not hidden behind it.
     fn launch_from_about(&mut self, target: std::ffi::OsString, name: &str) {
         let command = fs::system_open_command(target);
-        if let Err(reason) = self.launcher.launch(&command) {
+        if !self.launch_or_report(&command, name) {
             self.about = None;
-            let failure = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", name)
-                .replace("{reason}", &reason);
-            self.set_status_error(&failure);
         }
     }
 }

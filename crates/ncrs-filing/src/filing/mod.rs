@@ -3,8 +3,11 @@
 //! intake only when nothing is left open.
 //!
 //! The index reaches the intake only through `FilingModule::start_pipeline`.
-//! The handle it gives the runner is issued only in the `Ready` phase, and
-//! `Ready` is terminal, so the guarantee holds for the runner's lifetime. The
+//! The handle it gives the runner is issued only in the `Ready` phase. `Ready`
+//! is left again by encrypting the index and by starting over, and a handle
+//! checks the phase only when it is issued: afterwards it may find no index
+//! (`INDEX_NOT_OPEN`) or a new one, and the document ids it holds are then not
+//! stable. The caller stops the pipeline first and drops what it holds. The
 //! slot may already hold an index in other phases (a freshly created one whose
 //! recovery key has not been confirmed, a plain file nobody has accepted yet),
 //! and those are held back by the phase, not by the slot being empty.
@@ -24,10 +27,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, TryLockError};
 use std::thread;
 
-use ncrs_core::INDEX_NOT_OPEN;
+use ncrs_core::{NoteLink, INDEX_NOT_OPEN};
 use ncrs_index::{
-    HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog, KindLanguage,
-    RecoveryKey,
+    ContentHash, Document, HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog,
+    KindLanguage, RecoveryKey,
 };
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
@@ -54,6 +57,8 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
+/// Why settling the interrupted runs of the last opened index failed, if it did.
+type SettleNote = Arc<Mutex<Option<String>>>;
 
 #[cfg(feature = "local-ai")]
 pub use ai::shared_local_model;
@@ -61,8 +66,10 @@ pub use ai::AiStatus;
 pub use ai::{chat_model, http_ai_provider};
 use ai::{wire_ai, AiWiring};
 use index_ops::{
-    apply_key, create_index, encrypt_index, open_existing, start_over, INDEX_NOT_REOPENED,
+    apply_key, create_index, encrypt_index, open_existing, settle_held, start_over,
+    INDEX_NOT_REOPENED,
 };
+pub use locations::lies_within;
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{
@@ -92,12 +99,6 @@ mod secrets;
 mod start;
 mod state;
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;
 mod text_chain;
 mod update;
@@ -158,10 +159,17 @@ pub struct FilingModule {
     kinds: Arc<KindCatalog>,
     /// Built when the chat first needs it; the models are only loaded when a
     /// scan has to be read.
-    chat_text_chain: OnceLock<Arc<TextChain>>,
+    chat_text_chain: Arc<OnceLock<Arc<TextChain>>>,
     /// The chain the pipeline reads with, kept so closing the app can clear
     /// its crash marker while a reading still holds the chain.
     pipeline_text_chain: Mutex<Option<Arc<TextChain>>>,
+    /// What the last settling of an interrupted run could not do.
+    settle_problem: SettleNote,
+    /// The chat, the review list and the filing tab count their work here.
+    index_work: crate::index_work::IndexWork,
+    /// The plain file was confirmed and what a crash left is being settled;
+    /// the module is ready when that is done.
+    settling: bool,
 }
 
 impl fmt::Debug for FilingModule {

@@ -2,12 +2,9 @@
 
 #![cfg(test)]
 #![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
     clippy::use_debug,
-    clippy::integer_division
+    clippy::integer_division,
+    reason = "Debug output in the test report; arithmetic on small counts in a test"
 )]
 
 use std::num::NonZeroU32;

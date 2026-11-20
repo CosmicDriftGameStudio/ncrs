@@ -9,14 +9,6 @@
 //! held and puts it back when the test ends, also after a failed assertion, so
 //! a local run leaves the developer's clipboard as it was.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -302,8 +294,10 @@ mod platform {
         bytes
     }
 
-    // reason: the clipboard format is little-endian by definition
-    #[allow(clippy::little_endian_bytes)]
+    #[allow(
+        clippy::little_endian_bytes,
+        reason = "the clipboard format is little-endian by definition"
+    )]
     fn field_at(bytes: &[u8], offset: usize) -> u32 {
         let field = bytes
             .get(offset..offset + 4)
@@ -313,8 +307,10 @@ mod platform {
 
     /// `DROPFILES`, then the paths as wide strings, each closed by a null and
     /// the list by one more.
-    // reason: the clipboard format is little-endian by definition
-    #[allow(clippy::little_endian_bytes)]
+    #[allow(
+        clippy::little_endian_bytes,
+        reason = "the clipboard format is little-endian by definition"
+    )]
     pub(in crate::clipboard_system_tests) fn files_as_the_file_manager_reads_them() -> Vec<PathBuf>
     {
         let bytes = drop_files_on_the_clipboard();
@@ -336,8 +332,10 @@ mod platform {
     }
 
     /// As Explorer writes it: plain drive paths, never the `\\?\` form.
-    // reason: the clipboard format is little-endian by definition
-    #[allow(clippy::little_endian_bytes)]
+    #[allow(
+        clippy::little_endian_bytes,
+        reason = "the clipboard format is little-endian by definition"
+    )]
     pub(in crate::clipboard_system_tests) fn put_files_as_the_file_manager_does(files: &[PathBuf]) {
         let header = u32::try_from(DROP_FILES_HEADER).expect("a small offset");
         // pFiles, pt.x, pt.y, fNC, then fWide.

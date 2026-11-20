@@ -306,16 +306,6 @@ fn the_engine_query_carries_the_fields() {
 }
 
 #[test]
-fn only_the_macos_root_leaves_its_file_system() {
-    assert!(stays_on_file_system(Path::new("/Users")));
-    assert!(stays_on_file_system(Path::new("/tmp/x")));
-    assert_eq!(
-        stays_on_file_system(Path::new("/")),
-        !cfg!(target_os = "macos")
-    );
-}
-
-#[test]
 fn the_cursor_target_names_the_file_and_its_first_match() {
     let view = view_with(vec![
         found("/root/a.txt", &[7, 9]),
@@ -433,4 +423,17 @@ fn the_hit_list_is_named_after_the_text_or_else_the_names() {
     assert_eq!(view.hit_list_title(), "*.pdf");
     view.in_files = true;
     assert_eq!(view.hit_list_title(), "needle");
+}
+
+#[test]
+fn a_batch_is_merged_into_the_sorted_results_and_replaces_a_path_seen_before() {
+    let mut view = view_with(vec![found("/root/b", &[1])]);
+    view.apply_events(vec![
+        found("/root/c", &[]),
+        found("/root/a", &[]),
+        found("/root/b", &[2, 3]),
+    ]);
+
+    assert_eq!(paths(&view), ["/root/a", "/root/b", "/root/c"]);
+    assert_eq!(view.results[1].lines.len(), 2);
 }

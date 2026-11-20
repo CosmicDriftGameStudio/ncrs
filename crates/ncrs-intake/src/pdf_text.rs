@@ -2,7 +2,7 @@
 //! without one, and the search for the pdfium library.
 
 use std::fs::File;
-use std::io::Read as _;
+use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -14,13 +14,15 @@ use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, PreviewPage, TextError, TextSource, MAX_TEXT_BYTES};
 
 const PDF_HEADER: &[u8] = b"%PDF-";
+/// The header may follow some leading bytes, as pdfium accepts it.
+const PDF_HEADER_WINDOW: u64 = 1024;
 
 /// Resolution of a rendered scan. OCR reads small print well from here on.
 const SCAN_DPI: f32 = 200.0;
 const POINTS_PER_INCH: f32 = 72.0;
 /// A scanned book must not fill the memory with page images: later pages are
 /// left out. A single page is capped in size for the same reason.
-const MAX_SCAN_PAGES: usize = 20;
+pub const MAX_SCAN_PAGES: usize = 20;
 pub const MAX_SCAN_SIDE_PIXELS: f32 = 4000.0;
 /// pdfium's grey-only bitmap format stays blank for these pages, so they are
 /// rendered as BGRx and reduced to grey here.
@@ -307,16 +309,30 @@ fn scaled_pixels(points: f32, scale: f32) -> i32 {
 
 impl TextSource for PdfText {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
-        if !is_pdf(path)? {
+        let file = File::open(path).map_err(|err| TextError::Io {
+            path: path.to_path_buf(),
+            reason: err.to_string(),
+        })?;
+        self.extract_open(path, &file)
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if !is_pdf(path, file)? {
             return Ok(Extracted::NotApplicable);
         }
+        (&*file)
+            .seek(SeekFrom::Start(0))
+            .map_err(|err| TextError::Io {
+                path: path.to_path_buf(),
+                reason: err.to_string(),
+            })?;
         let unreadable = |reason: String| TextError::Unreadable {
             path: path.to_path_buf(),
             reason,
         };
         let document = self
             .pdfium
-            .load_pdf_from_file(path, None)
+            .load_pdf_from_reader(file, None)
             .map_err(|err| unreadable(format!("cannot open the PDF: {err:?}")))?;
         let mut pages = Vec::new();
         let mut collected: usize = 0;
@@ -369,7 +385,15 @@ impl PdfUnavailable {
 
 impl TextSource for PdfUnavailable {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
-        if is_pdf(path)? {
+        let file = File::open(path).map_err(|err| TextError::Io {
+            path: path.to_path_buf(),
+            reason: err.to_string(),
+        })?;
+        self.extract_open(path, &file)
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if is_pdf(path, file)? {
             Err(self.reason.clone())
         } else {
             Ok(Extracted::NotApplicable)
@@ -378,18 +402,18 @@ impl TextSource for PdfUnavailable {
 }
 
 /// By the first bytes, not the extension.
-fn is_pdf(path: &Path) -> Result<bool, TextError> {
+fn is_pdf(path: &Path, file: &File) -> Result<bool, TextError> {
     let unreadable = |err: std::io::Error| TextError::Io {
         path: path.to_path_buf(),
         reason: err.to_string(),
     };
-    let mut header = Vec::with_capacity(PDF_HEADER.len());
-    File::open(path)
-        .map_err(unreadable)?
-        .take(PDF_HEADER.len() as u64)
+    let mut header = Vec::with_capacity(PDF_HEADER_WINDOW as usize);
+    file.take(PDF_HEADER_WINDOW)
         .read_to_end(&mut header)
         .map_err(unreadable)?;
-    Ok(header == PDF_HEADER)
+    Ok(header
+        .windows(PDF_HEADER.len())
+        .any(|window| window == PDF_HEADER))
 }
 
 fn holds_library(dir: &Path) -> bool {
@@ -478,12 +502,6 @@ pub fn pdfium_library_dir() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use tempfile::TempDir;
 

@@ -1,5 +1,6 @@
 //! The state of a file panel ([`PanelState`]): the rows, the cursor, the tags,
 //! the sort, the history. The view is built from it in the app.
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
@@ -9,6 +10,7 @@ use ncrs_fs::{sort_entries, ReadError, SortColumn, SortKey};
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT, ROW_HEIGHT};
 
 use crate::hit_list::HitList;
+use crate::name_match::composed;
 use crate::panel_history::PanelHistory;
 use crate::rename::RenameState;
 
@@ -148,6 +150,12 @@ impl PanelState {
     pub fn drop_hit_list(&mut self) -> Option<HitList> {
         let list = self.hit_list.take()?;
         self.path.clone_from(&list.return_to);
+        // The rows and the cursor belong to the list: the folder is read anew
+        // and starts at its top.
+        self.entries.clear();
+        self.selection.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
         Some(list)
     }
 
@@ -168,7 +176,10 @@ impl PanelState {
 
     /// Takes the rows at `paths` out of the list; the files are untouched.
     pub fn remove_hits(&mut self, paths: &[PathBuf], visible_rows: usize) {
-        self.entries.retain(|entry| !paths.contains(&entry.path));
+        let removed: std::collections::HashSet<&std::path::Path> =
+            paths.iter().map(PathBuf::as_path).collect();
+        self.entries
+            .retain(|entry| !removed.contains(entry.path.as_path()));
         self.selection.retain_present(&self.entries);
         self.select(self.selected, visible_rows);
     }
@@ -196,6 +207,19 @@ impl PanelState {
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected)
+    }
+
+    /// The rows an operation acts on: the tagged ones, else the cursor row,
+    /// never `..`.
+    pub fn action_entries(&self) -> Vec<&FileEntry> {
+        if self.selection.any_tagged() {
+            self.selection.ordered(&self.entries)
+        } else {
+            self.selected_entry()
+                .filter(|entry| !entry.is_parent)
+                .into_iter()
+                .collect()
+        }
     }
 
     /// The server the panel shows a folder of. Told from the text of the path,
@@ -241,7 +265,7 @@ impl PanelState {
         path: PathBuf,
         entries: Vec<FileEntry>,
         error: Option<ReadError>,
-        select: Option<&str>,
+        select: Option<&OsStr>,
         visible_rows: usize,
     ) {
         self.apply_sorted_listing(path, entries, error, select, visible_rows, None);
@@ -255,7 +279,7 @@ impl PanelState {
         path: PathBuf,
         mut entries: Vec<FileEntry>,
         error: Option<ReadError>,
-        select: Option<&str>,
+        select: Option<&OsStr>,
         visible_rows: usize,
         sorted_by: Option<SortKey>,
     ) {
@@ -269,10 +293,7 @@ impl PanelState {
         // `self.entries = entries` this would read the new list and remember the
         // file at that position, not the file the cursor was on.
         let previous_index = self.selected;
-        let previous: Option<String> = self
-            .entries
-            .get(self.selected)
-            .map(|e| e.name.to_string_lossy().into_owned());
+        let previous: Option<OsString> = self.entries.get(self.selected).map(|e| e.name.clone());
 
         // A reload replaces the rows. A tag whose name is still there stays; one
         // whose file is gone is dropped — the safe direction, since a forgotten
@@ -294,10 +315,24 @@ impl PanelState {
         if !same_directory {
             self.scroll_offset = 0;
         }
-        let wanted = select.map(str::to_string).or(previous);
+        let wanted = select
+            .map(OsStr::to_os_string)
+            .or(previous.filter(|_| same_directory));
         let index = wanted
             .as_deref()
-            .and_then(|name| self.entries.iter().position(|e| e.name == name))
+            .and_then(|name| {
+                // The exact name first: the composed form is lossy for names
+                // that are not UTF-8, and two of them can compose alike.
+                self.entries
+                    .iter()
+                    .position(|e| e.name == name)
+                    .or_else(|| {
+                        let wanted_name = composed(name);
+                        self.entries
+                            .iter()
+                            .position(|e| composed(&e.name) == wanted_name)
+                    })
+            })
             .unwrap_or(fallback);
         self.select(index, visible_rows);
     }
@@ -415,12 +450,6 @@ mod tests {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tagging_tests {
     use super::*;
@@ -467,6 +496,53 @@ mod tagging_tests {
 
         assert!(!p.selection.is_tagged(&name));
         assert!(p.selection.is_empty());
+    }
+
+    #[test]
+    fn another_folder_starts_at_the_top_even_when_it_holds_the_name_under_the_cursor() {
+        let mut p = panel_with(&[("..", true), ("src", false), ("z", false)]);
+        p.select(1, 10);
+
+        let mut inner = entry("src", false);
+        inner.path = PathBuf::from("/tmp/src/src");
+        p.apply_listing(
+            PathBuf::from("/tmp/src"),
+            vec![entry("..", true), entry("a", false), inner],
+            None,
+            None,
+            10,
+        );
+
+        assert_eq!(p.selected, 0);
+    }
+
+    #[test]
+    fn leaving_a_hit_list_resets_cursor_and_scroll() {
+        let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
+        p.begin_hit_list(crate::hit_list::HitList {
+            query: "q".to_owned(),
+            scope: PathBuf::from("/tmp"),
+            return_to: PathBuf::from("/tmp"),
+        });
+        p.entries = vec![entry("b", false), entry("a", false)];
+        p.select(1, 1);
+        p.scroll_offset = 1;
+
+        p.drop_hit_list();
+
+        assert_eq!((p.selected, p.scroll_offset), (0, 0));
+        assert!(p.entries.is_empty());
+    }
+
+    #[test]
+    fn removing_hits_keeps_the_others() {
+        let mut p = panel_with(&[("a", false), ("b", false), ("c", false)]);
+        let gone = vec![p.entries[0].path.clone(), p.entries[2].path.clone()];
+
+        p.remove_hits(&gone, 10);
+
+        let names: Vec<_> = p.entries.iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names, [std::ffi::OsString::from("b")]);
     }
 
     /// Tagging is per panel.
@@ -567,12 +643,6 @@ mod tagging_tests {
     }
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod sort_tests {
     use super::*;

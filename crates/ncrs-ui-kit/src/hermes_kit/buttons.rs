@@ -212,14 +212,8 @@ pub(in crate::hermes_kit) fn pick_style(
     }
 }
 
-/// Every glyph of the app's monospace font is this wide, in ems.
-const MONOSPACE_EM: f32 = 0.62;
-
-/// The room `text` needs in the app font: the proportional estimate is too
-/// small for monospace text with narrow glyphs.
 fn text_width(text: &str) -> f32 {
-    let monospace = text.chars().count() as f32 * MONOSPACE_EM * TEXT_BODY;
-    format::estimated_width(text, TEXT_BODY).max(monospace)
+    format::estimated_width(text, TEXT_BODY)
 }
 
 /// A button that opens a list of entries below it. Picking one sends its

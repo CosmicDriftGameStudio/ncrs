@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
 
 use super::chat_session::ChatSession;
-use super::{LocalModel, LocalModelConfig};
+use super::{LocalModel, LocalModelConfig, LOAD_REFUSED};
 use crate::chat::{ChatIntent, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest};
 use crate::error::AiError;
@@ -121,6 +121,17 @@ impl FileStamp {
     }
 }
 
+/// A load that failed, until the file changes or, for a refusal that may be
+/// short of memory, until `retry_at`.
+struct LoadFailure {
+    reason: &'static str,
+    stamp: FileStamp,
+    retry_at: Option<Instant>,
+}
+
+/// How long a refused load waits before the next job tries again.
+const LOAD_RETRY_AFTER: Duration = Duration::from_secs(30);
+
 pub fn file_is_there(path: &Path) -> bool {
     FileStamp::of(path).is_some()
 }
@@ -141,7 +152,7 @@ pub struct Shared {
     pin: ModelPin,
     threads: Mutex<NonZeroU32>,
     extraction_priority: Mutex<ThreadPriority>,
-    context_tokens: NonZeroU32,
+    context_tokens: Mutex<NonZeroU32>,
     idle_unload: Duration,
     /// Handed to every loaded model, set by `close`.
     stop: Arc<AtomicBool>,
@@ -172,7 +183,7 @@ impl Shared {
             pin,
             threads: Mutex::new(threads),
             extraction_priority: Mutex::new(ThreadPriority::Utility),
-            context_tokens,
+            context_tokens: Mutex::new(context_tokens),
             idle_unload,
             stop: Arc::default(),
         }
@@ -200,8 +211,17 @@ impl Shared {
         *locked(&self.threads) = threads;
     }
 
-    /// Used from the next document on. The chat asks for full priority, but on
-    /// Linux a thread cannot get back from a higher nice value without rights.
+    /// The largest context any caller asked for is used the next time the model
+    /// is loaded.
+    pub fn raise_context_tokens(&self, context_tokens: NonZeroU32) {
+        let mut current = locked(&self.context_tokens);
+        *current = (*current).max(context_tokens);
+    }
+
+    /// Used from the next document on, except on Linux: the one thread serves
+    /// the chat too, and a Linux thread cannot get back from a lowered nice
+    /// value without rights, so there the document reading runs at the
+    /// priority of the thread.
     pub fn set_extraction_priority(&self, priority: ThreadPriority) {
         *locked(&self.extraction_priority) = priority;
     }
@@ -211,6 +231,9 @@ impl Shared {
     fn prepare_for(&self, job: &Job) {
         let priority = match job {
             Job::Chat(_) | Job::Rule(_) => ThreadPriority::UserInitiated,
+            // A Linux thread cannot get back from a lowered nice value, and
+            // this thread serves the chat too: it stays where it is.
+            Job::Background(_) | Job::Extract(_) if cfg!(target_os = "linux") => return,
             Job::Background(_) | Job::Extract(_) => *locked(&self.extraction_priority),
         };
         set_current_thread_priority(priority);
@@ -281,21 +304,23 @@ impl Shared {
 
     /// Loads the model, or says at once why not. A failure stays until the
     /// file changes: verifying gigabytes per request would stall everything.
-    fn load(&self, failed: &mut Option<(&'static str, FileStamp)>) -> Result<LocalModel, AiError> {
+    /// Only a refused load of a verified file is tried again after a while.
+    fn load(&self, failed: &mut Option<LoadFailure>) -> Result<LocalModel, AiError> {
         let Some(stamp) = FileStamp::of(&self.path) else {
             self.set_status(LocalModelStatus::NotDownloaded);
             return Err(AiError::Model("the local model is not downloaded"));
         };
-        if let Some((reason, failed_stamp)) = failed {
-            if *failed_stamp == stamp {
-                return Err(AiError::Model(reason));
+        if let Some(known) = failed {
+            let waiting = known.retry_at.is_none_or(|at| Instant::now() < at);
+            if known.stamp == stamp && waiting {
+                return Err(AiError::Model(known.reason));
             }
         }
         self.set_status(LocalModelStatus::NotLoadedYet);
         let config = LocalModelConfig {
             path: self.path.clone(),
             threads: *locked(&self.threads),
-            context_tokens: self.context_tokens,
+            context_tokens: *locked(&self.context_tokens),
             stop: Arc::clone(&self.stop),
         };
         match LocalModel::load(config, &self.pin) {
@@ -313,7 +338,12 @@ impl Shared {
                     AiError::Model(reason) => reason,
                     _ => "the local model could not be loaded",
                 };
-                *failed = Some((reason, stamp));
+                let retry_at = (reason == LOAD_REFUSED).then(|| Instant::now() + LOAD_RETRY_AFTER);
+                *failed = Some(LoadFailure {
+                    reason,
+                    stamp,
+                    retry_at,
+                });
                 self.set_status(LocalModelStatus::Failed(reason));
                 Err(AiError::Model(reason))
             }
@@ -325,28 +355,53 @@ impl Shared {
 /// nothing came for `idle_unload`, let go of the model, sleep again.
 pub fn run(shared: &Shared) {
     let mut failed = None;
+    let mut waiting_job: Option<Job> = None;
     loop {
-        let Waited::Job(boxed) = shared.wait_for_job(None) else {
-            return;
+        let first = match waiting_job.take() {
+            Some(job) => job,
+            None => {
+                let Waited::Job(boxed) = shared.wait_for_job(None) else {
+                    return;
+                };
+                *boxed
+            }
         };
-        let first = *boxed;
         shared.prepare_for(&first);
+        let loaded_context = *locked(&shared.context_tokens);
         match shared.load(&mut failed) {
             Ok(model) => {
-                let closed = serve_until_idle(shared, &model, first);
+                let served = serve_until_idle(shared, &model, first, loaded_context);
                 drop(model);
-                if closed {
-                    return;
-                }
                 shared.set_status(LocalModelStatus::NotLoadedYet);
+                match served {
+                    Served::Closed => return,
+                    Served::Idle => {}
+                    Served::NeedsLargerContext(job) => waiting_job = Some(*job),
+                }
             }
             Err(error) => first.fail(error),
         }
     }
 }
 
-/// Serves jobs with `model`; true when the app is gone, false when it was idle.
-fn serve_until_idle(shared: &Shared, model: &LocalModel, first: Job) -> bool {
+/// Why the model was let go of.
+enum Served {
+    /// The app is gone.
+    Closed,
+    /// Nothing came for a while.
+    Idle,
+    /// A caller asked for a larger context than the model was loaded with; the
+    /// job goes first on the reloaded model.
+    NeedsLargerContext(Box<Job>),
+}
+
+/// Serves jobs with `model`, loaded with a context of `loaded_context` tokens.
+fn serve_until_idle(
+    shared: &Shared,
+    model: &LocalModel,
+    first: Job,
+    loaded_context: NonZeroU32,
+) -> Served {
     // Dropped before the model: the session borrows it.
     let mut chat: Option<ChatSession<'_>> = None;
     let mut next = Some(first);
@@ -355,10 +410,13 @@ fn serve_until_idle(shared: &Shared, model: &LocalModel, first: Job) -> bool {
             Some(job) => job,
             None => match shared.wait_for_job(Some(shared.idle_unload)) {
                 Waited::Job(job) => *job,
-                Waited::Idle => return false,
-                Waited::Closed => return true,
+                Waited::Idle => return Served::Idle,
+                Waited::Closed => return Served::Closed,
             },
         };
+        if *locked(&shared.context_tokens) > loaded_context {
+            return Served::NeedsLargerContext(Box::new(job));
+        }
         shared.prepare_for(&job);
         match job {
             Job::Extract(extract) => {
@@ -390,7 +448,6 @@ fn chat_answer<'model>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod queue_tests {
     use std::sync::mpsc::channel;
     use std::sync::Arc;

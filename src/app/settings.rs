@@ -135,7 +135,7 @@ impl App {
         use ncrs_settings::Action as Ask;
         match action {
             Ask::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Ask::SetDialogFocus(focus) => {
@@ -401,13 +401,7 @@ impl App {
                 self.update_updates(ncrs_updates::Message::CheckDue)
             }
             SettingChange::Load(load) => {
-                self.hermes.filing_config.load = load;
-                if let crate::config::AiSetting::Local { threads } =
-                    &mut self.hermes.filing_config.ai
-                {
-                    *threads = None;
-                }
-                self.hermes.set_pipeline_load(load, self.wall_clock.now());
+                self.hermes.apply_load_setting(load, self.wall_clock.now());
                 Task::none()
             }
             SettingChange::System(_) => {
@@ -541,14 +535,14 @@ impl App {
                 if self.blocking_overlay_is_open() {
                     return Task::none();
                 }
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 self.pick_grant_folder()
             }
             GrantMessage::OpenFor(blocked) => {
                 if self.blocking_overlay_is_open() {
                     return Task::none();
                 }
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 (self.pick_folder)(&fs::grant_start_dir_for(&blocked))
                     .map(|folder| Message::Grant(GrantMessage::Picked(folder)))
             }
@@ -602,30 +596,21 @@ impl App {
         // The dialog goes either way: behind it the status bar is dimmed, and
         // a failure is read there. "Grant folder access…" tries again.
         self.grant_dialog = false;
-        let Some(dir) = self.sandbox.grants_dir.clone() else {
+        if self.sandbox.grants_dir.is_none() {
             return self.grant_saved(
                 &folder,
-                Err("there is no data folder to keep it in".to_owned()),
+                Err(self.lang.text(Msg::GrantNoDataFolder).to_owned()),
             );
-        };
+        }
         // Right away, while the access the panel gave is fresh, but not on the
         // thread that draws: making a bookmark and writing its file can take a
         // moment on a slow volume.
-        let grant = self.sandbox.grant;
-        let saved = folder.clone();
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || grant(&dir, &saved))
-                    .await
-                    .unwrap_or_else(|failure| Err(failure.to_string()))
-            },
-            move |result| {
-                Message::Grant(GrantMessage::Saved {
-                    folder: folder.clone(),
-                    result,
-                })
-            },
-        )
+        self.grant_chosen_folder(&folder, |granted, result| {
+            Message::Grant(GrantMessage::Saved {
+                folder: granted,
+                result,
+            })
+        })
     }
 
     /// The grant of `folder` is saved, or not: both panels load again when it
@@ -645,10 +630,8 @@ impl App {
         match report {
             Ok(text) => {
                 self.job_error = None;
-                let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
-                    let path = self.panel(each).path.clone();
-                    self.load(each, path, None)
-                });
+                let reloads = [PanelSide::Left, PanelSide::Right]
+                    .map(|each| self.reload_keeping_cursor(each));
                 let notice = self.show_notice(text);
                 Task::batch(reloads.into_iter().chain([notice]))
             }

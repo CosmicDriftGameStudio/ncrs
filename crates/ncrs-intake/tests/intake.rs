@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -70,8 +63,16 @@ mod tests {
         Location::new(dir.path(), mode, images).unwrap()
     }
 
+    /// `relative` is written with `/`; each part is joined so the separators
+    /// are the ones the walk reports on Windows too.
+    fn below(root: &Path, relative: &str) -> PathBuf {
+        relative
+            .split('/')
+            .fold(root.to_path_buf(), |path, part| path.join(part))
+    }
+
     fn put(location: &Location, relative: &str, bytes: &[u8]) -> PathBuf {
-        let path = location.path.join(relative);
+        let path = below(&location.path, relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
@@ -280,6 +281,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let archive = location(&dir, LocationMode::Archive, false);
         let path = put(&archive, "a.pdf", INVOICE);
+        put(&archive, "stays.pdf", REMINDER);
         fixture.scan_settled(&archive);
         let id = fixture.index.document_by_path(&path).unwrap().unwrap().id;
         fs::remove_file(&path).unwrap();
@@ -304,7 +306,22 @@ mod tests {
         assert_eq!(document.path, elsewhere);
         assert!(document.missing_since.is_none());
         let again = fixture.scan(&archive, t0() + STABLE_AFTER * 5);
-        assert_eq!((again.missing, again.unchanged_without_hash), (0, 1));
+        assert_eq!((again.missing, again.unchanged_without_hash), (0, 2));
+    }
+
+    #[test]
+    fn a_mail_text_indexed_before_it_was_left_out_is_removed_on_settling() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let body = put(&archive, "mail/body.txt", INVOICE);
+        fixture.scan_settled(&archive);
+        assert!(fixture.index.document_by_path(&body).unwrap().is_some());
+        put(&archive, "mail/message.eml", b"From: a@example.org");
+
+        settle_location(&fixture.index, &archive).unwrap();
+
+        assert!(fixture.index.document_by_path(&body).unwrap().is_none());
     }
 
     #[test]
@@ -327,6 +344,34 @@ mod tests {
             .unwrap()
             .missing_since
             .is_none());
+    }
+
+    #[test]
+    fn an_empty_location_with_documents_in_the_index_fails_and_marks_nothing_missing() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let first = put(&archive, "a.pdf", INVOICE);
+        let second = put(&archive, "b.pdf", REMINDER);
+        fixture.scan_settled(&archive);
+        let ids: Vec<_> = [&first, &second]
+            .iter()
+            .map(|path| fixture.index.document_by_path(path).unwrap().unwrap().id)
+            .collect();
+        fs::remove_file(&first).unwrap();
+        fs::remove_file(&second).unwrap();
+
+        settle_location(&fixture.index, &archive).unwrap_err();
+
+        for id in ids {
+            assert!(fixture
+                .index
+                .document(id)
+                .unwrap()
+                .unwrap()
+                .missing_since
+                .is_none());
+        }
     }
 
     #[test]
@@ -484,7 +529,7 @@ mod tests {
         let before = put(&archive, "2025/a.pdf", INVOICE);
         fixture.scan_settled(&archive);
         let id = fixture.index.document_by_path(&before).unwrap().unwrap().id;
-        let after = archive.path.join("2026/Company A/a.pdf");
+        let after = below(&archive.path, "2026/Company A/a.pdf");
         fs::create_dir_all(after.parent().unwrap()).unwrap();
         fs::rename(&before, &after).unwrap();
 
@@ -667,11 +712,9 @@ mod tests {
         assert_eq!(report.skipped.get(&Skip::Excluded), Some(&3));
         assert_eq!(report.error_total, 0);
         assert!(fixture.index.document_by_path(&another).unwrap().is_none());
-        assert!(fixture.index.document_by_path(&secret).unwrap().is_some());
-        assert_eq!(
-            fixture.index.document(known_id).unwrap().unwrap().hash,
-            hash_of(REMINDER)
-        );
+        assert!(fixture.index.document_by_path(&secret).unwrap().is_none());
+        assert!(fixture.index.document(known_id).unwrap().is_none());
+        assert!(fixture.index.document_by_path(&known).unwrap().is_none());
     }
 
     #[cfg(unix)]

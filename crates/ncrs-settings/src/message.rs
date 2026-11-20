@@ -212,17 +212,25 @@ pub enum SettingsMessage {
     AiKeyStored(Result<(), String>),
     /// The period of the Usage page, in days.
     UsagePeriod(u32),
-    /// The sums of the usage log, per period.
-    UsageLoaded(Vec<(u32, ncrs_ai::UsageSummary)>),
+    /// The sums of the usage log, per period, and the system's text when the
+    /// log could not be read whole.
+    UsageLoaded(Vec<(u32, ncrs_ai::UsageSummary)>, Option<String>),
     /// Opens the chat (F2), at the change of this area when one is named.
     OpenChat(Option<AreaFacts>),
     TogglePause,
     /// Puts the run of this journal batch back.
     UndoRun(i64),
-    /// A run was put back, or the reason it could not be.
-    RunUndone(Result<(), String>),
+    /// A run was put back, with how many of its files stayed where they are,
+    /// or the reason it could not be.
+    RunUndone(Result<usize, String>),
     /// The app read the facts the Index and Hermes pages show.
     FactsLoaded(LoadedFacts),
+    /// The terminals and monospace fonts of this machine, read after the tab
+    /// opened.
+    SystemLoaded {
+        terminals: Vec<ncrs_fs::KnownTerminal>,
+        fonts: Vec<String>,
+    },
     OpenAiModel,
     /// Asks before this model is removed from the computer.
     AskRemoveModel(ModelKind),

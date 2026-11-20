@@ -8,7 +8,7 @@ const DIRECTORY: usize = 1;
 const FILE: usize = 2;
 
 fn open_at(app: &mut App, side: PanelSide, index: usize) {
-    drop(app.update(Message::ContextMenuAt { side, index }));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt { side, index })));
 }
 
 fn loaded(app: &App, side: PanelSide) -> Message {
@@ -129,7 +129,7 @@ fn a_right_click_on_a_tagged_row_keeps_the_tags_and_acts_on_all_of_them() {
     assert!(app.left_panel_selection_tagged_for_test(DIRECTORY));
     assert!(app.left_panel_selection_tagged_for_test(3));
     let trash = index_of(&app, ContextAction::Trash);
-    drop(app.update(Message::ContextMenuClick(trash)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(trash))));
 
     assert!(!app.context_menu_is_open());
     assert_eq!(app.ops.delete_dialog.as_ref().unwrap().sources.len(), 2);
@@ -164,7 +164,7 @@ fn a_right_click_outside_the_tags_drops_them_and_acts_on_the_clicked_row_only() 
     assert!(!app.left_panel_selection_tagged_for_test(DIRECTORY));
     assert!(!app.left_panel_selection_tagged_for_test(3));
     let trash = index_of(&app, ContextAction::Trash);
-    drop(app.update(Message::ContextMenuClick(trash)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(trash))));
     assert_eq!(app.ops.delete_dialog.as_ref().unwrap().sources.len(), 1);
 }
 
@@ -182,7 +182,7 @@ fn the_keyboard_keeps_the_tags() {
     let mut app = App::with_fixed_panels();
     app.toggle_tag_for_test(DIRECTORY);
     app.panel_mut(LEFT).selected = FILE;
-    drop(app.update(Message::ContextMenuKey));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuKey)));
     assert!(app.left_panel_selection_tagged_for_test(DIRECTORY));
 }
 
@@ -222,12 +222,12 @@ fn enter_runs_the_highlighted_entry_after_closing_the_menu() {
     let mut app = App::with_fixed_panels();
     open_at(&mut app, LEFT, FILE);
     let copy_path = index_of(&app, ContextAction::CopyPath);
-    drop(app.update(Message::ContextMenuHover(copy_path)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuHover(copy_path))));
     assert_eq!(
         app.context_menu_selected_action(),
         Some(ContextAction::CopyPath)
     );
-    drop(app.update(Message::ContextMenuActivate));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuActivate)));
 
     assert!(!app.context_menu_is_open());
     assert_eq!(app.notice.as_deref(), Some("Path copied"));
@@ -238,7 +238,7 @@ fn an_entry_runs_the_same_message_as_its_key() {
     let mut app = App::with_fixed_panels();
     open_at(&mut app, LEFT, FILE);
     let new_folder = index_of(&app, ContextAction::NewFolder);
-    drop(app.update(Message::ContextMenuClick(new_folder)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(new_folder))));
     assert!(
         app.ops.prompt.is_some(),
         "F7 opens the create-directory prompt"
@@ -251,22 +251,22 @@ fn arrows_skip_what_cannot_be_chosen() {
     open_at(&mut app, LEFT, PARENT);
     // Open, then the terminal, then the new folder: View, Edit, Copy
     // and Move are greyed out and the separator is not an entry.
-    drop(app.update(Message::ContextMenuMove(1)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuMove(1))));
     assert_eq!(
         app.context_menu_selected_action(),
         Some(ContextAction::OpenTerminal)
     );
-    drop(app.update(Message::ContextMenuMove(1)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuMove(1))));
     assert_eq!(
         app.context_menu_selected_action(),
         Some(ContextAction::NewFolder)
     );
-    drop(app.update(Message::ContextMenuLast));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuLast)));
     assert_eq!(
         app.context_menu_selected_action(),
         Some(ContextAction::AddFavourite)
     );
-    drop(app.update(Message::ContextMenuFirst));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuFirst)));
     assert_eq!(
         app.context_menu_selected_action(),
         Some(ContextAction::Open)
@@ -277,38 +277,38 @@ fn arrows_skip_what_cannot_be_chosen() {
 fn the_keys_of_the_open_menu() {
     assert_eq!(
         route(true, Named::Escape, Modifiers::default()),
-        Some(Message::ContextMenuClose)
+        Some(Message::Files(MenuMessage::ContextMenuClose))
     );
     assert_eq!(
         route(true, Named::Enter, Modifiers::default()),
-        Some(Message::ContextMenuActivate)
+        Some(Message::Files(MenuMessage::ContextMenuActivate))
     );
     assert_eq!(
         route(true, Named::ArrowDown, Modifiers::default()),
-        Some(Message::ContextMenuMove(1))
+        Some(Message::Files(MenuMessage::ContextMenuMove(1)))
     );
     assert_eq!(
         route(true, Named::ArrowUp, Modifiers::default()),
-        Some(Message::ContextMenuMove(-1))
+        Some(Message::Files(MenuMessage::ContextMenuMove(-1)))
     );
     assert_eq!(
         route(true, Named::Home, Modifiers::default()),
-        Some(Message::ContextMenuFirst)
+        Some(Message::Files(MenuMessage::ContextMenuFirst))
     );
     assert_eq!(
         route(true, Named::End, Modifiers::default()),
-        Some(Message::ContextMenuLast)
+        Some(Message::Files(MenuMessage::ContextMenuLast))
     );
     assert_eq!(route(true, Named::F5, Modifiers::default()), None);
-    assert!(repeats(&Message::ContextMenuMove(1)));
-    assert!(!repeats(&Message::ContextMenuActivate));
+    assert!(repeats(&Message::Files(MenuMessage::ContextMenuMove(1))));
+    assert!(!repeats(&Message::Files(MenuMessage::ContextMenuActivate)));
 }
 
 #[test]
 fn shift_f10_opens_the_menu_and_does_not_quit() {
     assert_eq!(
         route(false, Named::F10, Modifiers::SHIFT),
-        Some(Message::ContextMenuKey)
+        Some(Message::Files(MenuMessage::ContextMenuKey))
     );
     assert_eq!(
         route(false, Named::F10, Modifiers::default()),
@@ -320,7 +320,7 @@ fn shift_f10_opens_the_menu_and_does_not_quit() {
 fn escape_closes_and_the_cursor_stays() {
     let mut app = App::with_fixed_panels();
     open_at(&mut app, LEFT, FILE);
-    drop(app.update(Message::ContextMenuClose));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClose)));
     assert!(!app.context_menu_is_open());
     assert_eq!(app.panel(LEFT).selected, FILE);
 }
@@ -330,7 +330,7 @@ fn the_keyboard_opens_the_menu_at_the_cursor_row_of_the_active_panel() {
     let mut app = App::with_fixed_panels();
     app.panels.active = PanelSide::Right;
     app.panel_mut(PanelSide::Right).selected = 2;
-    drop(app.update(Message::ContextMenuKey));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuKey)));
 
     let menu = app.context_menu_for_test().unwrap();
     let anchor = layout::cursor_row_anchor(true, 2, layout::ROW_HEIGHT, app.window_size, 0.0);
@@ -342,23 +342,23 @@ fn the_keyboard_opens_the_menu_at_the_cursor_row_of_the_active_panel() {
 #[test]
 fn the_keyboard_does_nothing_under_an_overlay_or_a_menu_that_is_already_up() {
     let mut prompt = App::with_prompt_open();
-    drop(prompt.update(Message::ContextMenuKey));
+    drop(prompt.update(Message::Files(MenuMessage::ContextMenuKey)));
     assert!(!prompt.context_menu_is_open());
 
     let mut delete = App::with_fixed_panels();
     delete.open_delete_dialog_for_test(1, false);
-    drop(delete.update(Message::ContextMenuKey));
+    drop(delete.update(Message::Files(MenuMessage::ContextMenuKey)));
     assert!(!delete.context_menu_is_open());
-    drop(delete.update(Message::ContextMenuAt {
+    drop(delete.update(Message::Files(MenuMessage::ContextMenuAt {
         side: LEFT,
         index: FILE,
-    }));
+    })));
     assert!(!delete.context_menu_is_open());
 
     let mut open = App::with_fixed_panels();
     open_at(&mut open, LEFT, FILE);
     let before = open.context_menu_for_test().cloned();
-    drop(open.update(Message::ContextMenuKey));
+    drop(open.update(Message::Files(MenuMessage::ContextMenuKey)));
     assert_eq!(open.context_menu_for_test().cloned(), before);
 }
 
@@ -429,14 +429,15 @@ fn the_panels_do_not_scroll_under_the_menu() {
     assert_eq!(covered.panel(LEFT).scroll_offset, 0);
 }
 
-#[test]
-fn the_menu_is_an_overlay() {
+#[tokio::test]
+async fn the_menu_is_an_overlay() {
     let mut app = App::with_fixed_panels();
     assert!(!app.overlay_is_open());
     open_at(&mut app, LEFT, FILE);
     assert!(app.overlay_is_open());
     assert!(app.prompt_key_state().context_menu);
-    drop(app.update(Message::VolumeMenu(LEFT)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(LEFT)))
+        .await;
     assert!(!app.volume_menu_is_open());
 }
 
@@ -449,14 +450,14 @@ fn a_folder_row_offers_its_folder_as_a_favourite_and_then_to_remove_it() {
     assert!(!enabled_actions(&app).contains(&ContextAction::RemoveFavourite));
 
     let add = index_of(&app, ContextAction::AddFavourite);
-    drop(app.update(Message::ContextMenuClick(add)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(add))));
     assert!(app.panels.favourites.contains(&folder));
 
     open_at(&mut app, LEFT, DIRECTORY);
     assert!(enabled_actions(&app).contains(&ContextAction::RemoveFavourite));
     assert!(!enabled_actions(&app).contains(&ContextAction::AddFavourite));
     let remove = index_of(&app, ContextAction::RemoveFavourite);
-    drop(app.update(Message::ContextMenuClick(remove)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(remove))));
     assert!(!app.panels.favourites.contains(&folder));
 }
 
@@ -466,11 +467,11 @@ fn the_favourites_key_and_the_menu_entry_act_on_the_same_folder_row() {
     let folder = by_menu.panel(LEFT).entries[DIRECTORY].path.clone();
     open_at(&mut by_menu, LEFT, DIRECTORY);
     let add = index_of(&by_menu, ContextAction::AddFavourite);
-    drop(by_menu.update(Message::ContextMenuClick(add)));
+    drop(by_menu.update(Message::Files(MenuMessage::ContextMenuClick(add))));
 
     let mut by_key = App::with_fixed_panels();
     open_at(&mut by_key, LEFT, DIRECTORY);
-    drop(by_key.update(Message::ContextMenuClose));
+    drop(by_key.update(Message::Files(MenuMessage::ContextMenuClose)));
     drop(by_key.update(Message::AddFavourite));
 
     assert_eq!(by_menu.panels.favourites, [folder]);
@@ -483,7 +484,7 @@ fn a_file_row_offers_the_folder_it_lies_in_as_a_favourite() {
     let folder = app.panel(LEFT).path.clone();
     open_at(&mut app, LEFT, FILE);
     let add = index_of(&app, ContextAction::AddFavourite);
-    drop(app.update(Message::ContextMenuClick(add)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(add))));
     assert!(app.panels.favourites.contains(&folder));
 }
 

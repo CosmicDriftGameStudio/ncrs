@@ -1,13 +1,6 @@
 //! A rule made in the chat files the waiting documents: the click on
 //! "Rearrange now" is the confirmation and files at once; undo puts it back.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]
@@ -240,6 +233,20 @@ mod tests {
     }
 
     #[test]
+    fn an_archive_only_rearrange_is_offered_and_run_without_any_read_folder() {
+        let mut talk = stored_rule_in(&[], &[], None);
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleNow);
+
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
+    }
+
+    #[test]
     fn an_archive_only_rearrange_with_two_sources_leaves_no_queue() {
         let mut talk = stored_rule_in(&["inbox_a", "inbox"], &[], None);
         let before = talk.files();
@@ -286,7 +293,14 @@ mod tests {
         // Four archive documents and the waiting file.
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "5")])]
+            vec![format!(
+                "{} {}",
+                say(
+                    Msg::HermesChatRuleArchiveMoves,
+                    &[("count", "4"), ("folder", "archive")]
+                ),
+                say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "5")])
+            )]
         );
         assert_eq!(
             talk.labels()[..2],
@@ -366,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn archive_renames_in_two_archives_each_run_in_its_own_archive() {
+    fn archive_renames_leave_a_read_only_archive_alone() {
         let mut talk = Talk::in_dir(
             tempfile::tempdir().unwrap(),
             &["archive", "second"],
@@ -405,20 +419,11 @@ mod tests {
         talk.press(&ChipReply::RuleCreate);
         talk.press(&ChipReply::RuleNow);
 
-        for root in ["archive", "second"] {
-            assert!(
-                names_below(&talk, &format!("{root}/Alfa")).is_empty(),
-                "{:?}",
-                talk.files().keys()
-            );
-            assert_eq!(
-                names_below(&talk, &format!("{root}/Telefon/2020/")).len(),
-                2
-            );
-        }
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 2);
+        assert_eq!(names_below(&talk, "second/Alfa/2020/").len(), 2);
+        assert!(names_below(&talk, "second/Telefon").is_empty());
         talk.press(&ChipReply::Undo);
-        talk.press(&ChipReply::PutBack);
-        talk.press(&ChipReply::IntentUndo);
         talk.press(&ChipReply::PutBack);
         assert_eq!(talk.files(), before);
     }

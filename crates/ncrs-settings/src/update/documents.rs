@@ -83,7 +83,13 @@ pub fn update(
         SettingsMessage::AddOwnDetail(detail) => in_settings(settings, ctx, |state| {
             state.submit(crate::message::SettingField::Own(detail))
         }),
-        SettingsMessage::RunUndone(Ok(())) => {
+        SettingsMessage::RunUndone(Ok(left)) => {
+            if left > 0 {
+                actions.push(Action::ShowNotice(fill_template(
+                    ctx.lang.text(Msg::SettingsHermesHistoryUndoLeft),
+                    &[("{left}", &left.to_string())],
+                )));
+            }
             page_flag(settings, |state| state.facts_requested = false)
         }
         SettingsMessage::RunUndone(Err(reason)) => {
@@ -93,10 +99,23 @@ pub fn update(
             )));
             Task::none()
         }
-        SettingsMessage::FactsLoaded(loaded) => page_flag(settings, |state| {
-            state.loaded = Some(loaded);
-            state.facts_in_flight = false;
-        }),
+        SettingsMessage::FactsLoaded(loaded) => {
+            let was_failing = settings
+                .page
+                .as_ref()
+                .and_then(|state| state.loaded.as_ref())
+                .is_some_and(|before| before.error.is_some());
+            if let (Some(reason), false) = (&loaded.error, was_failing) {
+                actions.push(Action::ShowNotice(fill_template(
+                    ctx.lang.text(Msg::SettingsFactsReadFailed),
+                    &[("{reason}", reason)],
+                )));
+            }
+            page_flag(settings, |state| {
+                state.loaded = Some(loaded);
+                state.facts_in_flight = false;
+            })
+        }
         SettingsMessage::ToggleAllAreas => {
             page_flag(settings, |state| state.all_areas = !state.all_areas)
         }

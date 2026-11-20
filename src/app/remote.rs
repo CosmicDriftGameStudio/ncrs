@@ -7,7 +7,7 @@ pub(in crate::app) fn remote_listing(
     request_id: u64,
     remote: RemotePath,
     sort: fs::SortKey,
-    select: Option<String>,
+    select: Option<OsString>,
 ) -> Task<Message> {
     Task::perform(
         async move { fs::remote::list::list(&pool, remote, sort).await },
@@ -78,7 +78,7 @@ impl App {
         use ncrs_remote::Action as Ask;
         match action {
             Ask::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Ask::ClearJobError => {
@@ -173,31 +173,7 @@ impl App {
             self.set_status_error(&text);
             return Task::none();
         }
-        let path = typed_path
-            .filter(|text| text.starts_with('/'))
-            .map(str::to_owned);
-        let mut servers = self.saved_servers.clone();
-        match servers
-            .iter_mut()
-            .find(|entry| entry.server_id() == *server)
-        {
-            Some(existing) => {
-                if path.is_some() {
-                    existing.path = path;
-                }
-                if key_file.is_some() {
-                    existing.key_file = key_file;
-                }
-            }
-            None => servers.push(ServerEntry {
-                name: None,
-                host: server.host.clone(),
-                port: server.port,
-                user: server.user.clone(),
-                path,
-                key_file,
-            }),
-        }
+        let servers = config::merge_saved_server(&self.saved_servers, server, typed_path, key_file);
         self.update_settings(SettingsMessage::Change(SettingChange::Servers(servers)))
     }
 

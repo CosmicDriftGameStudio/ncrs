@@ -18,7 +18,7 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::ReadFor;
 use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, RuleQueue, State, Step, Tidy};
-use crate::texts::{fill, number, rule_problem_text, segments, text};
+use crate::texts::{fill, folder_name, number, rule_problem_text, segments, text};
 use crate::tidy::{archive_run, file_all};
 use crate::update::{cancel_chip, chip, chip_labelled, fallback_chips, hermes, say, work};
 use crate::{learn, trial_end};
@@ -118,6 +118,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
             .unwrap_or_default(),
         from_inbox: trial.from_inbox,
         archive: trial.archive_moves.clone(),
+        archive_blocked: trial.archive_blocked,
     };
     let pattern = FilingTarget::parse(&flow.pattern());
     let condition = condition_words(ctx, &spec, &kinds);
@@ -167,14 +168,20 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         .examples
         .iter()
         .map(|document| example_row(ctx, document))
-        .chain(trial.archive_moves.iter().map(|found| {
-            move_row(
-                ctx,
-                &segments(&found.from).join("/"),
-                segments(&found.to).join("/"),
-            )
-        }))
-        .take(RULE_TRIAL_EXAMPLES)
+        .chain(
+            trial
+                .archive_moves
+                .iter()
+                .take(RULE_TRIAL_EXAMPLES)
+                .map(|found| {
+                    let folder = folder_name(ctx, &found.root);
+                    move_row(
+                        ctx,
+                        &format!("{folder}/{}", segments(&found.from).join("/")),
+                        format!("{folder}/{}", segments(&found.to).join("/")),
+                    )
+                }),
+        )
         .collect();
     let moves = (!rows.is_empty()).then(|| MovesBlock {
         header: text(ctx.lang, Msg::HermesChatProposalExamples),
@@ -258,6 +265,29 @@ pub fn rule_name(flow: &RuleFlow) -> String {
     }
 }
 
+/// What happens to files that already lie in an archive, with the archive's
+/// name: they are renamed or moved there, and some may have to stay.
+fn archive_note(ctx: &Ctx, moves: &RuleMoves) -> Option<String> {
+    let first = moves.archive.first()?;
+    let mut note = fill(
+        ctx.lang,
+        Msg::HermesChatRuleArchiveMoves,
+        &[
+            ("count", &number(moves.archive.len())),
+            ("folder", &folder_name(ctx, &first.root)),
+        ],
+    );
+    if moves.archive_blocked > 0 {
+        note.push(' ');
+        note.push_str(&fill(
+            ctx.lang,
+            Msg::HermesChatRuleArchiveBlocked,
+            &[("count", &number(moves.archive_blocked))],
+        ));
+    }
+    Some(note)
+}
+
 pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<RuleSaved, RuleSaveFailure>) {
     match stored {
         Ok(saved) => {
@@ -268,7 +298,12 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<RuleSaved, RuleSaveFa
                 .and_then(|proposed| proposed.name.clone())
                 .unwrap_or_default();
             let moves = finished.map(|open| open.moves).unwrap_or_default();
-            let count = moves.total();
+            let count = if ctx.sources.is_empty() {
+                moves.archive.len()
+            } else {
+                moves.total()
+            };
+            let archive_note = archive_note(ctx, &moves);
             state.session.rule_moves = Some(moves);
             state.step = Step::Idle;
             let message = match saved {
@@ -276,7 +311,7 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<RuleSaved, RuleSaveFa
                 RuleSaved::Changed => Msg::HermesChatRuleUpdated,
             };
             let said = fill(ctx.lang, message, &[("name", &name)]);
-            if count == 0 || ctx.sources.is_empty() {
+            if count == 0 {
                 say(state, said, fallback_chips(ctx));
                 return;
             }
@@ -303,11 +338,11 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<RuleSaved, RuleSaveFa
                     false,
                 ),
             ];
-            say(
-                state,
-                fill(ctx.lang, question, &[("count", &number(count))]),
-                chips,
-            );
+            let mut asked = fill(ctx.lang, question, &[("count", &number(count))]);
+            if let Some(note) = archive_note {
+                asked = format!("{note} {asked}");
+            }
+            say(state, asked, chips);
         }
         Err(RuleSaveFailure::Refused(problem)) => {
             let reason = fill(
@@ -341,20 +376,18 @@ pub fn only_new(state: &mut State, ctx: &Ctx) {
 /// rule renames in the same run. With several sources one run follows the
 /// other; when nothing comes from the inbox, the run holds only the archive.
 pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    state.session.run_chain.clear();
     state.session.rule_queue = None;
-    let archive_only = state
-        .session
-        .rule_moves
-        .as_ref()
-        .is_some_and(|moves| moves.from_inbox == 0 && !moves.archive.is_empty());
+    let archive_only = state.session.rule_moves.as_ref().is_some_and(|moves| {
+        !moves.archive.is_empty() && (moves.from_inbox == 0 || ctx.sources.is_empty())
+    });
     if archive_only {
         let moves = state.session.rule_moves.take()?;
         state.step = Step::Idle;
-        let source = ctx
-            .sources
+        let source = moves
+            .archive
             .first()
-            .cloned()
-            .unwrap_or_else(|| moves.target.clone());
+            .map_or_else(|| moves.target.clone(), |found| found.root.clone());
         archive_run(state, ctx, source, moves.archive);
         return None;
     }
@@ -388,7 +421,7 @@ fn start_source(
         rule_now: Some(prefix),
         source: source.clone(),
         target: Some(target),
-        transfer: Some(Transfer::Move),
+        transfer: Some(crate::tidy::transfer_from(ctx, &source, Transfer::Move)),
         inside,
     });
     state.session.layout = None;

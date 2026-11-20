@@ -7,10 +7,10 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use crate::app::{fixed_result_entry, App};
-use crate::fs::search::LineMatch;
 use crate::fs::FileEntry;
 use crate::messages::PanelSide;
 use ncrs_core::CompareMark;
+use ncrs_search::engine::LineMatch;
 
 pub const PROJECT_DIRECTORY: &str = "/Users/alex/Projects/ncrs";
 pub const DOWNLOADS_DIRECTORY: &str = "/Users/alex/Downloads";

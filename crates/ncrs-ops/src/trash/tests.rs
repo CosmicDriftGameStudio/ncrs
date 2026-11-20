@@ -82,15 +82,17 @@ fn tagging_twice_untags_and_all_and_none_work() {
 }
 
 #[test]
-fn a_new_listing_clamps_the_cursor_and_drops_the_tags() {
+fn a_new_listing_clamps_the_cursor_and_keeps_the_tags_of_entries_still_listed() {
     let mut view = view_of(&["a", "b", "c"]);
     view.last(VISIBLE);
     view.tag_all();
 
-    view.set_items(Ok(vec![item("a", 3)]), VISIBLE);
+    view.set_items(Ok(vec![item("a", 3), item("d", 1)]), VISIBLE);
 
-    assert_eq!(view.cursor, 0);
-    assert_eq!(view.tagged_count(), 0);
+    assert_eq!(view.cursor, 1);
+    assert!(view.is_tagged(0));
+    assert!(!view.is_tagged(1));
+    assert_eq!(view.tagged_count(), 1);
 }
 
 #[test]

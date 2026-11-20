@@ -2,7 +2,7 @@
 //! the results as they stream in, and the cursor in them. No widgets and no
 //! tasks; `App` runs the engine and `ui::search` draws this.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -11,7 +11,10 @@ use iced::mouse::ScrollDelta;
 use ncrs_core::FileEntry;
 use ncrs_ui_kit::layout::{HIT_LIST_ROW_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT};
 
-use crate::engine::{LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery, SearchTotals};
+use crate::engine::{
+    stays_on_file_system, LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery,
+    SearchTotals,
+};
 use crate::filters::SearchFilters;
 
 /// The line number of a snippet from the index, which does not know lines;
@@ -53,12 +56,12 @@ impl SearchField {
 /// The folder a typed text names: `~` stands for the home folder. `None` when
 /// it is not an existing folder this user may read. A relative text is taken
 /// from `base`.
-pub fn resolve_folder(text: &str, base: &Path) -> Option<PathBuf> {
+pub fn resolve_folder(text: &str, base: &Path, home: &Path) -> Option<PathBuf> {
     let trimmed = text.trim();
     let typed = match trimmed.strip_prefix('~') {
-        Some("") => ncrs_fs::home_dir(),
+        Some("") => home.to_path_buf(),
         Some(rest) if rest.starts_with(['/', std::path::MAIN_SEPARATOR]) => {
-            ncrs_fs::home_dir().join(rest.trim_start_matches(['/', std::path::MAIN_SEPARATOR]))
+            home.join(rest.trim_start_matches(['/', std::path::MAIN_SEPARATOR]))
         }
         _ if trimmed.is_empty() => return None,
         _ => PathBuf::from(trimmed),
@@ -161,15 +164,6 @@ pub struct SearchView {
     pub filters: Option<SearchFilters>,
     /// Documents of the index left out of `results` by `INDEX_HIT_LIMIT`.
     pub not_shown: usize,
-}
-
-/// Whether the walk may leave the file system `root` is on.
-///
-/// From `/` on macOS it may not: the volume with `/Users` is another file
-/// system than the read-only system volume that `/` is, so staying on one
-/// would search nothing the user means.
-pub fn stays_on_file_system(root: &Path) -> bool {
-    !(cfg!(target_os = "macos") && root == Path::new("/"))
 }
 
 impl SearchView {
@@ -280,8 +274,12 @@ impl SearchView {
         self.not_shown = not_shown;
         self.error = None;
         self.running = busy;
-        self.tagged
-            .retain(|path| self.results.iter().any(|result| &result.path == path));
+        let present: HashSet<&Path> = self
+            .results
+            .iter()
+            .map(|result| result.path.as_path())
+            .collect();
+        self.tagged.retain(|path| present.contains(path.as_path()));
         self.cursor = kept_on
             .and_then(|path| self.results.iter().position(|result| result.path == path))
             .or_else(|| (!self.results.is_empty()).then_some(0));
@@ -445,62 +443,76 @@ impl SearchView {
     }
 
     pub fn apply_event(&mut self, event: SearchEvent) {
-        match event {
-            SearchEvent::File {
-                path,
-                lines,
-                size,
-                modified,
-            } => self.insert_file(FileResult {
-                path,
-                is_dir: false,
-                lines,
-                size,
-                modified,
-            }),
-            SearchEvent::Folder { path, modified } => self.insert_file(FileResult {
-                path,
-                is_dir: true,
-                lines: Vec::new(),
-                size: 0,
-                modified,
-            }),
-            SearchEvent::Progress { scanned, skipped } => {
-                self.scanned = scanned;
-                self.skipped = skipped;
-            }
-            SearchEvent::Finished(totals) => {
-                self.scanned = totals.scanned;
-                self.skipped = totals.skipped;
-                self.totals = Some(totals);
-                self.running = false;
-            }
-        }
+        self.apply_events(vec![event]);
     }
 
-    fn insert_file(&mut self, found: FileResult) {
-        match self
-            .results
-            .binary_search_by(|result| result.path.cmp(&found.path))
-        {
-            Ok(existing) => {
-                if let Some(slot) = self.results.get_mut(existing) {
-                    *slot = found;
+    /// Applies a batch: the files and folders in it are merged into the sorted
+    /// results once, not inserted one by one.
+    pub fn apply_events(&mut self, events: Vec<SearchEvent>) {
+        let mut incoming = Vec::new();
+        for event in events {
+            match event {
+                SearchEvent::File {
+                    path,
+                    lines,
+                    size,
+                    modified,
+                } => incoming.push(FileResult {
+                    path,
+                    is_dir: false,
+                    lines,
+                    size,
+                    modified,
+                }),
+                SearchEvent::Folder { path, modified } => incoming.push(FileResult {
+                    path,
+                    is_dir: true,
+                    lines: Vec::new(),
+                    size: 0,
+                    modified,
+                }),
+                SearchEvent::Progress { scanned, skipped } => {
+                    self.scanned = scanned;
+                    self.skipped = skipped;
                 }
-            }
-            Err(position) => {
-                self.results.insert(position, found);
-                // A file in front of the cursor pushes it down by one.
-                if let Some(cursor) = self.cursor.as_mut() {
-                    if position <= *cursor {
-                        *cursor += 1;
-                    }
+                SearchEvent::Finished(totals) => {
+                    self.scanned = totals.scanned;
+                    self.skipped = totals.skipped;
+                    self.totals = Some(totals);
+                    self.running = false;
                 }
             }
         }
-        if !self.cursor_moved_by_user {
-            self.cursor = (!self.results.is_empty()).then_some(0);
+        self.insert_files(incoming);
+    }
+
+    /// Merges `incoming` into the results, which stay sorted by path; a path
+    /// that is there already is replaced. The cursor stays on its file.
+    fn insert_files(&mut self, incoming: Vec<FileResult>) {
+        if incoming.is_empty() {
+            return;
         }
+        let kept_on = self
+            .cursor
+            .and_then(|file| self.results.get(file))
+            .map(|result| result.path.clone());
+        let mut merged: BTreeMap<PathBuf, FileResult> = std::mem::take(&mut self.results)
+            .into_iter()
+            .map(|result| (result.path.clone(), result))
+            .collect();
+        for found in incoming {
+            merged.insert(found.path.clone(), found);
+        }
+        self.results = merged.into_values().collect();
+        self.cursor = if self.cursor_moved_by_user {
+            kept_on.and_then(|path| {
+                self.results
+                    .binary_search_by(|result| result.path.cmp(&path))
+                    .ok()
+            })
+        } else {
+            (!self.results.is_empty()).then_some(0)
+        };
     }
 
     /// Every file found, in display order.
@@ -582,12 +594,5 @@ impl SearchView {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

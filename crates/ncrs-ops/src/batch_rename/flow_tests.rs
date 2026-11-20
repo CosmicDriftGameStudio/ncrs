@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -290,6 +283,7 @@ mod abort {
         step(&FlowCtx {
             lang: Language::default(),
             trash: &trash,
+            trash_rows: 10,
             jobs_busy: false,
             start_blocked: false,
             transfer_dialog_open: false,
@@ -300,6 +294,8 @@ mod abort {
             right_archive: None,
             left_server: None,
             right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
             remote: &remote,
             permanent_delete_key: None,
             restore_last_key: None,

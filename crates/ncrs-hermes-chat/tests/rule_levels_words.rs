@@ -1,13 +1,6 @@
 //! Levels of a folder of named files, changed in words, and the ways the chat
 //! asks for a folder instead of a rule that has none; starting a new chat.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

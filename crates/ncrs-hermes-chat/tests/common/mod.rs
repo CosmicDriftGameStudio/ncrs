@@ -7,7 +7,8 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
-    dead_code
+    dead_code,
+    reason = "test code: a failing assertion is the signal; each test file uses a part of the shared helpers"
 )]
 
 use std::collections::BTreeMap;
@@ -171,7 +172,9 @@ impl Talk {
         )
         .unwrap();
         locations.push(inbox);
-        let rules = ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), locations);
+        let target = locations.first().map(|location| location.path.clone());
+        let rules = ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), locations)
+            .with_target(target);
         self.access = self.access.with_rules(Some(rules));
         self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
         self

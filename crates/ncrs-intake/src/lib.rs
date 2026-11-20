@@ -76,7 +76,7 @@ pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{plan_reorganisation, PlanFile, ReorganisationInput};
 pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
-pub use sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
+pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };
@@ -87,8 +87,8 @@ pub use structure::{
     NameScheme, Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
 };
 pub use take_in::{
-    finish_take_in, has_symlink_ancestor_under, hash_path, open_without_following, prepare_take_in,
-    take_in, Outcome, PendingHash, Prepared, Taken,
+    finish_take_in, has_symlink_ancestor_under, hash_path, open_below, open_without_following,
+    prepare_take_in, take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
     ChainReading, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PreviewPage,

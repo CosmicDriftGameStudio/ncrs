@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::MenuMessage;
 
 /// Where a shell command of this panel runs. A path inside an archive is no
 /// directory a process can start in, so it runs in the folder the archive
@@ -16,22 +17,10 @@ pub(in crate::app) fn archive_file_place(archive: &Path) -> Option<(&Path, Strin
     Some((archive.parent()?, archive.file_name()?.to_str()?.to_owned()))
 }
 
-/// The walk of one folder, off the UI thread; nothing when the run is over.
 pub(in crate::app) fn folder_size_task(
     walk: Option<ncrs_files::folder_size::FolderWalk>,
 ) -> Task<Message> {
-    let Some(ncrs_files::folder_size::FolderWalk { run, folder, stop }) = walk else {
-        return Task::none();
-    };
-    let walked = folder.clone();
-    Task::perform(
-        tokio::task::spawn_blocking(move || fs::measure_folder(&walked, &stop)),
-        move |done| Message::FolderSizeMeasured {
-            run,
-            folder: folder.clone(),
-            size: done.ok().flatten(),
-        },
-    )
+    ncrs_files::folder_size::walk_task(walk).map(Message::Panel)
 }
 
 pub(in crate::app) fn panel_facts(panels: &Panels, side: PanelSide) -> ncrs_ops::PanelFacts<'_> {
@@ -80,60 +69,14 @@ impl App {
     pub(in crate::app) fn reload_keeping_cursor(&mut self, side: PanelSide) -> Task<Message> {
         let panel = self.panel(side);
         let path = panel.path.clone();
-        let cursor = panel
-            .selected_entry()
-            .map(|entry| entry.name.to_string_lossy().into_owned());
+        let cursor = panel.selected_entry().map(|entry| entry.name.clone());
         self.load(side, path, cursor)
     }
 
     pub(in crate::app) fn update_path_field(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::PathFieldInput(typed) => {
-                self.command_line.leave();
-                self.panels.set_path_field(Some(typed));
-                Task::none()
-            }
-            Message::PathFieldSubmit => {
-                let remote = &self.remote;
-                let session_home = |server: &fs::remote::ServerId| {
-                    remote.session(server).map(|s| s.home().to_owned())
-                };
-                let ctx = ncrs_files::path_field::TypedPathCtx {
-                    lang: self.lang,
-                    home: &self.home,
-                    session_home: &session_home,
-                };
-                let (check, actions) = self.panels.go_to_typed_path(&ctx);
-                let located = check.map(|checked| Message::PathChecked {
-                    request_id: checked.request_id,
-                    side: checked.side,
-                    target: checked.target,
-                    result: checked.result,
-                });
-                Task::batch([located, self.run_panel_actions(actions)])
-            }
-            Message::PathChecked {
-                request_id,
-                side,
-                target,
-                result,
-            } => {
-                let checked = ncrs_files::path_field::PathChecked {
-                    request_id,
-                    side,
-                    target,
-                    result,
-                };
-                let actions = self.panels.finish_path_check(self.lang, checked);
-                self.run_panel_actions(actions)
-            }
-            Message::PathFieldCancel => {
-                self.panels.set_path_field(None);
-                self.panels.end_rename();
-                release_focus()
-            }
             Message::ClickedOutside => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 self.panels.set_path_field(None);
                 self.panels.end_rename();
                 self.command_line.leave();
@@ -159,11 +102,6 @@ impl App {
         self.panels.active_panel()
     }
 
-    #[allow(dead_code)] // Used by upcoming two-panel operations (copy/move).
-    pub fn inactive_panel_mut(&mut self) -> &mut PanelState {
-        self.panel_mut(self.panels.active.other())
-    }
-
     /// The classic rule for F5, F6 and F8: tagged rows win, otherwise the row under
     /// the cursor. The `..` entry is never a thing to act on. In the search
     /// view the same holds for its files, and never for all files found.
@@ -171,21 +109,15 @@ impl App {
         if let Some(search) = self.open_search_view() {
             return search.action_files();
         }
-        let panel = self.active_panel();
-        if panel.selection.any_tagged() {
-            panel
-                .selection
-                .ordered(&panel.entries)
-                .into_iter()
-                .map(|e| e.path.clone())
-                .collect()
-        } else {
-            panel
-                .selected_entry()
-                .filter(|e| !e.is_parent)
-                .map(|e| vec![e.path.clone()])
-                .unwrap_or_default()
-        }
+        self.action_rows()
+            .into_iter()
+            .map(|entry| entry.path.clone())
+            .collect()
+    }
+
+    /// The rows of the active panel the F5/F6/F8 rule acts on.
+    pub(in crate::app) fn action_rows(&self) -> Vec<&fs::FileEntry> {
+        self.active_panel().action_entries()
     }
 
     /// Puts the path or name of the target on the clipboard and says so in the
@@ -208,10 +140,19 @@ impl App {
         Task::batch([iced::clipboard::write(copied.text), shown])
     }
 
+    fn open_ctx(&self) -> ncrs_files::open_flow::OpenCtx<'_> {
+        let label = |opener| self.keymap.shortcut_label(&Message::OpenExternal(opener));
+        ncrs_files::open_flow::OpenCtx {
+            lang: self.lang,
+            programs: &self.open_programs,
+            launcher: self.launcher.as_ref(),
+            view_key: label(fs::OpenKind::View),
+            edit_key: label(fs::OpenKind::Edit),
+        }
+    }
+
     /// F3 / F4: the row under the cursor goes to the external program. Tags
-    /// are ignored, as in classic dual-panel file managers; `..` and directories have nothing
-    /// to view or edit. A file inside an archive is unpacked first, and only
-    /// viewing works: the copy is thrown away, so an edit would be lost.
+    /// are ignored, as in classic dual-panel file managers.
     pub(in crate::app) fn open_external(&mut self, kind: fs::OpenKind) -> Task<Message> {
         let source = match self.open_search_view() {
             Some(search) => {
@@ -219,101 +160,59 @@ impl App {
             }
             None => OpenSource::ActivePanel,
         };
-        let plan = self.panels.plan_open(kind, source);
-        self.run_open_plan(plan, move |app, path, line| {
-            if kind == fs::OpenKind::View {
-                if let Some(with) = app.open_programs.open_with_for(&path) {
-                    return app.open_by_type(with, path, line);
-                }
-            }
-            app.launch_external(kind, path, line, CopyOf::Nothing, false);
-            Task::none()
-        })
+        let actions =
+            ncrs_files::open_flow::open_external(&self.panels, kind, source, &self.open_ctx());
+        self.run_panel_actions(actions)
     }
 
-    /// F3 on a local file a `[[open.by_type]]` rule names.
-    fn open_by_type(
-        &mut self,
-        with: fs::OpenWith,
-        path: PathBuf,
-        line: Option<u64>,
-    ) -> Task<Message> {
-        match with {
-            fs::OpenWith::Internal => self.open_in_viewer(path),
-            fs::OpenWith::System => {
-                self.open_with_system(&path);
-                Task::none()
-            }
-            fs::OpenWith::Program(program) => {
-                self.job_error = None;
-                self.notice = None;
-                self.start_command(&fs::program_command(&program, &path, line), &path);
-                Task::none()
-            }
-        }
-    }
-
-    /// Enter or a double click on a file: opened as the Finder does, by the
-    /// system opener whatever `[open]` says. A file that could run asks first.
-    /// A file in an archive or on a server is viewed, as with F3.
+    /// Enter or a double click on a file.
     pub(in crate::app) fn open_like_the_finder(&mut self) -> Task<Message> {
-        let plan = self
-            .panels
-            .plan_open(fs::OpenKind::View, OpenSource::ActivePanel);
-        self.run_open_plan(plan, |app, path, _| {
-            // ponytail: the exec bit alone also asks for files on exFAT or a NAS share,
-            // where every file has it; narrow it if that becomes a nuisance.
-            if fs::could_execute(&path) {
-                app.with_ops(|ops, _| ncrs_ops::open_open_file_dialog(ops, path))
-            } else {
-                app.open_with_system(&path);
-                Task::none()
-            }
-        })
+        let actions = ncrs_files::open_flow::open_like_the_finder(&self.panels, &self.open_ctx());
+        self.run_panel_actions(actions)
     }
 
-    fn run_open_plan(
-        &mut self,
-        plan: OpenPlan,
-        launch: impl FnOnce(&mut Self, PathBuf, Option<u64>) -> Task<Message>,
-    ) -> Task<Message> {
-        match plan {
-            OpenPlan::Nothing => Task::none(),
-            OpenPlan::Refused(msg) => {
-                let text = self.lang.text(msg).to_owned();
-                self.set_status_error(&text);
-                Task::none()
-            }
-            OpenPlan::ViewFromServer(remote) => self.view_from_server(remote),
-            OpenPlan::ViewFromArchive {
-                source: packed,
-                archive,
-            } => self.view_from_archive(packed, archive),
-            OpenPlan::Launch { path, line } => launch(self, path, line),
-        }
+    /// "Open terminal here".
+    pub(in crate::app) fn open_terminal(&mut self) -> Task<Message> {
+        let actions = ncrs_files::open_flow::open_terminal(
+            &self.panels,
+            self.open_search_view().is_some(),
+            &self.open_ctx(),
+        );
+        self.run_panel_actions(actions)
     }
 
     /// Hands `path` to the system's own opener, never to a configured program.
     pub(in crate::app) fn open_with_system(&mut self, path: &Path) {
-        self.job_error = None;
-        self.notice = None;
-        self.start_command(&fs::system_open_command(path), path);
+        let actions = ncrs_files::open_flow::open_with_system(path, &self.open_ctx());
+        self.apply_message_actions(actions);
     }
 
-    /// Starts `command`; a refusal of the system is the error of the status bar.
-    fn start_command(&mut self, command: &fs::OpenCommand, path: &Path) {
-        if let Err(reason) = self.launcher.launch(command) {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let message = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &reason);
-            self.set_status_error(&message);
-        }
+    /// Hands `path` to the program for `kind`; `was_executable` says that the
+    /// file `path` is a copy of could run, which the copy no longer shows.
+    pub(in crate::app) fn launch_external(
+        &mut self,
+        kind: fs::OpenKind,
+        path: PathBuf,
+        line: Option<u64>,
+        from: CopyOf,
+        was_executable: bool,
+    ) {
+        let executable = was_executable || fs::could_execute(&path);
+        let actions = ncrs_files::open_flow::launch_external(
+            kind,
+            path,
+            line,
+            from,
+            executable,
+            &self.open_ctx(),
+        );
+        self.apply_message_actions(actions);
+    }
+
+    /// For flows that only clear or set the status line, where the caller has
+    /// no task to hand on.
+    fn apply_message_actions(&mut self, actions: Vec<ncrs_files::Action>) {
+        drop(self.run_panel_actions(actions));
     }
 
     /// Starts unpacking `source`, a file in `archive`, for the viewer. The
@@ -387,82 +286,6 @@ impl App {
         }
         if let Some(copies) = self.ops.view_copies.as_mut() {
             copies.release(archive);
-        }
-    }
-
-    /// Hands `path` to the program for `kind`, at `line` when the program
-    /// takes one. `from` says whether `path` is a temporary copy made for
-    /// viewing, and of what; `was_executable` that the file it was copied
-    /// from could run, which the copy no longer shows.
-    pub(in crate::app) fn launch_external(
-        &mut self,
-        kind: fs::OpenKind,
-        path: PathBuf,
-        line: Option<u64>,
-        from: CopyOf,
-        was_executable: bool,
-    ) {
-        self.job_error = None;
-        self.notice = None;
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let executable = was_executable || fs::could_execute(&path);
-        let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
-        else {
-            let label = |opener| self.keymap.shortcut_label(&Message::OpenExternal(opener));
-            let message = open_refused_text(
-                self.lang,
-                &name,
-                from,
-                label(fs::OpenKind::View),
-                label(fs::OpenKind::Edit),
-            );
-            self.set_status_error(&message);
-            return;
-        };
-        self.start_command(&command, &path);
-    }
-
-    /// "Open terminal here": the terminal from `[open] terminal`, else the
-    /// first one found, started in the folder under the cursor or the panel's
-    /// folder. Where the panel has no local folder the update refuses before
-    /// this runs.
-    pub(in crate::app) fn open_terminal(&mut self) {
-        self.job_error = None;
-        self.notice = None;
-        if self.open_search_view().is_some() {
-            return;
-        }
-        let Some(folder) = self.panels.local_folder_target() else {
-            return;
-        };
-        // Looked up only when nothing is set: Launch Services is asked on
-        // every use, not remembered.
-        let detected = match self.open_programs.terminal {
-            Some(_) => Vec::new(),
-            None => fs::detect_terminals(),
-        };
-        let command =
-            match fs::terminal_command(self.open_programs.terminal.as_ref(), &detected, &folder) {
-                Ok(command) => command,
-                Err(fs::NoTerminal) => {
-                    let text = self.lang.text(Msg::ErrorTerminalNone).to_owned();
-                    self.set_status_error(&text);
-                    return;
-                }
-            };
-        if let Err(reason) = self.launcher.launch(&command) {
-            let name = folder
-                .file_name()
-                .map_or_else(|| folder.to_string_lossy(), |name| name.to_string_lossy());
-            let message = self
-                .lang
-                .text(Msg::ErrorTerminalFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &reason);
-            self.set_status_error(&message);
         }
     }
 
@@ -597,7 +420,13 @@ impl App {
         let overlay_is_open = self.overlay_is_open();
         let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
+        let saved_servers = self.saved_server_ids();
+        let remote = &self.remote;
+        let session_home =
+            |server: &fs::remote::ServerId| remote.session(server).map(|s| s.home().to_owned());
         let ctx = ncrs_files::Ctx {
+            home: &self.home,
+            session_home: &session_home,
             columns: column_settings_of(&self.columns),
             has_hermes_column: self.hermes.is_active()
                 || self.compare.marks(PanelSide::Left).is_some(),
@@ -610,6 +439,8 @@ impl App {
             context_menu_is_open,
             clock: &*self.clock,
             nearest_existing_directory: session_state::nearest_existing_directory,
+            lang: self.lang,
+            saved_servers: &saved_servers,
         };
         let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
         let mapped = task.map(Message::Panel);
@@ -628,8 +459,31 @@ impl App {
         Task::batch(acted)
     }
 
-    /// What the drive menu lists, read when it opens.
-    pub(in crate::app) fn volume_facts_source(&self) -> impl FnOnce() -> ncrs_files::VolumeFacts {
+    /// Alt+F1 / Alt+F2 and the favourites key: reads what the menu lists on the
+    /// blocking pool, since listing the drives and looking at each favourite
+    /// touch the disks. The answer opens the menu.
+    pub(in crate::app) fn request_volume_menu(
+        &mut self,
+        side: PanelSide,
+        on_favourites: bool,
+    ) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let request = self.panels.next_volume_menu_request();
+        let read = self.volume_facts_source();
+        Task::perform(tokio::task::spawn_blocking(read), move |facts| {
+            Message::Files(MenuMessage::VolumeMenuFacts {
+                request,
+                side,
+                on_favourites,
+                facts: facts.unwrap_or_default(),
+            })
+        })
+    }
+
+    /// What the drive menu lists.
+    fn volume_facts_source(&self) -> impl FnOnce() -> ncrs_files::VolumeFacts + Send + 'static {
         let list_volumes = Arc::clone(&self.list_volumes);
         let remote = Arc::clone(&self.remote);
         let trash = Arc::clone(&self.trash);
@@ -643,11 +497,19 @@ impl App {
                 connected: false,
             })
             .collect();
+        let favourites = self.panels.favourites.clone();
         move || ncrs_files::VolumeFacts {
             volumes: list_volumes(),
             saved_servers,
             connected: remote.connected(),
             trash: ncrs_ops::trash_menu_row(trash.reach()),
+            favourites: favourites
+                .into_iter()
+                .map(|path| ncrs_files::volumes_view::FavouriteRow {
+                    present: path.is_dir(),
+                    path,
+                })
+                .collect(),
         }
     }
 
@@ -681,10 +543,10 @@ impl App {
                 Task::none()
             }
             Action::ContextMenuAt { side, index } => {
-                self.update(Message::ContextMenuAt { side, index })
+                self.update(Message::Files(MenuMessage::ContextMenuAt { side, index }))
             }
             Action::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Action::RunContextEntry(ContextAction::AddFavourite) => {
@@ -733,11 +595,18 @@ impl App {
             Action::OpenBundle(path) => {
                 self.with_ops(|ops, _| ncrs_ops::open_open_file_dialog(ops, path))
             }
+            Action::ViewFromServer(remote) => self.view_from_server(remote),
+            Action::ViewFromArchive { source, archive } => self.view_from_archive(source, archive),
+            Action::OpenInViewer(path) => self.open_in_viewer(path),
             Action::ShowPanels => {
                 self.shown_tab = ShownTab::Panels;
                 Task::none()
             }
             Action::ReleaseFocus => release_focus(),
+            Action::LeaveCommandLine => {
+                self.command_line.leave();
+                Task::none()
+            }
             Action::OpenConnectDialog(url) => {
                 let outcome = self.with_connect_feature(|remote, ctx| {
                     ncrs_remote::open_connect_dialog_for(remote, ctx, &url)
@@ -768,20 +637,18 @@ impl App {
             return Task::none();
         };
         let directory = parent.to_path_buf();
-        let name = file.to_string_lossy().into_owned();
+        let name = file.to_os_string();
         let left = self.leave_settings_page();
-        Task::batch([left, self.load(self.panels.active, directory, Some(name))])
+        let shown = self.show_folder_in_active_panel(directory, Some(name));
+        Task::batch([left, shown])
     }
 
     /// Switches to the panels and shows the file's directory in the active one, cursor on the file.
     pub(in crate::app) fn reveal_in_active_panel(&mut self, file: &Path) -> Task<Message> {
         let folder = file.parent().map(Path::to_path_buf).unwrap_or_default();
-        let name = file
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned());
+        let name = file.file_name().map(OsStr::to_os_string);
         self.shown_tab = ShownTab::Panels;
-        let side = self.panels.active;
-        self.load(side, folder, name)
+        self.show_folder_in_active_panel(folder, name)
     }
 
     /// Starts an async directory read for `side`.
@@ -789,7 +656,7 @@ impl App {
         &mut self,
         side: PanelSide,
         path: PathBuf,
-        select: Option<String>,
+        select: Option<OsString>,
     ) -> Task<Message> {
         match self.panels.start_load(side, path, select.clone()) {
             LoadStart::RefreshHitList => self.refresh_hit_list(side),
@@ -805,37 +672,12 @@ impl App {
         &mut self,
         side: PanelSide,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
     ) -> Task<Message> {
-        let sort = self.panel(side).sort;
         let request_id = self.panel_mut(side).begin_load();
-        if self.remote.is_connected(remote.server()) {
-            return remote_listing(
-                Arc::clone(&self.remote),
-                side,
-                request_id,
-                remote,
-                sort,
-                select,
-            );
-        }
-        let passwords = Arc::clone(&self.passwords);
-        let server = remote.server().clone();
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || passwords.get(&server))
-                    .await
-                    .unwrap_or_else(|failure| Err(failure.to_string()))
-            },
-            move |result| {
-                Message::Remote(RemoteMessage::PasswordLoaded {
-                    side,
-                    request_id,
-                    remote: remote.clone(),
-                    select: select.clone(),
-                    result,
-                })
-            },
-        )
+        let outcome = self.with_connect_feature(|_, ctx| {
+            ncrs_remote::load_folder(ctx, (side, request_id, remote, select))
+        });
+        self.run_remote_outcome(outcome)
     }
 }

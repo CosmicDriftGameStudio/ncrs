@@ -8,9 +8,10 @@ use ncrs_ui_kit::format::ellipsize_middle;
 use ncrs_ui_kit::frame::{chars_that_fit, AVERAGE_GLYPH_WIDTH};
 use ncrs_ui_kit::kit::{dim_line, Columns};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::plan_rows::{pane_scroll, plan_file_row, PlanFileRow};
+use ncrs_ui_kit::plan_rows::{marked_row, pane_scroll, plan_file_row, PlanFileRow};
 
 use crate::message::Message;
+use crate::scroll::{LEFT_ROW_ID, LEFT_SCROLL_ID};
 use crate::state::Session;
 use crate::texts::{say, HEADER_MARGIN};
 
@@ -86,25 +87,37 @@ pub fn left<'a>(
         portions: &PORTIONS,
         line_chars: (half_width / AVERAGE_GLYPH_WIDTH) as usize,
     };
-    let rows = plan
+    let mut rows: Vec<Element<'a, Message>> = plan
         .files
         .iter()
         .map(|file| {
             let (what, what_color, chip) = what_happens(lang, palette, file);
-            plan_file_row(
+            let chosen = session.selected.as_ref() == Some(&file.from);
+            let row = plan_file_row(
                 PlanFileRow {
                     name: file.from.display().to_string(),
                     what,
                     what_color,
                     chip,
-                    chosen: session.selected.as_ref() == Some(&file.from),
+                    chosen,
                     on_press: Message::Select(file.from.clone()),
                 },
                 &columns,
                 palette,
-            )
+            );
+            if chosen {
+                marked_row(row, LEFT_ROW_ID)
+            } else {
+                row
+            }
         })
         .collect();
+    if rows.is_empty() && (session.finished.is_some() || plan.done) {
+        rows.push(dim_line(
+            lang.text(Msg::FilingViewEmpty).to_owned(),
+            palette,
+        ));
+    }
     column![
         dim_line(
             ellipsize_middle(
@@ -124,7 +137,7 @@ pub fn left<'a>(
             ],
             palette,
         ),
-        pane_scroll(rows),
+        pane_scroll(LEFT_SCROLL_ID, rows),
     ]
     .into()
 }

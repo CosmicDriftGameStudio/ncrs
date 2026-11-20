@@ -2,13 +2,6 @@
 //! where documents are kept are read for their order, any other folder is
 //! asked about once.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

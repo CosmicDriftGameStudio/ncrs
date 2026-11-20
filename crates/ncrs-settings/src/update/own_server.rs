@@ -35,7 +35,10 @@ pub fn update(settings: &mut Settings, message: SettingsMessage, ctx: &Ctx<'_>) 
             Task::none()
         }
         SettingsMessage::UsagePeriod(days) => in_page(settings, |state| state.usage_days = days),
-        SettingsMessage::UsageLoaded(sums) => in_page(settings, |state| state.usage = Some(sums)),
+        SettingsMessage::UsageLoaded(sums, problem) => in_page(settings, |state| {
+            state.usage = Some(sums);
+            state.usage_problem = problem;
+        }),
         _ => Task::none(),
     }
 }
@@ -101,6 +104,9 @@ pub fn load_usage(ctx: &Ctx<'_>) -> Task<Message> {
         tokio::task::spawn_blocking(move || {
             ncrs_ai::usage_summaries(log.as_deref(), &USAGE_PERIODS)
         }),
-        |joined| Message::Settings(SettingsMessage::UsageLoaded(joined.unwrap_or_default())),
+        |joined| {
+            let (sums, problem) = joined.unwrap_or_default();
+            Message::Settings(SettingsMessage::UsageLoaded(sums, problem))
+        },
     )
 }

@@ -62,7 +62,7 @@ async fn stopping_clears_the_progress() {
         total: 10,
     }));
 
-    let _stopped = app.update(Message::AbortJob);
+    let _stopped = app.update(Message::Ops(OpsMessage::AbortJob));
     assert!(
         app.job_status().is_none(),
         "the bar still shows a job that was stopped"

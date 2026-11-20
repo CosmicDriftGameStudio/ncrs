@@ -437,12 +437,6 @@ fn count_under<'a>(paths: impl IntoIterator<Item = &'a PathBuf>, folder: &Path) 
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     fn p(path: &str) -> PathBuf {
         PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
@@ -935,7 +929,6 @@ mod tests {
     #[test]
     fn a_reading_fills_the_cache_in_two_stages() {
         let (_dir, index) = index_with_documents();
-        index.exclude_path(&p("/d/Scan/sub")).unwrap();
         let request = |stage| ColumnRequest {
             generation: 7,
             epoch: 0,
@@ -956,7 +949,7 @@ mod tests {
         let sub = column.summary_of(&p("/d/Scan/sub")).unwrap();
         assert_eq!(sub.direct.unwrap().new, 1);
         assert_eq!(sub.deep, None);
-        assert!(sub.excluded);
+        assert!(!sub.excluded);
         assert_eq!(
             column.wanted_counts(&directories(&["/d/Scan/sub"]), ColumnStage::Deep),
             directories(&["/d/Scan/sub"])
@@ -967,5 +960,33 @@ mod tests {
         let counted_deep = column.summary_of(&p("/d/Scan/sub")).unwrap();
         assert_eq!(counted_deep.deep.unwrap().new, 1);
         assert_eq!(counted_deep.direct.unwrap().new, 1);
+    }
+
+    #[test]
+    fn an_excluded_folder_is_marked_and_holds_nothing_any_more() {
+        let (_dir, index) = index_with_documents();
+        index.exclude_path(&p("/d/Scan/sub")).unwrap();
+        let mut column = HermesColumn::default();
+        column.apply(
+            read_column(
+                &index,
+                &ColumnRequest {
+                    generation: 7,
+                    epoch: 0,
+                    directory: p("/d/Scan"),
+                    subfolders: directories(&["/d/Scan/sub"]),
+                    stage: ColumnStage::Listing,
+                },
+            )
+            .unwrap(),
+        );
+
+        let sub = column.summary_of(&p("/d/Scan/sub")).unwrap();
+        assert!(sub.excluded);
+        assert_eq!(sub.direct.unwrap().new, 0);
+        assert_eq!(
+            column.state_of(&p("/d/Scan/a.pdf")),
+            Some(HermesFileState::Unread)
+        );
     }
 }

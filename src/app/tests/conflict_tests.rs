@@ -49,7 +49,7 @@ fn with_conflict() -> (App, tempfile::TempDir) {
 /// with a real copy against a real file; this one is here because it also
 /// covers the "for all" rule, which needs several conflicts in a row.
 fn deliver_conflict(app: &mut App) {
-    let _task = app.update(Message::TransferRowDone {
+    let _task = app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
         skipped: Vec::new(),
         result: Err(RowFailure::from_io(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -57,7 +57,7 @@ fn deliver_conflict(app: &mut App) {
         ))),
         index: 0,
         generation: app.ops.generation,
-    });
+    }));
 }
 
 #[tokio::test]
@@ -188,12 +188,12 @@ async fn a_refused_7z_copy_shows_the_text_of_the_language() {
             app.lang = lang;
             let _started = app.start_transfer(TransferKind::Copy);
 
-            let _task = app.update(Message::TransferRowDone {
+            let _task = app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
                 skipped: Vec::new(),
                 result: Err(RowFailure::from_io(error)),
                 index: 0,
                 generation: app.ops.generation,
-            });
+            }));
 
             assert_eq!(app.job_error.as_deref(), Some(lang.text(*expected)));
         }
@@ -207,16 +207,16 @@ async fn a_late_result_of_a_stopped_transfer_is_ignored() {
     let (mut app, _scratch) = with_conflict();
     let _first = app.start_transfer(TransferKind::Copy);
     let stale = app.ops.generation;
-    let _stopped = app.update(Message::AbortJob);
+    let _stopped = app.update(Message::Ops(OpsMessage::AbortJob));
     let _second = app.start_transfer(TransferKind::Copy);
     assert!(app.jobs.is_busy());
 
-    let _task = app.update(Message::TransferRowDone {
+    let _task = app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
         skipped: Vec::new(),
         result: Err(RowFailure::Other("the app is gone".to_string())),
         index: 0,
         generation: stale,
-    });
+    }));
 
     assert!(
         app.ops.transfer.is_some(),
@@ -236,12 +236,12 @@ async fn a_finished_transfer_forgets_its_rule() {
     app.ops.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
     let transfer = app.ops.transfer.clone().expect("a running transfer");
 
-    let _task = app.update(Message::TransferRowDone {
+    let _task = app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
         skipped: Vec::new(),
         result: Ok(transfer),
         index: 0,
         generation: app.ops.generation,
-    });
+    }));
 
     assert!(app.ops.transfer.is_none());
     assert_eq!(app.ops.conflict_rule, None);
@@ -265,5 +265,11 @@ fn a_conflict_is_recognised_by_its_kind() {
         RowFailure::Conflict("/tmp/dst/alpha.txt already exists".to_string())
     );
     let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
-    assert!(matches!(RowFailure::from_io(denied), RowFailure::Other(_)));
+    assert!(matches!(
+        RowFailure::from_io(denied),
+        RowFailure::Io {
+            kind: std::io::ErrorKind::PermissionDenied,
+            ..
+        }
+    ));
 }

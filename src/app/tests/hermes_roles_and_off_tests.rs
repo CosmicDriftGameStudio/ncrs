@@ -3,6 +3,7 @@ use crate::context_menu::{HermesAction, SubEntry};
 use crate::messages::SettingsFeature;
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
+use ncrs_config::config::FilingLocation;
 
 const LEFT: PanelSide = PanelSide::Left;
 // Rows of the fixed left panel: `..`, then "Documents", a directory.
@@ -39,10 +40,10 @@ fn ready_hermes_without_locations(config_dir: &tempfile::TempDir) -> App {
 }
 
 fn submenu_items(app: &mut App) -> Vec<(HermesAction, bool)> {
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: LEFT,
         index: DOCUMENTS,
-    }));
+    })));
     let menu = app.panels.context_menu.as_mut().unwrap();
     menu.select_last();
     assert!(menu.selected_is_hermes());
@@ -207,4 +208,53 @@ fn with_the_settings_already_open_the_command_still_explains_why_it_cannot_run()
     drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
 
     assert!(app.status_error().is_some());
+}
+
+fn active_hermes_with(locations: Vec<FilingLocation>) -> App {
+    let mut app = App::with_fixed_panels();
+    app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+    app.hermes.filing_config.locations = locations;
+    app.panel_mut(LEFT).selected = DOCUMENTS;
+    assert!(app.hermes.is_active());
+    app
+}
+
+fn location_at(path: &Path, mode: LocationMode) -> FilingLocation {
+    FilingLocation {
+        path: path.to_path_buf(),
+        mode,
+        images: false,
+        is_target: mode == LocationMode::Archive,
+        transfer: Default::default(),
+    }
+}
+
+#[tokio::test]
+async fn handing_the_cursor_row_to_the_inbox_opens_the_move_dialog_aimed_at_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let inbox = dir.path().join("Downloads");
+    let mut app = active_hermes_with(vec![location_at(&inbox, LocationMode::Inbox)]);
+    app.panel_mut(LEFT).entries[DOCUMENTS].path = dir.path().join("Scans");
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::HandToInbox),
+    )
+    .await;
+
+    let dialog = app.ops.transfer_dialog.as_ref().expect("the move dialog");
+    assert_eq!(dialog.target_path(), inbox);
+}
+
+#[tokio::test]
+async fn handing_to_the_inbox_without_one_says_so() {
+    let mut app = active_hermes_with(Vec::new());
+
+    drop(app.update(Message::HermesFile(HermesFileMessage::HandToInbox)));
+
+    assert!(app.ops.transfer_dialog.is_none());
+    assert_eq!(
+        app.notice_for_test(),
+        Some(app.lang.text(Msg::StatusHermesNoInbox))
+    );
 }

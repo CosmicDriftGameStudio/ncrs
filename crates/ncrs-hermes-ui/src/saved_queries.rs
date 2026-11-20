@@ -579,14 +579,12 @@ impl SavedQueries {
     }
 }
 
-// Shared with the tests of the app and of other pages.
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures {
@@ -656,12 +654,6 @@ pub mod fixtures {
 #[cfg(test)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::fixtures::{
         amount, hit, hit_with, loaded_list, ran_list, stored_queries, THIS_YEAR,

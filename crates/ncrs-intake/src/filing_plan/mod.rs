@@ -27,7 +27,8 @@ use crate::conditions::{
     SearchText,
 };
 use crate::extract::{compile, extract_amount, extract_date, extract_number};
-use crate::sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
+use crate::sanitise::{is_plain_literal, sanitise_value, stays_below};
+use ncrs_fs::archive::is_device_name;
 
 /// What is known about a document before the rules run.
 #[derive(Debug, Clone, Copy)]
@@ -408,16 +409,43 @@ pub fn render_pattern_parts(
     Some(parts)
 }
 
+/// The most bytes a file system accepts in one path component.
+const MAX_COMPONENT_BYTES: usize = 255;
+/// The longest ending (with its dot) kept when a name is cut.
+const MAX_EXTENSION_BYTES: usize = 16;
+
 fn path_of(components: &[Vec<PatternPart>]) -> PathBuf {
     components
         .iter()
         .map(|component| {
-            component
-                .iter()
-                .map(|part| part.text.as_str())
-                .collect::<String>()
+            clip_component(
+                &component
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect::<String>(),
+            )
         })
         .collect()
+}
+
+/// A name cut to `MAX_COMPONENT_BYTES` at a character boundary, its ending kept.
+fn clip_component(name: &str) -> String {
+    if name.len() <= MAX_COMPONENT_BYTES {
+        return name.to_owned();
+    }
+    let extension_at = name
+        .rfind('.')
+        .filter(|&at| at > 0 && name.len() - at <= MAX_EXTENSION_BYTES)
+        .unwrap_or(name.len());
+    let (stem, extension) = name.split_at(extension_at);
+    let mut end = MAX_COMPONENT_BYTES - extension.len();
+    while !stem.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}{extension}",
+        stem.get(..end).unwrap_or_default().trim_end()
+    )
 }
 
 /// The order fields are asked for and reported in.
@@ -609,7 +637,8 @@ impl Pattern {
             Token::Literal(literal) => is_plain_literal(literal),
             Token::Placeholder(_) => true,
         });
-        let is_device = matches!(tokens.as_slice(), [Token::Literal(literal)] if is_windows_device_name(literal));
+        let is_device =
+            matches!(tokens.as_slice(), [Token::Literal(literal)] if is_device_name(literal));
         (!only_dots && plain && !is_device).then_some(tokens)
     }
 
@@ -790,3 +819,18 @@ fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod clip_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_name_is_cut_on_a_character_boundary_and_keeps_its_ending() {
+        let long = format!("{}.pdf", "ü".repeat(200));
+        let clipped = clip_component(&long);
+        assert!(clipped.len() <= MAX_COMPONENT_BYTES);
+        assert!(clipped.ends_with(".pdf"));
+        assert!(clipped.starts_with('ü'));
+        assert_eq!(clip_component("Rechnung.pdf"), "Rechnung.pdf");
+    }
+}

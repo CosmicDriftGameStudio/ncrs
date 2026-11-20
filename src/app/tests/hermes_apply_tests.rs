@@ -69,8 +69,8 @@ fn a_saved_list_starts_the_module_when_none_was_on() {
     assert_eq!(app.hermes.filing_config, saved_filing());
 }
 
-#[test]
-fn a_module_without_locations_is_replaced_and_its_runner_stopped() {
+#[tokio::test]
+async fn a_module_without_locations_is_replaced_and_its_runner_stopped() {
     let mut app = app_that_can_start_a_module();
     app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
     app.hermes.pipeline = Some(running_pipeline());
@@ -78,7 +78,13 @@ fn a_module_without_locations_is_replaced_and_its_runner_stopped() {
     let (applies, _task) = app.apply_saved_filing(saved_filing());
 
     assert!(matches!(applies, SavedFilingApplies::Now));
-    assert!(app.hermes.pipeline.is_none());
+    assert!(app.hermes.pipeline.is_none() && app.hermes.filing.is_none());
+    let (generation, _) = app
+        .hermes
+        .filing_restart
+        .clone()
+        .expect("the old runner is dropped in the background");
+    drop(app.filing_restarted(generation));
     assert!(app
         .hermes
         .filing

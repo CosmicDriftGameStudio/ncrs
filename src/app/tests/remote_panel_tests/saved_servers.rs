@@ -20,7 +20,8 @@ async fn drive_menu_lists_saved_servers_and_delete_disconnects() {
         saved(Some("Work"), HOST, Some("/home")),
         saved(None, "elsewhere.invalid", None),
     ];
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
 
     let menu = app.panels.volume_menu.as_ref().unwrap();
     let shown: Vec<(&str, bool)> = menu
@@ -31,7 +32,7 @@ async fn drive_menu_lists_saved_servers_and_delete_disconnects() {
     assert_eq!(shown, [("Work", true), ("tester@elsewhere.invalid", false)]);
     assert_eq!(menu.servers[0].url, url("/home"));
 
-    settle(&mut app, Message::VolumeMenuRemove).await;
+    settle(&mut app, Message::Panel(PanelMessage::VolumeMenuRemove)).await;
 
     assert!(!fixture.pool.is_connected(&Fixture::id()));
     let kept = app
@@ -48,9 +49,10 @@ async fn choosing_a_saved_server_that_is_not_connected_asks_for_its_password() {
     let fixture = Fixture::trusted();
     let mut app = app_over(&fixture).with_volumes(Vec::new);
     app.saved_servers = vec![saved(Some("Work"), HOST, Some("/home"))];
-    drop(app.update(Message::VolumeMenu(PanelSide::Right)));
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
+        .await;
 
-    settle(&mut app, Message::VolumeMenuActivate).await;
+    settle(&mut app, Message::Panel(PanelMessage::VolumeMenuActivate)).await;
 
     let dialog = app.remote_ui.dialog.as_ref().unwrap();
     assert_eq!(dialog.value(ConnectField::Host), HOST);

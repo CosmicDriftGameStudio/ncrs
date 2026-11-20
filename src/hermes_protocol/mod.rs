@@ -22,14 +22,10 @@
 //! trash of its own, so neither the user's configuration, index nor keychain is
 //! touched.
 
-#![cfg(unix)]
 #![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
     clippy::print_stdout,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    reason = "the test reports on stdout; one test walks one long scenario"
 )]
 
 use std::cell::RefCell;
@@ -60,7 +56,8 @@ mod tidy_flows;
 mod waiting;
 
 use scratch::{
-    copy_tree, count_files, count_indexable, link_tree, path_hash, pdfs_below, report_removal,
+    copy_tree, count_files, count_indexable, link_folder, link_tree, path_hash, pdfs_below,
+    report_removal,
 };
 use thread::{
     areas_in_plain_words, busy, chat, chip_labels, has_chip, is_ready, last_hermes_has_chips,
@@ -198,7 +195,6 @@ fn all(checks: impl IntoIterator<Item = Check>) -> Check {
     expect(failed.is_empty(), failed.join("; "))
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn start_protocol(
     original: &Path,
     workspace: &Path,
@@ -243,10 +239,10 @@ fn start_protocol(
         drop(ncrs_index::Index::create_plain(&index_path).unwrap());
     }
     if let Some(models) = env_path("NCRS_AI_MODELS_DIR") {
-        std::os::unix::fs::symlink(models, data.join("ai-models")).unwrap();
+        link_folder(&models, &data.join("ai-models")).unwrap();
     }
     if let Some(models) = env_path("NCRS_OCR_MODELS_DIR") {
-        std::os::unix::fs::symlink(models, data.join("ocr-models")).unwrap();
+        link_folder(&models, &data.join("ocr-models")).unwrap();
     }
     let trash_folder = scratch.join("trash");
     std::fs::create_dir_all(&trash_folder).unwrap();
@@ -346,7 +342,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     fn shot(&mut self, name: &str) -> String {
         self.images += 1;
         let file = format!("{:02}-{name}.png", self.images);
-        crate::screenshot_tests::write_screenshot_to(
+        crate::shot_file::write_screenshot_to(
             &self.session.app,
             &self.out.to_string_lossy(),
             WINDOW,

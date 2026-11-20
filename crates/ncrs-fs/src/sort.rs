@@ -7,11 +7,75 @@ pub use ncrs_core::{SortColumn, SortKey};
 
 use super::FileEntry;
 
-/// The case fold is what makes `B.txt` sort next to `b.txt`. Lossy conversion
-/// is only a display concern; for the comparison it is stable for a given byte
-/// sequence.
+/// Latin letters with marks and the base letters they sort as. A letter that
+/// is written precomposed (`ä`) and one written as `a` plus a combining mark
+/// are the same here, so the same name sorts in one place whatever system
+/// wrote it.
+const BASE_LETTERS: &[(&str, &str)] = &[
+    ("àáâãäåāăą", "a"),
+    ("çćĉċč", "c"),
+    ("ďđ", "d"),
+    ("èéêëēĕėęě", "e"),
+    ("ĝğġģ", "g"),
+    ("ĥħ", "h"),
+    ("ìíîïĩīĭįı", "i"),
+    ("ĵ", "j"),
+    ("ķ", "k"),
+    ("ĺļľŀł", "l"),
+    ("ñńņňŉ", "n"),
+    ("òóôõöøōŏő", "o"),
+    ("ŕŗř", "r"),
+    ("śŝşš", "s"),
+    ("ţťŧ", "t"),
+    ("ùúûüũūŭůűų", "u"),
+    ("ŵ", "w"),
+    ("ýÿŷ", "y"),
+    ("źżž", "z"),
+    ("ß", "ss"),
+    ("æ", "ae"),
+    ("œ", "oe"),
+];
+
+fn is_combining_mark(c: char) -> bool {
+    matches!(c, '\u{0300}'..='\u{036F}')
+}
+
+/// `text` in lower case with the marks taken off its Latin letters.
+pub fn base_letters(text: &str) -> String {
+    let mut folded = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if is_combining_mark(c) {
+            continue;
+        }
+        match BASE_LETTERS.iter().find(|(letters, _)| letters.contains(c)) {
+            Some((_, base)) => folded.push_str(base),
+            None => folded.push(c),
+        }
+    }
+    folded
+}
+
+/// The key a name is ordered by: case and marks folded, and every run of
+/// digits written as its length and then its digits, so that `9.txt` comes
+/// before `10.txt`. Lossy conversion is only a display concern; for the
+/// comparison it is stable for a given byte sequence.
 fn fold_key(name: &OsString) -> String {
-    name.to_string_lossy().to_lowercase()
+    let folded = base_letters(&name.to_string_lossy());
+    let mut key = String::with_capacity(folded.len());
+    let mut chars = folded.chars().peekable();
+    while let Some(c) = chars.next() {
+        if !c.is_ascii_digit() {
+            key.push(c);
+            continue;
+        }
+        let mut digits = String::from(c);
+        while let Some(next) = chars.next_if(char::is_ascii_digit) {
+            digits.push(next);
+        }
+        let significant = digits.trim_start_matches('0');
+        key.push_str(&format!("{:0>4}{significant}", significant.len()));
+    }
+    key
 }
 
 /// Sorts `entries` by `key`. `..` stays first and directories stay before
@@ -66,12 +130,6 @@ fn compare(a: &FileEntry, folded_a: &str, b: &FileEntry, folded_b: &str, key: So
         })
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +226,45 @@ mod tests {
             .iter()
             .map(|e| e.name.to_string_lossy().into_owned())
             .collect()
+    }
+
+    fn names_in_order(names: &[&str]) -> Vec<String> {
+        let mut entries: Vec<FileEntry> = names
+            .iter()
+            .map(|name| entry(name, false, 0, None))
+            .collect();
+        sort_entries(&mut entries, SortKey::default());
+        entries
+            .iter()
+            .map(|e| e.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn numbers_are_ordered_by_value() {
+        assert_eq!(
+            names_in_order(&["10.txt", "9.txt", "100.txt", "a2", "a10"]),
+            ["9.txt", "10.txt", "100.txt", "a2", "a10"]
+        );
+    }
+
+    #[test]
+    fn umlauts_sort_with_their_base_letter_in_either_spelling() {
+        let precomposed = "\u{e4}rzte";
+        let decomposed = "a\u{308}rzte";
+        let order = names_in_order(&["zebra", "anna", precomposed, decomposed, "berta"]);
+        assert_eq!(order.first().map(String::as_str), Some("anna"));
+        assert_eq!(order.last().map(String::as_str), Some("zebra"));
+        let pair: Vec<_> = order.iter().filter(|name| name.ends_with("rzte")).collect();
+        assert_eq!(pair.len(), 2);
+        assert_eq!(
+            order.get(1).map(String::as_str),
+            pair.first().map(|n| n.as_str())
+        );
+        assert_eq!(
+            order.get(2).map(String::as_str),
+            pair.get(1).map(|n| n.as_str())
+        );
     }
 
     #[test]

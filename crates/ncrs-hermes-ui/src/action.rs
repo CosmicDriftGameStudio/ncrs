@@ -36,6 +36,8 @@ impl std::fmt::Debug for StartProgressJob {
 #[derive(Debug)]
 pub enum Action {
     CloseContextMenu,
+    /// The index was started over: the chat forgets what refers to the old one.
+    IndexReplaced,
     /// Opens the Hermes chat.
     OpenChat,
     /// The settings show this page of the Hermes crate.
@@ -49,9 +51,20 @@ pub enum Action {
     ReloadPanels,
     /// Clears the error and the notice in the status bar.
     ClearStatus,
+    /// Opens the move dialog for what the panel acts on, aimed at this inbox.
+    MoveToInbox(PathBuf),
     ShowNotice(String),
     ShowError(String),
     RequestHermesCounts,
+    /// The settings page of the index reads its figures again, when they are due.
+    RefreshDocumentsFacts,
+    /// The chat has the model of the current AI setting.
+    EnsureChatModel,
+    /// The open chat looks for something that waits for the user.
+    CheckChatWaiting,
+    /// The pipeline has read everything in its queue; this is the number of
+    /// its left pipeline sequence.
+    ReadingSettled(usize),
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
     /// Takes in the latest snapshot of the pipeline and of the module.

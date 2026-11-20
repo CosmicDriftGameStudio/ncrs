@@ -11,7 +11,6 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{container, mouse_area, operation, row, Column, Container, Space, Stack};
 use iced::{event, mouse, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
     download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob, InstallOutcome,
 };
@@ -26,13 +25,12 @@ use crate::config::{
 use crate::context_action_message::ContextActionMessage as _;
 use crate::context_menu::ContextAction;
 use crate::context_menu::{ContextMenu, HermesAction};
-use crate::dialog::{Prompt, PromptKind};
+use crate::dialog::Prompt;
 use crate::file_list_tags::{FileListTags, TagExceptions};
 #[cfg(test)]
 use crate::filing::Phase;
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule};
 use crate::filing_setup;
-use crate::filing_work::FilingSummary;
 use crate::fs;
 use crate::fs::remote::credentials::KeyringPasswords;
 use crate::fs::remote::credentials::PasswordStore;
@@ -40,14 +38,14 @@ use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
-use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
+use crate::hermes_column::{ColumnView, FolderRole, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
-use crate::jobs::{self, JobEvent};
+use crate::jobs;
 use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
@@ -57,9 +55,9 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
-    Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
-    TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, ShownTab, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -70,19 +68,15 @@ use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 #[cfg(test)]
 use crate::quick_fix::QuickFix;
-use crate::quick_open::{
-    self, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, QUICK_OPEN_FILE_LIMIT,
-};
+use crate::quick_open::{self, QuickOpen, QuickOpenAction, QuickOpenCtx};
 #[cfg(test)]
 use crate::review_work::ReviewItem;
 use crate::saved_queries::Draft;
 #[cfg(test)]
 use crate::saved_queries::SavedQueries;
 #[cfg(test)]
-use crate::search_filters::SearchFilters;
-#[cfg(test)]
 use crate::search_view::SearchField;
-use crate::search_view::{stays_on_file_system, SearchView};
+use crate::search_view::SearchView;
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::system_dialogs::FilePick;
 #[cfg(test)]
@@ -124,11 +118,11 @@ use ncrs_files::context_menu_flow::{HermesCursor, HermesFacts, MenuFacts, MenuNa
 use ncrs_files::hit_list::HitList;
 use ncrs_files::hit_list_flow::HitListAsk;
 use ncrs_files::keys::{ContextMenuKey, VolumeMenuKey};
-use ncrs_files::load_flow::{LoadStart, ReloadNow};
-use ncrs_files::open_plan::{open_refused_text, CopyOf, OpenPlan, OpenSource};
+use ncrs_files::load_flow::LoadStart;
+use ncrs_files::open_plan::{CopyOf, OpenSource};
 #[cfg(test)]
 use ncrs_files::volumes::VolumeMenu;
-use ncrs_files::{PanelMessage, Panels, PendingReload};
+use ncrs_files::{PanelMessage, Panels};
 use ncrs_hermes_ui::SavedFilingApplies;
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
@@ -139,20 +133,26 @@ use ncrs_ops::keys::{
 use ncrs_ops::prompt_view::PromptMessages;
 use ncrs_ops::PanelRows;
 #[cfg(test)]
+pub use ncrs_ops::RowFailure;
+#[cfg(test)]
+pub use ncrs_ops::Transfer;
+#[cfg(test)]
 use ncrs_ops::{restore_one, Restoration};
 #[cfg(test)]
 use ncrs_ops::{Deletion, Extracting, PendingConflict};
-pub use ncrs_ops::{RowFailure, Transfer};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
     HermesCommands, RECENT_LIMIT,
 };
 #[cfg(test)]
 use ncrs_pipeline::Load;
+#[cfg(test)]
+use ncrs_search::filters::SearchFilters;
+use ncrs_settings::about::AboutCard;
 
 use ncrs_monitor::MonitorMessage;
 use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
-use ncrs_search::{search_events, SearchKey, SearchKeyFacts};
+use ncrs_search::{SearchKey, SearchKeyFacts};
 use ncrs_settings::focus::FocusKey;
 use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
 #[cfg(test)]
@@ -161,8 +161,7 @@ use ncrs_settings::theme_fetch::install::download_theme;
 use ncrs_settings::theme_file::theme_file_entry;
 use ncrs_settings::Settings;
 use ncrs_ui_kit::focus::release_focus;
-#[cfg(test)]
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use tokio::sync::mpsc;
 
 mod bars;
@@ -192,20 +191,22 @@ mod tab_stops;
 mod update;
 mod updates;
 mod view;
+mod view_modals;
 mod viewer;
 
 use self::columns::column_settings_of;
 use self::dialogs::*;
 pub use self::keys::*;
-use self::ops::*;
+
 use self::panels::*;
-use self::remote::*;
 use self::session::*;
 use self::settings::*;
 pub use self::startup::*;
 #[cfg(test)]
 use self::subscription::receiver_stream;
+#[cfg(test)]
 use self::update::archive_refusal;
+use self::update::refusal_for;
 #[cfg(test)]
 use self::update::remote_refusal;
 
@@ -264,8 +265,6 @@ pub struct App {
     keymap: Arc<Keymap>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
-    /// Folder sizes computed this session, by directory and then entry name.
-    /// Kept in memory only, so coming back to a folder shows them again.
     /// The question whether to remove the Hermes index and begin again.
     start_over_dialog: bool,
     /// The button the open dialog has focused, counted from the left.
@@ -318,7 +317,6 @@ pub struct App {
     /// subscription puts its cell here, and `update` keeps the value in it
     /// current after every message.
     key_state: OnceLock<Arc<KeyStateCell>>,
-    /// Folders the user bookmarked, in the order they were added.
     command_line: CommandLine,
     /// What a leading `~` in a typed path stands for.
     home: PathBuf,
@@ -349,8 +347,6 @@ pub struct App {
     notes: ncrs_notes::State,
     /// The filing tab, shown while it has a session.
     filing_view: ncrs_filing_view::State,
-    /// The files that have a note, kept for the rows of the panels.
-    noted: std::collections::HashSet<PathBuf>,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -362,7 +358,7 @@ pub struct App {
     /// The bar height the lists were last sized for.
     favourites_bar_applied: f32,
     /// The menu of a favourites bar slot, while it is up.
-    favourite_menu: Option<favourites_bar::FavouriteMenu>,
+    favourite_menu: Option<ncrs_files::FavouriteMenu>,
     /// Asks GitHub for the newest release. Injected so tests need no network.
     fetch_latest_release: ncrs_updates::FetchFn,
     /// The Hermes chat (F2): its thread is kept when it is closed.
@@ -376,12 +372,11 @@ pub struct App {
     /// The setting that switches Hermes on is being written; the chat counts
     /// Hermes as starting meanwhile.
     turning_hermes_on: bool,
+    /// The protection phase a quit was held back in; a second quit in the
+    /// same phase ends the app, a quit in another phase is held back again.
+    protection_quit_warned: Option<std::mem::Discriminant<crate::filing::Phase>>,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
-    /// Counts the walks started, so the late batches of a closed one are dropped.
-    quick_open_walk_generation: u64,
-    /// Stops the file walk when dropped.
-    quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
     /// The commands run from the command list this session, most recent
@@ -546,6 +541,10 @@ pub struct PromptKeyState {
     pub monitor_dialog: bool,
     /// Its context menu is up.
     pub monitor_menu: bool,
+    /// The drive list of the System page has the cursor.
+    pub monitor_drive_focused: bool,
+    /// The System page shows a drive list that Tab can reach.
+    pub monitor_drives_listed: bool,
     /// The viewer tab is up: its keys scroll and Escape closes it.
     pub viewer: bool,
     /// The viewer shows Markdown, so Tab switches rendered and source.
@@ -568,6 +567,8 @@ pub struct PromptKeyState {
     pub start_over_dialog: bool,
     /// The drive menu is up, so keys move its highlight.
     pub volume_menu: bool,
+    /// The column menu over a panel header is up: arrows and Enter are its.
+    pub header_menu: bool,
     /// The context menu is up, so keys move its highlight.
     pub context_menu: bool,
     /// A slot menu of the favourites bar is up: Escape closes it.
@@ -626,6 +627,8 @@ impl Default for PromptKeyState {
             monitor_filter: false,
             monitor_dialog: false,
             monitor_menu: false,
+            monitor_drive_focused: false,
+            monitor_drives_listed: false,
             viewer: false,
             viewer_markdown: false,
             notes: false,
@@ -637,6 +640,7 @@ impl Default for PromptKeyState {
             quit_dialog: false,
             start_over_dialog: false,
             volume_menu: false,
+            header_menu: false,
             context_menu: false,
             favourite_menu: false,
             context_submenu: false,

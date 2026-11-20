@@ -14,7 +14,6 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 # Only the parts the page shows. `user` names the owner of a task.
 sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network", "component", "user"] }
-ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
@@ -28,6 +27,7 @@ sandbox = ["sysinfo/apple-app-store"]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
 iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 
 [lints]
 workspace = true

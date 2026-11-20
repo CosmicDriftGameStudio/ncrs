@@ -45,16 +45,18 @@ impl TrashView {
     }
 
     /// Takes what a listing gave. The cursor stays on its row number, inside
-    /// the new list; tags go, because what they marked may be gone.
+    /// the new list; tags stay on the entries that are still listed.
     pub fn set_items(&mut self, result: Result<Vec<TrashedItem>, String>, visible_rows: usize) {
         self.loading = false;
-        self.tagged.clear();
         match result {
             Ok(items) => {
+                let listed: HashSet<&OsString> = items.iter().map(|item| &item.key).collect();
+                self.tagged.retain(|key| listed.contains(key));
                 self.items = items;
                 self.error = None;
             }
             Err(reason) => {
+                self.tagged.clear();
                 self.items.clear();
                 self.error = Some(reason);
             }
@@ -143,12 +145,5 @@ impl TrashView {
     }
 }
 
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

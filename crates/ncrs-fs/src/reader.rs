@@ -1,5 +1,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use tokio::sync::Semaphore;
 
 use super::{archive, sort_entries, FileEntry, SortKey};
 
@@ -7,16 +10,17 @@ use super::{archive, sort_entries, FileEntry, SortKey};
 /// formatted by the UI layer, which owns the language.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
-    /// The OS refused to read the directory. The inner string is the OS message.
-    CannotRead { reason: String },
+    /// The OS refused to read the directory. `reason` is the OS message; the
+    /// UI tells the `kind` in its own language where it knows it.
+    CannotRead { kind: io::ErrorKind, reason: String },
     /// macOS privacy protection (TCC) refused access; ordinary Unix
     /// permissions give EACCES instead, which stays `CannotRead`. The inner
     /// string is the OS message.
     AccessBlocked { reason: String },
     /// The background task itself failed, not the filesystem operation.
     TaskFailed { reason: String },
-    /// An archive was listed without some entries: paths that would leave the
-    /// folder they are copied to, links and special files.
+    /// A listing without some entries: unreadable ones, and in an archive paths
+    /// that would leave the folder they are copied to, links and special files.
     EntriesLeftOut { count: usize },
     /// An archive whose content or header is encrypted, which ncrs cannot open.
     ArchiveEncrypted,
@@ -34,12 +38,12 @@ pub enum ReadError {
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReadError::CannotRead { reason }
+            ReadError::CannotRead { reason, .. }
             | ReadError::AccessBlocked { reason }
             | ReadError::TaskFailed { reason }
             | ReadError::Remote { reason } => f.write_str(reason),
             ReadError::EntriesLeftOut { count } => {
-                write!(f, "{count} entries left out of the archive")
+                write!(f, "{count} entries left out")
             }
             ReadError::ArchiveEncrypted => f.write_str("the archive is encrypted"),
             ReadError::ArchiveDictionaryTooLarge => {
@@ -66,10 +70,55 @@ pub struct Listing {
     pub archive: Option<PathBuf>,
 }
 
+/// How many directory reads may occupy a blocking thread at once. A read on a
+/// dead mount never comes back, and without a limit every key repeat would add
+/// another stuck thread to the pool that all other background work shares.
+const READS_AT_ONCE: usize = 16;
+/// How long a read, including its wait for a free place, may take.
+const READ_GIVES_UP_AFTER: Duration = Duration::from_secs(60);
+static READ_PLACES: Semaphore = Semaphore::const_new(READS_AT_ONCE);
+
+/// Runs `work` on the blocking pool once `places` has room, and gives up
+/// after `limit`. A thread that gave up is not stopped: it keeps its place
+/// until it returns, which is what keeps the hung ones counted.
+async fn within<T: Send + 'static>(
+    places: &'static Semaphore,
+    limit: Duration,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, ReadError> {
+    let run = async {
+        let place = places
+            .acquire()
+            .await
+            .map_err(|closed| ReadError::TaskFailed {
+                reason: closed.to_string(),
+            })?;
+        tokio::task::spawn_blocking(move || {
+            let done = work();
+            drop(place);
+            done
+        })
+        .await
+        .map_err(|join_err| ReadError::TaskFailed {
+            reason: join_err.to_string(),
+        })
+    };
+    match tokio::time::timeout(limit, run).await {
+        Ok(finished) => finished,
+        Err(_elapsed) => Err(ReadError::CannotRead {
+            kind: io::ErrorKind::TimedOut,
+            reason: io::Error::from(io::ErrorKind::TimedOut).to_string(),
+        }),
+    }
+}
+
 /// Reads `path` on tokio's blocking thread pool so the UI never blocks.
 pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
     let target = path.clone();
-    let result = tokio::task::spawn_blocking(move || read_sync(&target, sorted_by)).await;
+    let result = within(&READ_PLACES, READ_GIVES_UP_AFTER, move || {
+        read_sync(&target, sorted_by)
+    })
+    .await;
 
     match result {
         Ok(read) => Listing {
@@ -79,11 +128,9 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
             sorted_by,
             archive: read.archive,
         },
-        Err(join_err) => Listing {
+        Err(error) => Listing {
             entries: parent_only(&path),
-            error: Some(ReadError::TaskFailed {
-                reason: join_err.to_string(),
-            }),
+            error: Some(error),
             path,
             sorted_by,
             archive: None,
@@ -117,7 +164,10 @@ fn read_error_at(err: &io::Error, path: &Path, home: &Path) -> ReadError {
     {
         ReadError::AccessBlocked { reason }
     } else {
-        ReadError::CannotRead { reason }
+        ReadError::CannotRead {
+            kind: err.kind(),
+            reason,
+        }
     }
 }
 
@@ -131,10 +181,14 @@ struct Read {
 fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
     match std::fs::read_dir(path) {
         Ok(dir) => {
-            let mut entries: Vec<FileEntry> = dir
-                .filter_map(Result::ok)
-                .map(|e| FileEntry::from_dir_entry(&e))
-                .collect();
+            let mut unreadable = 0;
+            let mut entries: Vec<FileEntry> = Vec::new();
+            for listed in dir {
+                match listed {
+                    Ok(found) => entries.push(crate::entry_read::entry_from_dir_entry(&found)),
+                    Err(_) => unreadable += 1,
+                }
+            }
             // The leftover of an interrupted transfer is found where the user
             // looks, also in a folder nothing is copied into again. Names only
             // here; the sweep itself keeps its age and once-an-hour limits, and
@@ -148,7 +202,7 @@ fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
             crate::owners::fill_owners(&mut entries);
             Read {
                 entries: with_parent(entries, path, sorted_by),
-                error: None,
+                error: (unreadable > 0).then_some(ReadError::EntriesLeftOut { count: unreadable }),
                 archive: None,
             }
         }
@@ -182,6 +236,7 @@ fn read_archive(path: &Path, location: &archive::ArchiveLocation, sorted_by: Sor
                     ReadError::ArchiveDictionaryTooLarge
                 }
                 None => ReadError::CannotRead {
+                    kind: err.kind(),
                     reason: err.to_string(),
                 },
             }),
@@ -227,18 +282,6 @@ fn home_dir_with(
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Filesystem root of `path` (`/` on Unix, e.g. `C:\` on Windows).
-///
-/// Not used at startup any more — see [`start_dir`]. Kept because "go to the
-/// filesystem root" is a standard file-manager action and will need it.
-#[allow(dead_code)]
-pub fn root_of(path: &Path) -> PathBuf {
-    path.ancestors()
-        .last()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("/"))
-}
-
 /// The directory the app should start in when the user has no better idea:
 /// the working directory, falling back to the home directory.
 pub fn start_dir() -> PathBuf {
@@ -254,12 +297,6 @@ pub fn start_dir_from(cwd: Option<PathBuf>, home: PathBuf) -> PathBuf {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +309,32 @@ mod tests {
             .prefix(&format!("ncrs-{label}-"))
             .tempdir()
             .expect("a scratch directory")
+    }
+
+    // Real time: a paused clock does not move while a blocking task runs, and
+    // the hung read is one until the end of the test.
+    #[tokio::test]
+    async fn a_read_that_hangs_keeps_its_place_and_the_next_one_gives_up() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static PLACES: Semaphore = Semaphore::const_new(1);
+        static SECOND_RAN: AtomicBool = AtomicBool::new(false);
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let hung = tokio::spawn(within(&PLACES, Duration::from_secs(5), move || {
+            let _ = hold.recv();
+        }));
+        while PLACES.available_permits() > 0 {
+            tokio::task::yield_now().await;
+        }
+
+        let second = within(&PLACES, Duration::from_millis(50), || {
+            SECOND_RAN.store(true, Ordering::SeqCst);
+        })
+        .await;
+
+        assert!(matches!(second, Err(ReadError::CannotRead { .. })));
+        assert!(!SECOND_RAN.load(Ordering::SeqCst));
+        drop(release);
+        let _ = hung.await;
     }
 
     #[test]
@@ -493,12 +556,6 @@ mod tests {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod start_dir_tests {
     use super::*;
@@ -538,12 +595,6 @@ mod start_dir_tests {
     fn start_dir_from_keeps_a_real_working_directory() {
         let cwd = std::env::temp_dir();
         assert_eq!(start_dir_from(Some(cwd.clone()), PathBuf::from("/h")), cwd);
-    }
-
-    #[test]
-    fn root_of_finds_the_filesystem_root() {
-        let root = root_of(Path::new("/a/b/c"));
-        assert_eq!(root, PathBuf::from("/"));
     }
 
     /// `start_dir` must never hand out a path that cannot be listed, so a

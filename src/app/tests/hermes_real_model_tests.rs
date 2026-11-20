@@ -5,7 +5,6 @@
 //! `target/acceptance/`.
 
 #![cfg(feature = "local-ai")]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::num::NonZeroU32;
 use std::sync::Mutex;
@@ -331,7 +330,9 @@ fn scenario(misplace: bool) {
     let inbox_location =
         ncrs_intake::Location::new(&root.join("inbox"), ncrs_intake::LocationMode::Inbox, false)
             .unwrap();
+    let target = location.path.clone();
     let rules = RulesAccess::new(Arc::clone(&slot), vec![location, inbox_location])
+        .with_target(Some(target))
         .with_kind_language(KindLanguage::German);
     let access = ChatAccess::new(
         Arc::clone(&slot),

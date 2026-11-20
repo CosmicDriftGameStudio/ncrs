@@ -78,9 +78,15 @@ impl Operation<f32> for Measure {
 /// Scrolls the scrollable `scroll_id` just far enough that the container
 /// with [`FOCUSED_ROW_ID`] is wholly in view.
 pub fn focused_row_into_view<T: Send + 'static>(scroll_id: &'static str) -> Task<T> {
+    row_into_view(scroll_id, FOCUSED_ROW_ID)
+}
+
+/// Like [`focused_row_into_view`] for the container with `row_id`, for pages
+/// with several scrollables that each have their own marked row.
+pub fn row_into_view<T: Send + 'static>(scroll_id: &'static str, row_id: &'static str) -> Task<T> {
     let measure = Measure {
         scroll: Id::new(scroll_id),
-        row: Id::new(FOCUSED_ROW_ID),
+        row: Id::new(row_id),
         viewport: None,
         row_bounds: None,
     };

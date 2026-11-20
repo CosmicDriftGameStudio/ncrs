@@ -77,7 +77,7 @@ fn single_text_is_one_plain_substring_or_word_condition() {
 #[test]
 fn every_condition_kind_round_trips_through_its_stored_name() {
     for kind in ConditionKind::ALL {
-        assert_eq!(ConditionKind::parse(kind.as_str()).ok(), Some(kind));
+        assert_eq!(super::parse_condition_kind(kind.as_str()).ok(), Some(kind));
     }
-    assert_eq!(ConditionKind::parse("nonsense").ok(), None);
+    assert_eq!(super::parse_condition_kind("nonsense").ok(), None);
 }

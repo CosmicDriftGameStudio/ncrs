@@ -1,9 +1,12 @@
 //! The one rule that decides whether an archive entry may exist at all.
 
+use crate::remote::is_deceptive;
+
 /// The components of an entry name, or `None` when the entry must be refused.
 ///
 /// Archives carry names written by someone else: an absolute path, a `..`, a
-/// drive letter or a device name would make an unpack write outside its target.
+/// drive letter or a device name would make an unpack write outside its target,
+/// and a control or text-direction character would make a name look like another.
 /// `Some(vec![])` is the archive root (`./`), which callers ignore.
 pub fn safe_components(raw: &str) -> Option<Vec<String>> {
     if raw.starts_with('/') || raw.starts_with('\\') {
@@ -14,7 +17,7 @@ pub fn safe_components(raw: &str) -> Option<Vec<String>> {
         if part.is_empty() || part == "." {
             continue;
         }
-        if part == ".." || part.contains('\0') {
+        if part == ".." || part.chars().any(is_deceptive) {
             return None;
         }
         if components.is_empty() && is_drive_prefix(part) {
@@ -26,6 +29,14 @@ pub fn safe_components(raw: &str) -> Option<Vec<String>> {
         components.push(part.to_owned());
     }
     Some(components)
+}
+
+/// Whether `name`, one component, may be given to a new entry as it is: no
+/// control or text-direction character, and on Windows no device name, stream
+/// separator or trailing dot or space.
+pub fn is_creatable_name(name: &str) -> bool {
+    !name.chars().any(is_deceptive)
+        && !(cfg!(windows) && (name.contains(':') || is_device_name(name) || ends_unseen(name)))
 }
 
 /// macOS zips carry each file's resource fork as a `._name` sibling and a
@@ -63,12 +74,6 @@ pub fn is_device_name(part: &str) -> bool {
         })
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +127,9 @@ mod tests {
             "C:/evil.txt",
             "z:\\evil",
             "a/b\0c",
+            "invoice\u{202E}fdp.exe",
+            "a/b\u{1b}[2J",
+            "line\nbreak",
         ] {
             assert_eq!(parts(raw), None, "{raw:?}");
         }
@@ -187,11 +195,13 @@ mod tests {
     #[test]
     fn device_names_are_recognised_with_any_extension_or_case() {
         for name in [
-            "CON", "con", "Nul.txt", "AUX", "prn.a.b", "COM1", "com9", "LPT5.log",
+            "CON", "con", "Nul.txt", "AUX", "prn.a.b", "COM1", "com9", "LPT5.log", "CON .x",
         ] {
             assert!(is_device_name(name), "{name}");
         }
-        for name in ["CONSOLE", "COM0", "COM10", "LPT", "nulx", "xcon"] {
+        for name in [
+            "", "CONSOLE", "COM0", "COM10", "COM12", "LPT", "nulx", "xcon", "x.CON",
+        ] {
             assert!(!is_device_name(name), "{name}");
         }
     }

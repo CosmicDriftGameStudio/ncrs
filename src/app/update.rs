@@ -10,7 +10,7 @@ fn is_not_offered_in_hit_list(message: &Message) -> bool {
             | Message::Paste
             | Message::ComputeFolderSizes
             | Message::OpenTerminal
-            | Message::PathFieldInput(_)
+            | Message::Panel(PanelMessage::PathFieldInput(_))
     )
 }
 
@@ -57,6 +57,11 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         }
         _ => None,
     }
+}
+
+/// What the panel refuses, whether it shows an archive or an SFTP server.
+pub(in crate::app) fn refusal_for(panel: &PanelState, message: &Message) -> Option<Msg> {
+    archive_refusal(panel, message).or_else(|| remote_refusal(panel, message))
 }
 
 /// What a panel on an SFTP server refuses: what would change something there,
@@ -137,8 +142,8 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Compare(CompareMessage::Open)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
-            | Message::ContextMenuAt { .. }
-            | Message::ContextMenuKey
+            | Message::Files(MenuMessage::ContextMenuAt { .. })
+            | Message::Files(MenuMessage::ContextMenuKey)
             | Message::CopyToClipboard(_)
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
@@ -177,6 +182,14 @@ impl App {
         self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
+        // The keyboard subscription cannot see `&self`, so it reads the routing
+        // state from a cell kept current here. This runs last: published any
+        // earlier, the cell would describe the state from before the message
+        // just handled, or from before a page was brought to the front, and
+        // the keys that follow would be routed to the wrong place.
+        self.publish_key_state();
+        #[cfg(target_os = "macos")]
+        native_menu::sync(self.lang, &self.keymap, self.menu_state());
         Task::batch([task, compare, chat])
     }
 
@@ -262,12 +275,11 @@ impl App {
         if self.show_hidden_tab(&message) {
             return Task::none();
         }
-        let task = match message {
+        match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
             Message::Transfer(kind) => self.open_transfer_dialog(kind),
-            Message::TransferDialog(dialog_message) => self.update_transfer_dialog(dialog_message),
 
             Message::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers;
@@ -283,16 +295,6 @@ impl App {
                 Task::none()
             }
             Message::DialogActivate => self.activate_dialog_button(),
-            Message::ToggleConflictAll => {
-                self.ops.conflict_all = !self.ops.conflict_all;
-                Task::none()
-            }
-
-            // The user answered a conflict. The queue's pending job carries
-            // what was asked, so the answer lands on the right file.
-            Message::TransferConflict(choice) => {
-                self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx))
-            }
 
             // A tick from the copy on the blocking thread. The only thing the
             // status bar needs, and nothing more.
@@ -314,80 +316,21 @@ impl App {
             // A delete in flight finishes its current entry even so: it runs in
             // `spawn_blocking`, which cannot be cancelled, so the panel may
             // still list that entry for a moment after the abort.
-            Message::AbortJob => self.abort_job(),
-            Message::Trash(trash_message) => self.update_trash(trash_message),
             Message::HitList(hit_message) => self.update_hit_list(hit_message),
 
-            // One row of a transfer finished. Continue with the next, or ask
-            // about a name that is in the way.
-            Message::TransferRowDone {
-                result,
-                skipped,
-                index,
-                generation,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::transfer_row_done(ops, result, skipped, index, generation, ctx)
-            }),
-
-            Message::Renamed {
-                request_id,
-                side,
-                from,
-                result,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::rename_done(ops, request_id, side, &from, result, ctx)
-            }),
-
             Message::OpenExternal(kind) => self.open_external(kind),
-            Message::OpenTerminal => {
-                self.open_terminal();
-                Task::none()
-            }
-
-            Message::ViewExtracted {
-                generation,
-                slot,
-                result,
-            } => self
-                .with_ops(|ops, ctx| ncrs_ops::view_extracted(ops, generation, slot, result, ctx)),
+            Message::OpenTerminal => self.open_terminal(),
 
             #[cfg(target_os = "macos")]
             Message::OpenPrivacySettings => {
                 self.open_privacy_settings();
                 Task::none()
             }
+            #[cfg(not(target_os = "macos"))]
+            Message::OpenPrivacySettings => Task::none(),
 
-            // --- drive menu ---
-            Message::VolumeMenu(side) => {
-                let overlay_is_open = self.overlay_is_open();
-                let facts = self.volume_facts_source();
-                self.panels
-                    .open_volume_menu_on(side, false, overlay_is_open, facts);
-                Task::none()
-            }
-            Message::VolumeMenuMove(delta) => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.move_by(delta);
-                }
-                Task::none()
-            }
-            Message::VolumeMenuFirst => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = 0;
-                }
-                Task::none()
-            }
-            Message::VolumeMenuLast => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = menu.last_row();
-                }
-                Task::none()
-            }
-            Message::VolumeMenuRemove => {
-                let saved = self.saved_server_ids();
-                let actions = self.panels.remove_highlighted_row(&saved);
-                self.run_panel_actions(actions)
-            }
+            // --- drive menu and context menu ---
+            Message::Files(menu_message) => self.update_files_menu(menu_message),
             Message::AddFavourite => {
                 let action = self.panels.add_favourite(self.lang);
                 self.run_panel_actions(vec![action])
@@ -396,57 +339,19 @@ impl App {
                 let action = self.panels.remove_favourite(self.lang);
                 self.run_panel_actions(vec![action])
             }
-            Message::OpenFavourites => {
-                let overlay_is_open = self.overlay_is_open();
-                let facts = self.volume_facts_source();
-                let actions = self
-                    .panels
-                    .open_favourites(self.lang, overlay_is_open, facts);
-                self.run_panel_actions(actions)
-            }
+            Message::OpenFavourites => match self.panels.no_favourites_notice(self.lang) {
+                Some(notice) => self.run_panel_actions(vec![notice]),
+                None => self.request_volume_menu(self.panels.active, true),
+            },
             Message::OpenFavourite(index) => self.open_favourite_by_key(index),
             Message::FavouritesBar(bar_message) => self.update_favourites_bar(bar_message),
-            Message::VolumeMenuActivate => {
-                let actions = self.panels.go_to_selected_volume(self.lang);
-                self.run_panel_actions(actions)
-            }
-            Message::VolumeMenuClick(index) => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = index;
-                }
-                let actions = self.panels.go_to_selected_volume(self.lang);
-                self.run_panel_actions(actions)
-            }
-            Message::VolumeMenuClose => {
-                self.panels.volume_menu = None;
-                Task::none()
-            }
-
-            // --- context menu ---
-            menu_message @ (Message::ContextMenuAt { .. }
-            | Message::ContextMenuKey
-            | Message::ContextMenuMove(_)
-            | Message::ContextMenuFirst
-            | Message::ContextMenuLast
-            | Message::ContextMenuHover(_)
-            | Message::ContextMenuActivate
-            | Message::ContextMenuClick(_)
-            | Message::ContextMenuOpenSub
-            | Message::ContextMenuCloseSub
-            | Message::ContextMenuSubHover(_)
-            | Message::ContextMenuSubClick(_)
-            | Message::ContextMenuClose) => self.update_context_menu(menu_message),
 
             Message::HermesFile(file_message) => self.update_hermes_file(file_message),
 
             Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
 
             // --- path field ---
-            path_message @ (Message::PathFieldInput(_)
-            | Message::PathFieldSubmit
-            | Message::PathFieldCancel
-            | Message::PathChecked { .. }
-            | Message::ClickedOutside) => self.update_path_field(path_message),
+            Message::ClickedOutside => self.update_path_field(Message::ClickedOutside),
 
             Message::CommandLine(line_message) => self.update_command_line(line_message),
 
@@ -459,37 +364,6 @@ impl App {
             Message::Paste => self.paste_from_clipboard(),
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
-            Message::OpenFileConfirm => self.with_ops(|ops, _| ncrs_ops::confirm_open_file(ops)),
-            Message::OpenFileCancel => {
-                self.ops.open_file_dialog = None;
-                Task::none()
-            }
-            Message::DeleteCancel => {
-                self.ops.delete_dialog = None;
-                Task::none()
-            }
-            Message::DeleteConfirm => self.confirm_delete(),
-            Message::DeleteRowDone {
-                result,
-                index,
-                generation,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::delete_row_done(ops, result, index, generation, ctx)
-            }),
-
-            // --- job queue ---
-            Message::JobFinished(event) => {
-                // Progress arrives mid-run; only the terminal events free the
-                // slot for the next job.
-                let finished = matches!(event, JobEvent::Done);
-                if finished {
-                    self.jobs.finish();
-                }
-                if let Some(next) = self.jobs.start_next(run_job) {
-                    return next;
-                }
-                Task::none()
-            }
 
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
@@ -505,88 +379,7 @@ impl App {
             Message::PackPrompt => self.open_pack_prompt(),
             Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
-            Message::BatchRename(batch_message) => {
-                self.with_ops(|ops, ctx| ncrs_ops::update_batch_rename(ops, batch_message, ctx))
-            }
-            Message::Permissions(permissions_message) => {
-                self.with_ops(|ops, _| ncrs_ops::update_permissions(ops, permissions_message))
-            }
-            Message::PermissionsDone { generation, result } => {
-                self.with_ops(|ops, ctx| ncrs_ops::permissions_done(ops, generation, result, ctx))
-            }
-            Message::ArchiveWritten { result, generation } => {
-                self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
-            }
-            Message::PromptInput(text) => {
-                if let Some(prompt) = self.ops.prompt.as_mut() {
-                    prompt.set_name(text);
-                }
-                Task::none()
-            }
-            Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
-            Message::PromptFormat(format) => {
-                if let Some(prompt) = self.ops.prompt.as_mut() {
-                    prompt.set_archive_format(format);
-                }
-                Task::none()
-            }
-            // Its own arm, not an early return: starting the job changes what the
-            // keys mean, and the routing state is published after the match.
-            Message::PromptSubmit if self.ops.valid_prompt_has_its_own_job() => {
-                self.start_prompt_job()
-            }
-            Message::PromptSubmit => {
-                let Some(prompt) = self.ops.prompt.as_ref() else {
-                    return Task::none();
-                };
-                if let Err(reason) = prompt.validate() {
-                    self.ops.set_prompt_error(reason);
-                    return Task::none();
-                }
-                let kind = prompt.kind();
-                let side = self.ops.prompt_side.unwrap_or(self.panels.active);
-                let parent = self.panel(side).path.clone();
-                let new_name = prompt.name().trim().to_string();
-                let request_id = self.ops.prompt_request_id.wrapping_add(1);
-                self.ops.prompt_request_id = request_id;
-                self.ops.set_prompt_busy(true);
-
-                // The new entry's name, carried through the task so the
-                // reload can select it.
-                let target = parent.join(&new_name);
-                let finished = move |result| Message::PromptFinished {
-                    prompt: kind,
-                    request_id,
-                    result,
-                };
-                let create = match kind {
-                    PromptKind::CreateDir => Task::perform(fs::create_dir(target), finished),
-                    PromptKind::CreateFile => Task::perform(fs::create_file(target), finished),
-                    // Taken out above: a pack and a paste have their own jobs.
-                    PromptKind::Pack | PromptKind::Paste => Task::none(),
-                };
-
-                // The reload belongs *after* the create, not beside it.
-                // Running both at once races: a read that finishes first sees a
-                // directory that does not contain the new entry yet, and the
-                // selection then points at whatever is there instead.
-                self.panels.pending_reload = Some(PendingReload {
-                    side,
-                    name: new_name,
-                });
-                create
-            }
-            Message::PromptCancel => {
-                self.ops.prompt = None;
-                self.ops.pending_paste = None;
-                self.ops.prompt_side = None;
-                Task::none()
-            }
-            Message::PromptFinished {
-                prompt: kind,
-                request_id,
-                result,
-            } => self.finish_prompt(kind, request_id, result),
+            Message::Ops(ops_message) => self.update_ops(ops_message),
 
             Message::PreviousTab => self.switch_tab(tab_stops::TabDirection::Backward),
             Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
@@ -619,12 +412,6 @@ impl App {
                 let walk = self.panels.start_folder_size_run();
                 folder_size_task(walk)
             }
-            Message::FolderSizeMeasured { run, folder, size } => {
-                let walk = self
-                    .panels
-                    .folder_size_measured(run, folder, size, self.visible_rows);
-                folder_size_task(walk)
-            }
             Message::SwitchLanguage => {
                 self.switch_language();
                 self.load_documents_facts()
@@ -637,25 +424,6 @@ impl App {
                 Task::none()
             }
             Message::WindowFocused => self.reload_local_panels(),
-            Message::FilesHovered => {
-                self.ops.drop_hover = true;
-                Task::none()
-            }
-            Message::FilesHoverLeft => {
-                self.ops.drop_hover = false;
-                Task::none()
-            }
-            Message::FileDropped(path) => {
-                self.ops.queue_dropped_file(path).map(Message::DropSettled)
-            }
-            Message::DropSettled(generation) => match self.ops.settled_drop(generation) {
-                Some(_) if self.blocking_overlay_is_open() => {
-                    let text = self.lang.text(Msg::StatusDropBusy).to_owned();
-                    self.show_notice(text)
-                }
-                Some(paths) => self.copy_external_files_into_active_panel(paths),
-                None => Task::none(),
-            },
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::HermesChat(chat) => self.update_hermes_chat(chat),
@@ -666,8 +434,9 @@ impl App {
             }
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
-            Message::Rules(rules) => self.update_rules(rules),
-            Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            plain @ (Message::Rules(_) | Message::SavedQueries(_) | Message::Tags(_)) => {
+                self.update_hermes_plain(plain)
+            }
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
@@ -676,12 +445,11 @@ impl App {
             Message::NoteOnFile => self.note_on_file(),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
-            Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::ShowAiSettings => {
                 self.show_setting(crate::messages::SettingsFeature::Ai, None)
             }
-            Message::DocumentsFiled(result) => self.documents_filed(result),
+            plain @ Message::DocumentsFiled(_) => self.update_hermes_plain(plain),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
@@ -701,48 +469,10 @@ impl App {
             }
             Message::Settings(SettingsMessage::FocusKey(key)) => self.settings_focus_key(key),
             Message::Settings(settings_message) => self.update_settings(settings_message),
-            Message::Filing(filing_message) => self.update_filing(filing_message),
-            Message::FilingStatus(page_message) => {
-                let is_tick = matches!(page_message, FilingStatusMessage::Tick);
-                let looks_for_waiting = is_tick && self.hermes_chat.open;
-                let facts = if is_tick {
-                    self.refresh_documents_facts()
-                } else {
-                    Task::none()
-                };
-                let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
-                });
-                let settled = if is_tick {
-                    self.ensure_chat_model();
-                    self.hermes
-                        .live_pipeline()
-                        .map(|runner| runner.snapshot())
-                        .filter(|snapshot| snapshot.state == ncrs_pipeline::RunnerState::Idle)
-                        .map(|snapshot| snapshot.left_pipeline)
-                } else {
-                    None
-                };
-                let picks = match settled {
-                    Some(sequence) => {
-                        self.update_hermes_chat(HermesChatMessage::ReadingSettled(sequence))
-                    }
-                    None => Task::none(),
-                };
-                if looks_for_waiting {
-                    let chat = self.update_hermes_chat(HermesChatMessage::WaitingCheck);
-                    Task::batch([status, chat, picks, facts])
-                } else {
-                    Task::batch([status, picks, facts])
-                }
-            }
-            Message::HermesColumn(column_message) => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::update_hermes_column(hermes, column_message, ctx)
-                }),
-            Message::HermesOverview(overview_message) => {
-                self.update_hermes_overview(overview_message)
-            }
+            plain @ Message::Filing(_) => self.update_hermes_plain(plain),
+            plain @ Message::FilingStatus(_) => self.update_hermes_plain(plain),
+            plain @ Message::HermesColumn(_) => self.update_hermes_plain(plain),
+            plain @ Message::HermesOverview(_) => self.update_hermes_plain(plain),
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),
             #[cfg(target_os = "macos")]
@@ -755,31 +485,13 @@ impl App {
                 self.dialog_focus = ncrs_ops::quit_dialog::CANCEL_FOCUS;
                 Task::none()
             }
-            Message::QuitCancel => {
-                self.ops.quit_dialog = false;
-                Task::none()
-            }
-            Message::QuitConfirm => self.confirm_quit_with_job(),
             Message::Quit => {
                 self.ops.quit_confirmed = false;
                 self.quit_after_settings_page()
             }
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),
-        };
-
-        // The keyboard subscription cannot see `&self`, so it reads the routing
-        // state from a cell this method keeps current.
-        //
-        // This runs *after* the match, and that ordering is the point. Published
-        // before it, the cell would always describe the state from before the
-        // message that has just been handled — one step behind — so the keys
-        // that follow a conflict would still be routed as panel keys and the
-        // dialog could not be answered at all.
-        self.publish_key_state();
-        #[cfg(target_os = "macos")]
-        native_menu::sync(self.lang, &self.keymap, self.menu_state());
-        task
+        }
     }
 
     /// A panel inside an archive can be read and copied from, nothing else.
@@ -797,7 +509,7 @@ impl App {
         if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {
             return Task::none();
         }
-        match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
+        match refusal_for(panel, &message) {
             Some(refusal) => {
                 let text = self.lang.text(refusal).to_string();
                 self.set_status_error(&text);

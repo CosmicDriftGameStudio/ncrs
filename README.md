@@ -1015,8 +1015,10 @@ the window size in `state.toml`, next to `index.db`
 quits and shortly after a change; `config.toml` is never written for this. A
 folder that is gone opens its nearest existing parent (with the cursor on the
 first row); so does a cursor entry that is gone. Each panel's back and
-forward history (50 steps) and the favourites are kept too. A missing or broken
-file means the defaults, and you can delete it to start fresh.
+forward history (50 steps) and the favourites are kept too. A missing file
+means the defaults, and you can delete it to start fresh (the favourites go
+with it). A file that does not parse is kept as `state.toml.broken` and ncrs starts
+with the defaults.
 
 ### Portable mode
 

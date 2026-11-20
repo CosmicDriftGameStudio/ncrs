@@ -57,7 +57,7 @@ pub fn read_conditions(conn: &Connection, id: i64) -> Result<Vec<Condition>, Ind
     rows.into_iter()
         .map(|(kind, value, negated)| {
             Ok(Condition {
-                kind: ConditionKind::parse(&kind)?,
+                kind: crate::model::parse_condition_kind(&kind)?,
                 value,
                 negated,
             })

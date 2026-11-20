@@ -397,6 +397,5 @@ fn buttons<'a>(
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests;

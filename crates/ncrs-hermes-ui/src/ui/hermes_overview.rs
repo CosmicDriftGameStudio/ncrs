@@ -85,6 +85,7 @@ pub fn protection_text(facts: &OverviewFacts, lang: Language) -> ProtectionText 
             ProtectionNote::EncryptFailed(reason) => (Msg::HermesOverviewEncryptFailed, reason),
             ProtectionNote::StartOverFailed(reason) => (Msg::HermesOverviewStartOverFailed, reason),
             ProtectionNote::KeyEntryNotRemoved(reason) => (Msg::HermesOverviewKeyEntryKept, reason),
+            ProtectionNote::IndexDamaged(reason) => (Msg::HermesOverviewIndexDamaged, reason),
         };
         fill_template(lang.text(template), &[("{reason}", reason)])
     });
@@ -151,20 +152,32 @@ pub fn protection_actions(facts: &OverviewFacts) -> Vec<ProtectionAction> {
     actions
 }
 
-/// Buttons: Cancel `0`, "Remove index" `1`.
+/// Buttons: Cancel `0`, the confirm button `1`.
 pub const START_OVER_CANCEL_FOCUS: usize = 0;
 pub const START_OVER_CONFIRM_FOCUS: usize = 1;
 
 /// The question before the index and its key are removed. Opens on Cancel,
 /// so Enter alone never removes anything.
 pub fn start_over_dialog<'a>(
+    index_is_plain: bool,
     focus: usize,
     window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let (loss, confirm) = if index_is_plain {
+        (
+            Msg::HermesOverviewStartOverLossPlain,
+            Msg::HermesOverviewStartOverConfirmPlain,
+        )
+    } else {
+        (
+            Msg::HermesOverviewStartOverLoss,
+            Msg::HermesOverviewStartOverConfirm,
+        )
+    };
     let body = column![
-        paragraph(lang.text(Msg::HermesOverviewStartOverLoss), palette),
+        paragraph(lang.text(loss), palette),
         paragraph(lang.text(Msg::HermesOverviewStartOverFiles), palette),
     ]
     .spacing(spacing::LINE_GAP);
@@ -185,7 +198,7 @@ pub fn start_over_dialog<'a>(
             palette,
         ),
         kit::button(
-            lang.text(Msg::HermesOverviewStartOverConfirm),
+            lang.text(confirm),
             Some(send(HermesOverviewMessage::ConfirmStartOver)),
             Tone::Danger,
             palette,

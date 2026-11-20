@@ -73,7 +73,7 @@ fn the_configured_permanent_delete_key_confirms_its_dialog() {
     };
     assert_eq!(
         route_key(&state, character("d"), Modifiers::CTRL),
-        Some(Message::DeleteConfirm)
+        Some(Message::Ops(OpsMessage::DeleteConfirm))
     );
     assert_eq!(route_key(&state, named(Named::F8), Modifiers::SHIFT), None);
 }
@@ -110,7 +110,7 @@ fn the_built_in_permanent_delete_key_still_confirms_its_dialog() {
     };
     assert_eq!(
         route_key(&state, named(Named::F8), Modifiers::SHIFT),
-        Some(Message::DeleteConfirm)
+        Some(Message::Ops(OpsMessage::DeleteConfirm))
     );
 }
 
@@ -122,7 +122,9 @@ fn the_configured_abort_key_cancels_a_conflict() {
     };
     assert_eq!(
         route_key(&state, character("k"), Modifiers::CTRL),
-        Some(Message::TransferConflict(ConflictChoice::Cancel))
+        Some(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::Cancel
+        )))
     );
     assert_eq!(route_key(&state, character("c"), Modifiers::CTRL), None);
 }
@@ -272,7 +274,7 @@ fn the_notice_after_a_restore_counts_what_came_back_and_what_stayed() {
         skipped: 1,
         rule: None,
     });
-    drop(app.end_restore());
+    drop(app.with_ops(|ops, ctx| ncrs_ops::end_restore(ops, ctx, false)));
     assert_eq!(
         app.notice_for_test(),
         Some("Restored 2 from the trash. 1 left in the trash.")
@@ -294,11 +296,13 @@ fn a_failed_restore_keeps_its_error_instead_of_a_notice() {
         rule: None,
     });
     let generation = app.ops.generation;
-    drop(app.update(Message::Trash(TrashMessage::RestoreRowDone {
-        result: Err(fs::RestoreError::Failed("denied".to_string())),
-        index: 0,
-        generation,
-    })));
+    drop(app.update(Message::Ops(OpsMessage::Trash(
+        TrashMessage::RestoreRowDone {
+            result: Err(fs::RestoreError::Failed("denied".to_string())),
+            index: 0,
+            generation,
+        },
+    ))));
     assert!(app
         .status_error()
         .is_some_and(|text| text.contains("a.txt")));
@@ -319,11 +323,13 @@ fn a_restore_the_sandbox_cannot_reach_says_so_and_offers_the_finder() {
         rule: None,
     });
     let generation = app.ops.generation;
-    drop(app.update(Message::Trash(TrashMessage::RestoreRowDone {
-        result: Err(fs::RestoreError::NotGranted),
-        index: 0,
-        generation,
-    })));
+    drop(app.update(Message::Ops(OpsMessage::Trash(
+        TrashMessage::RestoreRowDone {
+            result: Err(fs::RestoreError::NotGranted),
+            index: 0,
+            generation,
+        },
+    ))));
 
     assert_eq!(
         app.status_error(),
@@ -334,7 +340,7 @@ fn a_restore_the_sandbox_cannot_reach_says_so_and_offers_the_finder() {
     );
     assert_eq!(
         app.job_error_press,
-        Some(Message::Trash(TrashMessage::OpenInFinder))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::OpenInFinder)))
     );
 
     app.set_status_error("something else");
@@ -437,27 +443,27 @@ fn the_trash_view_restores_on_enter_and_closes_on_escape() {
     let none = Modifiers::default();
     assert_eq!(
         route_key(&state, Key::Named(Named::Enter), none),
-        Some(Message::Trash(TrashMessage::Restore))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::Restore)))
     );
     assert_eq!(
         route_key(&state, Key::Named(Named::Escape), none),
-        Some(Message::Trash(TrashMessage::Close))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::Close)))
     );
     assert_eq!(
         route_key(&state, Key::Named(Named::ArrowDown), none),
-        Some(Message::Trash(TrashMessage::Move(1)))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::Move(1))))
     );
     assert_eq!(
         route_key(&state, Key::Named(Named::End), none),
-        Some(Message::Trash(TrashMessage::Last))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::Last)))
     );
     assert_eq!(
         route_key(&state, Key::Named(Named::Insert), none),
-        Some(Message::Trash(TrashMessage::ToggleTag))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::ToggleTag)))
     );
     assert_eq!(
         route_key(&state, Key::Named(Named::ArrowDown), Modifiers::SHIFT),
-        Some(Message::Trash(TrashMessage::TagMove(1)))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::TagMove(1))))
     );
     let running = PromptKeyState {
         job_running: true,
@@ -465,7 +471,7 @@ fn the_trash_view_restores_on_enter_and_closes_on_escape() {
     };
     assert_eq!(
         route_key(&running, Key::Named(Named::Escape), none),
-        Some(Message::AbortJob),
+        Some(Message::Ops(OpsMessage::AbortJob)),
         "a restore in flight cannot be stopped"
     );
 }
@@ -488,7 +494,7 @@ fn the_trash_view_ignores_the_file_keys_and_typing_but_lets_a_few_through() {
     );
     assert_eq!(
         route_key(&state, character("z"), Modifiers::COMMAND),
-        Some(Message::Trash(TrashMessage::RestoreLast))
+        Some(Message::Ops(OpsMessage::Trash(TrashMessage::RestoreLast)))
     );
     assert_eq!(
         route_key(&state, character("q"), Modifiers::COMMAND),

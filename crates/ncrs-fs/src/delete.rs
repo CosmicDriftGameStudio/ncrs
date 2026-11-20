@@ -21,16 +21,22 @@ use objc2_foundation::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrashReach {
     /// Everything in it, whoever put it there (Windows, Linux).
-    // reason: only the trash of Windows and Linux says so
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    #[cfg_attr(
+        target_os = "macos",
+        allow(dead_code, reason = "only the trash of Windows and Linux says so")
+    )]
     Everything,
     /// Only what ncrs trashed itself, from a record it keeps (macOS).
-    // reason: only the trash of macOS says so
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(dead_code, reason = "only the trash of macOS says so")
+    )]
     OwnDeletions,
     /// Nothing: the Finder is the only way to look into it.
-    // reason: only the sandboxed macOS build says so
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(dead_code, reason = "only the sandboxed macOS build says so")
+    )]
     FinderOnly,
 }
 
@@ -175,8 +181,10 @@ fn recycle_bin_original(_id: &OsStr) -> Option<PathBuf> {
 /// Windows Recycle Bin. Little-endian: version (u64, 1 or 2), size, deletion
 /// time, then the path. Version 1 has a fixed 260 units; version 2 gives the
 /// number of units, null included, in a u32.
-// reason: the `$I` file is little-endian by definition, whatever the CPU
-#[allow(clippy::little_endian_bytes)]
+#[allow(
+    clippy::little_endian_bytes,
+    reason = "the `$I` file is little-endian by definition, whatever the CPU"
+)]
 #[cfg(any(windows, test))]
 fn recycle_info_original(bytes: &[u8]) -> Option<Vec<u16>> {
     const PATH_UNITS_V1: usize = 260;
@@ -325,13 +333,6 @@ pub fn remove_permanently(path: &Path) -> io::Result<()> {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,8 +392,10 @@ mod tests {
         assert!(!from.exists());
     }
 
-    // reason: the `$I` file is little-endian by definition, whatever the CPU
-    #[allow(clippy::little_endian_bytes)]
+    #[allow(
+        clippy::little_endian_bytes,
+        reason = "the `$I` file is little-endian by definition, whatever the CPU"
+    )]
     fn info_bytes(version: u64, count_field: Option<u32>, path: &str, units: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend(version.to_le_bytes());

@@ -473,6 +473,26 @@ fn a_broken_archive_file_is_reported_once_and_not_read_again_on_every_scan() {
 }
 
 #[test]
+fn a_broken_inbox_file_is_reported_once_and_not_read_again_on_every_scan() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = location(&inbox_dir, LocationMode::Inbox);
+    put(&inbox, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let broken = TextError::Unreadable {
+        path: PathBuf::from("invoice.pdf"),
+        reason: "broken".to_owned(),
+    };
+    let chain = || TextChain::new().with_source(FixedText(Err(broken.clone())));
+
+    let first = archive_scan(&fixture, &inbox, chain());
+    assert_eq!(first.errors.len(), 1, "{:?}", first.errors);
+    archive_scan(&fixture, &inbox, chain());
+    let third = archive_scan(&fixture, &inbox, chain());
+
+    assert!(third.errors.is_empty(), "{:?}", third.errors);
+}
+
+#[test]
 fn an_archive_document_read_while_the_models_were_broken_gets_its_text_once_they_work() {
     let archive_dir = TempDir::new().unwrap();
     let archive = location(&archive_dir, LocationMode::Archive);
@@ -696,4 +716,34 @@ fn an_unreadable_archive_text_file_stores_no_text_and_is_read_on_a_later_scan() 
 
     let index = fixture.index.lock().unwrap();
     assert_eq!(index.search_text("4711", 10).unwrap().len(), 1);
+}
+
+#[test]
+fn a_new_inbox_document_with_an_empty_stored_text_goes_to_the_review_list_on_the_next_scan() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = location(&inbox_dir, LocationMode::Inbox);
+    put(&inbox, "scan.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let chain = || TextChain::new().with_source(FixedText(Ok(Extracted::Text(" \n".to_owned()))));
+    archive_scan(&fixture, &inbox, chain());
+    let document = {
+        // The app quit after the text was stored and before the review.
+        let index = fixture.index.lock().unwrap();
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        index.resolve_review(reviews[0].id).unwrap();
+        index
+            .set_document_status(reviews[0].document_id, ncrs_index::DocumentStatus::New)
+            .unwrap();
+        reviews[0].document_id
+    };
+
+    archive_scan(&fixture, &inbox, chain());
+
+    let index = fixture.index.lock().unwrap();
+    assert_eq!(
+        index.document(document).unwrap().unwrap().status,
+        ncrs_index::DocumentStatus::InReview
+    );
+    assert!(index.open_review_of(document).unwrap().is_some());
 }

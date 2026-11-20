@@ -1,4 +1,7 @@
-#![allow(clippy::panic_in_result_fn)]
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "a failing assertion is the signal in a test"
+)]
 
 use ncrs_settings::message::SettingField;
 use std::error::Error;

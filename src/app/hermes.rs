@@ -8,12 +8,6 @@ impl App {
         })
     }
 
-    pub(in crate::app) fn update_filing(&mut self, message: FilingMessage) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_filing(hermes, message, ctx)
-        })
-    }
-
     pub(in crate::app) fn apply_saved_filing(
         &mut self,
         filing: Filing,
@@ -48,45 +42,18 @@ impl App {
             .filter(|entry| !entry.is_parent)
     }
 
-    fn cursor_is_excluded_from_hermes(&self) -> bool {
-        self.hermes_cursor_entry().is_some_and(|entry| {
-            if entry.is_dir {
-                self.hermes
-                    .hermes_column
-                    .summary_of(&entry.path)
-                    .is_some_and(|summary| summary.excluded)
-            } else {
-                self.hermes.hermes_column.state_of(&entry.path) == Some(HermesFileState::Excluded)
-            }
-        })
-    }
-
-    fn inbox_location(&self) -> Option<&Path> {
-        self.hermes
-            .filing_config
-            .locations
-            .iter()
-            .find(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.as_path())
-    }
-
     /// What the Hermes entry of the context menu checks for the cursor row.
     pub(in crate::app) fn hermes_facts(&self) -> HermesFacts {
-        let locations = &self.hermes.filing_config.locations;
         let cursor = self.hermes_cursor_entry().map(|entry| {
-            let role_free = |role| role_of(&entry.path, locations) != Some(role);
+            let roles = self.hermes.cursor_roles(&entry.path);
             HermesCursor {
                 is_dir: entry.is_dir,
-                excluded: self.cursor_is_excluded_from_hermes(),
-                can_be_handed_to_inbox: self
-                    .inbox_location()
-                    .is_some_and(|inbox| !entry.path.starts_with(inbox)),
-                lies_in_a_filing_location: locations
-                    .iter()
-                    .any(|location| entry.path.starts_with(&location.path)),
-                inbox_role_is_free: role_free(FolderRole::Inbox),
-                filing_location_role_is_free: role_free(FolderRole::FilingLocation),
-                archive_role_is_free: role_free(FolderRole::Archive),
+                excluded: self.hermes.cursor_is_excluded(&entry.path, entry.is_dir),
+                can_be_handed_to_inbox: roles.can_be_handed_to_inbox,
+                lies_in_a_filing_location: roles.lies_in_a_filing_location,
+                inbox_role_is_free: roles.inbox_role_is_free,
+                filing_location_role_is_free: roles.filing_location_role_is_free,
+                archive_role_is_free: roles.archive_role_is_free,
             }
         });
         HermesFacts {
@@ -106,95 +73,22 @@ impl App {
         &mut self,
         message: HermesFileMessage,
     ) -> Task<Message> {
-        match message {
-            HermesFileMessage::RoleSaved(result) => {
-                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::hermes_role_saved(hermes, *result, ctx)
-                })
-            }
-            HermesFileMessage::ProcessAgainFound(result) => {
-                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::process_found_again(hermes, result, ctx)
-                })
-            }
-            HermesFileMessage::ConfirmProcessAgain => {
-                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::confirm_process_again(hermes, ctx)
-                })
-            }
-            HermesFileMessage::CancelProcessAgain => {
-                return self.run_hermes_flow(Vec::new(), |hermes, _| {
-                    ncrs_hermes_ui::cancel_process_again(hermes)
-                })
-            }
-            HermesFileMessage::Included { path, result } => {
-                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::hermes_included(hermes, &path, result, ctx)
-                })
-            }
-            HermesFileMessage::HandToInbox
-            | HermesFileMessage::ProcessAgain
-            | HermesFileMessage::SetRole(_)
-            | HermesFileMessage::ToggleExclusion
-            | HermesFileMessage::ShowInInspection => {}
-        }
-        let available = if matches!(message, HermesFileMessage::SetRole(_)) {
-            self.hermes.is_ready()
+        let action_sources = if matches!(message, HermesFileMessage::ProcessAgain) {
+            self.action_sources()
         } else {
-            self.hermes.is_active()
+            Vec::new()
         };
-        if self.overlay_is_open() || self.search.open || !available {
-            return Task::none();
-        }
-        let cursor = self
-            .hermes_cursor_entry()
-            .map(|entry| (entry.path.clone(), entry.is_dir));
-        let Some((path, is_dir)) = cursor else {
-            return Task::none();
-        };
-        match message {
-            HermesFileMessage::HandToInbox => {
-                let Some(inbox) = self.inbox_location().map(Path::to_path_buf) else {
-                    let text = self.lang.text(Msg::StatusHermesNoInbox).to_owned();
-                    return self.show_notice(text);
-                };
-                self.open_transfer_dialog_to(TransferKind::Move, Some(inbox))
-            }
-            HermesFileMessage::ProcessAgain => {
-                let sources = self.action_sources();
-                self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::process_again(hermes, sources, ctx)
-                })
-            }
-            HermesFileMessage::SetRole(role) if is_dir => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::set_folder_role(hermes, &path, role, ctx)
-                }),
-            HermesFileMessage::ToggleExclusion => {
-                let excluded = self.cursor_is_excluded_from_hermes();
-                self.run_hermes_flow(Vec::new(), |hermes, _| {
-                    ncrs_hermes_ui::toggle_hermes_exclusion(hermes, path, excluded)
-                })
-            }
-            HermesFileMessage::ShowInInspection => {
-                self.run_hermes_outcome(ncrs_hermes_ui::show_in_inspection())
-            }
-            HermesFileMessage::SetRole(_)
-            | HermesFileMessage::RoleSaved(_)
-            | HermesFileMessage::ProcessAgainFound(_)
-            | HermesFileMessage::ConfirmProcessAgain
-            | HermesFileMessage::CancelProcessAgain
-            | HermesFileMessage::Included { .. } => Task::none(),
-        }
-    }
-
-    pub(in crate::app) fn documents_filed(
-        &mut self,
-        result: Result<FilingSummary, String>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |_, ctx| {
-            ncrs_hermes_ui::documents_filed(result, ctx)
-        })
+        let mut hermes = std::mem::take(&mut self.hermes);
+        let mut ctx = self.hermes_ctx(&hermes, Vec::new());
+        ctx.action_sources = action_sources;
+        let asked = ncrs_hermes_ui::update(
+            &mut hermes,
+            ncrs_hermes_ui::Message::HermesFile(message),
+            &ctx,
+        );
+        drop(ctx);
+        self.hermes = hermes;
+        asked.map_or_else(Task::none, |outcome| self.run_hermes_outcome(outcome))
     }
 
     fn hermes_ctx(
@@ -222,6 +116,7 @@ impl App {
             context_menu_open: self.panels.context_menu.is_some(),
             search_open: self.search.open,
             hermes_active: hermes.is_active(),
+            chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
             window_size: self.window_size,
@@ -244,6 +139,11 @@ impl App {
                 .filter(|active| !active.is_virtual())
                 .and_then(PanelState::selected_entry)
                 .map(|entry| entry.path.as_path()),
+            cursor_row: self
+                .hermes_cursor_entry()
+                .map(|entry| (entry.path.as_path(), entry.is_dir)),
+            overlay_open: self.overlay_is_open(),
+            action_sources: Vec::new(),
         }
     }
 
@@ -312,10 +212,11 @@ impl App {
         use ncrs_hermes_ui::Action as Ask;
         match action {
             Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
+            Ask::IndexReplaced => self.update_hermes_chat(HermesChatMessage::IndexReplaced),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Ask::ClearStatus => {
@@ -324,9 +225,26 @@ impl App {
                 Task::none()
             }
             Ask::ShowNotice(text) => self.show_notice(text),
+            Ask::MoveToInbox(inbox) => {
+                self.open_transfer_dialog_to(TransferKind::Move, Some(inbox))
+            }
             Ask::ShowError(detail) => {
-                self.set_status_error(&detail);
+                let shown = if detail == ncrs_core::INDEX_NOT_OPEN {
+                    self.lang.text(Msg::IndexNotOpen).to_owned()
+                } else {
+                    detail
+                };
+                self.set_status_error(&shown);
                 Task::none()
+            }
+            Ask::RefreshDocumentsFacts => self.refresh_documents_facts(),
+            Ask::EnsureChatModel => {
+                self.ensure_chat_model();
+                Task::none()
+            }
+            Ask::CheckChatWaiting => self.update_hermes_chat(HermesChatMessage::WaitingCheck),
+            Ask::ReadingSettled(sequence) => {
+                self.update_hermes_chat(HermesChatMessage::ReadingSettled(sequence))
             }
             Ask::RequestHermesCounts => self
                 .with_hermes(Vec::new(), |hermes, _| {

@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use iced::widget::text_editor;
+use ncrs_core::NoteLink;
 
 use crate::store::{Scan, WriteError};
 use crate::tree::RowKey;
@@ -45,7 +46,7 @@ pub enum Message {
     /// Show the file a note on a file is about.
     ShowFile,
     /// The paths asked about in `Action::ResolveLinks` and the answer, in the order asked.
-    LinksResolved(Vec<PathBuf>, Result<Vec<(Option<i64>, PathBuf)>, String>),
+    LinksResolved(Vec<PathBuf>, Result<Vec<NoteLink>, String>),
     /// Open the note on this file, make it when there is none, and edit it.
     EditNoteOn(PathBuf),
     Up,

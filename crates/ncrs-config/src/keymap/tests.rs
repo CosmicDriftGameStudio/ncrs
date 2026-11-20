@@ -1,6 +1,6 @@
 use super::*;
 use crate::config;
-use iced::keyboard::key::Named;
+use iced_core::keyboard::key::Named;
 
 #[test]
 fn restoring_the_last_deletion_is_on_primary_z_and_yields_it_to_a_config() {
@@ -211,6 +211,7 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::DownloadOcrModels,
         KeyAction::DownloadAiModel,
         KeyAction::GrantFolderAccess,
+        KeyAction::OpenPrivacySettings,
         KeyAction::ConnectServer,
         KeyAction::DisconnectServer,
         KeyAction::Trash,
@@ -231,6 +232,7 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::CompareFolders,
         KeyAction::Notes,
         KeyAction::ExtractHere,
+        KeyAction::ShowProgress,
     ];
     // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
     if !cfg!(target_os = "macos") {

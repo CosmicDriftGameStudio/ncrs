@@ -34,7 +34,7 @@ fn enter_presses_the_focused_button_and_escape_cancels() {
     );
     assert_eq!(
         route(&state, Named::Escape, Modifiers::default()),
-        Some(Message::DeleteCancel)
+        Some(Message::from(ncrs_ops::OpsMessage::DeleteCancel))
     );
     // Nothing else reaches the panels behind the dialog.
     assert_eq!(route(&state, Named::ArrowDown, Modifiers::default()), None);
@@ -45,7 +45,7 @@ fn the_permanent_dialog_still_confirms_on_a_second_shift_f8() {
     let state = keys(DeleteKeys::Permanent);
     assert_eq!(
         route(&state, Named::F8, Modifiers::SHIFT),
-        Some(Message::DeleteConfirm)
+        Some(Message::Ops(OpsMessage::DeleteConfirm))
     );
     assert_eq!(route(&state, Named::F8, Modifiers::default()), None);
 }
@@ -312,9 +312,9 @@ fn alt_ctrl_and_super_do_not_fall_back_to_the_bare_key() {
 fn only_movement_tagging_and_typing_repeat() {
     assert!(repeats(&Message::Panel(PanelMessage::MoveSelection(1))));
     assert!(repeats(&Message::Panel(PanelMessage::ToggleTag)));
-    assert!(repeats(&Message::PromptInput("a".into())));
+    assert!(repeats(&Message::Ops(OpsMessage::PromptInput("a".into()))));
     assert!(!repeats(&Message::Delete { permanent: true }));
-    assert!(!repeats(&Message::DeleteConfirm));
+    assert!(!repeats(&Message::Ops(OpsMessage::DeleteConfirm)));
     assert!(!repeats(&Message::Transfer(TransferKind::Copy)));
 }
 
@@ -325,6 +325,6 @@ async fn a_delete_inside_an_archive_forgets_the_earlier_trash_batch() {
     app.ops.last_deletion = vec![PathBuf::from("/left/older.txt")];
     app.panels.left.selected = 0;
     let _open = app.update(Message::Delete { permanent: false });
-    let _confirm = app.update(Message::DeleteConfirm);
+    let _confirm = app.update(Message::Ops(OpsMessage::DeleteConfirm));
     assert!(app.ops.last_deletion.is_empty());
 }

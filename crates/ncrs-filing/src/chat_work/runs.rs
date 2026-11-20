@@ -53,6 +53,8 @@ pub struct RunSummary {
     /// Unix seconds.
     pub finished_at: i64,
     pub source_folder: Option<PathBuf>,
+    /// Hermes filed these by itself; `name` is then the folder they went into.
+    pub automatic: bool,
 }
 
 /// A run of the list in the settings: the summary, where its files went, and
@@ -82,13 +84,34 @@ fn real(path: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-fn refusal(run: &RunPlan) -> Option<String> {
+pub(in crate::chat_work) fn lies_in_copy_root(copy_roots: &[PathBuf], folder: &Path) -> bool {
+    let real_folder = real(folder);
+    copy_roots
+        .iter()
+        .any(|root| real_folder.starts_with(real(root)))
+}
+
+fn refusal(access: &ChatAccess, run: &RunPlan) -> Option<String> {
+    if run.transfer == Transfer::Move
+        && !run.items.is_empty()
+        && access.copies_from(&run.source_root)
+    {
+        return Some(format!(
+            "{} is a folder whose files are copied, not moved",
+            run.source_root.display()
+        ));
+    }
+    plan_refusal(run)
+}
+
+fn plan_refusal(run: &RunPlan) -> Option<String> {
     if run.transfer == Transfer::Trash {
         return Some("a filing run moves or copies".to_owned());
     }
     let source = real(&run.source_root);
     let target = real(&run.target_root);
-    if source.starts_with(&target) || target.starts_with(&source) {
+    let archive_only = run.items.is_empty() && source == target;
+    if !archive_only && (source.starts_with(&target) || target.starts_with(&source)) {
         return Some(format!(
             "{} and {} lie inside each other",
             run.source_root.display(),
@@ -131,7 +154,7 @@ fn refusal(run: &RunPlan) -> Option<String> {
 }
 
 pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
-    if let Some(reason) = refusal(run) {
+    if let Some(reason) = refusal(access, run) {
         return Err(reason);
     }
     access.with_index(|index| {
@@ -213,6 +236,12 @@ pub fn trash_duplicates(
     if !access.trash_can_restore() {
         return Err("the trash cannot give files back".to_owned());
     }
+    if access.copies_from(root) {
+        return Err(format!(
+            "{} is a folder whose files are copied, not changed",
+            root.display()
+        ));
+    }
     access.with_index(|index| {
         execute::trash_run(index, name, root, items, &*access.trash).map_err(|err| err.to_string())
     })
@@ -233,12 +262,25 @@ fn common_parent<'a>(paths: impl Iterator<Item = &'a Path>) -> Option<PathBuf> {
     common
 }
 
+/// The newest batches that can be put back, newest first: the runs Hermes
+/// carried out on request and the files it filed by itself.
+fn undoable(index: &Index, limit: usize) -> Result<Vec<BatchId>, String> {
+    let mut batches = Vec::new();
+    for kind in [BatchKind::Hermes, BatchKind::Filing] {
+        batches.extend(
+            index
+                .undoable_batches(kind, limit)
+                .map_err(|err| err.to_string())?,
+        );
+    }
+    batches.sort_by_key(|batch| std::cmp::Reverse(batch.number()));
+    batches.truncate(limit);
+    Ok(batches)
+}
+
 pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
     access.with_index(|index| {
-        let Some(batch) = index
-            .last_undoable_batch(BatchKind::Hermes)
-            .map_err(|err| err.to_string())?
-        else {
+        let Some(batch) = undoable(index, 1)?.into_iter().next() else {
             return Ok(None);
         };
         Ok(recent_run(index, batch)?.map(|run| run.summary))
@@ -249,10 +291,7 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
 pub fn recent_runs(access: &ChatAccess, limit: usize) -> Result<Vec<RecentRun>, String> {
     access.with_index(|index| {
         let mut runs = Vec::new();
-        for batch in index
-            .undoable_batches(BatchKind::Hermes, limit)
-            .map_err(|err| err.to_string())?
-        {
+        for batch in undoable(index, limit)? {
             runs.extend(recent_run(index, batch)?);
         }
         Ok(runs)
@@ -295,7 +334,7 @@ fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String
                 items: items.into_iter().map(run_item).collect(),
                 inside: inside.into_iter().map(run_item).collect(),
             };
-            refusal(&plan).is_none()
+            plan_refusal(&plan).is_none()
         }
         _ => info.transfer != Transfer::Trash,
     };
@@ -307,6 +346,7 @@ fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String
             items: done.len(),
             finished_at: info.finished_at.unwrap_or(info.started_at),
             source_folder: common_parent(done.iter().map(|item| item.from.as_path())),
+            automatic: info.kind == BatchKind::Filing,
         },
         target_folder,
         examples,
@@ -329,6 +369,16 @@ fn example_folders(target: &Path, done: &[ncrs_index::JournalItem]) -> Vec<PathB
         }
     }
     folders
+}
+
+pub fn undo_all(access: &ChatAccess, batches: &[BatchId]) -> Result<UndoReport, String> {
+    let mut total = UndoReport::default();
+    for batch in batches {
+        let report = undo(access, *batch)?;
+        total.undone += report.undone;
+        total.left += report.left;
+    }
+    Ok(total)
 }
 
 pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {

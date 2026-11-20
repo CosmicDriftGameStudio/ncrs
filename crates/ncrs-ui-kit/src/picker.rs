@@ -69,12 +69,44 @@ pub fn frame<'a, M: Clone + 'a>(
         .into_element()
 }
 
+/// What the frame, the field and the status line take of the frame's height,
+/// measured; the rest is the list.
+const LIST_CHROME: f32 = 170.0;
+
+/// The rows of the list that fit the frame in a window of `window`.
+pub fn visible_rows(window: Size) -> usize {
+    let room = frame::frame_size(SIZE, window).height - LIST_CHROME;
+    (room / crate::layout::ROW_HEIGHT).floor().max(0.0) as usize
+}
+
+/// A group heading in the list, not a place for the cursor. `marks` follow the
+/// label in the same style.
+pub fn group_header<'a, M: 'a>(label: &str, marks: &[&str], palette: &Palette) -> Element<'a, M> {
+    let heading = |content: String| {
+        text(content)
+            .size(font_size::COLUMN_HEADER)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None)
+    };
+    let mut line = iced::widget::row![heading(label.to_uppercase())]
+        .spacing(spacing::SECTION_GAP)
+        .align_y(iced::alignment::Vertical::Center);
+    for mark in marks {
+        line = line.push(heading((*mark).to_owned()));
+    }
+    container(line)
+        .height(crate::layout::ROW_HEIGHT)
+        .padding([0.0, spacing::CELL_PADDING_X])
+        .align_y(iced::alignment::Vertical::Center)
+        .into()
+}
+
 /// The characters one row of the list holds, less `reserved` pixels.
 pub fn row_chars(window: Size, reserved: f32) -> usize {
     frame::content_chars(SIZE, window, reserved + 2.0 * spacing::CELL_PADDING_X)
 }
 
-/// `text` cut at the matched ranges, which are drawn in the accent color. A
+/// `text` cut at the matched ranges, which are drawn bold and underlined. A
 /// text longer than `max_chars` loses its middle, and the ranges follow.
 pub fn highlighted<'a, M: 'a>(
     text: &str,
@@ -190,13 +222,6 @@ pub fn highlight_spans<'a>(
     spans
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

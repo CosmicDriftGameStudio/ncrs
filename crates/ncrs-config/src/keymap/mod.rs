@@ -8,7 +8,7 @@
 use std::ops::Range;
 use std::sync::{Arc, OnceLock};
 
-use iced::keyboard::{key, Key, Modifiers};
+use iced_core::keyboard::{key, Key, Modifiers};
 
 use crate::config::KeySection;
 use ncrs_fs::SortColumn;
@@ -52,12 +52,5 @@ pub use self::chords::{
 pub use self::defaults::sort_binding;
 use self::defaults::*;
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

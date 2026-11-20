@@ -26,6 +26,7 @@ impl State {
 
     pub fn close(&mut self) {
         self.doc = None;
+        self.requested = None;
     }
 
     pub fn shows_markdown(&self) -> bool {

@@ -210,16 +210,16 @@ fn cancel_in_the_passphrase_stage_closes_the_dialog_without_connecting() {
 }
 
 #[test]
-fn the_passphrase_is_remembered_unless_the_tick_is_taken_off() {
+fn the_passphrase_is_remembered_only_when_the_tick_is_set() {
     let setup = Setup::new(None);
     let mut remote = passphrase_stage(&setup);
-    assert!(dialog(&remote).remember_passphrase());
+    assert!(!dialog(&remote).remember_passphrase());
     drop(update(
         &mut remote,
         Message::ToggleRememberPassphrase,
         &setup.ctx(),
     ));
-    assert!(!dialog(&remote).remember_passphrase());
+    assert!(dialog(&remote).remember_passphrase());
 }
 
 #[test]
@@ -270,4 +270,13 @@ fn choosing_a_key_file_asks_the_app_and_takes_the_answer() {
         &setup.ctx(),
     ));
     assert_eq!(dialog(&remote).value(ConnectField::KeyFile), "/keys/id");
+}
+
+#[test]
+fn a_folder_asked_for_without_a_connection_reads_the_keychain_before_listing() {
+    let setup = Setup::new(None);
+    let asked = (PanelSide::Left, 1, alias_place(), None);
+    let (task, actions) = load_folder(&setup.ctx(), asked);
+    drop(task);
+    assert!(actions.is_empty());
 }

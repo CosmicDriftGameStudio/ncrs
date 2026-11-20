@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, reason = "each test file uses a part of the shared helpers")]
 
 use std::fs;
 use std::path::{Path, PathBuf};

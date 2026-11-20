@@ -101,6 +101,8 @@ fn the_repository_button_launches_the_address() {
     assert_eq!(launched.len(), 1);
     assert_eq!(
         launched.first().and_then(|call| call.args.last()),
-        Some(&std::ffi::OsString::from(REPOSITORY_URL))
+        Some(&std::ffi::OsString::from(
+            ncrs_settings::about::REPOSITORY_URL
+        ))
     );
 }

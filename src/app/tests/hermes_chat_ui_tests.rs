@@ -1,3 +1,4 @@
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::sync::Mutex;
 
 use chrono::TimeZone as _;
@@ -31,7 +32,7 @@ pub(in crate::app::tests) fn matches_snapshot(app: &App, name: &str) {
     let matches = simulator(app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .expect("snapshot comparison");
     assert!(
         matches,
@@ -161,6 +162,7 @@ fn undo_scene() -> App {
             .unwrap()
             .timestamp(),
         source_folder: Some(PathBuf::from("/home/test/Downloads")),
+        automatic: false,
     };
     send(
         &mut app,

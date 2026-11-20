@@ -48,6 +48,9 @@ pub enum Phase {
     Encrypting,
     /// The index files and the key are being removed.
     StartingOver,
+    /// The index was written by a newer ncrs. Nothing may remove it: an
+    /// update of the app opens it again.
+    FromNewerVersion,
     Failed(String),
     Dismissed,
 }
@@ -63,6 +66,7 @@ impl Phase {
             Self::Ready => "Ready",
             Self::Encrypting => "Encrypting",
             Self::StartingOver => "StartingOver",
+            Self::FromNewerVersion => "FromNewerVersion",
             Self::Failed(_) => "Failed",
             Self::Dismissed => "Dismissed",
         }
@@ -87,6 +91,8 @@ pub enum ProtectionNote {
     StartOverFailed(String),
     /// The index is gone; its entry in the credential store could not be removed.
     KeyEntryNotRemoved(String),
+    /// The check on opening found the file damaged; it is used as it is.
+    IndexDamaged(String),
 }
 
 /// Why the intake does not get the index right now.

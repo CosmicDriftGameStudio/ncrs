@@ -71,6 +71,7 @@ pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn launch(&self, command: &OpenCommand) -> Result<(), String> {
+        crate::forbid_user_machine_in_tests("the system's program launcher");
         let mut process = Command::new(&command.program);
         process.args(&command.args);
         if let Some(folder) = &command.current_dir {
@@ -261,6 +262,17 @@ pub fn could_execute(path: &Path) -> bool {
         || has_exec_bit(path)
 }
 
+/// [`could_execute`] for a row that was listed: the permission bits come from
+/// the listing, so nothing is asked of the disk again. A link goes through
+/// [`could_execute`], since the extension of its target counts.
+pub fn could_execute_listed(entry: &crate::FileEntry) -> bool {
+    if entry.is_symlink {
+        return could_execute(&entry.path);
+    }
+    listed_extension(&entry.path)
+        || (!entry.is_dir && entry.details.mode.is_some_and(|mode| mode & 0o111 != 0))
+}
+
 /// Whether `name` is an app bundle, a folder the macOS Finder starts instead
 /// of entering. Always `false` elsewhere, where `.app` means nothing.
 pub fn is_app_bundle(name: impl AsRef<Path>) -> bool {
@@ -408,13 +420,6 @@ fn substitute(template: &str, path: &std::ffi::OsStr, line: u64) -> OsString {
     filled
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

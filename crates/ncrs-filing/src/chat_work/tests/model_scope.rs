@@ -1,3 +1,4 @@
+use super::trial::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ncrs_ai::{

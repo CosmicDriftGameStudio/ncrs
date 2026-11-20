@@ -33,6 +33,7 @@ impl FilingModule {
             Phase::ShowRecoveryKey { .. }
                 | Phase::AskRecoveryKey { .. }
                 | Phase::PlainFileWarning
+                | Phase::FromNewerVersion
                 | Phase::Failed(_)
         )
     }
@@ -70,14 +71,6 @@ impl FilingModule {
         self.update(FilingMessage::CreateIndex)
     }
 
-    /// No module that already works on configured locations: a new one may
-    /// take this one's place with what the first-time setup wrote.
-    pub fn can_take_first_setup(&self) -> bool {
-        let works_on_locations =
-            matches!(self.phase, Phase::Ready) && self.has_configured_locations;
-        self.can_be_replaced() && !works_on_locations
-    }
-
     /// The index is open, unencrypted, and the system store can keep a key.
     pub fn can_encrypt(&self) -> bool {
         matches!(self.phase, Phase::Ready)
@@ -95,11 +88,6 @@ impl FilingModule {
             _ => false,
         };
         at_rest && self.db_path.parent().is_some() && self.db_path.file_name().is_some()
-    }
-
-    /// An encryption or a fresh start is under way.
-    pub fn is_changing_protection(&self) -> bool {
-        matches!(self.phase, Phase::Encrypting | Phase::StartingOver)
     }
 
     pub fn protection_note(&self) -> Option<&ProtectionNote> {
@@ -133,11 +121,12 @@ impl FilingModule {
             return None;
         }
         let data_dir = self.db_path.parent()?.to_path_buf();
+        let plain = self.index_is_plain();
         self.protection_note = None;
         self.dismissed_key_problem = None;
         self.index_encrypted = None;
         self.phase = Phase::StartingOver;
-        Some(self.new_work(Job::StartOver { data_dir }))
+        Some(self.new_work(Job::StartOver { data_dir, plain }))
     }
 
     pub(in crate::filing) fn may_dismiss(&self) -> bool {

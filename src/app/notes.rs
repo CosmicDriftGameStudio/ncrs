@@ -10,12 +10,18 @@ impl App {
     }
 
     pub(in crate::app) fn notes_area(&self) -> Container<'_, Message> {
+        let new_note_key = ncrs_config::keymap::binding_label(&ncrs_config::keymap::Binding {
+            key: iced::keyboard::Key::Character("n".into()),
+            modifiers: iced::keyboard::Modifiers::COMMAND,
+        })
+        .unwrap_or_default();
         let ctx = ncrs_notes::ViewCtx {
             lang: self.lang,
             palette: &self.palette,
             home: &self.home,
+            date_format: self.columns.date_format,
         };
-        container(ncrs_notes::view(&self.notes, ctx).map(Message::Notes))
+        container(ncrs_notes::view(&self.notes, ctx, &new_note_key).map(Message::Notes))
             .width(Length::Fill)
             .height(Length::Fill)
     }
@@ -69,7 +75,6 @@ impl App {
         let was_open = self.open_pages();
         let ctx = self.notes_ctx();
         let (task, asked) = ncrs_notes::update(&mut self.notes, message, &ctx);
-        self.noted = self.notes.noted_files();
         let action_task = match asked {
             Some(action) => self.run_notes_action(action),
             None => Task::none(),
@@ -82,7 +87,7 @@ impl App {
         match action {
             Ask::Close => Task::none(),
             Ask::OpenUrl(url) => {
-                self.open_release_page(&url);
+                self.open_link(&url);
                 Task::none()
             }
             Ask::Reveal(file) => self.reveal_in_active_panel(&file),
@@ -95,7 +100,7 @@ impl App {
                 else {
                     return Task::none();
                 };
-                let asked: Vec<PathBuf> = links.iter().map(|(_, path)| path.clone()).collect();
+                let asked: Vec<PathBuf> = links.iter().map(|link| link.file.clone()).collect();
                 Task::perform(
                     tokio::task::spawn_blocking(move || finder.resolve(&links)),
                     move |joined| {

@@ -1,12 +1,14 @@
 //! The state changes of Quick Open. What reaches outside it comes back as an
 //! action.
 
+use iced::widget::operation::focus;
 use iced::Task;
 use ncrs_ui_kit::focus::release_focus;
 
 use super::action::QuickOpenAction;
 use super::ctx::QuickOpenCtx;
-use super::QuickOpen;
+use super::view::QUICK_OPEN_ID;
+use super::{open, QuickOpen};
 use crate::message::QuickOpenMessage;
 
 type Outcome = (Task<QuickOpenMessage>, Option<QuickOpenAction>);
@@ -22,7 +24,7 @@ pub fn update(
     ctx: &QuickOpenCtx,
 ) -> Outcome {
     match message {
-        QuickOpenMessage::Open => return only(QuickOpenAction::Open),
+        QuickOpenMessage::Open => return open_box(quick_open, ctx),
         QuickOpenMessage::Close => return only(QuickOpenAction::Close),
         _ => {}
     }
@@ -52,9 +54,6 @@ pub fn update(
         QuickOpenMessage::Events { generation, events } => {
             if generation == open.walk_generation() {
                 open.apply_events(events);
-                if !open.walking() {
-                    return only(QuickOpenAction::WalkFinished);
-                }
             }
             (Task::none(), None)
         }
@@ -78,6 +77,25 @@ pub fn update(
         }
         QuickOpenMessage::Open | QuickOpenMessage::Close => (Task::none(), None),
     }
+}
+
+/// Cmd/Ctrl+P: lists the files below the root of `ctx`. Pressed while the box
+/// is up, it only gives the field the focus again.
+fn open_box(quick_open: &mut Option<QuickOpen>, ctx: &QuickOpenCtx) -> Outcome {
+    let focus = focus(QUICK_OPEN_ID);
+    if quick_open.is_some() || !ctx.may_open {
+        return (
+            if quick_open.is_some() {
+                focus
+            } else {
+                Task::none()
+            },
+            None,
+        );
+    }
+    let (open, walk) = open(ctx.root.clone(), ctx.documents_available);
+    *quick_open = Some(open);
+    (Task::batch([focus, walk]), None)
 }
 
 /// Closes the box. Gives the focus up only when the box was open.

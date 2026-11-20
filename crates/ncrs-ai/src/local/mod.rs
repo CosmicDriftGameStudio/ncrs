@@ -246,6 +246,10 @@ fn gpu_attempt() -> Option<(LlamaModelParams, String)> {
     Some((params, first.description.clone()))
 }
 
+/// The runtime took a verified file and could not load it: memory or the
+/// device, which can be different a minute later.
+const LOAD_REFUSED: &str = "llama.cpp could not load the model file";
+
 fn load_on_cpu(
     backend: &LlamaBackend,
     path: &std::path::Path,
@@ -253,7 +257,7 @@ fn load_on_cpu(
     let params = LlamaModelParams::default().with_n_gpu_layers(0);
     LlamaModel::load_from_file(backend, path, &params)
         .map(|model| (model, Compute::Cpu))
-        .map_err(|_refused| AiError::Model("llama.cpp could not load the model file"))
+        .map_err(|_refused| AiError::Model(LOAD_REFUSED))
 }
 
 impl LocalModel {

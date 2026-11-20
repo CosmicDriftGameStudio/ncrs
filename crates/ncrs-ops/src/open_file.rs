@@ -6,16 +6,15 @@
 
 use std::path::PathBuf;
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, text};
+use iced::widget::column;
 use iced::{Element, Size};
 
-use ncrs_i18n::{Language, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::theme::spacing;
 
 use crate::action::Action;
 use crate::delete_flow::{actions, idle, Outcome};
@@ -57,46 +56,35 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, OpsMessage> {
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    let title = lang
-        .text(Msg::OpenFileTitle)
-        .replace("{name}", &format::ellipsize_middle(name, line_chars));
-    let content = column![text(lang.text(Msg::OpenFileHint).to_owned())
-        .size(font_size::BODY)
-        .color(palette.text)
-        .wrapping(Wrapping::Word)]
+    let title = fill_template(
+        lang.text(Msg::OpenFileTitle),
+        &[("{name}", &format::ellipsize_middle(name, line_chars))],
+    );
+    let content = column![kit::paragraph(
+        lang.text(Msg::OpenFileHint).to_owned(),
+        palette
+    )]
     .spacing(spacing::LINE_GAP);
+    let choice = |label: &'static str, message: OpsMessage, own_focus: usize| {
+        let tone = Tone::filled_if(focus == own_focus);
+        if focus == own_focus {
+            kit::enter_button(label, Some(message), tone, palette)
+        } else {
+            kit::button(label, Some(message), tone, palette)
+        }
+    };
     Frame::new(&title, content, SIZE, window, lang, palette)
         .buttons(vec![
-            if focus == CANCEL_FOCUS {
-                kit::enter_button(
-                    lang.text(Msg::DialogCancel),
-                    Some(OpsMessage::OpenFileCancel),
-                    Tone::Primary,
-                    palette,
-                )
-            } else {
-                kit::button(
-                    lang.text(Msg::DialogCancel),
-                    Some(OpsMessage::OpenFileCancel),
-                    Tone::Secondary,
-                    palette,
-                )
-            },
-            if focus == CONFIRM_FOCUS {
-                kit::enter_button(
-                    lang.text(Msg::OpenFileConfirm),
-                    Some(OpsMessage::OpenFileConfirm),
-                    Tone::Primary,
-                    palette,
-                )
-            } else {
-                kit::button(
-                    lang.text(Msg::OpenFileConfirm),
-                    Some(OpsMessage::OpenFileConfirm),
-                    Tone::Secondary,
-                    palette,
-                )
-            },
+            choice(
+                lang.text(Msg::DialogCancel),
+                OpsMessage::OpenFileCancel,
+                CANCEL_FOCUS,
+            ),
+            choice(
+                lang.text(Msg::OpenFileConfirm),
+                OpsMessage::OpenFileConfirm,
+                CONFIRM_FOCUS,
+            ),
         ])
         .on_close(OpsMessage::OpenFileCancel)
         .hints(KeyHints {

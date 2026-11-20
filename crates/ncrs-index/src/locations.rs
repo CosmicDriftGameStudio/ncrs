@@ -68,6 +68,72 @@ impl Index {
         Ok(())
     }
 
+    /// Removes the document with everything stored for it.
+    pub fn delete_document(&self, id: DocumentId) -> Result<(), IndexError> {
+        self.connection()
+            .execute("DELETE FROM document WHERE id = ?1", [id.get()])?;
+        Ok(())
+    }
+
+    /// Removes the documents below `directory` whose file has been missing
+    /// since before `missing_before` (Unix seconds), with their text and
+    /// everything else stored for them. Returns how many went.
+    pub fn purge_missing_beneath(
+        &self,
+        directory: &Path,
+        missing_before: i64,
+    ) -> Result<usize, IndexError> {
+        let (from, until) = SubtreeRange::of(directory)?.into_bounds();
+        let candidates: Vec<(i64, String)> = {
+            let mut statement = self.connection().prepare(
+                "SELECT id, path FROM document
+                 WHERE missing_since < ?1 AND path >= ?2 AND path < ?3",
+            )?;
+            let rows = statement.query_map(params![missing_before, from, until], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let mut purged = 0;
+        for (id, path) in candidates {
+            if Path::new(&path).starts_with(directory) {
+                purged += self
+                    .connection()
+                    .execute("DELETE FROM document WHERE id = ?1", [id])?;
+            }
+        }
+        Ok(purged)
+    }
+
+    /// Removes the documents of the file at `path` and of every file below it,
+    /// missing or not, with their text and everything else stored for them.
+    /// What is kept by content hash (tags, note links) stays. Returns how many
+    /// went.
+    pub fn forget_documents_at(&self, path: &Path) -> Result<usize, IndexError> {
+        let text = path
+            .to_str()
+            .ok_or_else(|| IndexError::NonUtf8Path(path.to_path_buf()))?;
+        let (from, until) = SubtreeRange::of(path)?.into_bounds();
+        let candidates: Vec<(i64, String)> = {
+            let mut statement = self.connection().prepare(
+                "SELECT id, path FROM document WHERE path = ?1 OR (path >= ?2 AND path < ?3)",
+            )?;
+            let rows = statement.query_map(params![text, from, until], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let mut forgotten = 0;
+        for (id, stored) in candidates {
+            if Path::new(&stored).starts_with(path) {
+                forgotten += self
+                    .connection()
+                    .execute("DELETE FROM document WHERE id = ?1", [id])?;
+            }
+        }
+        Ok(forgotten)
+    }
+
     /// Documents that are not missing and whose path lies in `directory`,
     /// compared by path components. Sorted by path.
     pub fn documents_under(
@@ -295,12 +361,6 @@ impl Index {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
@@ -449,6 +509,67 @@ mod tests {
             .mark_document_missing(DocumentId::new(99))
             .unwrap_err();
         assert!(matches!(err, IndexError::DocumentNotFound(_)), "{err}");
+    }
+
+    #[test]
+    fn documents_missing_for_long_are_purged_with_their_text_and_ids_are_not_reused() {
+        let (_dir, mut index) = encrypted_index();
+        let in_inbox = |seed| crate::NewDocument {
+            path: native(&format!("inbox/scan-{seed}.pdf")),
+            ..new_document(seed)
+        };
+        let old = index.insert_document(&in_inbox(1)).unwrap();
+        let recent = index.insert_document(&in_inbox(2)).unwrap();
+        let present = index.insert_document(&in_inbox(3)).unwrap();
+        for id in [old, recent, present] {
+            index.set_document_text(id, "Kontoauszug").unwrap();
+        }
+        index.mark_document_missing(old).unwrap();
+        index.mark_document_missing(recent).unwrap();
+        index
+            .connection()
+            .execute(
+                "UPDATE document SET missing_since = 100 WHERE id = ?1",
+                [old.get()],
+            )
+            .unwrap();
+
+        let purged = index
+            .purge_missing_beneath(Path::new("inbox"), 1_000)
+            .unwrap();
+
+        assert_eq!(purged, 1);
+        assert!(index.document(old).unwrap().is_none());
+        assert!(index.document_text(old).unwrap().is_none());
+        assert!(index.document(recent).unwrap().is_some());
+        assert!(index.document(present).unwrap().is_some());
+        let violations: i64 = index
+            .connection()
+            .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(violations, 0);
+        let next = index.insert_document(&in_inbox(4)).unwrap();
+        assert!(next.get() > present.get());
+    }
+
+    #[test]
+    fn purging_leaves_documents_outside_the_folder() {
+        let (_dir, index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index.mark_document_missing(id).unwrap();
+        index
+            .connection()
+            .execute("UPDATE document SET missing_since = 100", [])
+            .unwrap();
+
+        let purged = index
+            .purge_missing_beneath(Path::new("elsewhere"), 1_000)
+            .unwrap();
+
+        assert_eq!(purged, 0);
+        assert!(index.document(id).unwrap().is_some());
     }
 
     #[test]

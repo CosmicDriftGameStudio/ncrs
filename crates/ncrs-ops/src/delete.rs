@@ -4,8 +4,7 @@
 //! undone, so its default button, the one Enter presses, is the action. Deleting
 //! for good cannot be, so there the default is "Cancel" and the dialog says why.
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, text, Column};
+use iced::widget::column;
 use iced::{Element, Size};
 
 use ncrs_i18n::{FuturamaName, Language, Msg};
@@ -13,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::theme::spacing;
 
 use crate::message::OpsMessage;
 
@@ -58,14 +57,15 @@ pub fn view<'a>(
     };
 
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    let names = Column::with_children(subject.lines().map(|line| {
-        text(format::ellipsize_middle(line, line_chars))
-            .size(font_size::BODY)
-            .color(palette.text)
-            .wrapping(Wrapping::None)
-            .into()
-    }))
-    .spacing(spacing::XS / 2.0);
+    let names = kit::name_list(
+        subject
+            .lines()
+            .map(|line| format::ellipsize_middle(line, line_chars))
+            .collect(),
+        None,
+        None,
+        palette,
+    );
     let mut content = column![names].spacing(spacing::LINE_GAP);
     if permanent {
         content = content.push(kit::error_line(

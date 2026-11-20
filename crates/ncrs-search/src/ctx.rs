@@ -23,6 +23,8 @@ pub struct Ctx {
     pub has_keys: bool,
     /// `None` while the filing has no index to ask.
     pub index: Option<Arc<dyn SearchIndex>>,
+    /// What `~` in the folder field stands for.
+    pub home: std::path::PathBuf,
 }
 
 impl std::fmt::Debug for Ctx {

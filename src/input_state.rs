@@ -1,13 +1,16 @@
 //! The two input sources the keyboard route cannot see: the Option tap and the
 //! pointer.
 
+use crate::messages::MenuMessage;
+use crate::messages::OpsMessage;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::{event, mouse, window, Point};
 
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    PermissionsMessage, QuickOpenMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    PermissionsMessage, QuickOpenMessage, SearchMessage, SettingsMessage, ShownTab,
+    ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use ncrs_settings::focus::FocusKey;
@@ -145,15 +148,19 @@ impl InputState {
             ),
             (
                 self.transfer_dialog,
-                Message::TransferDialog(TransferDialogMessage::Cancel),
+                Message::Ops(OpsMessage::TransferDialog(TransferDialogMessage::Cancel)),
             ),
             (
                 self.permissions_dialog,
-                Message::Permissions(PermissionsMessage::Cancel),
+                Message::from(ncrs_ops::OpsMessage::Permissions(
+                    PermissionsMessage::Cancel,
+                )),
             ),
             (
                 self.batch_rename_dialog,
-                Message::BatchRename(ncrs_ops::BatchRenameMessage::Cancel),
+                Message::from(ncrs_ops::OpsMessage::BatchRename(
+                    ncrs_ops::BatchRenameMessage::Cancel,
+                )),
             ),
             (
                 self.settings,
@@ -164,6 +171,8 @@ impl InputState {
                 self.filing_renaming,
                 Message::FilingView(ncrs_filing_view::Message::RenameCancel),
             ),
+            // The plan stays; Escape only goes back to the panels.
+            (self.filing, Message::ShowTab(ShownTab::Panels)),
         ]
         .into_iter()
         .find_map(|(open, close)| open.then_some(close))
@@ -191,7 +200,7 @@ impl InputState {
                 self.alt_tap.key_pressed(key);
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 if self.path_editing && leaves_field {
-                    return Some(Message::PathFieldCancel);
+                    return Some(Message::Panel(PanelMessage::PathFieldCancel));
                 }
                 if let Some(close) = self.closes_overlay(key) {
                     return Some(close);
@@ -202,7 +211,7 @@ impl InputState {
                     return None;
                 }
                 Some(if self.job_running {
-                    Message::AbortJob
+                    Message::Ops(OpsMessage::AbortJob)
                 } else {
                     Message::Search(SearchMessage::Close)
                 })
@@ -235,7 +244,7 @@ impl InputState {
                     return (nothing_else_up && self.monitor_menu)
                         .then_some(Message::Monitor(ncrs_monitor::MonitorMessage::MenuKey));
                 }
-                (nothing_else_up).then_some(Message::ContextMenuKey)
+                (nothing_else_up).then_some(Message::Files(MenuMessage::ContextMenuKey))
             }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();
@@ -249,12 +258,6 @@ impl InputState {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,7 +297,7 @@ mod tests {
                 modifiers(Modifiers::empty()),
             ],
         );
-        assert_eq!(messages, [Message::ContextMenuKey]);
+        assert_eq!(messages, [Message::Files(MenuMessage::ContextMenuKey)]);
     }
 
     #[test]
@@ -420,7 +423,7 @@ mod tests {
         );
         assert_eq!(
             after_editing,
-            [Message::ContextMenuKey],
+            [Message::Files(MenuMessage::ContextMenuKey)],
             "the next tap still works"
         );
     }
@@ -441,7 +444,7 @@ mod tests {
         input.job_running = true;
         assert_eq!(
             input.handle(&escape, event::Status::Ignored),
-            Some(Message::AbortJob),
+            Some(Message::Ops(OpsMessage::AbortJob)),
             "a running job is stopped before the search is closed"
         );
         input.job_running = false;
@@ -489,6 +492,71 @@ mod tests {
     }
 
     #[test]
+    fn escape_goes_back_from_the_filing_tab_to_the_panels() {
+        let mut input = InputState {
+            filing: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            input.handle(
+                &key_pressed(Key::Named(Named::Escape)),
+                event::Status::Captured
+            ),
+            Some(Message::ShowTab(ShownTab::Panels))
+        );
+    }
+
+    /// Each overlay that Escape closes also keeps the Option tap from opening
+    /// a menu behind it: the two lists name the same overlays.
+    #[test]
+    fn every_overlay_escape_closes_also_blocks_the_tap() {
+        type OpenOverlay = fn(&mut InputState);
+        let overlays: [(&str, OpenOverlay); 13] = [
+            ("monitor_filter", |input| {
+                input.monitor = true;
+                input.monitor_filter = true;
+            }),
+            ("hermes_chat", |input| input.hermes_chat = true),
+            ("command_line", |input| input.command_line = true),
+            ("quick_open", |input| input.quick_open = true),
+            ("command_palette", |input| input.command_palette = true),
+            ("key_bindings", |input| input.key_bindings = true),
+            ("theme_fetch", |input| input.theme_fetch = true),
+            ("transfer_dialog", |input| input.transfer_dialog = true),
+            ("permissions_dialog", |input| {
+                input.permissions_dialog = true
+            }),
+            ("batch_rename_dialog", |input| {
+                input.batch_rename_dialog = true;
+            }),
+            ("settings", |input| input.settings = true),
+            ("notes", |input| input.notes = true),
+            ("filing_renaming", |input| {
+                input.filing = true;
+                input.filing_renaming = true;
+            }),
+        ];
+        for (name, open) in overlays {
+            let mut input = InputState::default();
+            open(&mut input);
+            assert!(
+                input
+                    .handle(
+                        &key_pressed(Key::Named(Named::Escape)),
+                        event::Status::Captured
+                    )
+                    .is_some(),
+                "Escape does not close {name}"
+            );
+            let tap = [modifiers(Modifiers::ALT), modifiers(Modifiers::empty())];
+            assert!(
+                feed(&mut input, &tap).is_empty(),
+                "the tap opens a menu behind {name}"
+            );
+        }
+    }
+
+    #[test]
     fn escape_leaves_the_command_line_and_tab_does_not() {
         let mut input = InputState {
             command_line: true,
@@ -529,7 +597,7 @@ mod tests {
         for key in [Named::Escape, Named::Tab] {
             assert_eq!(
                 input.handle(&key_pressed(Key::Named(key)), event::Status::Captured),
-                Some(Message::PathFieldCancel)
+                Some(Message::Panel(PanelMessage::PathFieldCancel))
             );
         }
         let letter = key_pressed(Key::Character("a".into()));

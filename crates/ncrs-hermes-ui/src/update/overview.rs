@@ -1,5 +1,5 @@
 use iced::Task;
-use ncrs_filing::filing::FilingModule;
+use ncrs_filing::filing::{FilingMessage, FilingModule};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -16,7 +16,14 @@ pub fn update(
 ) -> Task<Message> {
     match message {
         HermesOverviewMessage::SetLoad(load) => actions.push(Action::SetLoad(load)),
-        HermesOverviewMessage::EnterRecoveryKey => {}
+        HermesOverviewMessage::EnterRecoveryKey => {
+            return super::lifecycle::update_filing(
+                hermes,
+                FilingMessage::AskKeyAgain,
+                ctx,
+                actions,
+            );
+        }
         HermesOverviewMessage::EncryptNow => {
             actions.push(Action::ChangeProtection(FilingModule::begin_encrypting));
         }
@@ -26,6 +33,10 @@ pub fn update(
                 .as_ref()
                 .is_some_and(FilingModule::can_start_over)
                 && !ctx.jobs_busy
+                && !hermes
+                    .filing
+                    .as_ref()
+                    .is_some_and(FilingModule::index_work_running)
                 && !ctx.hermes_is_restarting;
             if can_ask {
                 actions.push(Action::OpenStartOverDialog(START_OVER_CANCEL_FOCUS));

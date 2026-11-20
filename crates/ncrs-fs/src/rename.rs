@@ -38,6 +38,12 @@ fn rename_local(from: &Path, new_name: &str) -> io::Result<PathBuf> {
             "a name is one component",
         ));
     }
+    if !crate::archive::is_creatable_name(new_name) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "this name is not allowed",
+        ));
+    }
     let to = from.with_file_name(new_name);
     if to == from {
         return Ok(to);
@@ -63,7 +69,8 @@ fn rename_local(from: &Path, new_name: &str) -> io::Result<PathBuf> {
 fn differs_in_case_only(from: &Path, to: &Path) -> bool {
     match (from.file_name(), to.file_name()) {
         (Some(old), Some(new)) => {
-            old.to_string_lossy().to_lowercase() == new.to_string_lossy().to_lowercase()
+            crate::sort::base_letters(&old.to_string_lossy())
+                == crate::sort::base_letters(&new.to_string_lossy())
         }
         _ => false,
     }
@@ -90,7 +97,6 @@ fn is_same_entry(first: &Path, second: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -145,7 +151,7 @@ mod tests {
         let from = scratch.path().join("a.txt");
         std::fs::write(&from, "a").unwrap();
 
-        for bad in ["sub/b.txt", "", ".", ".."] {
+        for bad in ["sub/b.txt", "", ".", "..", "a\u{202E}b.txt", "line\nbreak"] {
             let error = rename_blocking(&pool(), &from, bad).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{bad:?}");
         }

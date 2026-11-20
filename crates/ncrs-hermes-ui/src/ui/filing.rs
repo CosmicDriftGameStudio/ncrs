@@ -6,7 +6,7 @@
 //! `Element` out.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, container, text, Column, Row};
+use iced::widget::{column, container, text, Column, Row};
 use iced::{Element, Size};
 
 use crate::message::Message;
@@ -15,8 +15,8 @@ use ncrs_filing::filing::{FilingMessage, FilingModule, KeyError, KeyProblem, Pha
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::kit::{self, error_line, paragraph, Tone};
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::kit::{self, error_line, paragraph, Check, Tone};
+use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 pub const GROUP_FIELD_ID: &str = "filing-group-field";
 pub const KEY_FIELD_ID: &str = "filing-key-field";
@@ -24,7 +24,7 @@ pub const KEY_FIELD_ID: &str = "filing-key-field";
 const SIZE: DialogSize = DialogSize::Medium;
 
 /// Four characters of the key and a little room.
-const GROUP_FIELD_WIDTH: f32 = 160.0;
+const GROUP_FIELD_WIDTH: f32 = size::FIELD_SHORT;
 
 /// What a phase puts into the frame.
 struct Card<'a> {
@@ -65,7 +65,12 @@ pub fn view<'a>(
             palette,
         ),
         Phase::PlainFileWarning => plain_file_warning(lang, palette),
-        Phase::Failed(reason) => failed(reason, lang, palette),
+        Phase::FromNewerVersion => failed(
+            lang.text(Msg::FilingFromNewerVersion).to_owned(),
+            lang,
+            palette,
+        ),
+        Phase::Failed(reason) => failed(failed_line(reason, lang), lang, palette),
         Phase::Starting
         | Phase::Encrypting
         | Phase::StartingOver
@@ -220,10 +225,17 @@ fn ask_recovery_key<'a>(
     if reason == KeyProblem::Mismatch {
         body = body.push(
             Row::with_children([
-                checkbox(confirm_replace)
-                    .on_toggle(|confirmed| filing_message(FilingMessage::ConfirmReplace(confirmed)))
-                    .style(theme::dialog_checkbox(palette))
-                    .into(),
+                kit::checkbox(
+                    if confirm_replace {
+                        Check::On
+                    } else {
+                        Check::Off
+                    },
+                    Some(filing_message(FilingMessage::ConfirmReplace(
+                        !confirm_replace,
+                    ))),
+                    palette,
+                ),
                 text(lang.text(Msg::FilingRestoreReplaceCheckbox))
                     .size(font_size::BODY)
                     .into(),
@@ -282,12 +294,15 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
     }
 }
 
-fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
-    let line = if reason == ncrs_filing::filing::NO_DATA_DIRECTORY {
+fn failed_line(reason: &str, lang: Language) -> String {
+    if reason == ncrs_filing::filing::NO_DATA_DIRECTORY {
         lang.text(Msg::FilingFailedNoDataDir).to_owned()
     } else {
         fill_template(lang.text(Msg::FilingFailedReason), &[("{reason}", reason)])
-    };
+    }
+}
+
+fn failed<'a>(line: String, lang: Language, palette: &Palette) -> Card<'a> {
     Card {
         title: lang.text(Msg::FilingFailedTitle),
         body: column![error_line(line, palette)].spacing(spacing::LINE_GAP),
@@ -301,13 +316,6 @@ fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     #[test]

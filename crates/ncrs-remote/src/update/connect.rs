@@ -43,10 +43,13 @@ fn start_connecting(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
     let login = dialog.take_login(ctx.login(&server, dialog.password().clone()));
     dialog.set_stage(Stage::Connecting);
     let pool = Arc::clone(ctx.pool);
-    Task::perform(
+    let (task, handle) = Task::perform(
         async move { pool.connect(&server, &login).await },
         move |result| Message::Connected { attempt, result },
     )
+    .abortable();
+    dialog.hold_connecting(handle.abort_on_drop());
+    task
 }
 
 pub fn cancel(remote: &mut Remote, actions: &mut Vec<Action>) -> Task<Message> {
@@ -109,12 +112,14 @@ pub(in crate::update) fn show_failure(
             key,
             host,
             port,
+            cert_authority_listed,
         } => {
             dialog.set_stage(Stage::HostKey {
                 fingerprint,
                 key,
                 host,
                 port,
+                cert_authority_listed,
             });
             Task::none()
         }
@@ -223,11 +228,17 @@ pub fn trust_host_key(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
     dialog.next_attempt(attempt);
     dialog.set_stage(Stage::Connecting);
     let pool = Arc::clone(ctx.pool);
+    let lang = ctx.lang;
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                pool.trust(&host, port, &key)
-                    .map_err(|error| error.to_string())
+                pool.trust(&host, port, &key).map_err(|error| {
+                    if error.kind() == std::io::ErrorKind::Unsupported {
+                        lang.text(Msg::ErrorRemoteNoPlaceForHostKey).to_owned()
+                    } else {
+                        error.to_string()
+                    }
+                })
             })
             .await
             .unwrap_or_else(|failure| Err(failure.to_string()))

@@ -26,7 +26,10 @@ pub fn remove_model_files(kind: ModelKind, dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[allow(
+    clippy::panic_in_result_fn,
+    reason = "a failing assertion is the signal in a test"
+)]
 mod tests {
     use super::*;
 

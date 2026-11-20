@@ -1,5 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
-
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -479,7 +478,7 @@ fn matches_image(state: &State, name: &str) {
     let matches = simulator
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .unwrap();
     assert!(matches, "{name} differs from its image");
 }

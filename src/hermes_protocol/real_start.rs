@@ -10,7 +10,7 @@ use iced_test::futures::futures::StreamExt as _;
 use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 use ncrs_index::{InMemoryKeyStore, KeyStore, KeyStoreError};
 
-use super::scratch::pdfs_below;
+use super::scratch::{link_folder, pdfs_below};
 use super::thread::{busy, chat, chip_labels, entry_text, is_ready, whole_thread};
 use super::{picker, TICK_EVERY, WINDOW};
 use crate::app::{App, Environment};
@@ -87,6 +87,7 @@ pub fn boot_with(
                 passwords: Arc::new(crate::fs::remote::credentials::InMemoryPasswords::default()),
                 ssh_known_hosts: None,
                 own_known_hosts: None,
+                second_instance: false,
             };
             let (app, task) = App::restored(environment, saved.clone());
             (
@@ -144,6 +145,7 @@ fn phase_name(app: &App) -> String {
             Phase::Ready => "Ready".to_owned(),
             Phase::Encrypting => "Encrypting".to_owned(),
             Phase::StartingOver => "StartingOver".to_owned(),
+            Phase::FromNewerVersion => "FromNewerVersion".to_owned(),
             Phase::Failed(reason) => format!("Failed({reason})"),
             Phase::Dismissed => "Dismissed".to_owned(),
         },
@@ -265,7 +267,7 @@ fn talk(data: &Path, store: Store, label: &str) -> bool {
 }
 
 fn shot(app: &App, out: &str, name: &str) {
-    crate::screenshot_tests::write_screenshot_to(app, out, WINDOW, &format!("{name}.png"));
+    crate::shot_file::write_screenshot_to(app, out, WINDOW, &format!("{name}.png"));
 }
 
 fn fresh(root: &Path, name: &str, config: Option<&str>, model: Option<&PathBuf>) -> PathBuf {
@@ -277,7 +279,7 @@ fn fresh(root: &Path, name: &str, config: Option<&str>, model: Option<&PathBuf>)
         std::fs::write(data.join("config.toml"), text).unwrap();
     }
     if let Some(models) = model {
-        std::os::unix::fs::symlink(models, data.join("ai-models")).unwrap();
+        link_folder(models, &data.join("ai-models")).unwrap();
     }
     data
 }

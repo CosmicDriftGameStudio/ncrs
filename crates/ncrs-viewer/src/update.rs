@@ -88,13 +88,11 @@ fn link_clicked(state: &mut State, target: &str) -> (Task<Message>, Option<Actio
 fn loaded_file(state: &mut State, loaded: Loaded, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let answered = match &loaded {
         Loaded::Doc(doc) => &doc.path,
-        Loaded::TooLarge { path, .. } | Loaded::Failed { path, .. } => path,
+        Loaded::TooLarge { path, .. }
+        | Loaded::Failed { path, .. }
+        | Loaded::NotRegular { path } => path,
     };
-    if state
-        .requested
-        .as_ref()
-        .is_some_and(|asked| asked != answered)
-    {
+    if state.requested.as_ref() != Some(answered) {
         return (Task::none(), None);
     }
     match loaded {
@@ -119,6 +117,13 @@ fn loaded_file(state: &mut State, loaded: Loaded, ctx: &Ctx) -> (Task<Message>, 
                 Task::none(),
                 Some(Action::OpenSystemInstead { path, notice }),
             )
+        }
+        Loaded::NotRegular { path } => {
+            let text = fill_template(
+                ctx.lang.text(Msg::ViewerNotRegular),
+                &[("{name}", &name_of(&path))],
+            );
+            (Task::none(), Some(Action::Error(text)))
         }
         Loaded::Failed { path, reason } => {
             let text = fill_template(

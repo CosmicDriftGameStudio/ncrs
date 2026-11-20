@@ -1,8 +1,6 @@
 //! The start dialog, the sync dialog with its delete list and the compare bar.
 
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -21,7 +19,7 @@ use crate::state::{Compare, Folders, Run, SyncDialog};
 use crate::view;
 
 const WINDOW: Size = Size::new(1200.0, 800.0);
-const LEFT: &str = "/Users/marc/Documents/Scans";
+const LEFT: &str = "/Users/alex/Documents/Scans";
 const RIGHT: &str = "/Volumes/Archiv/Scans";
 
 fn entry(side: &str, name: &str, size: u64, is_dir: bool) -> FileEntry {
@@ -178,7 +176,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image(image)
+            .matches_reference_image(image)
             .unwrap();
         assert!(matches, "{image} differs");
     }

@@ -24,7 +24,9 @@ use ncrs_fs::transfer::{
     sweep_partials, transfer_to, Copy, Counting, Move, OnConflict, Progress, Source,
 };
 
+mod respell;
 mod trash;
+use respell::{is_respelling, is_same_entry, respell, respell_back, restore_respelled};
 pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
 
 /// One move. Paths are absolute.
@@ -217,6 +219,15 @@ pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRo
     })
 }
 
+/// The batches of one filing pass: what moves goes into one, what is copied
+/// into another, however many calls bring the files. One undo then takes the
+/// whole pass back.
+#[derive(Debug, Default)]
+pub struct FilingBatches {
+    moved: Option<BatchId>,
+    copied: Option<BatchId>,
+}
+
 /// `execute` with the effect of the move given, so a test can stand in for a
 /// volume boundary or a failing delete.
 pub fn execute_with<P: Progress, S: Source>(
@@ -227,7 +238,36 @@ pub fn execute_with<P: Progress, S: Source>(
     progress: &mut P,
     effect: &S,
 ) -> Result<ExecutionReport, ExecuteError> {
-    let batch = index.begin_batch(kind)?;
+    execute_into(
+        index,
+        &mut FilingBatches::default(),
+        kind,
+        root,
+        items,
+        progress,
+        effect,
+    )
+}
+
+/// [`execute_with`] into the move batch of `batches`, which it opens when
+/// this is the first call.
+pub fn execute_into<P: Progress, S: Source>(
+    index: &Index,
+    batches: &mut FilingBatches,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+    effect: &S,
+) -> Result<ExecutionReport, ExecuteError> {
+    let batch = match batches.moved {
+        Some(open) => open,
+        None => {
+            let opened = open_filing_batch(index, kind, root, Transfer::Move)?;
+            batches.moved = Some(opened);
+            opened
+        }
+    };
     let places = Places {
         target: root,
         source: None,
@@ -252,13 +292,55 @@ pub fn execute_copying<P: Progress>(
     items: &[ExecutionItem],
     progress: &mut P,
 ) -> Result<ExecutionReport, ExecuteError> {
-    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), Transfer::Copy)?;
+    execute_copying_into(
+        index,
+        &mut FilingBatches::default(),
+        kind,
+        root,
+        items,
+        progress,
+    )
+}
+
+/// [`execute_copying`] into the copy batch of `batches`.
+pub fn execute_copying_into<P: Progress>(
+    index: &Index,
+    batches: &mut FilingBatches,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+) -> Result<ExecutionReport, ExecuteError> {
+    let batch = match batches.copied {
+        Some(open) => open,
+        None => {
+            let opened = open_filing_batch(index, kind, root, Transfer::Copy)?;
+            batches.copied = Some(opened);
+            opened
+        }
+    };
     let places = Places {
         target: root,
         source: None,
         inside_target: false,
     };
     run_batch(index, batch, Transfer::Copy, places, items, progress, &Copy)
+}
+
+/// A batch named after the folder it files into, which it records so that an
+/// undo knows where the run worked. A folder that is not there yet has
+/// nothing to resolve; the undo then falls back on the places in the journal.
+fn open_filing_batch(
+    index: &Index,
+    kind: BatchKind,
+    root: &Path,
+    transfer: Transfer,
+) -> Result<BatchId, ExecuteError> {
+    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), transfer)?;
+    if let Ok(target) = remember_source_root(root) {
+        index.set_batch_target_root(batch, &target)?;
+    }
+    Ok(batch)
 }
 
 fn run_batch<P: Progress, S: Source>(
@@ -369,6 +451,9 @@ fn run_item<S: Source>(
             return skip(index, batch, item, SkipReason::SourceMissing)
         }
         Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
+    }
+    if transfer == Transfer::Move && is_respelling(&item.from, &item.to) {
+        return respell(index, batch, item);
     }
     match fs::symlink_metadata(&item.to) {
         Ok(_) => return skip(index, batch, item, SkipReason::TargetExists),
@@ -493,7 +578,17 @@ fn settle_moved(
     if let (Some(BatchKind::Filing | BatchKind::Hermes), Some(id), false) =
         (index.batch_kind(batch)?, item.document_id, item.duplicate)
     {
-        index.set_document_status(id, DocumentStatus::Filed)?;
+        // Only what ends up in the folder the run files into counts as
+        // filed; a move inside a side archive does not.
+        let lands_in_target = index
+            .batch_info(batch)?
+            .and_then(|info| info.target_root)
+            .is_none_or(|root| {
+                item.to.starts_with(&root.given) || item.to.starts_with(&root.resolved)
+            });
+        if lands_in_target {
+            index.set_document_status(id, DocumentStatus::Filed)?;
+        }
     }
     index.set_journal_state(batch, item.seq, JournalState::Moved, None)?;
     Ok(ItemOutcome::Moved)
@@ -551,6 +646,7 @@ fn settle_move(
     batch: BatchId,
     item: &JournalItem,
 ) -> Result<ItemOutcome, ExecuteError> {
+    restore_respelled(item);
     remove_staging_copies(&item.to);
     let source_present = fs::symlink_metadata(&item.from).is_ok();
     let target_intact = has_hash(&item.to, item.hash);
@@ -558,6 +654,18 @@ fn settle_move(
         return settle_moved(index, batch, item);
     }
     if target_intact && has_hash(&item.from, item.hash) {
+        if is_same_entry(&item.from, &item.to) {
+            // Another spelling of one file: removing the source removes the target.
+            return settle_moved(index, batch, item);
+        }
+        if !within_recorded_roots(index, batch, item) {
+            return skip_pending(
+                index,
+                batch,
+                item,
+                SkipReason::Failed("the item lies outside the folders of its run".to_owned()),
+            );
+        }
         fs::remove_file(&item.from).map_err(io_error(&item.from))?;
         return settle_moved(index, batch, item);
     }
@@ -760,7 +868,20 @@ fn undo_item(
         Err(err) => return Ok(Some(SkipReason::Failed(err.to_string()))),
     }
     if fs::symlink_metadata(&item.from).is_ok() {
-        return Ok(Some(SkipReason::TargetExists));
+        if !is_respelling(&item.to, &item.from) {
+            return Ok(Some(SkipReason::TargetExists));
+        }
+        if let Err(err) = respell_back(&item.from, &item.to) {
+            return Ok(Some(SkipReason::Failed(err.to_string())));
+        }
+        repoint(
+            index,
+            item.document_id,
+            item.duplicate,
+            &item.to,
+            &item.from,
+        )?;
+        return Ok(None);
     }
     if let Some(parent) = item.from.parent() {
         if let Err(err) = fs::create_dir_all(parent) {
@@ -778,6 +899,28 @@ fn undo_item(
         &item.from,
     )?;
     Ok(None)
+}
+
+/// Whether both ends of an item lie in the folders the batch recorded, when it
+/// recorded any. A journal that is not the run's own must not make a settle
+/// remove files elsewhere.
+fn within_recorded_roots(index: &Index, batch: BatchId, item: &JournalItem) -> bool {
+    let Ok(Some(info)) = index.batch_info(batch) else {
+        return true;
+    };
+    let lies_in = |root: &SourceRoot, path: &Path| {
+        path.starts_with(&root.given) || path.starts_with(&root.resolved)
+    };
+    let roots: Vec<&SourceRoot> = [&info.source_root, &info.target_root]
+        .into_iter()
+        .flatten()
+        .collect();
+    let from_fits = roots.is_empty() || roots.iter().any(|root| lies_in(root, &item.from));
+    let to_fits = info
+        .target_root
+        .as_ref()
+        .is_none_or(|root| lies_in(root, &item.to));
+    from_fits && to_fits
 }
 
 #[cfg(test)]

@@ -39,25 +39,58 @@ const BIRTH_LABELS: [&str; 10] = [
 ];
 /// How far in front of a date on its line a birth label still belongs to it.
 const BIRTH_LABEL_REACH: usize = 30;
-const GERMAN_MONTHS: [(&str, u32); 13] = [
+/// German and English month names and their usual abbreviations.
+const MONTH_NAMES: [(&str, u32); 37] = [
     ("januar", 1),
+    ("jan", 1),
+    ("january", 1),
     ("februar", 2),
+    ("feb", 2),
+    ("february", 2),
     ("märz", 3),
     ("maerz", 3),
+    ("mär", 3),
+    ("mrz", 3),
+    ("march", 3),
+    ("mar", 3),
     ("april", 4),
+    ("apr", 4),
     ("mai", 5),
+    ("may", 5),
     ("juni", 6),
+    ("jun", 6),
+    ("june", 6),
     ("juli", 7),
+    ("jul", 7),
+    ("july", 7),
     ("august", 8),
+    ("aug", 8),
     ("september", 9),
+    ("sept", 9),
+    ("sep", 9),
     ("oktober", 10),
+    ("okt", 10),
+    ("october", 10),
+    ("oct", 10),
     ("november", 11),
+    ("nov", 11),
     ("dezember", 12),
+    ("dez", 12),
+    ("december", 12),
+    ("dec", 12),
 ];
+
+fn month_number(word: &str) -> Option<u32> {
+    let lowered = word.to_lowercase();
+    MONTH_NAMES
+        .iter()
+        .find(|(name, _)| *name == lowered)
+        .map(|(_, number)| *number)
+}
 
 static DATE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     compile_bounded_regex(
-        r"\b(?:(?P<numeric>\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})|(?P<day>\d{1,2})\.\s*(?P<month>\p{L}+)\s+(?P<year>\d{4}))\b",
+        r"\b(?:(?P<numeric>\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})|(?P<day>\d{1,2})\.?\s*(?P<month>\p{L}+)\.?\s+(?P<year>\d{4})|(?P<month_first>\p{L}+)\.?\s+(?P<day_last>\d{1,2}),?\s+(?P<year_last>\d{4}))\b",
     )
     .ok()
 });
@@ -78,15 +111,18 @@ fn dates_in(line: &str) -> Vec<FoundDate> {
             let date = if let Some(numeric) = captures.name("numeric") {
                 parse_date(numeric.as_str())?
             } else {
-                let month_word = captures.name("month")?.as_str().to_lowercase();
-                let month = GERMAN_MONTHS
-                    .iter()
-                    .find(|(name, _)| *name == month_word)
-                    .map(|(_, number)| *number)?;
+                let (day, month, year) = match captures.name("day") {
+                    Some(day) => (day, captures.name("month")?, captures.name("year")?),
+                    None => (
+                        captures.name("day_last")?,
+                        captures.name("month_first")?,
+                        captures.name("year_last")?,
+                    ),
+                };
                 NaiveDate::from_ymd_opt(
-                    captures.name("year")?.as_str().parse().ok()?,
-                    month,
-                    captures.name("day")?.as_str().parse().ok()?,
+                    year.as_str().parse().ok()?,
+                    month_number(month.as_str())?,
+                    day.as_str().parse().ok()?,
                 )?
             };
             YEARS.contains(&date.year()).then_some(FoundDate {
@@ -157,7 +193,12 @@ fn labelled_date(line: &str, previous: Option<&str>) -> Option<NaiveDate> {
                 .get(..start)
                 .and_then(|before| before.chars().next_back())
                 .is_none_or(|c| !c.is_alphabetic());
-            if !is_word_start {
+            // `Due date` or `Delivery date` is not the date of the letter.
+            let is_bare_date_label = *label != "date"
+                || line
+                    .get(..start)
+                    .is_some_and(|before| before.trim().is_empty());
+            if !is_word_start || !is_bare_date_label {
                 return None;
             }
             let rest = line.get(start + label.len()..)?;
@@ -205,12 +246,6 @@ pub fn detect_letter_date(text: &str) -> Option<NaiveDate> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
     use crate::test_archive::{test_archive, TestFile};
@@ -262,10 +297,42 @@ mod tests {
             detect_letter_date("03. Maerz 2024\n"),
             Some(date(2024, 3, 3))
         );
-        for (month, number) in GERMAN_MONTHS {
+        for (month, number) in MONTH_NAMES {
             let text = format!("Ort, 5. {} 2020\n", month.to_uppercase());
             assert_eq!(detect_letter_date(&text), Some(date(2020, number, 5)));
         }
+    }
+
+    #[test]
+    fn abbreviated_and_english_months_are_read() {
+        assert_eq!(
+            detect_letter_date("Bonn, 15. Okt. 2024\n"),
+            Some(date(2024, 10, 15))
+        );
+        assert_eq!(
+            detect_letter_date("Bonn, 1. Sept. 2023\n"),
+            Some(date(2023, 9, 1))
+        );
+        assert_eq!(
+            detect_letter_date("London, 5 November 2024\n"),
+            Some(date(2024, 11, 5))
+        );
+        assert_eq!(
+            detect_letter_date("London, November 5, 2024\n"),
+            Some(date(2024, 11, 5))
+        );
+        assert_eq!(detect_letter_date("Aug 9 2021\n"), Some(date(2021, 8, 9)));
+    }
+
+    #[test]
+    fn a_due_date_is_not_the_letter_date() {
+        let text = "Invoice\nDue date: 30.11.2024\nDelivery date: 01.12.2024\n";
+        assert_eq!(labelled_date("Due date: 30.11.2024", None), None);
+        assert_eq!(
+            labelled_date("Date: 30.11.2024", None),
+            Some(date(2024, 11, 30))
+        );
+        assert_eq!(labelled_date(text.lines().nth(2).unwrap(), None), None);
     }
 
     #[test]

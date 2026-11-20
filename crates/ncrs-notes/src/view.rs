@@ -12,8 +12,8 @@ use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
-use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow};
+use ncrs_ui_kit::theme::{self, font_size, size, spacing};
+use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow, TREE_INDENT};
 
 use crate::ctx::ViewCtx;
 use crate::message::{Message, Mode};
@@ -27,21 +27,24 @@ pub const EDITOR_ID: &str = "notes-editor";
 const TREE_ID: &str = "notes-tree";
 const NOTE_ID: &str = "notes-note";
 
-const SIDEBAR_WIDTH: f32 = 300.0;
+const SIDEBAR_WIDTH: f32 = size::SIDE_PANE;
 /// From this width of the note pane the editor and the rendered note sit side by side.
 const SPLIT_MIN_WIDTH: f32 = 1100.0;
 
-pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>, new_note_key: &str) -> Element<'a, Message> {
     let palette = ctx.palette;
-    let hint = ctx.lang.text(match (state.searching(), state.editing()) {
-        (_, true) => Msg::NotesStatusEdit,
-        (true, false) => Msg::NotesStatusSearch,
-        (false, false) => Msg::NotesStatusView,
-    });
+    let hint = match (state.searching(), state.editing()) {
+        (_, true) => ctx.lang.text(Msg::NotesStatusEdit).to_owned(),
+        (true, false) => ctx.lang.text(Msg::NotesStatusSearch).to_owned(),
+        (false, false) => fill_template(
+            ctx.lang.text(Msg::NotesStatusView),
+            &[("{key}", new_note_key)],
+        ),
+    };
     let line = state
         .problem
         .as_deref()
-        .map_or(PageStatusLine::Hint(hint), PageStatusLine::Failure);
+        .map_or(PageStatusLine::Hint(&hint), PageStatusLine::Failure);
     let bar = PageStatusBar {
         mode: ctx.lang.text(Msg::ActionNotes),
         line,
@@ -124,7 +127,7 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 .note(path)
                 .map(|note| match &note.kind {
                     Kind::File { file, .. } => {
-                        shortened_left(&path_below_home(file, ctx.home), entry.depth)
+                        path_fitted_to_row(&path_below_home(file, ctx.home), entry.depth)
                     }
                     Kind::Topic => note.title.clone(),
                 })
@@ -156,37 +159,16 @@ fn path_below_home(file: &Path, home: &Path) -> String {
     }
 }
 
-/// Rough width of one character of the tree's body text, as a share of its size.
-const CHAR_WIDTH_SHARE: f32 = 0.6;
 /// What a tree row takes besides its label: open mark, gap and padding.
 const ROW_OVERHEAD: f32 = 26.0;
 /// The width the tree list loses to the margin around its rows.
 const LIST_INSET: f32 = 48.0;
-/// The kit's indent per tree level.
-const LEVEL_INDENT: f32 = 16.0;
 
-/// Cuts a path from the left, at a folder border, so the file name stays
-/// visible where the row is too narrow: `…/House/Offer.pdf`.
-fn shortened_left(path: &str, depth: usize) -> String {
-    let room = SIDEBAR_WIDTH - LIST_INSET - ROW_OVERHEAD - LEVEL_INDENT * depth as f32;
-    let fits = (room / (font_size::BODY * CHAR_WIDTH_SHARE)) as usize;
-    if path.chars().count() <= fits {
-        return path.to_owned();
-    }
-    let mut kept = path;
-    while let Some(at) = kept.find('/') {
-        let rest = &kept[at + 1..];
-        if rest.is_empty() {
-            break;
-        }
-        kept = rest;
-        let candidate = format!("\u{2026}/{kept}");
-        if candidate.chars().count() <= fits {
-            return candidate;
-        }
-    }
-    let tail: String = kept.chars().rev().take(fits.saturating_sub(1)).collect();
-    format!("\u{2026}{}", tail.chars().rev().collect::<String>())
+/// The path cut in the middle to fit the row, so the file name stays visible
+/// where the row is too narrow.
+fn path_fitted_to_row(path: &str, depth: usize) -> String {
+    let room = SIDEBAR_WIDTH - LIST_INSET - ROW_OVERHEAD - TREE_INDENT * depth as f32;
+    format::fit_middle(path, room, font_size::BODY)
 }
 
 fn place(note: &Note, ctx: ViewCtx<'_>) -> String {
@@ -250,7 +232,10 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             place(note, ctx),
             fill_template(
                 ctx.lang.text(Msg::NotesChanged),
-                &[("{time}", &format::time(Some(modified)))],
+                &[(
+                    "{time}",
+                    &format::time_in(Some(modified), ctx.date_format, ctx.lang),
+                )],
             )
         ),
         None => place(note, ctx),

@@ -80,7 +80,7 @@ fn escape_dismisses_the_config_error_and_a_job_comes_first() {
     );
     assert_eq!(
         route_key(&state(true, true), escape.clone(), Modifiers::default()),
-        Some(Message::AbortJob)
+        Some(Message::Ops(OpsMessage::AbortJob))
     );
     assert_eq!(
         route_key(&state(false, false), escape, Modifiers::default()),
@@ -217,4 +217,12 @@ fn dismissing_clears_the_config_error() {
     let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
     drop(app.update(Message::DismissConfigError));
     assert_eq!(app.status_error(), None);
+}
+
+#[test]
+fn a_config_without_a_language_keeps_the_system_language() {
+    let mut unconfigured = App::with_fixed_panels();
+    unconfigured.lang = Language::German;
+    let app = unconfigured.with_config(Ok(loaded("")));
+    assert_eq!(app.lang, Language::German);
 }

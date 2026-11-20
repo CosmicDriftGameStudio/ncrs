@@ -12,8 +12,9 @@ use crate::state::Panels;
 use crate::volumes::VolumeMenu;
 use crate::volumes_view::{FavouriteRow, ServerRow};
 
-/// What the app reads for the drive menu when it opens.
-#[derive(Debug)]
+/// What the app reads for the drive menu, off the UI thread: listing the
+/// drives and looking at the favourites touches the disks.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VolumeFacts {
     pub volumes: Vec<Volume>,
     /// The saved servers, in the order of the file; `connected` is not set yet.
@@ -21,6 +22,8 @@ pub struct VolumeFacts {
     pub connected: Vec<ServerId>,
     /// What the trash row is called, `None` in a build without a trash.
     pub trash: Option<Msg>,
+    /// The pinned folders, each with whether it is there.
+    pub favourites: Vec<FavouriteRow>,
 }
 
 /// The servers the drive menu lists: the saved ones in the order of the
@@ -68,29 +71,21 @@ fn favourite_notice(lang: Language, msg: Msg, path: &Path) -> Action {
 }
 
 impl Panels {
-    /// Alt+F1 / Alt+F2: list the drives and highlight the one `side` is on.
-    /// The favourites are listed below the drives, so the menu is worth
-    /// opening with only those. `on_favourites` puts the highlight on the first.
-    /// Does nothing while a prompt or dialog holds the keyboard.
+    /// Alt+F1 / Alt+F2: shows the drives, with the one `side` is on
+    /// highlighted. The favourites are listed below the drives, so the menu is
+    /// worth opening with only those. `on_favourites` puts the highlight on
+    /// the first. Does nothing while a prompt or dialog holds the keyboard.
     pub fn open_volume_menu_on(
         &mut self,
         side: PanelSide,
         on_favourites: bool,
         overlay_is_open: bool,
-        facts_source: impl FnOnce() -> VolumeFacts,
+        facts: VolumeFacts,
     ) {
         if overlay_is_open {
             return;
         }
-        let facts = facts_source();
-        let favourites: Vec<FavouriteRow> = self
-            .favourites
-            .iter()
-            .map(|path| FavouriteRow {
-                path: path.clone(),
-                present: path.is_dir(),
-            })
-            .collect();
+        let favourites = facts.favourites;
         let servers = server_rows(facts.saved_servers, &facts.connected);
         if facts.volumes.is_empty() && favourites.is_empty() && servers.is_empty() {
             return;
@@ -111,20 +106,19 @@ impl Panels {
         self.volume_menu = Some(menu);
     }
 
-    /// Opens the drive menu on the favourites, or says there are none.
-    pub fn open_favourites(
-        &mut self,
-        lang: Language,
-        overlay_is_open: bool,
-        facts: impl FnOnce() -> VolumeFacts,
-    ) -> Vec<Action> {
-        if self.favourites.is_empty() {
-            return vec![Action::ShowNotice(
-                lang.text(Msg::StatusNoFavourites).to_owned(),
-            )];
-        }
-        self.open_volume_menu_on(self.active, true, overlay_is_open, facts);
-        Vec::new()
+    /// What to tell the user instead of opening the drive menu on the
+    /// favourites, when there are none.
+    pub fn no_favourites_notice(&self, lang: Language) -> Option<Action> {
+        self.favourites
+            .is_empty()
+            .then(|| Action::ShowNotice(lang.text(Msg::StatusNoFavourites).to_owned()))
+    }
+
+    /// Starts a read of what the drive menu shows and returns the number its
+    /// answer has to carry: an older answer is ignored.
+    pub fn next_volume_menu_request(&mut self) -> u64 {
+        self.volume_menu_request = self.volume_menu_request.wrapping_add(1);
+        self.volume_menu_request
     }
 
     /// The folder under the cursor, else the folder of the panel: a file or

@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -102,7 +95,10 @@ fn the_step_keeps_every_document_and_everything_that_points_at_it() {
     let index = migrated(&path);
     let conn = index.connection();
 
-    assert_eq!(user_version(conn), 26);
+    assert_eq!(
+        user_version(conn),
+        u32::try_from(crate::migrations::MIGRATIONS.len()).unwrap()
+    );
     let after: Vec<(i64, Vec<u8>, String)> = conn
         .prepare("SELECT id, hash, path FROM document ORDER BY id")
         .unwrap()

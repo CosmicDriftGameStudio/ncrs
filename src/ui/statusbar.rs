@@ -1,11 +1,12 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-use iced::widget::{button, column, container, row, text, text_input, tooltip, Space, Stack};
+use iced::widget::{button, column, container, row, text, tooltip, Space, Stack};
 use iced::{alignment, Element, Length, Padding};
 
 use ncrs_i18n::fill_template;
 use ncrs_ui_kit::badge_dot::badge_dot;
 
 use super::format;
+use super::format::estimated_text_width;
 use super::layout::STATUSBAR_HEIGHT;
 use super::panel::PanelState;
 use super::theme::{self, font_size, spacing};
@@ -41,14 +42,13 @@ const HIT_LINE_MAX_WIDTH: f32 = 900.0;
 
 /// Room left and right of each field of the bar.
 const FIELD_PADDING_X: f32 = spacing::M;
-/// Width of a character of the monospace font, in font sizes.
-const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
 /// The path field is as wide as its text, so the entry info stands right after
 /// it; room for the copy button and for typing a longer path.
 const PATH_EXTRA_WIDTH: f32 = 36.0;
 const PATH_MIN_WIDTH: f32 = 160.0;
 const PATH_MAX_WIDTH: f32 = 520.0;
 const ENTRY_SEPARATOR: &str = " · ";
+const PATH_FIELD_ID: &str = "statusbar-path";
 const COPY_ICON_SIZE: f32 = 14.0;
 const COPY_ICON_SQUARE: f32 = 9.0;
 
@@ -83,13 +83,7 @@ fn path_bar<'a, M: Clone + 'a>(
     bar: PathBar<'a, M>,
 ) -> Element<'a, M> {
     if let Some(hit) = bar.hit_line {
-        let cap = container(
-            text(hit.back_key)
-                .size(font_size::KEY_CAP)
-                .wrapping(text::Wrapping::None),
-        )
-        .padding([0.0, spacing::XS])
-        .style(theme::key_cap(palette, false));
+        let cap = ncrs_ui_kit::kit::key_cap(&hit.back_key, palette);
         return row![
             text(hit.text)
                 .size(font_size::FILE)
@@ -111,27 +105,21 @@ fn path_bar<'a, M: Clone + 'a>(
     let shown = bar
         .editing
         .map_or_else(|| panel.path.display().to_string(), str::to_owned);
-    let path: Element<'a, M> = text_input("", &shown)
-        .on_input(bar.on_input)
-        .on_submit(bar.on_submit)
-        .size(font_size::FILE)
-        .font(ncrs_ui_kit::APP_FONT)
-        .padding(0.0)
-        .style(theme::path_input(palette))
-        .into();
-    let copy = tooltip(
+    let path: Element<'a, M> = ncrs_ui_kit::kit::line_field(
+        &shown,
+        PATH_FIELD_ID,
+        bar.on_input,
+        Some(bar.on_submit),
+        palette,
+    );
+    let copy = ncrs_ui_kit::kit::tooltip(
         button(copy_icon(palette))
             .on_press(bar.on_copy)
             .padding(3.0)
             .style(theme::icon_button(palette)),
-        container(
-            text(lang.text(Msg::StatusCopyPathTooltip))
-                .size(font_size::SMALL)
-                .wrapping(text::Wrapping::None),
-        )
-        .padding([spacing::XS, spacing::M])
-        .style(theme::dialog(palette)),
+        lang.text(Msg::StatusCopyPathTooltip),
         tooltip::Position::Top,
+        palette,
     );
     row![container(path).width(Length::Fill).clip(true), copy]
         .spacing(spacing::CELL_PADDING_X / 2.0)
@@ -213,6 +201,8 @@ pub struct Activity<'a, M> {
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
+    /// How the date of the entry under the cursor is written.
+    pub date_format: ncrs_core::DateFormat,
 }
 
 /// The tooltip of the version: the newer release when the update check
@@ -245,21 +235,15 @@ fn version_badge<'a, M: Clone + 'a>(
     } else {
         number.into()
     };
-    tooltip(
+    ncrs_ui_kit::kit::tooltip(
         button(label)
             .on_press(badge.on_press)
             .padding([0.0, FIELD_PADDING_X])
             .style(theme::icon_button(palette)),
-        container(
-            text(tip)
-                .size(font_size::SMALL)
-                .wrapping(text::Wrapping::None),
-        )
-        .padding([spacing::XS, spacing::M])
-        .style(theme::dialog(palette)),
+        tip,
         tooltip::Position::Top,
+        palette,
     )
-    .into()
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -292,6 +276,7 @@ pub fn view<'a, M: Clone + 'a>(
         version,
         monitor,
         test_folder,
+        date_format,
     } = activity;
     let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
         (Some(hit), _) => hit.text.chars().count(),
@@ -299,10 +284,9 @@ pub fn view<'a, M: Clone + 'a>(
         (None, None) => panel.path.display().to_string().chars().count(),
     };
     let path_width = if path_bar_input.hit_line.is_some() {
-        (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE + HIT_HINT_WIDTH)
-            .min(HIT_LINE_MAX_WIDTH)
+        (estimated_text_width(path_chars, font_size::FILE) + HIT_HINT_WIDTH).min(HIT_LINE_MAX_WIDTH)
     } else {
-        (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE + PATH_EXTRA_WIDTH)
+        (estimated_text_width(path_chars, font_size::FILE) + PATH_EXTRA_WIDTH)
             .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
     };
     let path = path_bar(panel, lang, palette, path_bar_input);
@@ -351,10 +335,14 @@ pub fn view<'a, M: Clone + 'a>(
         let mut info = row![
             dim(name).font(ncrs_ui_kit::APP_FONT),
             dim(ENTRY_SEPARATOR.to_owned()),
-            dim(format::entry_size(entry)),
+            dim(format::entry_size_in(
+                entry,
+                ncrs_core::SizeFormat::Readable,
+                lang,
+            )),
         ];
         // The parent entry has no date; no dangling separator then.
-        let modified = format::time(entry.modified);
+        let modified = format::time_in(entry.modified, date_format, lang);
         if !modified.is_empty() {
             info = info
                 .push(dim(ENTRY_SEPARATOR.to_owned()))
@@ -383,28 +371,33 @@ pub fn view<'a, M: Clone + 'a>(
     /// The job line: what it is, how far along, and the abort hint. Returns
     /// None when nothing is running, so the bar falls back to the file info.
     fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language, palette: &Palette) -> Element<'a, M> {
-        let counter = lang
-            .text(Msg::JobProgress)
-            .replace("{done}", &job.done.to_string())
-            .replace("{total}", &job.total.to_string());
+        const SEPARATOR: &str = "  •  ";
+        let progress_values = [
+            ("{done}", job.done.to_string()),
+            ("{total}", job.total.to_string()),
+        ];
+        let progress: Vec<(&str, &str)> = progress_values
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
 
         // A label that carries its own counter, like the permissions one, is the whole line.
         let mut line = if job.label.contains("{done}") {
-            job.label
-                .replace("{done}", &job.done.to_string())
-                .replace("{total}", &job.total.to_string())
+            fill_template(job.label, &progress)
         } else {
+            let counter = fill_template(lang.text(Msg::JobProgress), &progress);
             format!("{}  {counter}", job.label)
         };
         if job.waiting > 0 {
-            let waiting = lang
-                .text(Msg::JobQueued)
-                .replace("{count}", &job.waiting.to_string());
-            line.push_str("  •  ");
+            let waiting = fill_template(
+                lang.text(Msg::JobQueued),
+                &[("{count}", &job.waiting.to_string())],
+            );
+            line.push_str(SEPARATOR);
             line.push_str(&waiting);
         }
         if job.abortable {
-            line.push_str("  •  ");
+            line.push_str(SEPARATOR);
             line.push_str(lang.text(Msg::JobAbort));
         }
         text(line)
@@ -499,7 +492,7 @@ pub fn view<'a, M: Clone + 'a>(
         bar = bar.push(version_badge(badge, lang, palette));
     }
     if let Some(badge) = monitor {
-        bar = bar.push(tooltip(
+        bar = bar.push(ncrs_ui_kit::kit::tooltip(
             button(
                 text(badge.text)
                     .size(font_size::SMALL)
@@ -509,14 +502,9 @@ pub fn view<'a, M: Clone + 'a>(
             .on_press(badge.on_press)
             .padding([0.0, FIELD_PADDING_X])
             .style(theme::icon_button(palette)),
-            container(
-                text(lang.text(Msg::MonitorBadgeTooltip))
-                    .size(font_size::SMALL)
-                    .wrapping(text::Wrapping::None),
-            )
-            .padding([spacing::XS, spacing::M])
-            .style(theme::dialog(palette)),
+            lang.text(Msg::MonitorBadgeTooltip),
             tooltip::Position::Top,
+            palette,
         ));
     }
 
@@ -569,8 +557,10 @@ fn format_error(
         ReadError::Remote { .. } => Msg::ErrorRemoteFailed,
     };
     let reason = match error {
-        ReadError::CannotRead { reason }
-        | ReadError::AccessBlocked { reason }
+        ReadError::CannotRead { kind, reason } => {
+            ncrs_ui_kit::io_reason::io_reason_text(*kind, reason, lang)
+        }
+        ReadError::AccessBlocked { reason }
         | ReadError::TaskFailed { reason }
         | ReadError::Remote { reason } => reason.clone(),
         ReadError::EntriesLeftOut { count } => count.to_string(),
@@ -589,12 +579,6 @@ fn format_error(
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -614,6 +598,7 @@ mod tests {
 
     fn cannot_read() -> ReadError {
         ReadError::CannotRead {
+            kind: std::io::ErrorKind::Other,
             reason: "Permission denied".to_string(),
         }
     }
@@ -632,6 +617,18 @@ mod tests {
             format_error(&cannot_read(), path, Language::German, false),
             "/etc/shadow nicht lesbar: Permission denied"
         );
+    }
+
+    #[test]
+    fn a_known_error_kind_is_told_in_the_language_not_in_the_system_text() {
+        let err = ReadError::CannotRead {
+            kind: std::io::ErrorKind::PermissionDenied,
+            reason: "Permission denied (os error 13)".to_string(),
+        };
+        let shown = format_error(&err, Path::new("/x"), Language::German, false);
+
+        assert!(shown.contains(Language::German.text(Msg::IoReasonPermissionDenied)));
+        assert!(!shown.contains("os error"));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, KindCatalog, SenderAliases};
+use unicode_normalization::{is_nfc, UnicodeNormalization as _};
 
 use crate::date_detection::detect_letter_date;
 use crate::recipient_detection::{detect_recipient, kind_from_heading};
@@ -50,12 +51,21 @@ impl DetectedFields {
 
 /// Detects only the fields that are empty in `current`.
 pub fn detect_fields(
-    text: &str,
+    raw_text: &str,
     current: &DocumentFields,
     aliases: &SenderAliases,
     own: &OwnNames<'_>,
     kinds: &KindCatalog,
 ) -> DetectedFields {
+    // Text layers of some generators and macOS scans hold "a" and a combining
+    // diaeresis apart, which no word pattern matches.
+    let composed;
+    let text = if is_nfc(raw_text) {
+        raw_text
+    } else {
+        composed = raw_text.nfc().collect::<String>();
+        &composed
+    };
     let recipient = current
         .recipient
         .is_none()
@@ -92,12 +102,6 @@ pub fn detect_fields(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -119,6 +123,19 @@ mod tests {
             &own(),
             &KindCatalog::built_in(),
         )
+    }
+
+    #[test]
+    fn a_month_written_with_a_decomposed_umlaut_is_read() {
+        let text = LETTER.replace("28.01.2019", "28. Ma\u{308}rz 2019");
+        let found = detect_fields(
+            &text,
+            &DocumentFields::default(),
+            &SenderAliases::default(),
+            &own(),
+            &KindCatalog::built_in(),
+        );
+        assert_eq!(found.date, NaiveDate::from_ymd_opt(2019, 3, 28));
     }
 
     #[test]

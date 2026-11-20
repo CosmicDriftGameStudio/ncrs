@@ -4,6 +4,7 @@
 //! The password is a [`Secret`]: this type prints without it, so no `{:?}` of
 //! the dialog or of a message that carries it can leak it.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,7 @@ use crate::message::ConnectField;
 pub struct Then {
     pub side: PanelSide,
     pub path: PathBuf,
-    pub select: Option<String>,
+    pub select: Option<OsString>,
     /// The load the panel started for it, so a dialog that outlives it does not
     /// leave the panel waiting.
     pub request_id: u64,
@@ -40,6 +41,8 @@ pub enum Stage {
         /// not show.
         host: String,
         port: u16,
+        /// A known_hosts file lists a certificate authority for the host.
+        cert_authority_listed: bool,
     },
     /// The server asks for a key file that is locked. The user types its
     /// passphrase.
@@ -88,6 +91,9 @@ pub struct ConnectDialog {
     /// The App Store build: no ssh agent, so the key file has to be chosen.
     sandboxed: bool,
     home: Option<PathBuf>,
+    connecting: Option<iced::task::Handle>,
+    /// The text of `~/.ssh/config`, read once when the dialog opened.
+    ssh_config: Option<String>,
 }
 
 impl fmt::Debug for ConnectDialog {
@@ -121,7 +127,7 @@ impl ConnectDialog {
             save: false,
             key_file: String::new(),
             passphrase: Secret::default(),
-            remember_passphrase: true,
+            remember_passphrase: false,
             start_path: String::new(),
             stage: Stage::Editing,
             error: None,
@@ -130,6 +136,8 @@ impl ConnectDialog {
             login_user_known: false,
             sandboxed: false,
             home: None,
+            connecting: None,
+            ssh_config: None,
         }
     }
 
@@ -163,6 +171,12 @@ impl ConnectDialog {
     }
 
     /// A new attempt id, so an answer to an earlier one is dropped.
+    /// Holds the running connection: dropping the dialog (Cancel) stops it, so
+    /// a password that was typed is not sent after the user backed out.
+    pub fn hold_connecting(&mut self, handle: iced::task::Handle) {
+        self.connecting = Some(handle);
+    }
+
     pub fn next_attempt(&mut self, id: u64) {
         self.attempt = id;
     }
@@ -190,6 +204,14 @@ impl ConnectDialog {
     pub fn set_ssh(&mut self, hint: SshHint, login_user_known: bool) {
         self.ssh_hint = hint;
         self.login_user_known = login_user_known;
+    }
+
+    pub fn set_ssh_config(&mut self, text: Option<String>) {
+        self.ssh_config = text;
+    }
+
+    pub fn ssh_config(&self) -> Option<&str> {
+        self.ssh_config.as_deref()
     }
 
     pub const fn ssh_hint(&self) -> &SshHint {
@@ -338,6 +360,12 @@ impl ConnectDialog {
         }
     }
 
+    /// Ticks "remember": a password that was dropped after a refusal is kept
+    /// again when the user types the right one.
+    pub fn remember_again(&mut self) {
+        self.remember = true;
+    }
+
     pub fn toggle_remember(&mut self) {
         if !self.is_locked() {
             self.remember = !self.remember;
@@ -384,12 +412,6 @@ impl ConnectDialog {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 

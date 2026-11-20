@@ -1,7 +1,7 @@
 //! Sentences written by hand, the way people talk: not made from the matrix
 //! and not in the prompt. Each has the rule that the model should write.
 
-#![allow(clippy::panic, clippy::unreachable)]
+#![allow(clippy::unreachable, reason = "a failing case is the signal in a test")]
 
 use ncrs_intake::FILING_PLACEHOLDERS;
 
@@ -45,7 +45,6 @@ pub fn holdout_cases() -> Vec<Case> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
 
     use ncrs_intake::rule_problem;
 

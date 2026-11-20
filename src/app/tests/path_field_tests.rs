@@ -3,11 +3,13 @@ use crate::app::*;
 /// Edits the field: its first keystroke, with the panel's path as it was.
 fn open(app: &mut App) {
     let shown = app.active_panel().path.display().to_string();
-    drop(app.update(Message::PathFieldInput(shown)));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(shown))));
 }
 
 fn type_path(app: &mut App, typed: &str) {
-    drop(app.update(Message::PathFieldInput(typed.to_string())));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(
+        typed.to_string(),
+    ))));
 }
 
 #[test]
@@ -22,24 +24,26 @@ fn typing_replaces_what_the_field_shows_and_a_cancel_restores_the_panels_path() 
         app.panels.path_field.as_deref(),
         Some("/home/test/links/Docu")
     );
-    drop(app.update(Message::PathFieldCancel));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldCancel)));
     assert_eq!(app.panels.path_field, None);
 }
 
 fn submit(app: &mut App, typed: &str) -> u64 {
     open(app);
     type_path(app, typed);
-    drop(app.update(Message::PathFieldSubmit));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldSubmit)));
     app.panels.path_check_id
 }
 
 fn checked(app: &mut App, request_id: u64, result: Result<fs::Destination, fs::PathProblem>) {
-    drop(app.update(Message::PathChecked {
-        request_id,
-        side: PanelSide::Left,
-        target: PathBuf::from("/typed/path"),
-        result,
-    }));
+    drop(app.update(Message::Panel(PanelMessage::PathChecked(
+        ncrs_files::path_field::PathChecked {
+            request_id,
+            side: PanelSide::Left,
+            target: PathBuf::from("/typed/path"),
+            result,
+        },
+    ))));
 }
 
 #[test]
@@ -115,7 +119,7 @@ fn an_answer_to_text_that_has_changed_or_closed_is_dropped() {
     assert_eq!(app.active_panel().request_id, before);
 
     let second_id = submit(&mut app, "/typed/path");
-    drop(app.update(Message::PathFieldCancel));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldCancel)));
     checked(&mut app, second_id, destination());
     assert_eq!(
         app.active_panel().request_id,
@@ -127,7 +131,7 @@ fn an_answer_to_text_that_has_changed_or_closed_is_dropped() {
 #[test]
 fn escape_click_outside_and_other_actions_end_the_editing() {
     for leave in [
-        Message::PathFieldCancel,
+        Message::Panel(PanelMessage::PathFieldCancel),
         Message::ClickedOutside,
         Message::Panel(PanelMessage::SwitchPanel),
         Message::Panel(PanelMessage::RowClicked {

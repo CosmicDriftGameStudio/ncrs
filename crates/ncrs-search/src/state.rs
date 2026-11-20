@@ -1,6 +1,8 @@
 //! The search as the app holds it: the view, whether it is up, and the run
 //! that fills it, with the tasks that start and stop that run.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use iced::widget::operation;
@@ -10,17 +12,13 @@ use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT};
 
 use crate::ctx::Ctx;
-use crate::engine::{self, CompiledSearch, SearchError, SearchEvent};
+use crate::engine::{self, search_events, SearchError, SearchEvent};
 use crate::message::SearchMessage;
 use crate::view::{field_id, NAMES_ID};
-use crate::view_state::SearchView;
+use crate::view_state::{SearchView, INDEX_HIT_LIMIT};
 
 /// How long the search view waits for the next keystroke before it searches.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(250);
-
-/// The most events one message carries, so a search that finds thousands of
-/// files does not make thousands of updates.
-const SEARCH_BATCH: usize = 256;
 
 #[derive(Debug)]
 pub struct Search {
@@ -38,28 +36,9 @@ pub struct Search {
     /// Stops the running search when dropped, which also drops the receiver
     /// of a search it abandoned.
     pub handle: Option<iced::task::Handle>,
-}
-
-/// The messages of one search, in batches. Ends when the engine is done or the
-/// task is aborted.
-///
-/// The engine is started inside the stream: it spawns onto the blocking pool,
-/// which needs the runtime a task runs in, and `update` does not run in one.
-pub fn search_events<T: Send + 'static>(
-    compiled: CompiledSearch,
-    generation: u64,
-    to_message: fn(u64, Vec<SearchEvent>) -> T,
-) -> impl iced::futures::Stream<Item = T> + Send + 'static {
-    use iced::futures::StreamExt as _;
-    iced::futures::stream::once(async move { engine::spawn(compiled) })
-        .map(move |receiver| {
-            iced::futures::stream::unfold(receiver, move |mut open| async move {
-                let mut events = Vec::new();
-                let received = open.recv_many(&mut events, SEARCH_BATCH).await;
-                (received > 0).then(|| (to_message(generation, events), open))
-            })
-        })
-        .flatten()
+    /// The question asked of the index last, shared with the blocking
+    /// threads that answer it.
+    pub index_asked: Arc<AtomicU64>,
 }
 
 fn events_message(generation: u64, events: Vec<SearchEvent>) -> SearchMessage {
@@ -75,6 +54,7 @@ impl Search {
             rows: layout::search_visible_rows(window, 0.0, false, false, HIT_LIST_ROW_HEIGHT),
             generation: 0,
             handle: None,
+            index_asked: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -181,7 +161,10 @@ impl Search {
         if view.is_filtered() {
             // The index answers; the walk would find other things.
             self.handle = None;
-            view.running = true;
+            view.running = view
+                .filters
+                .as_ref()
+                .is_some_and(crate::filters::SearchFilters::is_busy);
             return asked;
         }
         let walk = match engine::compile(&view.query_for_engine()) {
@@ -221,13 +204,38 @@ impl Search {
         let Some(filters) = view.filters.as_mut() else {
             return Task::none();
         };
+        if filters.has_answer_for(&words, &root) {
+            // Only the name filter or the folder filter moved: the answer
+            // stands, the list is rebuilt from it.
+            let rows = self.rows;
+            if let Some(shown) = self.view.as_mut().filter(|shown| shown.is_filtered()) {
+                shown.mirror_index(rows);
+            }
+            self.refresh_rows(ctx);
+            return self.request_snippets(ctx);
+        }
         let (generation, spec) = filters.ask(&words);
+        filters.asking_under(&root);
         let Some(access) = ctx.index.clone() else {
             filters.failed(ncrs_core::INDEX_NOT_OPEN.to_owned());
             return Task::none();
         };
+        self.index_asked.store(generation, Ordering::Relaxed);
+        let latest = Arc::clone(&self.index_asked);
         Task::perform(
-            tokio::task::spawn_blocking(move || access.run_under(&spec, &root)),
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    // Typing on queues one question per pause behind the lock
+                    // of the index; one that is no longer the latest is
+                    // skipped, its answer would be dropped anyway.
+                    if latest.load(Ordering::Relaxed) == generation {
+                        access.run_under(&spec, &root, INDEX_HIT_LIMIT)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                })
+                .await
+            },
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 SearchMessage::IndexRan { generation, result }

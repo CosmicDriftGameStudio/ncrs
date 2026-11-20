@@ -122,15 +122,22 @@ pub fn is_excluded_sql(path_column: &str) -> String {
     )
 }
 
-const IS_DIRECT: &str = "instr(substr(path, ?3 + 1), char(?4)) = 0";
+fn is_direct_sql(column: &str) -> String {
+    format!("instr(substr({column}, ?3 + 1), char(?4)) = 0")
+}
 
 impl Index {
+    /// Hermes no longer looks at this path, and what the index holds of the
+    /// files there goes with it.
     pub fn exclude_path(&self, path: &Path) -> Result<(), IndexError> {
         let key = stored(path);
-        self.connection().execute(
+        let transaction = self.connection().unchecked_transaction()?;
+        transaction.execute(
             "INSERT OR IGNORE INTO excluded_path (path) VALUES (?1)",
             [utf8(&key)?],
         )?;
+        self.forget_documents_at(&key)?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -195,7 +202,7 @@ impl Index {
              WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2
                AND {}
              ORDER BY d.path",
-            IS_DIRECT.replace("path", "d.path")
+            is_direct_sql("d.path")
         ))?;
         let rows = statement
             .query_map(
@@ -262,7 +269,7 @@ impl Index {
              WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2
                AND {}
              ORDER BY d.path, t.name",
-            IS_DIRECT.replace("path", "d.path")
+            is_direct_sql("d.path")
         ))?;
         let rows = statement
             .query_map(
@@ -329,8 +336,9 @@ impl Index {
     ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut direct = self.connection().prepare(&format!(
             "{EXCLUDED_FOLDERS_CTE} SELECT {} FROM document
-             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2 AND {IS_DIRECT}",
-            count_columns()
+             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2 AND {}",
+            count_columns(),
+            is_direct_sql("path")
         ))?;
         directories
             .iter()
@@ -375,12 +383,6 @@ fn excluded_ancestor(connection: &Connection, path: &Path) -> Result<Option<Path
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     fn p(path: &str) -> PathBuf {
         PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))

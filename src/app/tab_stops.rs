@@ -4,17 +4,6 @@
 use crate::app::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::app) enum TabStop {
-    Panels,
-    Settings,
-    Monitor,
-    Viewer,
-    Notes,
-    Filing,
-    Hermes,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabDirection {
     Forward,
     Backward,
@@ -31,24 +20,51 @@ pub(in crate::app) struct OpenPages {
     pub hermes: bool,
 }
 
-/// The stop after `current` among the open ones; the panels are always open.
+impl OpenPages {
+    fn is_open(self, tab: ShownTab) -> bool {
+        match tab {
+            ShownTab::Panels => true,
+            ShownTab::Settings => self.settings,
+            ShownTab::Monitor => self.monitor,
+            ShownTab::Viewer => self.viewer,
+            ShownTab::Notes => self.notes,
+            ShownTab::Filing => self.filing,
+            ShownTab::Hermes => self.hermes,
+        }
+    }
+}
+
+/// The order Ctrl+Tab walks the tabs in.
+const TAB_ORDER: [ShownTab; 7] = [
+    ShownTab::Panels,
+    ShownTab::Settings,
+    ShownTab::Monitor,
+    ShownTab::Viewer,
+    ShownTab::Notes,
+    ShownTab::Filing,
+    ShownTab::Hermes,
+];
+
+/// When several pages open at once, the last of these is the one shown.
+const SHOWN_WHEN_OPENED: [ShownTab; 6] = [
+    ShownTab::Viewer,
+    ShownTab::Notes,
+    ShownTab::Filing,
+    ShownTab::Hermes,
+    ShownTab::Monitor,
+    ShownTab::Settings,
+];
+
+/// The tab after `current` among the open ones; the panels are always open.
 pub(in crate::app) fn next_stop(
     pages: OpenPages,
-    current: TabStop,
+    current: ShownTab,
     direction: TabDirection,
-) -> TabStop {
-    let open: Vec<TabStop> = [
-        (true, TabStop::Panels),
-        (pages.settings, TabStop::Settings),
-        (pages.monitor, TabStop::Monitor),
-        (pages.viewer, TabStop::Viewer),
-        (pages.notes, TabStop::Notes),
-        (pages.filing, TabStop::Filing),
-        (pages.hermes, TabStop::Hermes),
-    ]
-    .into_iter()
-    .filter_map(|(is_open, stop)| is_open.then_some(stop))
-    .collect();
+) -> ShownTab {
+    let open: Vec<ShownTab> = TAB_ORDER
+        .into_iter()
+        .filter(|tab| pages.is_open(*tab))
+        .collect();
     let at = open.iter().position(|stop| *stop == current).unwrap_or(0);
     let next = match direction {
         TabDirection::Forward => (at + 1) % open.len(),
@@ -58,50 +74,16 @@ pub(in crate::app) fn next_stop(
 }
 
 impl App {
-    fn current_stop(&self) -> TabStop {
-        match self.shown_tab {
-            ShownTab::Monitor => TabStop::Monitor,
-            ShownTab::Viewer => TabStop::Viewer,
-            ShownTab::Notes => TabStop::Notes,
-            ShownTab::Filing => TabStop::Filing,
-            ShownTab::Hermes => TabStop::Hermes,
-            ShownTab::Settings => TabStop::Settings,
-            ShownTab::Panels => TabStop::Panels,
-        }
-    }
-
     /// A page that opened is the one shown; the shown one that closed gives
     /// way to the panels. `was_open` is the pages before the update.
     pub(in crate::app) fn follow_opened_pages(&mut self, was_open: OpenPages) {
         let now = self.open_pages();
-        if now.viewer && !was_open.viewer {
-            self.shown_tab = ShownTab::Viewer;
+        for tab in SHOWN_WHEN_OPENED {
+            if now.is_open(tab) && !was_open.is_open(tab) {
+                self.shown_tab = tab;
+            }
         }
-        if now.notes && !was_open.notes {
-            self.shown_tab = ShownTab::Notes;
-        }
-        if now.filing && !was_open.filing {
-            self.shown_tab = ShownTab::Filing;
-        }
-        if now.hermes && !was_open.hermes {
-            self.shown_tab = ShownTab::Hermes;
-        }
-        if now.monitor && !was_open.monitor {
-            self.shown_tab = ShownTab::Monitor;
-        }
-        if now.settings && !was_open.settings {
-            self.shown_tab = ShownTab::Settings;
-        }
-        let shown_is_closed = match self.shown_tab {
-            ShownTab::Settings => !now.settings,
-            ShownTab::Monitor => !now.monitor,
-            ShownTab::Viewer => !now.viewer,
-            ShownTab::Notes => !now.notes,
-            ShownTab::Filing => !now.filing,
-            ShownTab::Hermes => !now.hermes,
-            ShownTab::Panels => false,
-        };
-        if shown_is_closed {
+        if !now.is_open(self.shown_tab) {
             self.shown_tab = ShownTab::Panels;
         }
     }
@@ -135,19 +117,10 @@ impl App {
     }
 
     pub(in crate::app) fn switch_tab(&mut self, direction: TabDirection) -> Task<Message> {
-        let current = self.current_stop();
-        let target = next_stop(self.open_pages(), current, direction);
-        match target {
-            TabStop::Panels => self.shown_tab = ShownTab::Panels,
-            TabStop::Settings => self.shown_tab = ShownTab::Settings,
-            TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
-            TabStop::Viewer => self.shown_tab = ShownTab::Viewer,
-            TabStop::Notes => self.shown_tab = ShownTab::Notes,
-            TabStop::Filing => self.shown_tab = ShownTab::Filing,
-            TabStop::Hermes => {
-                self.shown_tab = ShownTab::Hermes;
-                return ncrs_hermes_chat::focus_input();
-            }
+        let target = next_stop(self.open_pages(), self.shown_tab, direction);
+        self.shown_tab = target;
+        if target == ShownTab::Hermes {
+            return ncrs_hermes_chat::focus_input();
         }
         Task::none()
     }
@@ -156,8 +129,8 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ShownTab::{Hermes, Monitor, Notes, Panels, Settings, Viewer};
     use TabDirection::{Backward, Forward};
-    use TabStop::{Hermes, Monitor, Notes, Panels, Settings, Viewer};
 
     const ALL: OpenPages = OpenPages {
         settings: true,

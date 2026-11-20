@@ -2,23 +2,19 @@
 //!
 //! The JSON file is the source of truth: it holds the value, the stable key and
 //! the translator context together, so they cannot drift apart. Run
-//! `cargo build` after editing it; `cargo test -p ncrs-i18n dump -- --nocapture` prints the
+//! `cargo build` after editing it; `cargo test -p ncrs-i18n dump -- --ignored --nocapture` prints the
 //! same data for translators.
 
 // A build script must stop on bad input. A strings.json with a missing
 // translator context would otherwise produce modules whose translations are
 // wrong, and the failure would only show up in the running app. So the
-// restriction lints about panicking are off here by design, and on nowhere else.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::str_to_string,
     clippy::doc_markdown,
-    clippy::min_ident_chars,
-    clippy::single_char_lifetime_names,
-    clippy::std_instead_of_core
+    reason = "a build script must stop on bad input: a wrong translation table would only show in the running app"
 )]
 
 use std::collections::BTreeMap;
@@ -36,8 +32,7 @@ struct Entry {
     de: String,
 }
 
-/// Minimal reader for the fixed shape of `strings.json`. Written by hand so the
-/// build does not depend on `serde` before the config work lands (T10).
+/// Minimal reader for the fixed shape of `strings.json`, one key per line.
 fn parse(json: &str) -> Vec<Entry> {
     let mut entries = Vec::new();
     let mut current: BTreeMap<&str, String> = BTreeMap::new();
@@ -275,7 +270,9 @@ fn generate_enum(entries: &[Entry]) -> String {
     }
     out.push_str("}\n\n");
     out.push_str("/// Every string, for the tests and the translation dump.\n");
-    out.push_str("#[allow(dead_code)]\n");
+    out.push_str(
+        "#[allow(dead_code, reason = \"read by the tests and the translation dump only\")]\n",
+    );
     out.push_str("pub const ALL: &[Msg] = &[\n");
     for entry in entries {
         out.push_str(&format!("    Msg::{},\n", variant_name(&entry.key)));
@@ -336,7 +333,9 @@ fn generate_futurama(entries: &[Entry]) -> String {
     }
     out.push_str("}\n\n");
     out.push_str("/// Every Futurama name, for the tests and the translation dump.\n");
-    out.push_str("#[allow(dead_code)]\n");
+    out.push_str(
+        "#[allow(dead_code, reason = \"read by the tests and the translation dump only\")]\n",
+    );
     out.push_str("pub const ALL_FUTURAMA_NAMES: &[FuturamaName] = &[\n");
     for entry in entries {
         out.push_str(&format!("    FuturamaName::{},\n", futurama_variant(entry)));

@@ -1,3 +1,4 @@
+use super::trial::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 

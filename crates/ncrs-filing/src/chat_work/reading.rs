@@ -172,7 +172,10 @@ fn walk(
 }
 
 fn modified_date(mtime: SystemTime) -> Option<chrono::NaiveDate> {
-    ncrs_ui_kit::format::local_time(mtime).map(|time| time.date_naive())
+    let since_epoch = mtime.duration_since(SystemTime::UNIX_EPOCH).ok()?;
+    let seconds = i64::try_from(since_epoch.as_secs()).ok()?;
+    let utc = chrono::DateTime::from_timestamp(seconds, 0)?;
+    Some(utc.with_timezone(&chrono::Local).date_naive())
 }
 
 fn date_in_file_name(relative: &Path) -> Option<chrono::NaiveDate> {

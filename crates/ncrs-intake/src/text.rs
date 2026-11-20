@@ -5,6 +5,8 @@
 //! Text found here is data. Nothing in it triggers anything; it is only stored.
 
 use std::fmt;
+use std::fs::File;
+use std::io::{Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use crate::reading_marker::ReadingMarker;
@@ -96,6 +98,14 @@ impl std::error::Error for TextError {}
 
 pub trait TextSource: Send + Sync + fmt::Debug {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError>;
+
+    /// Like [`Self::extract`] for a file the caller already opened, so the
+    /// text comes from the file that was hashed and not from whatever the path
+    /// names by now. The handle is at the start; a source reads from it only.
+    /// The default opens the path again; every shipped source overrides it.
+    fn extract_open(&self, path: &Path, _file: &File) -> Result<Extracted, TextError> {
+        self.extract(path)
+    }
 }
 
 /// Recognises text in page images, for example with OCR. `Ok(None)` when it
@@ -216,8 +226,17 @@ impl TextChain {
     /// really read by text recognition, or never reached an engine that could
     /// read it (no image source, models not downloaded, picture not decodable).
     pub fn read(&self, path: &Path) -> Result<ChainReading, TextError> {
+        self.read_guarded(path, None)
+    }
+
+    /// [`Self::read`] from a file the caller opened; no source opens `path`.
+    pub fn read_open(&self, path: &Path, file: &File) -> Result<ChainReading, TextError> {
+        self.read_guarded(path, Some(file))
+    }
+
+    fn read_guarded(&self, path: &Path, file: Option<&File>) -> Result<ChainReading, TextError> {
         let Some(marker) = &self.marker else {
-            return self.read_sources(path);
+            return self.read_sources(path, file);
         };
         if marker.is_quarantined(path) {
             return Err(TextError::Quarantined {
@@ -225,15 +244,27 @@ impl TextChain {
             });
         }
         marker.begin(path);
-        let reading = self.read_sources(path);
+        let reading = self.read_sources(path, file);
         marker.end(path);
         reading
     }
 
-    fn read_sources(&self, path: &Path) -> Result<ChainReading, TextError> {
+    fn read_sources(&self, path: &Path, file: Option<&File>) -> Result<ChainReading, TextError> {
         let mut images = Vec::new();
         for source in &self.sources {
-            match source.extract(path)? {
+            let extracted = match file {
+                Some(open_file) => {
+                    (&*open_file)
+                        .seek(SeekFrom::Start(0))
+                        .map_err(|err| TextError::Io {
+                            path: path.to_path_buf(),
+                            reason: err.to_string(),
+                        })?;
+                    source.extract_open(path, open_file)?
+                }
+                None => source.extract(path)?,
+            };
+            match extracted {
                 Extracted::Text(text) if !text.trim().is_empty() => {
                     return Ok(ChainReading::Text(text))
                 }
@@ -273,12 +304,6 @@ impl TextChain {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use tempfile::TempDir;
 
@@ -467,5 +492,30 @@ mod tests {
     #[test]
     fn an_empty_chain_yields_no_text() {
         assert_eq!(TextChain::new().extract(Path::new("x")), Ok(None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_opened_first_is_read_even_when_the_path_is_swapped() {
+        use crate::office::PlainText;
+
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, "note.txt", b"the hashed file");
+        let outside = write(&dir, "other.dat", b"something else");
+        let opened = std::fs::File::open(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&outside, &path).unwrap();
+
+        let chain = TextChain::new().with_source(PlainText);
+
+        assert_eq!(
+            chain.read_open(&path, &opened),
+            Ok(ChainReading::Text("the hashed file".to_owned()))
+        );
+        assert_eq!(
+            chain.read(&path),
+            Ok(ChainReading::Text("something else".to_owned())),
+            "the path now leads elsewhere"
+        );
     }
 }

@@ -103,8 +103,8 @@ jobs:
     # the binary. `notarytool` and `stapler` ship only with the macOS runner, so
     # the job that publishes and the job that signs have to be the same one —
     # notarizing an archive on Linux and publishing it from another machine
-    # works, but the ticket has to be stapled to the binary before the tarball
-    # is built, and that needs the macOS tooling.
+    # would work too, but stapling the apps and validating the result need the
+    # macOS tooling. A bare Mach-O binary cannot carry a ticket.
     runs-on: macos-latest
     steps:
       # Only for the app bundle: its Info.plist template, the icon, the
@@ -756,6 +756,9 @@ jobs:
           # Apple's root.
           curl --fail --silent --show-error --location -o "$work/AppleWWDRCAG3.cer" \
             https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          echo "dcf21878c77f4198e4b4614f03d696d89c66c66008d4244e1b99161aac91601f  $work/AppleWWDRCAG3.cer" \
+            | shasum -a 256 --check --status \
+            || { echo "::error::AppleWWDRCAG3.cer does not match the pinned checksum"; exit 1; }
           security import "$work/AppleWWDRCAG3.cer" -k "$KEYCHAIN"
 
           security set-key-partition-list -S apple-tool:,apple:,codesign: \

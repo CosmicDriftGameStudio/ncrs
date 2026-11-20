@@ -24,6 +24,8 @@ pub struct Ctx {
 pub struct FlowCtx<'a> {
     pub lang: Language,
     pub trash: &'a Arc<dyn Trash>,
+    /// Rows of the trash view that fit the window.
+    pub trash_rows: usize,
     /// A job runs.
     pub jobs_busy: bool,
     /// A job runs, or a prompt or a conflict question holds the keyboard.
@@ -40,6 +42,9 @@ pub struct FlowCtx<'a> {
     /// The root address of the server each panel shows a folder of.
     pub left_server: Option<PathBuf>,
     pub right_server: Option<PathBuf>,
+    /// The folder each panel shows.
+    pub left_folder: PathBuf,
+    pub right_folder: PathBuf,
     /// The connections to the servers.
     pub remote: &'a Arc<Pool>,
     /// The key that deletes for good, spelled for this platform.
@@ -69,6 +74,13 @@ impl FlowCtx<'_> {
             || self.right_archive == Some(place)
             || self.left_server.as_deref() == Some(place)
             || self.right_server.as_deref() == Some(place)
+    }
+
+    pub fn folder_of(&self, side: PanelSide) -> &Path {
+        match side {
+            PanelSide::Left => &self.left_folder,
+            PanelSide::Right => &self.right_folder,
+        }
     }
 
     pub fn archive_of(&self, side: PanelSide) -> Option<&Path> {

@@ -1,12 +1,12 @@
 //! An SSH and SFTP server for the tests, served from a temporary folder and
 //! reached through an in-memory pipe: no socket, no network, no user files.
 
-// A failing assertion is the signal in a test, and this file is test code only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 
 use std::collections::HashMap;
@@ -741,6 +741,7 @@ impl Fixture {
         let known = KnownHostsFiles {
             ssh: Some(scratch.path().join("ssh_known_hosts")),
             own: Some(scratch.path().join("known_hosts")),
+            global: None,
         };
         let pool = server.pool_with(known.clone(), limits);
         Self {

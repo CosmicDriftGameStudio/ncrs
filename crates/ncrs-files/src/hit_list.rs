@@ -60,7 +60,7 @@ pub fn read_hit_files(
             tokio::task::spawn_blocking(move || {
                 paths
                     .iter()
-                    .filter_map(|path| FileEntry::from_path(path))
+                    .filter_map(|path| ncrs_fs::entry_from_path(path))
                     .collect::<Vec<_>>()
             })
             .await

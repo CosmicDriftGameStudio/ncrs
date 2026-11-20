@@ -18,6 +18,9 @@ use crate::row_failure::RowFailure;
 use crate::state::Ops;
 use crate::transfer_flow::refusal_text;
 
+/// What APFS, ext4 and NTFS take for one name, in bytes and UTF-16 units.
+const MAX_NAME_LENGTH: usize = 255;
+
 /// Why a typed name cannot be used, before the file system is asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameProblem {
@@ -30,6 +33,10 @@ pub enum NameProblem {
     Control,
     /// Windows cuts a trailing dot or space off the name.
     TrailingDotOrSpace,
+    /// Longer than the file system takes: 255 bytes, on Windows 255 UTF-16 units.
+    TooLong,
+    /// A name Windows opens as a device, such as `CON` or `NUL`.
+    Device,
 }
 
 impl NameProblem {
@@ -40,6 +47,8 @@ impl NameProblem {
             NameProblem::Separator => lang.text(Msg::ErrorRenameSeparator).to_owned(),
             NameProblem::Control => lang.text(Msg::ErrorRenameControl).to_owned(),
             NameProblem::TrailingDotOrSpace => lang.text(Msg::ErrorRenameTrailing).to_owned(),
+            NameProblem::TooLong => lang.text(Msg::ErrorRenameTooLong).to_owned(),
+            NameProblem::Device => lang.text(Msg::ErrorRenameDevice).to_owned(),
             NameProblem::Character(character) => fill_template(
                 lang.text(Msg::ErrorRenameCharacter),
                 &[("{character}", &character.to_string())],
@@ -50,7 +59,9 @@ impl NameProblem {
 
 /// Checks `name` as one entry name. `windows` selects that system's rules:
 /// there the backslash separates, `<>:"|?*` and control characters are
-/// refused; elsewhere only the slash and NUL are.
+/// refused; elsewhere only the slash is. Everywhere control and direction
+/// characters are refused, as the file layer does. A name longer than
+/// the file system takes is refused.
 pub fn validate_name(name: &str, windows: bool) -> Result<(), NameProblem> {
     if name.is_empty() {
         return Err(NameProblem::Empty);
@@ -58,11 +69,19 @@ pub fn validate_name(name: &str, windows: bool) -> Result<(), NameProblem> {
     if name == "." || name == ".." {
         return Err(NameProblem::Dots);
     }
+    let length = if windows {
+        name.encode_utf16().count()
+    } else {
+        name.len()
+    };
+    if length > MAX_NAME_LENGTH {
+        return Err(NameProblem::TooLong);
+    }
     for character in name.chars() {
         if character == '/' || (windows && character == '\\') {
             return Err(NameProblem::Separator);
         }
-        if character == '\0' || (windows && character.is_control()) {
+        if ncrs_fs::remote::is_deceptive(character) {
             return Err(NameProblem::Control);
         }
         if windows && "<>:\"|?*".contains(character) {
@@ -71,6 +90,9 @@ pub fn validate_name(name: &str, windows: bool) -> Result<(), NameProblem> {
     }
     if windows && name.ends_with(['.', ' ']) {
         return Err(NameProblem::TrailingDotOrSpace);
+    }
+    if windows && ncrs_fs::archive::is_device_name(name) {
+        return Err(NameProblem::Device);
     }
     Ok(())
 }
@@ -133,6 +155,7 @@ pub fn rename_done(
         ])
     };
     match result {
+        Ok(_) if late => actions(vec![Action::ReloadPanels]),
         Ok(to) => actions(vec![Action::RenameEnded {
             side,
             from: from.to_path_buf(),
@@ -150,9 +173,12 @@ pub fn rename_done(
             ctx.lang.text(Msg::ErrorRemoteUnsafeName),
             &[("{name}", &name)],
         )),
-        Err(RowFailure::Other(reason)) => failed(fill_template(
+        Err(failure @ (RowFailure::Io { .. } | RowFailure::Other(_))) => failed(fill_template(
             ctx.lang.text(Msg::ErrorRenameFailed),
-            &[("{name}", &old_name), ("{reason}", &reason)],
+            &[
+                ("{name}", &old_name),
+                ("{reason}", &failure.reason_text(ctx.lang)),
+            ],
         )),
     }
 }
@@ -164,6 +190,36 @@ fn refused(from: PathBuf, text: String) -> Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_control_or_direction_character_is_refused_on_every_system() {
+        for windows in [false, true] {
+            assert_eq!(
+                validate_name("a\u{202e}b.txt", windows),
+                Err(NameProblem::Control)
+            );
+            assert_eq!(validate_name("a\nb", windows), Err(NameProblem::Control));
+        }
+    }
+
+    #[test]
+    fn a_name_beyond_the_limit_is_refused() {
+        assert_eq!(validate_name(&"a".repeat(255), false), Ok(()));
+        assert_eq!(
+            validate_name(&"a".repeat(256), false),
+            Err(NameProblem::TooLong)
+        );
+        // 128 two-byte letters are 256 bytes but only 128 UTF-16 units.
+        let umlauts = "ä".repeat(128);
+        assert_eq!(validate_name(&umlauts, false), Err(NameProblem::TooLong));
+        assert_eq!(validate_name(&umlauts, true), Ok(()));
+    }
+
+    #[test]
+    fn windows_refuses_device_names_only_there() {
+        assert_eq!(validate_name("CON.txt", true), Err(NameProblem::Device));
+        assert_eq!(validate_name("CON.txt", false), Ok(()));
+    }
 
     #[test]
     fn an_empty_name_and_the_two_dot_names_are_refused() {
@@ -183,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_refuses_its_reserved_characters_and_control_characters() {
+    fn windows_refuses_its_reserved_characters_and_every_system_control_characters() {
         for character in ['<', '>', ':', '"', '|', '?', '*'] {
             let name = format!("a{character}b");
             assert_eq!(
@@ -193,7 +249,11 @@ mod tests {
             assert_eq!(validate_name(&name, false), Ok(()));
         }
         assert_eq!(validate_name("a\u{7}b", true), Err(NameProblem::Control));
-        assert_eq!(validate_name("a\u{7}b", false), Ok(()));
+        assert_eq!(validate_name("a\u{7}b", false), Err(NameProblem::Control));
+        assert_eq!(
+            validate_name("a\u{202e}b", false),
+            Err(NameProblem::Control)
+        );
     }
 
     #[test]

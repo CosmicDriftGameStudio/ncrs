@@ -1,8 +1,6 @@
 //! The batch rename dialog with a clash in every row after the first.
 
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
 
 use iced::Size;
@@ -27,7 +25,7 @@ fn dialog_with_clashes() -> BatchRename {
         .map(|name| {
             let (stem, extension) = split_name(name, false);
             (
-                PathBuf::from("/Users/marc/Documents/Scans").join(name),
+                PathBuf::from("/Users/alex/Documents/Scans").join(name),
                 EntryFacts {
                     stem,
                     extension,
@@ -39,7 +37,7 @@ fn dialog_with_clashes() -> BatchRename {
     let mut dialog = BatchRename::new(Opening {
         id: 1,
         side: PanelSide::Left,
-        folder: PathBuf::from("/Users/marc/Documents/Scans"),
+        folder: PathBuf::from("/Users/alex/Documents/Scans"),
         entries,
         folder_names: names,
         rules: NameRules {
@@ -73,7 +71,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/batch-rename-clashes.png")
+            .matches_reference_image("tests/snapshots/batch-rename-clashes.png")
             .unwrap();
 
         assert!(matches, "the batch rename dialog differs from its image");

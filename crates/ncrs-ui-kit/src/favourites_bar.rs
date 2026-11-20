@@ -5,7 +5,7 @@
 //! The slots are clipped, not wrapped, when the window is narrow; the hint at
 //! the right end goes first.
 
-use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Row, Space};
+use iced::widget::{button, column, container, mouse_area, row, text, Row, Space};
 use iced::{alignment, Element, Length};
 
 use super::fkeys::{numbered_cap, CAP_GAP, HINT_GAP, ROW_PADDING_X};
@@ -50,10 +50,12 @@ pub fn view<'a, M: Clone + 'a>(
             .padding([0.0, spacing::XS])
             .style(theme::favourite_slot(palette, slot.is_current));
         let with_menu = mouse_area(pressable).on_right_press(slot.on_right_press);
-        let hover = container(text(slot.tooltip).size(font_size::SMALL))
-            .padding([spacing::XS, spacing::M])
-            .style(theme::menu(palette));
-        let slot_view: Element<'a, M> = tooltip(with_menu, hover, tooltip::Position::Bottom).into();
+        let slot_view: Element<'a, M> = crate::kit::tooltip(
+            with_menu,
+            slot.tooltip,
+            iced::widget::tooltip::Position::Bottom,
+            palette,
+        );
         slot_view
     });
     let mut line = Row::new()

@@ -3,13 +3,10 @@
 //! plain index, so the fields are the ones the app indexed.
 
 #![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
     clippy::print_stdout,
     clippy::too_many_lines,
-    clippy::use_debug
+    clippy::use_debug,
+    reason = "the test reports on stdout; one test walks one long scenario; Debug output in the test report"
 )]
 
 use std::collections::BTreeMap;

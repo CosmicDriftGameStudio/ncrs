@@ -1,14 +1,7 @@
 //! Snapshots of the own AI server: the KI page and the Usage page.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use iced_test::Simulator;
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
 use super::app_simulator as simulator;
 use crate::app::App;
@@ -20,7 +13,7 @@ fn matches_snapshot(app: &App, name: &str) {
     let matches = simulator(app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .expect("snapshot comparison");
     assert!(matches, "the tab does not match tests/snapshots/{name}.png");
 }
@@ -136,7 +129,9 @@ fn usage_page_app() -> App {
          endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\nconsented_origins = [\"https://api.example.com\"]\n\n\
          [theme]\npreset = \"cosmic\"\n",
     );
-    drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(summaries))));
+    drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(
+        summaries, None,
+    ))));
     app
 }
 
@@ -185,7 +180,7 @@ fn matches_snapshot_in_marcs_window(app: &mut App, name: &str) {
     )
     .snapshot(&iced::Theme::Dark)
     .unwrap()
-    .matches_image(format!("tests/snapshots/{name}.png"))
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
     .expect("snapshot comparison");
     assert!(matches, "the tab does not match tests/snapshots/{name}.png");
 }

@@ -23,6 +23,7 @@ use crate::restore_flow::resume_restore;
 use crate::row_failure::RowFailure;
 use crate::skipped_report::skipped_text;
 use crate::state::{Ops, PendingConflict, Transfer};
+use crate::transfer::view::BACKGROUND_FOCUS;
 use crate::transfer::Policy;
 
 /// `name` in `folder`. A folder on a server is joined as text, because
@@ -151,7 +152,10 @@ fn launch(ops: &mut Ops, transfer: Transfer, policy: Policy, ctx: &FlowCtx<'_>) 
     ops.bump_generation();
     ops.transfer_mask_visible = true;
     ops.transfer_rows_done = 0;
-    run_from(ops, transfer, 0, policy.on_conflict(), ctx)
+    with_front(
+        Action::FocusDialogButton(BACKGROUND_FOCUS),
+        run_from(ops, transfer, 0, policy.on_conflict(), ctx),
+    )
 }
 
 /// Runs the rows from `index`, on the blocking pool, reporting progress.
@@ -312,9 +316,10 @@ pub fn transfer_row_done(
             );
             with_front(Action::ShowError(text), end_transfer(ops, ctx.lang))
         }
-        Err(RowFailure::Other(reason)) => {
-            with_front(Action::ShowError(reason), end_transfer(ops, ctx.lang))
-        }
+        Err(failure @ (RowFailure::Io { .. } | RowFailure::Other(_))) => with_front(
+            Action::ShowError(failure.reason_text(ctx.lang)),
+            end_transfer(ops, ctx.lang),
+        ),
     };
     let mut asked = finished;
     asked.extend(rest);
@@ -364,7 +369,10 @@ pub fn answer_conflict(ops: &mut Ops, clicked: ConflictChoice, ctx: &FlowCtx<'_>
     // thing the dialog must not do.
     let PendingConflict { transfer, index } = pending;
     ops.transfer = Some(transfer.clone());
-    run_from(ops, transfer, index, choice.conflict(), ctx)
+    with_front(
+        Action::FocusDialogButton(BACKGROUND_FOCUS),
+        run_from(ops, transfer, index, choice.conflict(), ctx),
+    )
 }
 
 /// Ends the transfer, finished or not: forgets it and its "for all" rule, and
@@ -385,7 +393,6 @@ pub fn end_transfer(ops: &mut Ops, lang: Language) -> Outcome {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use ncrs_core::PanelSide;
@@ -399,6 +406,7 @@ mod tests {
         step(&FlowCtx {
             lang: Language::default(),
             trash: &trash,
+            trash_rows: 10,
             jobs_busy,
             start_blocked: false,
             transfer_dialog_open: false,
@@ -409,6 +417,8 @@ mod tests {
             right_archive: None,
             left_server: None,
             right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
             remote: &remote,
             permanent_delete_key: None,
             restore_last_key: None,

@@ -1,55 +1,6 @@
 use crate::app::*;
 
-fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
-    let walk_events = events
-        .into_iter()
-        .filter_map(|event| match event {
-            fs::search::SearchEvent::File { path, .. } => Some(WalkEvent::File { path }),
-            fs::search::SearchEvent::Folder { .. } | fs::search::SearchEvent::Progress { .. } => {
-                None
-            }
-            fs::search::SearchEvent::Finished(totals) => Some(WalkEvent::Finished {
-                truncated: totals.truncated,
-            }),
-        })
-        .collect();
-    Message::QuickOpen(QuickOpenMessage::Events {
-        generation,
-        events: walk_events,
-    })
-}
-
 impl App {
-    /// Cmd/Ctrl+P: lists the files below the active panel's directory. Pressed
-    /// while the box is up, it only gives the field the focus again.
-    fn open_quick_open(&mut self) -> Task<Message> {
-        let focus = operation::focus(quick_open_ui::QUICK_OPEN_ID);
-        if self.quick_open.is_some() {
-            return focus;
-        }
-        if self.blocking_overlay_is_open() || self.page_dialog_is_open() {
-            return Task::none();
-        }
-        self.panels.context_menu = None;
-        let root = self.active_panel().path.clone();
-        self.quick_open_walk_generation = self.quick_open_walk_generation.wrapping_add(1);
-        let generation = self.quick_open_walk_generation;
-        let walk = fs::search::all_files(
-            root.clone(),
-            stays_on_file_system(&root),
-            QUICK_OPEN_FILE_LIMIT,
-        );
-        let (task, handle) = Task::run(
-            search_events(walk, generation, quick_open_batch),
-            std::convert::identity,
-        )
-        .abortable();
-        self.quick_open_walk = Some(handle.abort_on_drop());
-        let documents_enabled = self.document_finder().is_some();
-        self.quick_open = Some(QuickOpen::new(root, generation).with_documents(documents_enabled));
-        Task::batch([focus, task])
-    }
-
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
     fn open_command_palette(&mut self) -> Task<Message> {
         self.update_command_palette(CommandPaletteMessage::Toggle)
@@ -82,7 +33,7 @@ impl App {
         ncrs_config::commands::all()
             .map(|command| command.action)
             .filter(|action| {
-                archive_refusal(panel, &action.message()).is_some()
+                refusal_for(panel, &action.message()).is_some()
                     || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
             })
             .collect()
@@ -136,7 +87,7 @@ impl App {
         match action {
             None => task,
             Some(CommandPaletteAction::CloseContextMenu) => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 task
             }
             // The closing task comes first and is chained, not batched: a
@@ -181,19 +132,23 @@ impl App {
 
     /// Closes the box and stops its walk.
     pub(in crate::app) fn close_quick_open(&mut self) -> Task<Message> {
-        self.quick_open_walk = None;
         quick_open::close(&mut self.quick_open)
     }
 
     pub(in crate::app) fn update_quick_open(&mut self, message: QuickOpenMessage) -> Task<Message> {
+        let may_open = !(self.blocking_overlay_is_open() || self.page_dialog_is_open());
+        if matches!(message, QuickOpenMessage::Open) && self.quick_open.is_none() && may_open {
+            self.close_context_menu();
+        }
         let ctx = QuickOpenCtx {
+            root: self.active_panel().path.clone(),
+            may_open,
             documents_available: self.document_finder().is_some(),
         };
         let (inner, action) = quick_open::update(&mut self.quick_open, message, &ctx);
         let task = inner.map(Message::QuickOpen);
         match action {
             None => task,
-            Some(QuickOpenAction::Open) => self.open_quick_open(),
             Some(QuickOpenAction::Close) => self.close_quick_open(),
             Some(QuickOpenAction::SwitchToCommands(query)) => {
                 self.switch_quick_open_to_commands(query)
@@ -206,10 +161,6 @@ impl App {
                     .map(Message::QuickOpen)
                 });
                 Task::batch([task, documents])
-            }
-            Some(QuickOpenAction::WalkFinished) => {
-                self.quick_open_walk = None;
-                task
             }
             // Enter on the last row.
             Some(QuickOpenAction::OpenSearch(text)) => {

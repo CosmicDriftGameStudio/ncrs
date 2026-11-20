@@ -15,7 +15,8 @@ use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
 use crate::origin_mark::origin_mark;
 use crate::transfer::{
-    resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress,
+    resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress, SkipKind,
+    Skipped,
 };
 
 /// How much of one file is written between two checks for a cancel. Small
@@ -327,11 +328,19 @@ impl<P: Progress> Writer<'_, P> {
         }
         // The staging folder is ours and holds no links, because none is ever
         // created, so opening for write cannot be steered elsewhere.
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(dest)?;
+        let mut file = match OpenOptions::new().write(true).create_new(true).open(dest) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                self.skip(content)?;
+                self.progress.skipped(Skipped {
+                    path: dest.to_owned(),
+                    kind: SkipKind::NameTaken,
+                    detail: String::new(),
+                });
+                return self.step();
+            }
+            Err(error) => return Err(error),
+        };
         loop {
             self.progress.keep_going()?;
             if io::copy(&mut content.by_ref().take(CHUNK), &mut file)? == 0 {
@@ -376,12 +385,6 @@ fn apply_mode(_file: &File, _mode: Option<u32>) -> io::Result<()> {
     Ok(())
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::super::fixtures::{

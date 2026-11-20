@@ -196,7 +196,16 @@ fn error_text(error: &DownloadError, lang: Language) -> String {
         DownloadError::NoDataFolder => lang.text(Msg::OcrModelsErrorNoFolder).to_owned(),
         other => fill_template(
             lang.text(Msg::OcrModelsError),
-            &[("{detail}", other.to_string().as_str())],
+            &[("{detail}", error_detail(other, lang).as_str())],
         ),
+    }
+}
+
+/// What goes into the error line: a network failure in words of the UI
+/// language, the rest as the check wrote it.
+fn error_detail(error: &DownloadError, lang: Language) -> String {
+    match error {
+        DownloadError::Network(fetch) => crate::download_error::download_error_text(fetch, lang),
+        other => other.to_string(),
     }
 }

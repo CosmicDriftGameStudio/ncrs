@@ -151,7 +151,7 @@ fn confirming_starts_the_file_exactly_once() {
     assert_eq!(app.dialog_focus, ncrs_ops::open_file::CONFIRM_FOCUS);
 
     press(&mut app, Named::Enter);
-    drop(app.update(Message::OpenFileConfirm));
+    drop(app.update(Message::from(ncrs_ops::OpsMessage::OpenFileConfirm)));
 
     assert_eq!(
         started(&launcher),

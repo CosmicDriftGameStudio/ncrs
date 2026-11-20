@@ -73,7 +73,7 @@ async fn escape_cancels_and_changes_nothing() {
     let _focus = app.update(Message::Panel(PanelMessage::RenameStart));
     let _typed = app.update(type_name("zzz.txt"));
 
-    settle(&mut app, Message::PathFieldCancel).await;
+    settle(&mut app, Message::Panel(PanelMessage::PathFieldCancel)).await;
 
     assert!(app.panels.left.rename.is_none());
     assert!(dir.path().join("b.txt").exists());
@@ -196,12 +196,12 @@ async fn a_late_answer_for_another_entry_leaves_the_open_input_alone() {
     ];
 
     for result in answers {
-        let _task = app.update(Message::Renamed {
+        let _task = app.update(Message::Ops(OpsMessage::Renamed {
             request_id,
             side: PanelSide::Left,
             from: other.clone(),
             result,
-        });
+        }));
         let rename = app.panels.left.rename.clone().expect("input stays open");
         assert_eq!(rename.path, dir.path().join("b.txt"));
         assert_eq!(rename.error, None);
@@ -221,12 +221,12 @@ async fn the_answer_of_a_replaced_rename_still_reloads_the_panel() {
 
     settle(
         &mut app,
-        Message::Renamed {
+        Message::Ops(OpsMessage::Renamed {
             request_id: stale_id,
             side: PanelSide::Left,
             from,
             result: Ok(to),
-        },
+        }),
     )
     .await;
 

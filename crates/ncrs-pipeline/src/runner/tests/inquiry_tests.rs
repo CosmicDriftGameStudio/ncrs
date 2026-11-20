@@ -225,19 +225,27 @@ fn a_not_a_document_verdict_never_plans_a_document_and_never_moves_it() {
 
     scan(&fixture, &inbox, text_chain(INVOICE_TEXT), Some(&provider));
 
-    assert_eq!(status_of(&fixture, id), DocumentStatus::InReview);
-    assert_eq!(
-        fixture
-            .index
-            .lock()
-            .unwrap()
-            .document(id)
-            .unwrap()
-            .unwrap()
-            .fields
-            .sender,
-        None
-    );
+    // The verdict excludes the file, and an excluded file leaves the index.
+    assert!(fixture
+        .index
+        .lock()
+        .unwrap()
+        .document(id)
+        .unwrap()
+        .is_none());
+    assert!(inbox.path.join("invoice.pdf").exists());
+    let asked_once = provider.requests().len();
+
+    scan(&fixture, &inbox, text_chain(INVOICE_TEXT), Some(&provider));
+
+    let under = fixture
+        .index
+        .lock()
+        .unwrap()
+        .documents_under(&inbox.path)
+        .unwrap();
+    assert!(under.is_empty());
+    assert_eq!(provider.requests().len(), asked_once);
 }
 
 #[test]

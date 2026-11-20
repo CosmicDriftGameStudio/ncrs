@@ -3,6 +3,7 @@
 use ncrs_fs::permissions::{ForFiles, ForFolders, Outcome as PermissionChanges};
 use ncrs_fs::{RestoreError, TrashedItem};
 
+use crate::prompt::PromptKind;
 use crate::row_failure::RowFailure;
 use crate::state::Transfer;
 use crate::transfer::{Policy, Scan};
@@ -142,6 +143,23 @@ impl ConflictChoice {
 /// one enum: the app maps each into its own message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum OpsMessage {
+    /// The user confirmed the name prompt of a new folder or file.
+    PromptSubmit,
+    /// The user dismissed the prompt.
+    PromptCancel,
+    /// A keystroke went to the open prompt.
+    PromptInput(String),
+    /// The "Keep folders" box of the pack prompt for a hit list was clicked.
+    PromptToggleKeepFolders,
+    /// A format of the pack dialog was chosen.
+    PromptFormat(ncrs_fs::archive::ArchiveFormat),
+    /// The create of the name prompt has reported. Dropped when `request_id`
+    /// is not the latest one.
+    PromptFinished {
+        kind: PromptKind,
+        request_id: u64,
+        result: Result<(), ncrs_fs::CreateDirError>,
+    },
     /// The copy or move dialog, and the progress mask after it.
     TransferDialog(TransferDialogMessage),
     /// The user answered the conflict dialog.
@@ -189,8 +207,40 @@ pub enum OpsMessage {
         result: Result<ncrs_fs::archive::WriteReport, RowFailure>,
         generation: u64,
     },
+    /// The target of the copy and move dialog was checked on the blocking
+    /// pool. Dropped when the dialog is gone or was edited since.
+    TransferChecked {
+        dialog: u64,
+        edit: u64,
+        kind: ncrs_core::TransferKind,
+        result: Result<std::path::PathBuf, crate::transfer::Refusal>,
+    },
+    /// Files from outside the panels were checked as a copy source.
+    ExternalChecked {
+        paths: Vec<std::path::PathBuf>,
+        result: Result<std::path::PathBuf, crate::transfer::Refusal>,
+    },
+    /// The archive a pack prompt would write was checked. Dropped when
+    /// `request_id` is not the prompt's current one.
+    PackChecked {
+        request_id: u64,
+        result: Result<(), crate::prompt::PromptProblem>,
+    },
+    /// The pasted picture or text was written to its staging folder.
+    PasteStaged {
+        request_id: u64,
+        result: Result<std::path::PathBuf, String>,
+    },
     /// The progress mask's abort button.
     AbortJob,
+    /// Files from another app are held over the window.
+    FilesHovered,
+    /// The files held over the window were taken away again.
+    FilesHoverLeft,
+    /// One file of a drop; a drop sends one of these per file.
+    FileDropped(std::path::PathBuf),
+    /// The drop with this generation has had all its files delivered.
+    DropSettled(u64),
     Trash(TrashMessage),
     /// The rename of the entry at `from` has finished, with its new path.
     Renamed {

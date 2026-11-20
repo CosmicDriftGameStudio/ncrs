@@ -11,6 +11,9 @@ pub struct FrontMatter {
     pub file: PathBuf,
     /// The id of the file in the index; set only when the file is indexed.
     pub document: Option<i64>,
+    /// The content hash of the file as hex. The id alone names another file
+    /// once the index was started over.
+    pub hash: Option<String>,
 }
 
 /// The header and the text after it. A text without a complete header of a
@@ -41,6 +44,7 @@ pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
     };
     let mut file = None;
     let mut document = None;
+    let mut hash = None;
     for line in header.lines() {
         let Some((key, raw_value)) = line.split_once(':') else {
             continue;
@@ -49,6 +53,7 @@ pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
         match key.trim() {
             "file" if !value.is_empty() => file = Some(PathBuf::from(unquoted(value))),
             "document" => document = value.parse().ok(),
+            "hash" if !value.is_empty() => hash = Some(value.to_owned()),
             _ => {}
         }
     }
@@ -57,6 +62,7 @@ pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
             Some(FrontMatter {
                 file: path,
                 document,
+                hash,
             }),
             body,
         ),
@@ -109,6 +115,9 @@ pub fn compose(front: &FrontMatter, body: &str) -> String {
     let mut text = format!("{FENCE}\nfile: {file}\n");
     if let Some(document) = front.document {
         text.push_str(&format!("document: {document}\n"));
+    }
+    if let Some(hash) = &front.hash {
+        text.push_str(&format!("hash: {hash}\n"));
     }
     text.push_str(FENCE);
     text.push('\n');

@@ -135,7 +135,7 @@ fn nothing_happens_under_an_overlay() {
 }
 
 #[test]
-fn printable_keys_route_to_type_ahead_but_not_with_option_ctrl_or_cmd() {
+fn printable_keys_route_to_type_ahead_but_not_with_ctrl_or_cmd_and_only_on_a_mac_with_option() {
     let route = |key: &str, modifiers: Modifiers| {
         route_key(
             &PromptKeyState::default(),
@@ -151,7 +151,9 @@ fn printable_keys_route_to_type_ahead_but_not_with_option_ctrl_or_cmd() {
         route("A", Modifiers::SHIFT),
         Some(Message::Panel(PanelMessage::TypeAhead("A".into())))
     );
-    assert_eq!(route("ç", Modifiers::ALT), None);
+    let with_option =
+        cfg!(target_os = "macos").then(|| Message::Panel(PanelMessage::TypeAhead("ç".into())));
+    assert_eq!(route("ç", Modifiers::ALT), with_option);
     assert_eq!(route("a", Modifiers::CTRL), None);
     assert_eq!(route("a", Modifiers::LOGO), None);
     assert_eq!(
@@ -172,6 +174,6 @@ fn printable_keys_route_to_type_ahead_but_not_with_option_ctrl_or_cmd() {
     };
     assert_eq!(
         route_key(&prompt, Key::Character("a".into()), Modifiers::default()),
-        Some(Message::PromptInput("a".into()))
+        Some(Message::Ops(OpsMessage::PromptInput("a".into())))
     );
 }

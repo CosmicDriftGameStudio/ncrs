@@ -287,13 +287,6 @@ pub fn note_marker<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
         .into()
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,11 +17,12 @@ ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
 ncrs-priority = { path = "../ncrs-priority", version = "0.0.0" }
-ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # Folders that overlap are found by file identity, which holds for symlinks and
 # case-insensitive file systems where comparing paths would not.
 same-file = "1.0"
+# The typed key text is wiped from memory when it is dropped.
+zeroize = "1"
 # The temporary folders of the fixtures; only the `test-support` feature brings it in.
 tempfile = { version = "3.27", optional = true }
 

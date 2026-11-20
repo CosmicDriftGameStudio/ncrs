@@ -95,25 +95,6 @@ impl Ops {
             operation::focus(TARGET_FIELD_ID).chain(operation::move_cursor_to_end(TARGET_FIELD_ID)),
         ])
     }
-
-    /// Enter in the confirmation: refuses a target that cannot take the
-    /// selection, with the reason in the dialog, or gives what to start.
-    pub fn validate_transfer_dialog(&mut self) -> Option<ValidTransfer> {
-        let open = self.transfer_dialog.as_mut()?;
-        let target = match transfer::validate(open.kind(), open.sources(), &open.target_path()) {
-            Ok(target) => target,
-            Err(refusal) => {
-                open.refuse(refusal);
-                return None;
-            }
-        };
-        Some(ValidTransfer {
-            kind: open.kind(),
-            sources: open.sources().to_vec(),
-            target,
-            policy: open.policy(),
-        })
-    }
 }
 
 /// What to tell the user when `target` is on a server that is not connected;

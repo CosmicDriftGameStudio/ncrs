@@ -1,5 +1,5 @@
 use crate::app::*;
-use crate::fs::search::{LineMatch, SearchEvent};
+use ncrs_search::engine::{LineMatch, SearchEvent};
 
 fn route(search_open: bool, key: Key, modifiers: Modifiers) -> Option<Message> {
     let state = PromptKeyState {
@@ -262,10 +262,10 @@ fn a_pause_that_a_later_keystroke_overtook_starts_nothing() {
 fn the_right_click_menu_does_not_open_over_the_search() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: PanelSide::Left,
         index: 1,
-    }));
+    })));
     assert!(app.context_menu_for_test().is_none());
 }
 
@@ -439,7 +439,14 @@ fn ctrl_alt_c_is_altgr_on_windows_and_no_toggle() {
 fn alt_c_w_r_are_not_swallowed_in_panel_mode() {
     use keyboard::key::Code;
     for (typed, code) in [("ç", Code::KeyC), ("w", Code::KeyW), ("®", Code::KeyR)] {
-        assert_eq!(press(false, typed, code, Modifiers::ALT), None, "{typed}");
+        // Option types characters on a Mac, and the jump takes what it typed.
+        let expected = cfg!(target_os = "macos")
+            .then(|| Message::Panel(PanelMessage::TypeAhead(typed.to_owned())));
+        assert_eq!(
+            press(false, typed, code, Modifiers::ALT),
+            expected,
+            "{typed}"
+        );
     }
 }
 
@@ -563,10 +570,10 @@ fn after_a_switch_to_the_other_panel_the_keys_and_actions_are_the_panels() {
     assert_ne!(other_cursor, expected);
     assert_eq!(app.action_sources(), [expected]);
 
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: PanelSide::Right,
         index: 1,
-    }));
+    })));
     assert!(app.context_menu_for_test().is_some());
     assert!(app.search_is_open_for_test(), "the search stays up");
 }
@@ -788,7 +795,7 @@ fn open_in_the_menu_shows_the_file_in_the_other_panel() {
         Some(ContextAction::Open)
     );
 
-    drop(app.update(Message::ContextMenuActivate));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuActivate)));
 
     assert!(!app.context_menu_is_open());
     assert_ne!(app.panel(other).request_id, before);
@@ -827,7 +834,7 @@ fn trash_in_the_menu_deletes_the_result_under_the_pointer_not_the_panel_row() {
         })
         .unwrap();
 
-    drop(app.update(Message::ContextMenuClick(trash)));
+    drop(app.update(Message::Files(MenuMessage::ContextMenuClick(trash))));
 
     let sources = &app.ops.delete_dialog.as_ref().unwrap().sources;
     let names: Vec<_> = sources.iter().filter_map(|path| path.file_name()).collect();

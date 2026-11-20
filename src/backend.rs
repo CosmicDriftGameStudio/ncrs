@@ -19,8 +19,10 @@
 /// This is a compile-time constant, so a test cannot be fooled by it: a wrong
 /// value is a wrong value at build time too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// Only one variant is current per build, so the others read as dead code here.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "only one variant is current per build, so the others read as dead code"
+)]
 pub enum Backend {
     /// wgpu, using the GPU through Vulkan, Metal or DX11.
     Gpu,
@@ -92,12 +94,6 @@ pub fn log_backend() {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

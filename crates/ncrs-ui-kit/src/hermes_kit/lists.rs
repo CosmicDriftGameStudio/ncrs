@@ -1,8 +1,7 @@
 //! Lists, rows and content areas.
-use iced::mouse::ScrollDelta;
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, column, container, mouse_area, pick_list, row, scrollable, Column, Row, Space,
+    button, column, container, mouse_area, pick_list, scrollable, Column, Row, Space,
 };
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Pixels};
 
@@ -15,59 +14,6 @@ use super::*;
 // ---------------------------------------------------------------------
 // Lists and content
 // ---------------------------------------------------------------------
-
-fn list_row_shell<'a, M: Clone + 'a>(
-    content: Element<'a, M>,
-    height: f32,
-    selected: bool,
-    on_press: Option<M>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let marker = if selected {
-        palette.success
-    } else {
-        Color::TRANSPARENT
-    };
-    column![
-        button(row![bar(marker), content])
-            .on_press_maybe(on_press)
-            .width(Length::Fill)
-            .height(height - SEPARATOR_HEIGHT)
-            .padding(0.0)
-            .style(row_button(palette, selected)),
-        theme::horizontal_rule(palette.border_inactive),
-    ]
-    .into()
-}
-
-/// A row of 28 px.
-pub fn list_row_one<'a, M: Clone + 'a>(
-    content: Element<'a, M>,
-    right: Option<String>,
-    indent: bool,
-    selected: bool,
-    on_press: Option<M>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut line = Row::new()
-        .push(container(content).width(Length::Fill))
-        .spacing(GAP_S)
-        .align_y(alignment::Vertical::Center);
-    if let Some(figure) = right {
-        line = line.push(small(figure, palette.dim_text));
-    }
-    let left = if indent { GAP_L + GAP_M } else { GAP_M } - SELECTION_BAR;
-    let padded = container(line)
-        .padding(Padding {
-            left,
-            right: GAP_M,
-            ..Padding::ZERO
-        })
-        .width(Length::Fill)
-        .center_y(Length::Fill)
-        .into();
-    list_row_shell(padded, ROW_ONE_LINE, selected, on_press, palette)
-}
 
 /// What a row of two lines shows: the name, a dimmed second line, a figure at
 /// the right and, where the row can be checked, the box before it.
@@ -157,26 +103,6 @@ pub fn list_row_two<'a, M: Clone + 'a>(
     .into()
 }
 
-/// The list left of a detail: the rows, 360 px wide, a line at the right. The
-/// wheel over it sends `on_scroll`.
-pub fn list_pane<'a, M: Clone + 'a>(
-    rows: Vec<Element<'a, M>>,
-    on_scroll: impl Fn(ScrollDelta) -> M + 'a,
-    palette: &Palette,
-) -> Element<'a, M> {
-    row![
-        mouse_area(
-            container(Column::with_children(rows))
-                .width(LIST_WIDTH)
-                .height(Length::Fill)
-                .clip(true),
-        )
-        .on_scroll(on_scroll),
-        theme::vertical_rule(palette.border_inactive),
-    ]
-    .into()
-}
-
 /// The part right of a list: padding of 16 and 24, scrolling when it is long.
 pub fn detail<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
     scrollable(
@@ -190,17 +116,6 @@ pub fn detail<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
-}
-
-/// A list and the detail of the selected entry side by side.
-pub fn list_and_detail<'a, M: Clone + 'a>(
-    list: Element<'a, M>,
-    detail_part: Element<'a, M>,
-) -> Element<'a, M> {
-    row![list, detail_part]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
 }
 
 /// A path in monospace; the parts that stand for a field are in the on color.
@@ -330,56 +245,7 @@ fn sized_dropdown<'a, M: Clone + 'a>(
         .into()
 }
 
-/// [`detail`] for forms: no wider than `FORM_WIDTH`.
-pub fn form_column<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
-    scrollable(
-        container(
-            Column::with_children(children)
-                .spacing(GAP_S)
-                .width(Length::Fill),
-        )
-        .max_width(FORM_WIDTH)
-        .padding([GAP_M, GAP_L]),
-    )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
-}
-
 /// A line across the detail.
 pub fn rule<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
     theme::horizontal_rule(palette.border_inactive)
-}
-
-/// A note in the middle of the content, for a page with nothing to list.
-pub fn centered_note<'a, M: Clone + 'a>(content: Element<'a, M>) -> Element<'a, M> {
-    container(container(content).max_width(FORM_WIDTH))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
-}
-
-/// What a page says when it has nothing to show.
-pub fn empty_state<'a, M: Clone + 'a>(
-    title: &str,
-    sentence: &str,
-    action: Option<Element<'a, M>>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut content = Column::new()
-        .push(body(title.to_owned(), palette.text))
-        .push(container(hint(sentence.to_owned(), palette)).max_width(EMPTY_TEXT_WIDTH))
-        .spacing(GAP_S)
-        .align_x(alignment::Horizontal::Center);
-    if let Some(button) = action {
-        content = content.push(button);
-    }
-    container(content)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
 }

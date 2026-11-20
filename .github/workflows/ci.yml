@@ -251,6 +251,10 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo deny check advisories licenses bans sources
 
+      - name: Structure rules (crate edges, file size)
+        if: runner.os == 'Linux'
+        run: scripts/check-structure.sh
+
       # A lockfile update that moves winit past the vendored version makes cargo
       # drop the patch with only a warning, and the private CoreGraphics symbols
       # (see vendor/winit/NCRS-PATCH.md) are back in the binary. The patched
@@ -305,28 +309,44 @@ jobs:
         if: runner.os != 'macOS'
         run: cargo check --workspace --all-targets --features sandbox
 
-      # Pixel comparisons are only meaningful where the reference images were
-      # produced. Font rasterisation differs per operating system, so a
-      # reference made on macOS does not match Windows output, and asserting it
-      # there would be asserting nothing. The snapshot tests are therefore
-      # skipped away from macOS; everything else runs everywhere.
+      # Every test runs on every operating system. Only the pixel verdict of the
+      # snapshot tests is left to macOS, where the reference images were made:
+      # font rasterisation differs per operating system, so a comparison
+      # elsewhere would assert nothing (`ncrs_ui_kit::snapshot_support`).
+      # They render with tiny-skia whatever the build, see .cargo/config.toml.
+      # Dates are drawn in local time and the references were made in Berlin.
       - name: Tests
-        run: cargo test --workspace -- --skip ui_tests
+        env:
+          TZ: Europe/Berlin
+        run: cargo test --workspace --no-fail-fast
 
       - name: Tests, App Store build (macOS)
         if: runner.os == 'macOS'
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
-      # The snapshot tests run only here, where the reference images in
-      # tests/snapshots/ were produced. They are skipped above so a font
-      # difference on another operating system cannot fail the build. They
-      # render with tiny-skia whatever the build, see .cargo/config.toml.
-      # Dates are drawn in local time and the references were made in Berlin.
-      - name: Snapshot tests (macOS)
+      # The two tests that use the real operating system credential store are
+      # ignored by default; these runners have one.
+      - name: Key store tests (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: cargo test -p ncrs-index key_store -- --ignored
+
+      # The picture generators are left out of the normal test build; this
+      # keeps them compiling.
+      - name: Build the picture generators (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test -p ncrs --features media-tools --no-run
+
+      # iced_test writes a missing reference and passes. A reference that
+      # appeared in this run was not compared with anything.
+      - name: No snapshot reference was newly written (macOS)
         if: runner.os == 'macOS'
-        env:
-          TZ: Europe/Berlin
-        run: cargo test --workspace ui_tests
+        run: |
+          new=$(git status --porcelain --untracked-files=all -- ':(glob)**/snapshots/**')
+          if [ -n "$new" ]; then
+            echo "::error::snapshot tests wrote references that are not in git:"
+            echo "$new"
+            exit 1
+          fi
 
       # The backend differs per feature set, so the app has to build and its
       # tests have to pass in every configuration. This is not a formality: the
@@ -352,6 +372,51 @@ jobs:
             exit 1
           fi
           echo "ok: the no-backend build fails its own test"
+
+  # The shipped targets that `check` does not run on, and the release profile.
+  # The file and filing code is what differs per architecture and optimisation
+  # (file identities, metadata, the path rules); the app's views do not.
+  platform-tests:
+    name: file and filing tests, ${{ matrix.os }}${{ matrix.release && ', release' || '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            release: false
+          - os: ubuntu-24.04-arm
+            release: false
+          - os: ubuntu-latest
+            release: true
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install --profile minimal
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Tests
+        if: ${{ !matrix.release }}
+        env:
+          TZ: Europe/Berlin
+        run: cargo test -p ncrs-fs -p ncrs-filing
+
+      - name: Tests, release profile
+        if: matrix.release
+        env:
+          TZ: Europe/Berlin
+        run: cargo test --release -p ncrs-fs -p ncrs-filing
 
   # The release builds nothing: it signs and publishes what this job built on
   # the push to main for the tagged commit. ncrs-index compiles SQLCipher and

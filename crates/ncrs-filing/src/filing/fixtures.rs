@@ -2,7 +2,10 @@
 
 use super::*;
 
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    reason = "test fixtures: a failing setup is the signal"
+)]
 impl FilingModule {
     /// A module standing in `phase`, with nothing behind it: no work, an
     /// in-memory store, a path that is never written.
@@ -23,10 +26,13 @@ impl FilingModule {
             after_recovery_key: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
-            chat_text_chain: OnceLock::new(),
+            chat_text_chain: Arc::default(),
             pipeline_text_chain: Mutex::new(None),
             ai: AiWiring::Off,
             own: OwnDetails::default(),
+            settle_problem: SettleNote::default(),
+            index_work: crate::index_work::IndexWork::default(),
+            settling: false,
         }
     }
 

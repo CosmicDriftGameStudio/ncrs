@@ -295,7 +295,7 @@ fn the_theme_is_written_and_its_palette_loads() {
     assert_eq!(written.vscode_warning, None);
     assert_eq!(
         written.palette.background,
-        iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        iced_core::Color::from_rgb8(0x11, 0x22, 0x33)
     );
     assert_eq!(written.lang, Some(Language::German));
     let text = std::fs::read_to_string(&path).unwrap();
@@ -346,7 +346,7 @@ fn a_theme_written_inline_becomes_a_table() {
     assert_eq!(written.vscode_warning, None);
     assert_eq!(
         written.palette.background,
-        iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        iced_core::Color::from_rgb8(0x11, 0x22, 0x33)
     );
 }
 
@@ -630,7 +630,7 @@ fn a_color_is_set_and_dropped_and_a_bad_one_never_reaches_the_file() {
     .unwrap();
     assert_eq!(
         written.palette.color(ColorRole::Accent),
-        iced::Color::from_rgb8(0xFF, 0, 0)
+        iced_core::Color::from_rgb8(0xFF, 0, 0)
     );
     let before = lines_of(&path);
     let refused = write_setting(&path, color_setting(ColorRole::Accent, Some("red")), None);

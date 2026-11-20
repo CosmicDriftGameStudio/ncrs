@@ -1,11 +1,11 @@
 //! The viewer tab with a README-like Markdown, rendered headless.
 
-// reason: a failing assertion is the signal in a test
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::tests_outside_test_module
+    clippy::tests_outside_test_module,
+    reason = "test code: a failing assertion is the signal; an integration test file: the tests are the file"
 )]
 
 // The CI runs `ui_tests` only on macOS, where the reference images were made.
@@ -18,6 +18,7 @@ mod ui_tests {
     use iced_test::Simulator;
     use ncrs_i18n::Language;
     use ncrs_ui_kit::palette::ThemePreset;
+    use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
     use ncrs_viewer::load::{load, Doc, Loaded};
     use ncrs_viewer::{view, Message, State, ViewCtx};
 
@@ -48,6 +49,7 @@ mod ui_tests {
             lang: Language::English,
             palette: &palette,
             home: dir.path(),
+            date_format: ncrs_ui_kit::format::DateFormat::Iso,
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {
@@ -60,7 +62,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/viewer-readme-cosmic.png")
+            .matches_reference_image("tests/snapshots/viewer-readme-cosmic.png")
             .unwrap();
         assert!(matches, "the viewer picture differs from its image");
     }

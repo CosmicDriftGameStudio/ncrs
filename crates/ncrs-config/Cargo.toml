@@ -9,8 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# Keys and colors only: no renderer or window system, the app picks them.
-iced = { version = "0.14", default-features = false }
+# Keys and colors only: iced_core is the same types without a window system or
+# executor, so the crate also builds on Linux without x11 or wayland.
+iced_core = "0.14"
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
@@ -18,7 +19,6 @@ ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
-ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 # derive is the config schema: the structs in config are read straight from it.
 serde = { version = "1", features = ["derive"] }
 # Spanned: a config error names the line of the key that is wrong, and the

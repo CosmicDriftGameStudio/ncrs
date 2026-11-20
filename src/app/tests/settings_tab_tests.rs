@@ -425,3 +425,26 @@ fn a_click_on_a_page_the_app_fills_moves_the_keyboard_to_its_row() {
     let page = app.settings.page.as_ref().expect("settings are open");
     assert_eq!(page.focus, ncrs_settings::focus::Focus::in_rows(2));
 }
+
+fn published(app: &App) -> PromptKeyState {
+    let cell = app.key_state.get().expect("the subscription made the cell");
+    cell.0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+#[test]
+fn the_published_key_state_follows_a_page_brought_to_the_front() {
+    let mut app = App::with_fixed_panels();
+    drop(app.subscription());
+    open(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    assert!(published(&app).monitor);
+    // The settings page is open behind the monitor: toggling it shows it.
+    open(&mut app);
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    let state = published(&app);
+    assert!(state.settings);
+    assert!(!state.monitor);
+}

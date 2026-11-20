@@ -1,12 +1,14 @@
 //! The settings: the settings page, the key bindings page, the fetch of color
 //! themes and the pages of the text recognition and AI models.
 
+pub mod about;
 pub mod action;
 pub mod ai_consent;
 pub mod ai_model;
 pub mod ai_server;
 pub mod ctx;
 pub mod dialogs;
+pub mod download_error;
 pub mod facts;
 pub mod focus;
 pub mod folders;

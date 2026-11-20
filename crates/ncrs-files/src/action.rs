@@ -1,9 +1,10 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::context_menu::{ContextAction, HermesAction};
 use iced::Point;
 use ncrs_core::{Column, PanelSide, TransferKind};
-use ncrs_fs::remote::{RemoteUrl, ServerId};
+use ncrs_fs::remote::{RemotePath, RemoteUrl, ServerId};
 
 /// What a panel asks the app for, because it reaches outside the panels. The
 /// app runs the actions of one `update` in order, right after it.
@@ -13,7 +14,7 @@ pub enum Action {
     Load {
         side: PanelSide,
         path: PathBuf,
-        select: Option<String>,
+        select: Option<OsString>,
     },
     /// The load that was just started is a Back or Forward step.
     MarkHistoryStep(PanelSide),
@@ -57,8 +58,18 @@ pub enum Action {
     /// Enter on a file: the app hands it to the system opener, or asks first
     /// when it could run. A file in an archive or on a server is viewed (F3).
     OpenFile,
-    /// Enter on an app bundle in a local folder: the system opener starts it.
+    /// Enter on an app bundle, or on a file that could run: the app asks
+    /// before the system opener starts it.
     OpenBundle(PathBuf),
+    /// F3 on a file on a server: the app fetches it and views the copy.
+    ViewFromServer(RemotePath),
+    /// F3 on a file in an archive: the app unpacks it and views the copy.
+    ViewFromArchive {
+        source: PathBuf,
+        archive: PathBuf,
+    },
+    /// The viewer of the app shows the local file.
+    OpenInViewer(PathBuf),
     /// A click on a panel: the panels are what the window shows again, while
     /// the pages stay open as tabs.
     ShowPanels,
@@ -72,6 +83,8 @@ pub enum Action {
     Disconnect(ServerId),
     /// Gives the keyboard focus back to the panels.
     ReleaseFocus,
+    /// The command line gives up the keyboard focus.
+    LeaveCommandLine,
     /// The connect dialog for an address typed without a user.
     OpenConnectDialog(RemoteUrl),
     /// The shown columns of `side` changed (ticked, unticked, moved). The app

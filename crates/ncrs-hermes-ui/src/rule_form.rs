@@ -345,12 +345,6 @@ impl RuleForm {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
     use crate::condition_editor::ConditionEdit;
@@ -513,7 +507,7 @@ mod tests {
             let mut rule = stored_rule();
             let condition = Condition {
                 kind: ConditionKind::ReadFolder,
-                value: "/Users/marc/Scans".to_owned(),
+                value: "/Users/alex/Scans".to_owned(),
                 negated,
             };
             rule.spec.conditions = RuleConditions::all_of(vec![condition.clone()]);

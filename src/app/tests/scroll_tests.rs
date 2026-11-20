@@ -95,8 +95,8 @@ fn the_cursor_stays_while_visible_and_is_held_at_the_edge() {
     assert_eq!(app.panels.left.selected, 11, "the cursor left the bottom");
 }
 
-#[test]
-fn a_dialog_or_the_menu_keeps_the_panel_still() {
+#[tokio::test]
+async fn a_dialog_or_the_menu_keeps_the_panel_still() {
     let mut app = app_with_long_list();
     app.open_delete_dialog_for_test(1, false);
     scroll(&mut app, PanelSide::Left, lines(-4.0));
@@ -111,7 +111,9 @@ fn a_dialog_or_the_menu_keeps_the_panel_still() {
             path: PathBuf::from("/"),
         }]
     });
-    let _open = with_menu.update(Message::VolumeMenu(PanelSide::Left));
+    with_menu
+        .settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
+        .await;
     scroll(&mut with_menu, PanelSide::Left, lines(-4.0));
     assert_eq!(
         with_menu.panels.left.scroll_offset, 0,

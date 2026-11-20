@@ -196,6 +196,7 @@ struct FilingError {
 }
 
 mod error;
+pub mod instance_lock;
 mod loading;
 mod paths;
 mod resolving;
@@ -211,16 +212,17 @@ use self::loading::*;
 pub use self::loading::{load, read_source};
 use self::paths::*;
 pub use self::paths::{
-    data_dir_override, default_index_path, default_journal_path, default_known_hosts_path,
-    default_path, default_ssh_known_hosts_path, default_state_path, default_view_copies_dir,
-    portable_data_dir, portable_data_dir_of, use_data_dir,
+    data_dir_override, default_global_ssh_known_hosts_path, default_index_path,
+    default_journal_path, default_known_hosts_path, default_path, default_ssh_known_hosts_path,
+    default_state_path, default_view_copies_dir, portable_data_dir, portable_data_dir_of,
+    use_data_dir,
 };
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
-    AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection, ContrastWarning,
-    FileListTagsSection, Filing, FilingLocation, FilingSection, HermesSection, KeyEntry,
-    KeySection, KindSection, KindWarning, LanguageWarning, LoadValue, LocationEntry,
+    merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
+    ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, HermesSection,
+    KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue, LocationEntry,
     LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection, ThemeEntry,
     ThemeSection, VscodeWarning,
 };
@@ -231,7 +233,6 @@ pub use self::setting_writes::{
     write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
     KeyChange, OwnDetail,
 };
-pub use self::write_support::one_config_writer;
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{
@@ -261,12 +262,5 @@ impl Config {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

@@ -18,10 +18,10 @@ use ncrs_ui_kit::kit;
 use ncrs_ui_kit::layout::{
     MENU_ITEM_HEIGHT, MENU_PADDING, QUICK_FIX_HEADER_HEIGHT, QUICK_FIX_WIDTH,
 };
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
 /// Width a target path may take beside its entry.
-const DETAIL_WIDTH: f32 = 280.0;
+const DETAIL_WIDTH: f32 = size::FIELD_WIDE;
 const ESCAPE_KEY: &str = "Esc";
 const MISSING_FIELD: &str = "?";
 

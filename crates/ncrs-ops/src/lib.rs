@@ -1,9 +1,11 @@
 //! The file operations: the copy and move dialog with its progress mask, the
 //! answer to a taken name, the delete confirmation and the trash view.
 
+pub mod abort;
 pub mod action;
 pub mod archive_flow;
 pub mod batch_rename;
+pub mod checked_flow;
 pub mod clipboard_flow;
 pub mod clipboard_paste;
 pub mod clipboard_text;
@@ -14,6 +16,7 @@ pub mod delete_flow;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod drag_out;
 pub mod drop_paste;
+pub mod entry;
 pub mod keys;
 pub mod message;
 pub mod open_file;
@@ -37,6 +40,7 @@ pub mod trash_flow;
 pub mod update;
 pub mod view_copy_flow;
 
+pub use abort::abort_running;
 pub use action::{
     Action, JobBuilder, ProgressJobBuilder, StartJob, StartProgressJob, TransferAction,
     TrashAction, ViewOrigin,
@@ -51,13 +55,15 @@ pub use batch_rename::flow::{
 pub use batch_rename::state::BatchRenameMessage;
 pub use clipboard_flow::copy_files_to_clipboard;
 pub use clipboard_text::{
-    clipboard_text, clipboard_text_of_files, copied_notice, ClipboardKind, ClipboardText, PanelRows,
+    clipboard_text, clipboard_text_of_files, copied_notice, has_rows, ClipboardKind, ClipboardText,
+    PanelRows,
 };
 pub use ctx::{Ctx, FlowCtx};
 pub use delete_flow::{
     confirm_delete, delete_failure, delete_row_done, delete_subject, end_delete, open_delete,
     DeleteRequest, Outcome,
 };
+pub use entry::update;
 pub use message::{
     ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
 };

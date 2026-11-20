@@ -1,8 +1,9 @@
 //! The passwords of saved servers, one keychain entry per account, and the
 //! passphrases of key files, one entry per absolute path. A secret is only ever
 //! written to the keychain, never to a file or a log, and only while the
-//! "remember" box of the dialog is on (for a passphrase it starts on, and the
-//! box is visible). The calls block; the app makes them on the blocking pool.
+//! "remember" box of the dialog is on (the boxes for a password and for a
+//! passphrase both start off and are visible). The calls block; the app
+//! makes them on the blocking pool.
 
 use std::fmt;
 use std::path::Path;
@@ -77,7 +78,7 @@ impl PasswordStore for KeyringPasswords {
             Ok(stored) => {
                 let wiped = Zeroizing::new(stored);
                 let text = std::str::from_utf8(&wiped)
-                    .map_err(|_not_text| "the entry is not text".to_owned())?;
+                    .map_err(|_not_text| keyring::Error::BadEncoding(Vec::new()).to_string())?;
                 Ok(Some(Secret::new(text.to_owned())))
             }
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -152,7 +153,7 @@ impl PassphraseStore for KeyringPassphrases {
             Ok(stored) => {
                 let wiped = Zeroizing::new(stored);
                 let text = std::str::from_utf8(&wiped)
-                    .map_err(|_not_text| "the entry is not text".to_owned())?;
+                    .map_err(|_not_text| keyring::Error::BadEncoding(Vec::new()).to_string())?;
                 Ok(Some(Secret::new(text.to_owned())))
             }
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -272,12 +273,6 @@ impl PasswordStore for InMemoryPasswords {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 

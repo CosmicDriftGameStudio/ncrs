@@ -1,13 +1,35 @@
 use super::*;
 
-/// Held by a write of the config. Each writer reads, edits and writes the
-/// whole file: two quick changes on the blocking pool would otherwise lose
-/// one of them.
-pub fn one_config_writer() -> std::sync::MutexGuard<'static, ()> {
+/// Held while a write of the config reads, edits and replaces the file. Each
+/// writer handles the whole file, so overlapping writes would lose one of
+/// them: the mutex covers this process, a lock file next to the config a
+/// second running instance.
+pub struct ConfigWriteGuard {
+    _in_process: std::sync::MutexGuard<'static, ()>,
+    _across_processes: Option<std::fs::File>,
+}
+
+pub fn one_config_writer(target: &Path) -> ConfigWriteGuard {
     static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    ONE_WRITER
+    let in_process = ONE_WRITER
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Without the lock file (read-only folder, filesystem without locks) the
+    // write goes ahead guarded by the mutex alone.
+    let across_processes = target.parent().and_then(|folder| {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(folder.join(".config.toml.lock"))
+            .ok()?;
+        file.lock().ok()?;
+        Some(file)
+    });
+    ConfigWriteGuard {
+        _in_process: in_process,
+        _across_processes: across_processes,
+    }
 }
 
 pub fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> FilingWriteError + '_ {

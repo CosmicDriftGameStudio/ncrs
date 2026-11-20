@@ -224,7 +224,6 @@ impl Levels {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
     use super::*;
     use crate::rules::matrix::all_cases;

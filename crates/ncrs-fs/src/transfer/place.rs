@@ -305,7 +305,7 @@ fn verify_copy(source: &Path, copy: &Path, seen: &mut Vec<Seen>) -> io::Result<(
         } else {
             Err(differs())
         }
-    } else if to.is_file() && from.len() == to.len() && same_bytes(source, copy)? {
+    } else if to.is_file() && from.len() == to.len() && same_files(source, copy)? {
         seen.push(Seen::of(source, SeenKind::File)?);
         Ok(())
     } else {
@@ -468,35 +468,46 @@ fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
     }
 }
 
-fn same_bytes(left: &Path, right: &Path) -> io::Result<bool> {
-    use io::Read as _;
-    let mut left_reader = io::BufReader::new(std::fs::File::open(left)?);
-    let mut right_reader = io::BufReader::new(std::fs::File::open(right)?);
-    let mut left_buffer: [u8; 64 * 1024] = [0; 64 * 1024];
-    let mut right_buffer: [u8; 64 * 1024] = [0; 64 * 1024];
-    loop {
-        let read = left_reader.read(&mut left_buffer)?;
-        if read == 0 {
-            return Ok(right_reader.read(&mut right_buffer)? == 0);
-        }
-        let Some(expected) = left_buffer.get(..read) else {
-            return Ok(false);
-        };
-        let mut got = 0;
-        while got < read {
-            let Some(room) = right_buffer.get_mut(got..read) else {
-                return Ok(false);
-            };
-            let n = right_reader.read(room)?;
-            if n == 0 {
-                return Ok(false);
+/// Whether two readers hold the same bytes; `keep_going` is asked before each
+/// block, an `Err` from it ends the read with that error.
+pub fn same_bytes(
+    left: &mut impl io::Read,
+    right: &mut impl io::Read,
+    mut keep_going: impl FnMut() -> io::Result<()>,
+) -> io::Result<bool> {
+    const BLOCK: usize = 64 * 1024;
+    fn fill(reader: &mut impl io::Read, buffer: &mut [u8]) -> io::Result<usize> {
+        let mut held = 0;
+        while let Some(room) = buffer.get_mut(held..).filter(|room| !room.is_empty()) {
+            let read = reader.read(room)?;
+            if read == 0 {
+                break;
             }
-            got += n;
+            held += read;
         }
-        if right_buffer.get(..read) != Some(expected) {
+        Ok(held)
+    }
+    let mut left_block: Vec<u8> = vec![0; BLOCK];
+    let mut right_block: Vec<u8> = vec![0; BLOCK];
+    loop {
+        keep_going()?;
+        let left_held = fill(left, &mut left_block)?;
+        let right_held = fill(right, &mut right_block)?;
+        if left_block.get(..left_held) != right_block.get(..right_held) {
             return Ok(false);
+        }
+        if left_held < BLOCK {
+            return Ok(true);
         }
     }
+}
+
+fn same_files(left: &Path, right: &Path) -> io::Result<bool> {
+    same_bytes(
+        &mut io::BufReader::new(std::fs::File::open(left)?),
+        &mut io::BufReader::new(std::fs::File::open(right)?),
+        || Ok(()),
+    )
 }
 
 fn remove_path(path: &Path) -> io::Result<()> {
@@ -736,7 +747,6 @@ fn symlink(source: &Path, original: &Path, link: &Path) -> io::Result<()> {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     use super::*;

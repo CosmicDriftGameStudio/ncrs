@@ -42,9 +42,7 @@ impl App {
         }
         self.keymap
             .function_key_actions(keymap::KeyScope::Panel)
-            .map(|slot| {
-                slot.is_some_and(|action| archive_refusal(panel, &action.message()).is_some())
-            })
+            .map(|slot| slot.is_some_and(|action| refusal_for(panel, &action.message()).is_some()))
     }
 
     /// What the bar's path field says while the active panel is a hit list:

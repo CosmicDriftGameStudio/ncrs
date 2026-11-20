@@ -5,3 +5,6 @@
 # writes a missing reference and passes, so the snapshot tests would compare
 # nothing. A wgpu-only build cannot honour it and fails those tests loudly.
 ICED_TEST_BACKEND = "tiny-skia"
+# The dates in the references are local time as in Berlin. `force` stays off so
+# a TZ set by CI or by hand still wins.
+TZ = { value = "Europe/Berlin", force = false }

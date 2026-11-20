@@ -53,8 +53,9 @@ impl FilingModule {
             }
             FilingMessage::KeySubmit => self.submit_key(),
             FilingMessage::ConfirmPlainFile => {
-                if matches!(self.phase, Phase::PlainFileWarning) {
-                    self.phase = Phase::Ready;
+                if matches!(self.phase, Phase::PlainFileWarning) && !self.settling {
+                    self.settling = true;
+                    return Some(self.new_work(Job::Settle));
                 }
                 None
             }
@@ -166,9 +167,14 @@ impl FilingModule {
 
     fn finish(&mut self, outcome: WorkOutcome) {
         match outcome {
-            WorkOutcome::Started { locations, opened } => {
+            WorkOutcome::Started {
+                locations,
+                opened,
+                damage,
+            } => {
                 if matches!(self.phase, Phase::Starting) {
                     self.locations = locations;
+                    self.protection_note = damage.map(ProtectionNote::IndexDamaged);
                     self.enter(opened);
                 }
             }
@@ -176,6 +182,12 @@ impl FilingModule {
             WorkOutcome::KeyApplied(result) => self.finish_key(result),
             WorkOutcome::Encrypted(report) => self.finish_encrypt(report),
             WorkOutcome::StartedOver(report) => self.finish_start_over(report),
+            WorkOutcome::Settled => {
+                if self.settling && matches!(self.phase, Phase::PlainFileWarning) {
+                    self.phase = Phase::Ready;
+                }
+                self.settling = false;
+            }
             WorkOutcome::Crashed(reason) => self.finish_crashed(reason),
         }
         self.refresh_index_encrypted();
@@ -204,6 +216,7 @@ impl FilingModule {
             OpenOutcome::PlainFileWithKeyEntry => Phase::PlainFileWarning,
             OpenOutcome::KeyMissing => ask_recovery_key(KeyProblem::Missing),
             OpenOutcome::KeyMismatch => ask_recovery_key(KeyProblem::Mismatch),
+            OpenOutcome::FromNewerVersion => Phase::FromNewerVersion,
             OpenOutcome::Failed(reason) => Phase::Failed(reason),
         };
     }
@@ -311,6 +324,7 @@ impl FilingModule {
             | Phase::ShowRecoveryKey { .. }
             | Phase::PlainFileWarning
             | Phase::Ready
+            | Phase::FromNewerVersion
             | Phase::Failed(_)
             | Phase::Dismissed => {}
         }

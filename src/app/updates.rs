@@ -25,7 +25,7 @@ impl App {
         let task = check.map(Message::Updates);
         match asked {
             Some(Ask::OpenUrl(url)) => {
-                self.open_release_page(&url);
+                self.open_link(&url);
                 task
             }
             Some(Ask::SetCheckEnabled(enabled)) => Task::batch([
@@ -38,16 +38,28 @@ impl App {
         }
     }
 
-    pub(in crate::app) fn open_release_page(&mut self, url: &str) {
+    /// Hands a link to the system; a refusal is the status bar's error.
+    pub(in crate::app) fn open_link(&mut self, url: &str) {
         let command = fs::system_open_command(std::ffi::OsString::from(url));
-        if let Err(reason) = self.launcher.launch(&command) {
-            let failure = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", url)
-                .replace("{reason}", &reason);
-            self.set_status_error(&failure);
-        }
+        self.launch_or_report(&command, url);
+    }
+
+    /// Launches `command`. A refusal goes to the status bar under
+    /// `shown_name`; the result says whether the launch went through.
+    pub(in crate::app) fn launch_or_report(
+        &mut self,
+        command: &fs::OpenCommand,
+        shown_name: &str,
+    ) -> bool {
+        let Err(reason) = self.launcher.launch(command) else {
+            return true;
+        };
+        let failure = fill_template(
+            self.lang.text(Msg::ErrorOpenFailed),
+            &[("{name}", shown_name), ("{reason}", &reason)],
+        );
+        self.set_status_error(&failure);
+        false
     }
 
     /// The press on the version in the status bar: the Updates page, or the

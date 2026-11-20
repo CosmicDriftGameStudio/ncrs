@@ -192,15 +192,17 @@ pub fn with_servers(
     Ok(document.to_string())
 }
 
-/// Replaces the config at `path` with `edit` applied to its text, then reads
-/// it back. Both the text before and the text after must load, so nothing
-/// the loader would reject reaches the file, and the replacement is atomic.
+/// Replaces the config at `path` with `edit` applied to its text and returns
+/// what the new text loads as. Both the text before and the text after must
+/// load, so nothing the loader would reject reaches the file, and the
+/// replacement is atomic.
 pub fn write_edited(
     path: &Path,
     home: Option<&Path>,
     edit: impl FnOnce(&str) -> Result<String, FilingWriteError>,
 ) -> Result<Config, FilingWriteError> {
     let target = resolve_write_target(path)?;
+    let _writing = one_config_writer(&target);
     let source = read_source(&target).map_err(FilingWriteError::Config)?;
     // The edit is based on exactly this text, so a mistake in it would be
     // carried into the new file or, worse, papered over.
@@ -208,9 +210,9 @@ pub fn write_edited(
         parse_config(text, path, home).map_err(FilingWriteError::Config)?;
     }
     let edited = edit(source.as_deref().unwrap_or_default())?;
-    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
+    let written = parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
     replace_file(&target, &edited)?;
-    load_with_home(path, home).map_err(FilingWriteError::Config)
+    Ok(written)
 }
 
 /// Sets `vscode` in `[theme]` of the config at `path` to `relative`, a path

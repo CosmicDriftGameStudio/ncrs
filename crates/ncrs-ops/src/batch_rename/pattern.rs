@@ -2,7 +2,7 @@
 //! replace, case, and the clashes between the names. Pure: nothing here
 //! reads a file or the clock.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::NaiveDate;
 use regex::Regex;
@@ -417,40 +417,107 @@ pub struct Step {
     pub to: String,
 }
 
+struct Waiting {
+    from: String,
+    to: String,
+    from_key: String,
+    to_key: String,
+}
+
+/// Which names still have an entry to leave them, and which entries wait for
+/// which name; an entry becomes free when the last one leaving its target is gone.
+struct Queue {
+    leaving: HashMap<String, usize>,
+    wanting: HashMap<String, Vec<usize>>,
+    waiting: BTreeSet<usize>,
+    free: BTreeSet<usize>,
+}
+
+impl Queue {
+    fn release(&mut self, key: &str) {
+        let Some(count) = self.leaving.get_mut(key) else {
+            return;
+        };
+        *count -= 1;
+        if *count > 0 {
+            return;
+        }
+        self.leaving.remove(key);
+        for &index in self.wanting.get(key).into_iter().flatten() {
+            if self.waiting.contains(&index) {
+                self.free.insert(index);
+            }
+        }
+    }
+}
+
 /// The order that makes every rename find its target free: a name another
 /// entry is about to leave is taken after that one has left, and a cycle is
 /// broken by moving one entry to a temporary name first. `taken` are the
 /// names of the folder, which a temporary name must not be.
 pub fn plan(pairs: &[(String, String)], taken: &[String], rules: NameRules) -> Vec<Step> {
-    let mut pending: Vec<(String, String)> = pairs
+    let mut items: Vec<Option<Waiting>> = pairs
         .iter()
         .filter(|(from, to)| from != to)
-        .cloned()
+        .map(|(from, to)| {
+            Some(Waiting {
+                from: from.clone(),
+                to: to.clone(),
+                from_key: key_of(from, rules),
+                to_key: key_of(to, rules),
+            })
+        })
         .collect();
     let mut used: HashSet<String> = taken.iter().map(|name| key_of(name, rules)).collect();
     for (from, to) in pairs {
         used.insert(key_of(from, rules));
         used.insert(key_of(to, rules));
     }
+    let mut queue = Queue {
+        leaving: HashMap::new(),
+        wanting: HashMap::new(),
+        waiting: (0..items.len()).collect(),
+        free: BTreeSet::new(),
+    };
+    for (index, slot) in items.iter().enumerate() {
+        if let Some(item) = slot {
+            *queue.leaving.entry(item.from_key.clone()).or_default() += 1;
+            queue
+                .wanting
+                .entry(item.to_key.clone())
+                .or_default()
+                .push(index);
+        }
+    }
+    for (index, slot) in items.iter().enumerate() {
+        if slot
+            .as_ref()
+            .is_some_and(|item| !queue.leaving.contains_key(&item.to_key))
+        {
+            queue.free.insert(index);
+        }
+    }
     let mut steps = Vec::new();
     let mut spare: usize = 0;
-    while !pending.is_empty() {
-        let free = pending.iter().position(|(_, target)| {
-            let wanted = key_of(target, rules);
-            !pending
-                .iter()
-                .any(|(source, _)| key_of(source, rules) == wanted)
-        });
-        if let Some(index) = free {
-            let (from, to) = pending.remove(index);
-            steps.push(Step { from, to });
+    while let Some(&first) = queue.waiting.first() {
+        if let Some(index) = queue.free.pop_first() {
+            queue.waiting.remove(&index);
+            if let Some(item) = items.get_mut(index).and_then(Option::take) {
+                queue.release(&item.from_key);
+                steps.push(Step {
+                    from: item.from,
+                    to: item.to,
+                });
+            }
             continue;
         }
+        let Some(item) = items.get_mut(first).and_then(Option::as_mut) else {
+            queue.waiting.remove(&first);
+            continue;
+        };
         // Named after the file it holds, so a run that dies half way leaves it
         // findable; a very long name cannot take the suffix.
-        let stem = pending
-            .first()
-            .map(|(from, _)| from.as_str())
+        let stem = Some(item.from.as_str())
             .filter(|from| from.len() <= 200)
             .unwrap_or_default()
             .to_owned();
@@ -461,23 +528,20 @@ pub fn plan(pairs: &[(String, String)], taken: &[String], rules: NameRules) -> V
                 break candidate;
             }
         };
-        if let Some((from, _)) = pending.first_mut() {
-            steps.push(Step {
-                from: std::mem::replace(from, temporary.clone()),
-                to: temporary,
-            });
-        }
+        let temporary_key = key_of(&temporary, rules);
+        let old_key = std::mem::replace(&mut item.from_key, temporary_key.clone());
+        let old_name = std::mem::replace(&mut item.from, temporary.clone());
+        steps.push(Step {
+            from: old_name,
+            to: temporary,
+        });
+        *queue.leaving.entry(temporary_key).or_default() += 1;
+        queue.release(&old_key);
     }
     steps
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -842,6 +906,21 @@ mod tests {
             from: from.to_owned(),
             to: to.to_owned(),
         }
+    }
+
+    #[test]
+    fn a_long_shifted_counter_is_planned_from_the_end() {
+        let count = 5000;
+        let pairs: Vec<(String, String)> = (1..=count)
+            .map(|n| pair(&format!("{n:05}"), &format!("{:05}", n + 1)))
+            .collect();
+        let taken: Vec<String> = pairs.iter().map(|(from, _)| from.clone()).collect();
+
+        let steps = plan(&pairs, &taken, LOCAL);
+
+        assert_eq!(steps.len(), count);
+        assert_eq!(steps.first(), Some(&step("05000", "05001")));
+        assert_eq!(steps.last(), Some(&step("00001", "00002")));
     }
 
     #[test]

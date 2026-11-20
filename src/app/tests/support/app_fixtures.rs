@@ -28,10 +28,11 @@ impl App {
             keymap: Keymap::built_in(),
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
+            protection_quit_warned: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
-            trash: fs::system_trash(None),
-            launcher: Arc::new(fs::SystemLauncher),
+            trash: Arc::new(NoSystemTrash),
+            launcher: Arc::new(NoProgramLauncher),
             open_programs: config::OpenPrograms::default(),
             config_error: None,
             config_problem: None,
@@ -61,7 +62,6 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(PathBuf::from("/home/test/Notes")),
             filing_view: ncrs_filing_view::State::default(),
-            noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
@@ -69,8 +69,6 @@ impl App {
             chat_model_error: None,
             turning_hermes_on: false,
             quick_open: None,
-            quick_open_walk_generation: 0,
-            quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
@@ -595,9 +593,9 @@ impl App {
     pub fn show_search_results_for_test(
         &mut self,
         query: &str,
-        files: Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)>,
+        files: Vec<(fs::FileEntry, Vec<ncrs_search::engine::LineMatch>)>,
     ) {
-        use crate::fs::search::{SearchEvent, SearchTotals};
+        use ncrs_search::engine::{SearchEvent, SearchTotals};
         drop(self.update(Message::OpenSearch));
         let totals = SearchTotals {
             scanned: 14,
@@ -645,7 +643,7 @@ impl App {
     }
 
     pub fn noted_for_test(&self) -> &std::collections::HashSet<PathBuf> {
-        &self.noted
+        &self.notes.noted
     }
 
     pub fn viewer_for_test(&self) -> &ncrs_viewer::State {
@@ -692,6 +690,7 @@ impl App {
         app
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn with_version_for_test(mut self, version: &'static str) -> Self {
         self.app_version = version;
         self
@@ -761,4 +760,48 @@ fn waiting_document() -> Result<ReviewItem, Box<dyn std::error::Error>> {
         passages: Vec::new(),
         placement: None,
     })
+}
+
+/// Stands in for the system trash in the fixed-panel app: a test that deletes
+/// by accident finds out, and nothing of the developer's reaches the real one.
+#[cfg(test)]
+struct NoSystemTrash;
+
+#[cfg(test)]
+impl fs::Trash for NoSystemTrash {
+    fn trash(&self, _path: &Path) -> Result<(), String> {
+        Err("the fixed-panel app has no trash".to_owned())
+    }
+
+    fn reach(&self) -> fs::TrashReach {
+        // What the system trash reports on each platform without a journal:
+        // macOS can only open the Finder, the others list everything.
+        if cfg!(target_os = "macos") {
+            fs::TrashReach::FinderOnly
+        } else {
+            fs::TrashReach::Everything
+        }
+    }
+
+    fn list(&self) -> Result<Vec<fs::TrashedItem>, String> {
+        Ok(Vec::new())
+    }
+
+    fn restore(&self, _item: &fs::TrashedItem) -> Result<(), fs::RestoreError> {
+        Err(fs::RestoreError::Failed(
+            "the fixed-panel app has no trash".to_owned(),
+        ))
+    }
+}
+
+/// Starts nothing: a test that opens a file in the fixed-panel app gets the
+/// error, not a program on the developer's machine.
+#[cfg(test)]
+struct NoProgramLauncher;
+
+#[cfg(test)]
+impl fs::Launcher for NoProgramLauncher {
+    fn launch(&self, _command: &fs::OpenCommand) -> Result<(), String> {
+        Err("the fixed-panel app starts no programs".to_owned())
+    }
 }

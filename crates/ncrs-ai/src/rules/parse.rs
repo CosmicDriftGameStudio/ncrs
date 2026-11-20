@@ -153,7 +153,6 @@ pub fn parse_generate(raw: &str) -> Result<RuleSpec, AiError> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
 
     use ncrs_index::{Combinator, ConditionKind};
 

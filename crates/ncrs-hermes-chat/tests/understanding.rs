@@ -1,13 +1,6 @@
 //! What the chat does with typed sentences: they go to the (scripted) model,
 //! Hermes asks before it acts, and a button press never reaches the model.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]
@@ -523,5 +516,49 @@ mod tests {
             .actions
             .iter()
             .any(|action| matches!(action, Action::OpenFiling { .. })));
+    }
+
+    #[test]
+    fn a_new_chat_does_not_wait_for_a_slow_model_and_its_answer_is_not_used() {
+        let mut talk = small_talk();
+        talk.open();
+        let greeting = say(Msg::HermesChatGreeting, &[]);
+        let _ = ncrs_hermes_chat::update(
+            &mut talk.state,
+            Message::InputChanged("hallo".to_owned()),
+            &talk.ctx,
+        );
+        let _ = ncrs_hermes_chat::update(&mut talk.state, Message::Submit, &talk.ctx);
+        assert!(talk.state.pending_turn().is_some());
+
+        let _ = ncrs_hermes_chat::update(&mut talk.state, Message::NewChat, &talk.ctx);
+        assert!(talk.state.pending_turn().is_none());
+        assert!(user_bubbles(&talk).is_empty());
+
+        let late = Message::Understood(Ok(ncrs_ai::ChatIntent::Other));
+        let _ = ncrs_hermes_chat::update(&mut talk.state, late, &talk.ctx);
+        assert_eq!(talk.last_texts(), vec![greeting]);
+    }
+
+    #[test]
+    fn a_replaced_index_restarts_the_chat_only_once_the_running_turn_is_done() {
+        let mut talk = small_talk();
+        talk.open();
+        let _ = ncrs_hermes_chat::update(
+            &mut talk.state,
+            Message::InputChanged("hallo".to_owned()),
+            &talk.ctx,
+        );
+        let _ = ncrs_hermes_chat::update(&mut talk.state, Message::Submit, &talk.ctx);
+        assert!(talk.state.pending_turn().is_some());
+
+        let _ = ncrs_hermes_chat::update(&mut talk.state, Message::IndexReplaced, &talk.ctx);
+        assert!(talk.state.pending_turn().is_some());
+        assert_eq!(user_bubbles(&talk).len(), 1);
+
+        let late = Message::Understood(Ok(ncrs_ai::ChatIntent::Other));
+        let _ = ncrs_hermes_chat::update(&mut talk.state, late, &talk.ctx);
+        assert!(user_bubbles(&talk).is_empty());
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
     }
 }

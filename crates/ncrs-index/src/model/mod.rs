@@ -8,6 +8,11 @@ use chrono::{DateTime, NaiveDate, Utc};
 use crate::error::IndexError;
 use crate::kinds::KindCatalog;
 
+pub use ncrs_index_types::{
+    amount_digits, amount_text, tag_name, Amount, ConditionKind, Currency, StatusCounts,
+    MINOR_UNITS_PER_UNIT,
+};
+
 macro_rules! id_newtype {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,7 +39,6 @@ macro_rules! id_newtype {
 id_newtype!(DocumentId);
 id_newtype!(RuleId);
 id_newtype!(ReviewEntryId);
-id_newtype!(PlanId);
 id_newtype!(BatchId);
 
 impl BatchId {
@@ -316,28 +320,6 @@ impl ReviewReason {
     }
 }
 
-/// Three ASCII upper-case letters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Currency(String);
-
-impl Currency {
-    pub fn new(code: &str) -> Option<Self> {
-        (code.len() == 3 && code.bytes().all(|byte| byte.is_ascii_uppercase()))
-            .then(|| Self(code.to_owned()))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// `minor_units` is the smallest unit of the currency (cents for EUR).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Amount {
-    pub minor_units: i64,
-    pub currency: Currency,
-}
-
 /// Size and modification time of a file when it was read. Equal stamps let a
 /// scan skip hashing an unchanged file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -386,24 +368,6 @@ pub struct NewDocument {
     pub source: DocumentSource,
     pub received_at: DateTime<Utc>,
     pub stamp: Option<FileStamp>,
-}
-
-/// The spelling of a tag: lowercase words joined by single hyphens.
-pub fn tag_name(text: &str) -> String {
-    let mut name = String::new();
-    let mut pending_hyphen = false;
-    for character in text.trim().chars() {
-        if character.is_alphanumeric() {
-            if pending_hyphen && !name.is_empty() {
-                name.push('-');
-            }
-            pending_hyphen = false;
-            name.extend(character.to_lowercase());
-        } else {
-            pending_hyphen = true;
-        }
-    }
-    name
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -489,240 +453,24 @@ pub struct SavedQuery {
     pub spec: QuerySpec,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SenderAliasKind {
-    Name,
-    Domain,
-    Iban,
-    TaxId,
-}
+mod sender_alias;
+pub use sender_alias::*;
 
-impl SenderAliasKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Name => "name",
-            Self::Domain => "domain",
-            Self::Iban => "iban",
-            Self::TaxId => "tax_id",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
-        match value {
-            "name" => Ok(Self::Name),
-            "domain" => Ok(Self::Domain),
-            "iban" => Ok(Self::Iban),
-            "tax_id" => Ok(Self::TaxId),
-            other => Err(corrupt("sender_alias.kind", other)),
-        }
-    }
-
-    /// The form in which values of this kind are stored and compared.
-    pub fn normalise(self, value: &str) -> String {
-        match self {
-            Self::Name => value
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .to_lowercase(),
-            Self::Domain => {
-                let lowered = value.trim().to_lowercase();
-                lowered.strip_prefix("www.").unwrap_or(&lowered).to_owned()
-            }
-            Self::Iban => value
-                .chars()
-                .filter(|ch| !is_iban_separator(*ch))
-                .flat_map(char::to_uppercase)
-                .collect(),
-            Self::TaxId => value
-                .chars()
-                .filter(|ch| !is_tax_id_separator(*ch))
-                .flat_map(char::to_uppercase)
-                .collect(),
-        }
-    }
-}
-
-pub fn is_iban_separator(ch: char) -> bool {
-    ch.is_whitespace()
-}
-
-/// ISO 13616: separators are ignored, case does not matter.
-pub fn iban_is_valid(value: &str) -> bool {
-    let chars: Vec<char> = value
-        .chars()
-        .filter(|ch| !is_iban_separator(*ch))
-        .map(|ch| ch.to_ascii_uppercase())
-        .collect();
-    if !(15..=34).contains(&chars.len()) || !chars.iter().all(char::is_ascii_alphanumeric) {
-        return false;
-    }
-    let country_is_letters = chars.iter().take(2).all(char::is_ascii_alphabetic);
-    let check_is_digits = chars.iter().skip(2).take(2).all(char::is_ascii_digit);
-    if !country_is_letters || !check_is_digits {
-        return false;
-    }
-    let remainder =
-        chars
-            .iter()
-            .skip(4)
-            .chain(chars.iter().take(4))
-            .try_fold(0, |rest: u32, ch| {
-                let digit_value = ch.to_digit(36)?;
-                let shift = if digit_value < 10 { 10 } else { 100 };
-                Some((rest * shift + digit_value) % 97)
-            });
-    remainder == Some(1)
-}
-
-pub fn is_tax_id_separator(ch: char) -> bool {
-    ch.is_whitespace() || matches!(ch, '/' | '-' | '.')
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SenderAliasState {
-    Offered,
-    Confirmed,
-    Discarded,
-}
-
-impl SenderAliasState {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Offered => "offered",
-            Self::Confirmed => "confirmed",
-            Self::Discarded => "discarded",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
-        match value {
-            "offered" => Ok(Self::Offered),
-            "confirmed" => Ok(Self::Confirmed),
-            "discarded" => Ok(Self::Discarded),
-            other => Err(corrupt("sender_alias.state", other)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SenderAlias {
-    pub id: SenderAliasId,
-    pub sender: String,
-    pub kind: SenderAliasKind,
-    /// Normalised.
-    pub value: String,
-    pub state: SenderAliasState,
-}
-
-/// The confirmed aliases, which is what planning and detection need.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SenderAliases {
-    senders: std::collections::HashMap<(SenderAliasKind, String), String>,
-}
-
-impl SenderAliases {
-    /// Entries are (kind, value, sender); values are normalised here.
-    pub fn from_confirmed<'a>(
-        entries: impl IntoIterator<Item = (SenderAliasKind, &'a str, &'a str)>,
-    ) -> Self {
-        Self {
-            senders: entries
-                .into_iter()
-                .map(|(kind, value, sender)| ((kind, kind.normalise(value)), sender.to_owned()))
-                .collect(),
-        }
-    }
-
-    /// The sender a confirmed alias of this kind and value stands for.
-    pub fn sender_for(&self, kind: SenderAliasKind, raw_value: &str) -> Option<&str> {
-        self.senders
-            .get(&(kind, kind.normalise(raw_value)))
-            .map(String::as_str)
-    }
-
-    /// The sender a confirmed name alias maps `name` to, else `name` itself.
-    pub fn canonical_sender<'a>(&'a self, name: &'a str) -> &'a str {
-        self.sender_for(SenderAliasKind::Name, name).unwrap_or(name)
-    }
-}
-
-/// Substring: the text contains the value, without regard to case. Word: the
-/// text contains the word or phrase between word boundaries. Regex: the value
-/// is a regex source run over the text. Sender: the sender of the document
-/// equals the value, without regard to case. SenderAddress: an e-mail domain or
-/// address found in the text. Iban and TaxId: the number occurs in the text,
-/// whatever the spacing. Recipient: the name or address stands in the addressee
-/// block. Folder: the folder the document lies in. ReadFolder: the document
-/// lies under the read folder whose path is the value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ConditionKind {
-    Substring,
-    Word,
-    Regex,
-    Sender,
-    SenderAddress,
-    Iban,
-    TaxId,
-    Recipient,
-    Folder,
-    /// The document has a tag (own or automatic) that is this one or below it.
-    Tag,
-    /// The kind field of the document is this kind; the value is the kind key.
-    Kind,
-    /// The document's current path lies under this read folder (the value is its absolute path).
-    ReadFolder,
-}
-
-impl ConditionKind {
-    pub const ALL: [Self; 12] = [
-        Self::Substring,
-        Self::Word,
-        Self::Regex,
-        Self::Sender,
-        Self::SenderAddress,
-        Self::Iban,
-        Self::TaxId,
-        Self::Recipient,
-        Self::Folder,
-        Self::Tag,
-        Self::Kind,
-        Self::ReadFolder,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Substring => "substring",
-            Self::Word => "word",
-            Self::Regex => "regex",
-            Self::Sender => "sender",
-            Self::SenderAddress => "sender_address",
-            Self::Iban => "iban",
-            Self::TaxId => "tax_id",
-            Self::Recipient => "recipient",
-            Self::Folder => "folder",
-            Self::Tag => "tag",
-            Self::Kind => "kind",
-            Self::ReadFolder => "read_folder",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
-        match value {
-            "substring" => Ok(Self::Substring),
-            "word" => Ok(Self::Word),
-            "regex" => Ok(Self::Regex),
-            "sender" => Ok(Self::Sender),
-            "sender_address" => Ok(Self::SenderAddress),
-            "iban" => Ok(Self::Iban),
-            "tax_id" => Ok(Self::TaxId),
-            "recipient" => Ok(Self::Recipient),
-            "folder" => Ok(Self::Folder),
-            "tag" => Ok(Self::Tag),
-            "kind" => Ok(Self::Kind),
-            "read_folder" => Ok(Self::ReadFolder),
-            other => Err(corrupt("rule_condition.kind", other)),
-        }
+pub fn parse_condition_kind(value: &str) -> Result<ConditionKind, IndexError> {
+    match value {
+        "substring" => Ok(ConditionKind::Substring),
+        "word" => Ok(ConditionKind::Word),
+        "regex" => Ok(ConditionKind::Regex),
+        "sender" => Ok(ConditionKind::Sender),
+        "sender_address" => Ok(ConditionKind::SenderAddress),
+        "iban" => Ok(ConditionKind::Iban),
+        "tax_id" => Ok(ConditionKind::TaxId),
+        "recipient" => Ok(ConditionKind::Recipient),
+        "folder" => Ok(ConditionKind::Folder),
+        "tag" => Ok(ConditionKind::Tag),
+        "kind" => Ok(ConditionKind::Kind),
+        "read_folder" => Ok(ConditionKind::ReadFolder),
+        other => Err(corrupt("rule_condition.kind", other)),
     }
 }
 
@@ -916,14 +664,6 @@ pub struct IndexStatistics {
     pub full_text_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct StatusCounts {
-    pub new: u64,
-    pub planned: u64,
-    pub in_review: u64,
-    pub filed: u64,
-}
-
 /// What the automatic filing has done so far. `open_reviews_without_text`
 /// counts the open review entries whose document has no or an empty text.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1012,7 +752,7 @@ pub enum RuleSuggestion {
 
 mod reorganisation;
 pub use reorganisation::{
-    ConflictReason, Finding, FindingKind, NoActionReason, PlanItem, PlanOutcome, ReorganisationPlan,
+    ConflictReason, Finding, FindingKind, NoActionReason, PlanItem, PlanOutcome,
 };
 
 #[cfg(test)]

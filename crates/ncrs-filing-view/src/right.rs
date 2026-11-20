@@ -7,11 +7,12 @@ use ncrs_ui_kit::format::ellipsize_middle;
 use ncrs_ui_kit::frame::{chars_that_fit, AVERAGE_GLYPH_WIDTH};
 use ncrs_ui_kit::kit::{checkbox, dim_line, one_line, text_field, Check};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::plan_rows::{editing_row, new_file_row, pane_scroll, NewFileRow};
+use ncrs_ui_kit::plan_rows::{editing_row, marked_row, new_file_row, pane_scroll, NewFileRow};
 use ncrs_ui_kit::theme::spacing;
 use ncrs_ui_kit::tree_list::{tree_row, TreeRow};
 
 use crate::message::Message;
+use crate::scroll::{RIGHT_ROW_ID, RIGHT_SCROLL_ID};
 use crate::state::Session;
 use crate::texts::{say, HEADER_MARGIN};
 use crate::tree::{tree_items, Item};
@@ -69,7 +70,7 @@ pub fn right<'a>(
                 old_name,
             } => {
                 let chosen = session.selected.as_ref() == Some(&from);
-                match (&session.renaming, chosen) {
+                let line = match (&session.renaming, chosen) {
                     (Some(typed), true) => editing_row(
                         depth,
                         text_field(
@@ -92,6 +93,11 @@ pub fn right<'a>(
                         },
                         palette,
                     ),
+                };
+                if chosen {
+                    marked_row(line, RIGHT_ROW_ID)
+                } else {
+                    line
                 }
             }
             Item::Existing {
@@ -156,7 +162,7 @@ pub fn right<'a>(
             one_line(only_new_label.to_owned(), palette),
         ]
         .spacing(spacing::XS),
-        pane_scroll(rows),
+        pane_scroll(RIGHT_SCROLL_ID, rows),
     ]
     .into()
 }

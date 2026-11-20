@@ -14,6 +14,7 @@ use zip::result::ZipError;
 use zip::ZipArchive;
 
 use crate::open_vsx::{shown_text, ExtensionId, FetchError, MAX_SHOWN_CHARS, MAX_VSIX_BYTES};
+use crate::theme_file::{holds_bytes, name_in_folder};
 use ncrs_config::config::{self, Config, SIZE_LIMIT};
 use ncrs_config::vscode_theme::VscodeTheme;
 
@@ -300,8 +301,14 @@ fn write_files(folder: &Path, files: &ThemeFiles) -> Result<(), FetchError> {
             "{}.part",
             target.file_name().unwrap_or_default().to_string_lossy()
         ));
-        std::fs::write(&partial, &file.bytes).map_err(|err| write_failed(&partial, &err))?;
-        std::fs::rename(&partial, &target).map_err(|err| write_failed(&target, &err))?;
+        if let Err(err) = std::fs::write(&partial, &file.bytes) {
+            drop(std::fs::remove_file(&partial));
+            return Err(write_failed(&partial, &err));
+        }
+        std::fs::rename(&partial, &target).map_err(|err| {
+            drop(std::fs::remove_file(&partial));
+            write_failed(&target, &err)
+        })?;
     }
     Ok(())
 }
@@ -338,9 +345,13 @@ pub fn install_theme_file(
     let config_folder = config_path.parent().ok_or(FetchError::NoConfigPath)?;
     let folder = config_folder.join(THEMES_FOLDER).join(WEB_THEMES_FOLDER);
     std::fs::create_dir_all(&folder).map_err(|err| write_failed(&folder, &err))?;
-    let target = folder.join(file_name);
-    let candidate = folder.join(format!("{file_name}.part"));
-    std::fs::write(&candidate, bytes).map_err(|err| write_failed(&candidate, &err))?;
+    let stored_name = name_in_folder(&folder, file_name, |existing| holds_bytes(existing, bytes));
+    let target = folder.join(&stored_name);
+    let candidate = folder.join(format!("{stored_name}.part"));
+    if let Err(err) = std::fs::write(&candidate, bytes) {
+        drop(std::fs::remove_file(&candidate));
+        return Err(write_failed(&candidate, &err));
+    }
     let theme = VscodeTheme::load(&candidate);
     let unusable = theme.problem.or_else(|| {
         theme
@@ -355,8 +366,11 @@ pub fn install_theme_file(
             reason,
         });
     }
-    std::fs::rename(&candidate, &target).map_err(|err| write_failed(&target, &err))?;
-    let relative = format!("{THEMES_FOLDER}/{WEB_THEMES_FOLDER}/{file_name}");
+    std::fs::rename(&candidate, &target).map_err(|err| {
+        drop(std::fs::remove_file(&candidate));
+        write_failed(&target, &err)
+    })?;
+    let relative = format!("{THEMES_FOLDER}/{WEB_THEMES_FOLDER}/{stored_name}");
     let config = config::write_vscode_theme(config_path, &relative)?;
     let label = file_name
         .rsplit_once('.')
@@ -365,22 +379,15 @@ pub fn install_theme_file(
     Ok((config, label))
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;

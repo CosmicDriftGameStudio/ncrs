@@ -4,7 +4,7 @@
 
 use std::sync::LazyLock;
 
-use ncrs_index::{compile_bounded_regex, SenderAliasKind, SenderAliases};
+use ncrs_index::{compile_bounded_regex, iban_is_valid, SenderAliasKind, SenderAliases};
 use regex::Regex;
 
 use crate::conditions::{addressee_block_lines, domains_found, EMAIL_ADDRESS, WEB_DOMAIN};
@@ -19,12 +19,23 @@ const LETTERHEAD_SEPARATORS: [&str; 4] = [" · ", " | ", " – ", " — "];
 const IBAN_PAYLOAD_CHARS: std::ops::RangeInclusive<usize> = 11..=30;
 const MIN_TAX_ID_CHARS: usize = 6;
 
-const LEGAL_FORMS: [&str; 24] = [
+const LEGAL_FORMS: [&str; 28] = [
     "GmbH", "mbH", "AG", "KG", "KGaA", "UG", "e.K.", "e.V.", "GbR", "OHG", "SE", "Ltd", "Ltd.",
-    "Limited", "Inc", "Inc.", "LLC", "PLC", "LLP", "Corp", "S.A.", "SAS", "SARL", "B.V.",
+    "Limited", "Inc", "Inc.", "LLC", "PLC", "LLP", "Corp", "S.A.", "SAS", "SARL", "B.V.", "gGmbH",
+    "AöR", "KdöR", "PartG",
 ];
+/// Only in this exact spelling: in capitals it is a floor in an address.
+const LEGAL_FORMS_EXACT_ONLY: [&str; 1] = ["eG"];
+/// Forms of at least this many letters are also read in any capitalisation,
+/// so poor OCR such as "Gmbh" still counts; shorter ones are common words.
+const MIN_LETTERS_FOR_ANY_CASE: usize = 4;
 const LEGAL_FORMS_WITH_DOTS: [&str; 1] = ["N.V."];
-const AUTHORITY_WORDS: [&str; 9] = [
+const AUTHORITY_WORDS: [&str; 14] = [
+    "landeshauptstadt",
+    "rentenversicherung",
+    "sparkasse",
+    "berufsgenossenschaft",
+    "bundesamt",
     "finanzamt",
     "amtsgericht",
     "landratsamt",
@@ -180,6 +191,7 @@ pub fn found_ibans(text: &str) -> Vec<String> {
     IBAN.iter()
         .flat_map(|regex| regex.find_iter(text))
         .map(|found| found.as_str())
+        .filter(|candidate| iban_is_valid(candidate))
         .filter(|candidate| {
             let payload = SenderAliasKind::Iban
                 .normalise(candidate)
@@ -281,7 +293,7 @@ fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
         .unwrap_or(first_part)
         .trim();
     let is_name = has_legal_form(name)
-        || starts_with_authority_word(name)
+        || has_authority_word(name)
         || aliases.sender_for(SenderAliasKind::Name, name).is_some();
     if !is_name || (line.ends_with('.') && !ends_with_legal_form(line)) {
         return None;
@@ -291,9 +303,15 @@ fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
 
 fn is_legal_form(token: &str) -> bool {
     let trimmed = token.trim_matches(|ch: char| matches!(ch, '(' | ')' | ';' | ':' | '&'));
+    let bare = |text: &str| text.trim_end_matches('.').to_owned();
+    if LEGAL_FORMS_EXACT_ONLY.contains(&bare(trimmed).as_str()) {
+        return true;
+    }
     let spelled = |form: &str| {
-        let bare = |text: &str| text.trim_end_matches('.').to_owned();
-        bare(trimmed) == bare(form) || bare(trimmed) == bare(form).to_uppercase()
+        bare(trimmed) == bare(form)
+            || bare(trimmed) == bare(form).to_uppercase()
+            || (bare(form).chars().count() >= MIN_LETTERS_FOR_ANY_CASE
+                && bare(trimmed).to_lowercase() == bare(form).to_lowercase())
     };
     LEGAL_FORMS
         .iter()
@@ -311,9 +329,9 @@ fn ends_with_legal_form(line: &str) -> bool {
         .is_some_and(is_legal_form)
 }
 
-fn starts_with_authority_word(name: &str) -> bool {
-    name.split_whitespace().next().is_some_and(|first| {
-        let word = first.trim_matches(|ch: char| !ch.is_alphanumeric());
+fn has_authority_word(name: &str) -> bool {
+    name.split_whitespace().any(|token| {
+        let word = token.trim_matches(|ch: char| !ch.is_alphanumeric());
         AUTHORITY_WORDS
             .iter()
             .any(|authority| word.eq_ignore_ascii_case(authority))
@@ -329,7 +347,6 @@ fn is_register_line(line: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     #[test]
     fn a_letterhead_line_is_cut_where_the_address_starts() {
@@ -368,6 +385,32 @@ mod tests {
         .unwrap();
         assert_eq!(sender.name, "Nordlicht Energie GmbH");
         assert_eq!(sender.source, SenderSource::Letterhead);
+    }
+
+    #[test]
+    fn more_legal_forms_and_authority_words_name_the_sender() {
+        let none = SenderAliases::default();
+        for (line, name) in [
+            ("Volksbank Mittelhessen eG", "Volksbank Mittelhessen eG"),
+            ("Helfer gGmbH · Weg 1", "Helfer gGmbH"),
+            ("Muster Gmbh", "Muster Gmbh"),
+            ("Techniker Krankenkasse", "Techniker Krankenkasse"),
+            (
+                "Deutsche Rentenversicherung Bund",
+                "Deutsche Rentenversicherung Bund",
+            ),
+            ("Sparkasse Chemnitz", "Sparkasse Chemnitz"),
+        ] {
+            assert_eq!(company_name(line, &none).as_deref(), Some(name), "{line}");
+        }
+        assert_eq!(company_name("Hauptstr. 5 EG", &none), None);
+    }
+
+    #[test]
+    fn a_number_in_iban_shape_without_a_valid_check_is_no_iban() {
+        assert!(found_ibans("IBAN DE89 3704 0044 0532 0130 00").len() == 1);
+        assert!(found_ibans("Kundennr. KD40 1N05 1234 5678 9012").is_empty());
+        assert!(found_ibans("DE00 3704 0044 0532 0130 00").is_empty());
     }
 
     #[test]

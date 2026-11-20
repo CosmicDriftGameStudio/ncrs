@@ -1,5 +1,7 @@
 //! The filing tab: two halves side by side, the bar below.
 
+use std::borrow::Cow;
+
 use iced::widget::{column, container, row, text};
 use iced::{Element, Length};
 use ncrs_ui_kit::kit::error_line;
@@ -16,15 +18,15 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let Some(session) = state.session.as_ref() else {
         return text("").into();
     };
-    let plan = session
-        .shown_plan()
-        .unwrap_or_else(|| ncrs_filing::chat_work::LivePlan {
+    let plan = session.shown_ref().unwrap_or_else(|| {
+        Cow::Owned(ncrs_filing::chat_work::LivePlan {
             source_root: session.source.clone(),
             target_root: session.target.clone(),
             files: Vec::new(),
             done: false,
             folder_choice_unsupported: false,
-        });
+        })
+    });
     let half = ctx.window.width / 2.0;
     let halves = row![
         container(left(session, &plan, half, ctx.lang, ctx.palette)).width(Length::FillPortion(1)),

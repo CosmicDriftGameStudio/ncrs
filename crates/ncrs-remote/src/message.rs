@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use ncrs_core::PanelSide;
@@ -46,6 +47,12 @@ pub enum Message {
         result: Result<(), ConnectFailure>,
     },
     ToggleSave,
+    /// The text of `~/.ssh/config` for the dialog of `attempt`; `None` when
+    /// there is none to read.
+    SshConfigRead {
+        attempt: u64,
+        text: Option<String>,
+    },
     /// Opens the connect dialog with the box that saves the server ticked.
     OpenAdd,
     /// A saved server was chosen: its address opens in the active panel.
@@ -67,7 +74,7 @@ pub enum Message {
         side: PanelSide,
         request_id: u64,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
         result: Result<Option<Secret>, String>,
     },
     /// The silent connection with a password from the keychain is done.
@@ -75,7 +82,7 @@ pub enum Message {
         side: PanelSide,
         request_id: u64,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
         password: Secret,
         result: Result<(), ConnectFailure>,
     },

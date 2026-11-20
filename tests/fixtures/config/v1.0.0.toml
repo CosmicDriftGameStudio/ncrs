@@ -1,0 +1,48 @@
+# The example configs of the README of v1.0.0, one file. Left out: the second [theme]
+# block (vscode = ...), the alternative to the preset block.
+
+version = 1
+lang = "de"
+
+[open]
+view = ["open"]
+edit = ["open", "-t"]
+
+[keys]
+copy = "F12"
+quit = ["F10", "primary+q"]
+delete_permanently = []
+view = "F4"
+edit = "F3"
+
+[theme]
+preset = "classic"
+directory = "#ffff55"
+tagged = "#a50"
+
+[modules.filing]
+enabled = true
+load = "balanced"
+
+[[modules.filing.locations]]
+path = "~/Inbox"
+mode = "inbox"
+images = false
+
+[[modules.filing.locations]]
+path = "~/Documents/Archive"
+mode = "archive"
+images = true
+target = true
+
+[modules.filing.ai]
+enabled = true
+provider = "local"
+threads = 4
+
+[[servers]]
+name = "Work"
+host = "files.example.org"
+port = 2222
+user = "marc"
+path = "/srv/files"

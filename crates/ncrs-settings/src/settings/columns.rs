@@ -68,6 +68,16 @@ pub fn with_list(current: &PanelColumns, side: PanelSide, list: Vec<Column>) -> 
     columns
 }
 
+/// `current` with the width of `column` set; a column has one width.
+pub fn with_column_width(current: &PanelColumns, column: Column, width: u16) -> PanelColumns {
+    let mut changed = current.clone();
+    match changed.widths.iter_mut().find(|(wide, _)| *wide == column) {
+        Some((_, kept)) => *kept = width,
+        None => changed.widths.push((column, width)),
+    }
+    changed
+}
+
 fn edit_list(columns: &mut PanelColumns, side: PanelSide, edit: impl FnOnce(&mut Vec<Column>)) {
     let list = match side {
         PanelSide::Right if !columns.same_in_both => &mut columns.right,
@@ -109,13 +119,6 @@ fn step(list: &mut [Column], column: Column, down: bool) {
     }
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +254,13 @@ mod tests {
             edited(&start, PanelSide::Left, ColumnsEdit::Side(PanelSide::Right)),
             start
         );
+    }
+
+    #[test]
+    fn a_width_is_set_once_per_column() {
+        let start = PanelColumns::default();
+        let once = with_column_width(&start, Column::Size, 90);
+        let twice = with_column_width(&once, Column::Size, 120);
+        assert_eq!(twice.widths, vec![(Column::Size, 120)]);
     }
 }

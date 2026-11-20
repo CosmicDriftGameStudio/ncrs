@@ -9,6 +9,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# Only `Color`, for the palette: iced_core is the same type without an executor.
+iced_core = "0.14"
 # The side is read from and written to the config.
 serde = { version = "1", features = ["derive"] }
 

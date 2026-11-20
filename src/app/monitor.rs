@@ -59,7 +59,7 @@ impl App {
     /// The System page stands in for the panels and replaces whatever covers
     /// them.
     fn leave_panels_for_monitor(&mut self) {
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.panels.set_path_field(None);
         self.notice = None;
     }
@@ -71,17 +71,19 @@ impl App {
                 let notice = self.lang.text(Msg::MonitorNoticeCopied).to_owned();
                 Task::batch([iced::clipboard::write(text), self.show_notice(notice)])
             }
-            Ask::GoToFolder { folder, file } => self.show_folder_in_active_panel(folder, file),
+            Ask::GoToFolder { folder, file } => {
+                self.show_folder_in_active_panel(folder, file.map(OsString::from))
+            }
         }
     }
 
     /// The folder in the active panel, as the search shows a hit: whatever
     /// covered the panel is closed, and a panel in an archive or on a server
     /// reads the local folder instead.
-    fn show_folder_in_active_panel(
+    pub(in crate::app) fn show_folder_in_active_panel(
         &mut self,
         folder: std::path::PathBuf,
-        file: Option<String>,
+        file: Option<OsString>,
     ) -> Task<Message> {
         let side = self.panels.active;
         let closed_search = if self.search.open && self.search.side == side {

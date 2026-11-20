@@ -7,6 +7,7 @@ use std::path::PathBuf;
 /// a mistyped name, and silently reusing an existing directory would put files
 /// where the user did not ask for them.
 pub async fn create_dir(path: PathBuf) -> Result<(), CreateDirError> {
+    refuse_unfit_name(&path)?;
     let for_error = path.clone();
     tokio::task::spawn_blocking(move || std::fs::create_dir(&path))
         .await
@@ -24,6 +25,7 @@ pub async fn create_dir(path: PathBuf) -> Result<(), CreateDirError> {
 /// `create_new` is what guarantees an existing file (or directory) is never
 /// overwritten or truncated: the open fails atomically instead of checking first.
 pub async fn create_file(path: PathBuf) -> Result<(), CreateDirError> {
+    refuse_unfit_name(&path)?;
     let for_error = path.clone();
     tokio::task::spawn_blocking(move || {
         std::fs::OpenOptions::new()
@@ -42,6 +44,19 @@ pub async fn create_file(path: PathBuf) -> Result<(), CreateDirError> {
     })
 }
 
+/// A name that is a device, a hidden stream or only looks like another name
+/// would be created as something else than what the user typed.
+fn refuse_unfit_name(path: &std::path::Path) -> Result<(), CreateDirError> {
+    match path.file_name().and_then(std::ffi::OsStr::to_str) {
+        Some(name) if !crate::archive::is_creatable_name(name) => {
+            Err(CreateDirError::NameNotAllowed {
+                path: path.to_path_buf(),
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Why a directory or file could not be created. Carries no user-facing text;
 /// the UI layer formats it in the active language.
 #[derive(Debug)]
@@ -50,6 +65,8 @@ pub enum CreateDirError {
     /// told apart — the name is taken, or the parent does not exist — and both
     /// arrive here from `create_dir` and `create_file`.
     AlreadyExists { path: PathBuf, source: io::Error },
+    /// The name was refused before the filesystem was asked.
+    NameNotAllowed { path: PathBuf },
     /// The background task failed, not the filesystem operation.
     TaskFailed { reason: String },
 }
@@ -65,6 +82,9 @@ impl Clone for CreateDirError {
                 path: path.clone(),
                 source: io::Error::new(source.kind(), source.to_string()),
             },
+            CreateDirError::NameNotAllowed { path } => {
+                CreateDirError::NameNotAllowed { path: path.clone() }
+            }
             CreateDirError::TaskFailed { reason } => CreateDirError::TaskFailed {
                 reason: reason.clone(),
             },
@@ -86,6 +106,10 @@ impl PartialEq for CreateDirError {
                 },
             ) => a == b && sa.kind() == sb.kind(),
             (
+                CreateDirError::NameNotAllowed { path: a },
+                CreateDirError::NameNotAllowed { path: b },
+            ) => a == b,
+            (
                 CreateDirError::TaskFailed { reason: a },
                 CreateDirError::TaskFailed { reason: b },
             ) => a == b,
@@ -103,7 +127,7 @@ impl CreateDirError {
     pub fn io_error(&self) -> Option<&io::Error> {
         match self {
             CreateDirError::AlreadyExists { source, .. } => Some(source),
-            CreateDirError::TaskFailed { .. } => None,
+            CreateDirError::NameNotAllowed { .. } | CreateDirError::TaskFailed { .. } => None,
         }
     }
 }
@@ -113,8 +137,14 @@ impl std::fmt::Display for CreateDirError {
     /// UI layer in the active language; this exists for logs.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CreateDirError::AlreadyExists { path, .. } => {
+            CreateDirError::AlreadyExists { path, source }
+                if source.kind() == io::ErrorKind::AlreadyExists =>
+            {
                 write!(f, "{} already exists", path.display())
+            }
+            CreateDirError::AlreadyExists { source, .. } => write!(f, "{source}"),
+            CreateDirError::NameNotAllowed { path } => {
+                write!(f, "{} is not an allowed name", path.display())
             }
             CreateDirError::TaskFailed { reason } => write!(f, "task failed: {reason}"),
         }
@@ -125,12 +155,6 @@ impl std::error::Error for CreateDirError {}
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

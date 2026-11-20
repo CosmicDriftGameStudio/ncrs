@@ -1,25 +1,24 @@
 //! Generator for the README screenshots. Not a test: it asserts nothing about
 //! the app and is ignored by default, so the normal suite never touches
 //! `docs/screenshots/`. Regenerate with
-//! `cargo test readme_screenshots -- --ignored`.
-#![allow(clippy::expect_used)]
+//! `cargo test -p ncrs --features media-tools readme_screenshots -- --ignored`.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 use chrono::{Local, TimeZone as _};
-use iced_test::Simulator;
 use ncrs_i18n::Language;
 
 use crate::app::{fixed_result_entry, App};
-use crate::fs::search::LineMatch;
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{
-    BatchRenameMessage, FavouritesBarMessage, Message, PanelMessage, PanelSide, SettingField,
-    SettingsFeature, SettingsMessage,
+    BatchRenameMessage, FavouritesBarMessage, MenuMessage, Message, PanelMessage, PanelSide,
+    SettingField, SettingsFeature, SettingsMessage,
 };
+use crate::shot_file::write_screenshot_to;
 use ncrs_core::CompareMark;
+use ncrs_search::engine::LineMatch;
 use ncrs_settings::AiCheckResult;
 
 const OUTPUT_DIRECTORY: &str = "docs/screenshots";
@@ -266,8 +265,8 @@ fn batch_rename_app() -> App {
             .toggle(&PathBuf::from(DOWNLOADS_DIRECTORY).join(name));
     }
     let _opened = app.update(Message::Panel(PanelMessage::RenameStart));
-    let _typed = app.update(Message::BatchRename(BatchRenameMessage::PatternInput(
-        "Holiday {date modified} {counter}{extension}".to_owned(),
+    let _typed = app.update(Message::from(ncrs_ops::OpsMessage::BatchRename(
+        BatchRenameMessage::PatternInput("Holiday {date modified} {counter}{extension}".to_owned()),
     )));
     app
 }
@@ -350,48 +349,15 @@ fn drives() -> Vec<Volume> {
     .collect()
 }
 
-/// `matches_image` writes a missing reference and appends the renderer's name
-/// to the file name, so it renders into an empty directory and the single
-/// file that appears there is copied to the wanted name.
 fn write_screenshot(app: &App, file_name: &str) {
     write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
-}
-
-pub fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
-    write_view_to(app.view(), directory, size, file_name);
-}
-
-pub fn write_view_to(
-    view: iced::Element<'_, Message>,
-    directory: &str,
-    size: iced::Size,
-    file_name: &str,
-) {
-    let scratch = tempfile::tempdir().expect("scratch directory");
-    let mut simulator = Simulator::with_size(iced::Settings::default(), size, view);
-    simulator
-        .snapshot(&iced::Theme::Dark)
-        .expect("the view should render")
-        .matches_image(scratch.path().join("shot.png"))
-        .expect("the screenshot should be written");
-    let written = std::fs::read_dir(scratch.path())
-        .expect("scratch directory")
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|extension| extension == "png"))
-        .expect("the renderer wrote no png");
-
-    std::fs::create_dir_all(directory).expect("output directory");
-    let target = PathBuf::from(directory).join(file_name);
-    std::fs::copy(&written, &target).expect("copy the screenshot");
-    assert!(target.exists(), "{} was not written", target.display());
 }
 
 mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "writes docs/screenshots; run with `cargo test readme_screenshots -- --ignored`"]
+    #[ignore = "writes docs/screenshots; run with `cargo test -p ncrs --features media-tools readme_screenshots -- --ignored`"]
     fn readme_screenshots() {
         let mut app = showcase_app();
         write_screenshot(&app, "main.png");
@@ -406,10 +372,10 @@ mod tests {
 
         let mut context = showcase_app();
         context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
-        drop(context.update(Message::ContextMenuAt {
+        drop(context.update(Message::Files(MenuMessage::ContextMenuAt {
             side: PanelSide::Left,
             index: 5,
-        }));
+        })));
         write_screenshot(&context, "context-menu.png");
 
         let mut delete = showcase_app();
@@ -452,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "writes docs/store-screenshots; run with `cargo test store_screenshots -- --ignored`"]
+    #[ignore = "writes docs/store-screenshots; run with `cargo test -p ncrs --features media-tools store_screenshots -- --ignored`"]
     fn store_screenshots() {
         for (file_prefix, language) in [("en", Language::English), ("de", Language::German)] {
             let showcase = || showcase_app().in_language(language);
@@ -464,10 +430,10 @@ mod tests {
 
             let mut context = showcase();
             context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
-            drop(context.update(Message::ContextMenuAt {
+            drop(context.update(Message::Files(MenuMessage::ContextMenuAt {
                 side: PanelSide::Left,
                 index: 5,
-            }));
+            })));
 
             let mut menu = showcase();
             menu.open_volume_menu_for_test(PanelSide::Left, drives());

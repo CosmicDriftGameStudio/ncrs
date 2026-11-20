@@ -91,7 +91,7 @@ pub fn update(
         }
         SearchMessage::FolderChanged(text) => {
             view.focused = SearchField::Folder;
-            match resolve_folder(&text, &view.relative_base) {
+            match resolve_folder(&text, &view.relative_base, &ctx.home) {
                 Some(folder) => {
                     view.root = folder;
                     view.folder_missing = false;
@@ -169,9 +169,7 @@ pub fn update(
         }
         SearchMessage::Events { generation, events } => {
             if generation == view.generation {
-                for event in events {
-                    view.apply_event(event);
-                }
+                view.apply_events(events);
                 view.ensure_visible(rows);
                 if !view.running {
                     search.handle = None;
@@ -332,8 +330,6 @@ pub fn update(
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -350,6 +346,7 @@ mod tests {
             side_is_remote,
             has_keys: true,
             index: None,
+            home: std::env::temp_dir(),
         }
     }
 
@@ -491,16 +488,17 @@ mod tests {
             &ctx(false),
         );
 
-        assert_eq!(view(&search).root, ncrs_fs::home_dir());
+        assert_eq!(view(&search).root, ctx(false).home);
         assert_eq!(view(&search).folder_text, "~", "the typed text stays");
     }
 
     #[test]
     fn a_tilde_in_front_of_a_path_is_the_home_folder_below() {
         let root = Path::new("/");
-        assert_eq!(resolve_folder("~/", root), Some(ncrs_fs::home_dir()));
+        let home = ctx(false).home;
+        assert_eq!(resolve_folder("~/", root, &home), Some(home.clone()));
         assert_eq!(
-            resolve_folder("  ~/nonexistent-folder-for-test  ", root),
+            resolve_folder("  ~/nonexistent-folder-for-test  ", root, &home),
             None
         );
     }

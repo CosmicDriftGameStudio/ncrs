@@ -30,7 +30,7 @@ impl App {
         use ncrs_compare::Action as Ask;
         match action {
             Ask::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Ask::ShowError(text) => {

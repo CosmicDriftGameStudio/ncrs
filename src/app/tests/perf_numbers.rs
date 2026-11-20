@@ -9,9 +9,9 @@
 //! is not part of any number here.
 
 use crate::app::*;
-use crate::fs::search::{self, SearchEvent, SearchQuery, SearchTotals};
 use crate::fs::transfer::{self, OnConflict};
 use crate::fs::{read_directory, sort_entries, FileEntry, SortColumn, SortKey};
+use ncrs_search::engine::{self as search, SearchEvent, SearchQuery, SearchTotals};
 use std::time::{Duration, Instant};
 
 const ENTRY_COUNTS: [usize; 3] = [1_000, 10_000, 100_000];

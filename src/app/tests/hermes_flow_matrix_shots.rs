@@ -6,7 +6,6 @@
 //! `target/acceptance/flow-matrix/`.
 
 #![cfg(feature = "local-ai")]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::num::NonZeroU32;
 use std::sync::Mutex;
@@ -206,10 +205,12 @@ fn opened_pay_slips(
     let inbox_location =
         ncrs_intake::Location::new(&root.join("inbox"), ncrs_intake::LocationMode::Inbox, false)
             .unwrap();
+    let target = archive_location.path.clone();
     let rules = RulesAccess::new(
         std::sync::Arc::clone(&slot),
         vec![archive_location, inbox_location],
     )
+    .with_target(Some(target))
     .with_kind_language(KindLanguage::German);
     let access = ChatAccess::new(
         std::sync::Arc::clone(&slot),

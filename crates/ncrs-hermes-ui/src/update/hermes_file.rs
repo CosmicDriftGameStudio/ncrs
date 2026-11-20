@@ -109,7 +109,16 @@ pub fn process_found_again(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) {
-    let found = result.unwrap_or_default();
+    let found = match result {
+        Ok(found) => found,
+        Err(reason) => {
+            actions.push(Action::ShowError(fill_template(
+                ctx.lang.text(Msg::StatusHermesColumnReadFailed),
+                &[("{reason}", &reason)],
+            )));
+            return;
+        }
+    };
     let in_inboxes = found
         .iter()
         .filter(|path| lies_in_an_inbox(hermes, path))
@@ -311,4 +320,79 @@ pub fn role_saved(
 /// Opens the settings on the Read errors page.
 pub fn show_in_inspection(actions: &mut Vec<Action>) {
     actions.push(Action::ShowPage(HermesPage::Inspection));
+}
+
+/// A Hermes file command for the cursor row, or what came back of one.
+pub fn update(
+    hermes: &mut Hermes,
+    message: HermesFileMessage,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    match message {
+        HermesFileMessage::RoleSaved(result) => return role_saved(hermes, *result, ctx, actions),
+        HermesFileMessage::ProcessAgainFound(result) => {
+            process_found_again(hermes, result, ctx, actions);
+            return Task::none();
+        }
+        HermesFileMessage::ConfirmProcessAgain => {
+            confirm_process_again(hermes, ctx, actions);
+            return Task::none();
+        }
+        HermesFileMessage::CancelProcessAgain => {
+            hermes.confirm_again = None;
+            return Task::none();
+        }
+        HermesFileMessage::Included { path, result } => {
+            hermes_included(hermes, &path, result, ctx, actions);
+            return Task::none();
+        }
+        HermesFileMessage::HandToInbox
+        | HermesFileMessage::ProcessAgain
+        | HermesFileMessage::SetRole(_)
+        | HermesFileMessage::ToggleExclusion
+        | HermesFileMessage::ShowInInspection => {}
+    }
+    let available = if matches!(message, HermesFileMessage::SetRole(_)) {
+        hermes.is_ready()
+    } else {
+        hermes.is_active()
+    };
+    if ctx.overlay_open || ctx.search_open || !available {
+        return Task::none();
+    }
+    let Some((path, is_dir)) = ctx.cursor_row else {
+        return Task::none();
+    };
+    match message {
+        HermesFileMessage::HandToInbox => {
+            match hermes.inbox_location() {
+                Some(inbox) => actions.push(Action::MoveToInbox(inbox.to_path_buf())),
+                None => actions.push(Action::ShowNotice(
+                    ctx.lang.text(Msg::StatusHermesNoInbox).to_owned(),
+                )),
+            }
+            Task::none()
+        }
+        HermesFileMessage::ProcessAgain => {
+            process_again(hermes, ctx.action_sources.clone(), ctx, actions)
+        }
+        HermesFileMessage::SetRole(role) if is_dir => {
+            set_folder_role(hermes, path, role, ctx, actions)
+        }
+        HermesFileMessage::ToggleExclusion => {
+            let excluded = hermes.cursor_is_excluded(path, is_dir);
+            toggle_hermes_exclusion(hermes, path.to_path_buf(), excluded, actions)
+        }
+        HermesFileMessage::ShowInInspection => {
+            show_in_inspection(actions);
+            Task::none()
+        }
+        HermesFileMessage::SetRole(_)
+        | HermesFileMessage::RoleSaved(_)
+        | HermesFileMessage::ProcessAgainFound(_)
+        | HermesFileMessage::ConfirmProcessAgain
+        | HermesFileMessage::CancelProcessAgain
+        | HermesFileMessage::Included { .. } => Task::none(),
+    }
 }

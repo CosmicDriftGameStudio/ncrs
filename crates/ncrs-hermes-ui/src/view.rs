@@ -62,9 +62,14 @@ pub fn overview_facts(
             phase => ModuleState::of(phase),
         })
     };
-    let at_rest = !ctx.jobs_busy && !hermes.is_restarting();
+    let at_rest = !ctx.jobs_busy
+        && !hermes.is_restarting()
+        && !module.is_some_and(FilingModule::index_work_running);
     let failure = match module.map(FilingModule::phase) {
         Some(Phase::Failed(reason)) => Some(reason.clone()),
+        Some(Phase::FromNewerVersion) => {
+            Some(ctx.lang.text(Msg::FilingFromNewerVersion).to_owned())
+        }
         _ => None,
     };
     OverviewFacts {
@@ -174,14 +179,25 @@ pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Mes
             .tags
             .as_ref()
             .and_then(|state| tags_ui::dialog(state, window, lang, palette)),
-        hermes
-            .confirm_again
-            .as_ref()
-            .map(|paths| confirm_again_ui::dialog(paths.len(), window, lang, palette)),
     ]
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// The question before many files are processed again, which is asked over
+/// the panels rather than on a page.
+pub fn confirm_again_dialog<'a>(
+    hermes: &Hermes,
+    ctx: &ViewCtx<'a>,
+) -> Option<Element<'a, Message>> {
+    let paths = hermes.confirm_again.as_ref()?;
+    Some(confirm_again_ui::dialog(
+        paths.len(),
+        ctx.window_size,
+        ctx.lang,
+        ctx.palette,
+    ))
 }
 
 pub fn hermes_status(hermes: &Hermes) -> Option<HermesStatus> {

@@ -134,12 +134,19 @@ fn filing_status_step(
             }
             Task::none()
         }
+        FilingStatusMessage::LocationsForgotten(result) => {
+            if let Err(reason) = result {
+                actions.push(Action::ShowError(reason));
+            }
+            Task::none()
+        }
     }
 }
 
 /// The once-a-second look at the pipeline. The filing job comes before the
 /// refiling, which waits for the queue the filing job may have just taken.
 fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
+    actions.push(Action::RefreshDocumentsFacts);
     hermes.refresh_filing_snapshot(ctx.now);
     refresh_hermes_column(hermes, ctx);
     let settled = settle_reading_again(hermes, ctx, actions);
@@ -149,6 +156,17 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     if plans_made > hermes.plans_filed_for || hermes.filing_due {
         hermes.plans_filed_for = plans_made;
         filing_job::run_filing(hermes, ctx, actions);
+    }
+    actions.push(Action::EnsureChatModel);
+    if ctx.chat_open {
+        actions.push(Action::CheckChatWaiting);
+    }
+    let idle_pipeline = hermes
+        .live_pipeline()
+        .map(|runner| runner.snapshot())
+        .filter(|snapshot| snapshot.state == RunnerState::Idle);
+    if let Some(snapshot) = idle_pipeline {
+        actions.push(Action::ReadingSettled(snapshot.left_pipeline));
     }
     let counts = if hermes.live_pipeline().is_some() && hermes.filing_status.tick_wants_counts() {
         request_hermes_counts(hermes)

@@ -2,11 +2,15 @@
 
 pub mod archive;
 mod delete;
+mod entry_read;
 pub mod flat_names;
 mod folder_size;
 pub mod folder_watch;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;
+#[cfg(windows)]
+#[cfg(test)]
+mod long_path_tests;
 mod open;
 mod open_programs;
 mod open_rules;
@@ -22,6 +26,7 @@ pub mod remote;
 mod rename;
 mod replace_file;
 mod sandbox;
+pub mod search;
 mod sort;
 mod terminal;
 pub mod transfer;
@@ -34,12 +39,13 @@ mod volumes;
 pub use delete::{
     is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
 };
+pub use entry_read::{entry_from_dir_entry, entry_from_path};
 pub use folder_size::measure_folder;
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 pub use open::OpenCommand;
 pub use open::{
-    could_execute, is_app_bundle, open_command, program_command, runs_in_app_sandbox,
-    system_open_command, Launcher, OpenKind, SystemLauncher,
+    could_execute, could_execute_listed, is_app_bundle, open_command, program_command,
+    runs_in_app_sandbox, system_open_command, Launcher, OpenKind, SystemLauncher,
 };
 #[cfg(target_os = "macos")]
 pub use open::{privacy_settings_command, trash_in_finder_command};
@@ -54,7 +60,10 @@ pub use sandbox::{
     sandbox_home, SandboxAccess,
 };
 pub use sort::{sort_entries, SortColumn, SortKey};
-pub use terminal::{detect_terminals, terminal_command, KnownTerminal, NoTerminal};
+pub use terminal::{
+    detect_terminals, detected_terminals, terminal_command, warm_up_terminal_detection,
+    KnownTerminal, NoTerminal,
+};
 #[cfg(any(test, feature = "test-support"))]
 pub use trash_journal::{FolderBackend, JournaledTrash};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};

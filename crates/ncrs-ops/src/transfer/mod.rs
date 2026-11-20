@@ -441,7 +441,7 @@ impl TransferDialog {
             let home = self.remote_home.as_deref().unwrap_or("/");
             return place.resolve_typed(typed, home).to_path_buf();
         }
-        self.base.join(&self.target)
+        self.base.join(typed)
     }
 
     pub const fn policy(&self) -> Policy {
@@ -525,12 +525,5 @@ impl TransferDialog {
     }
 }
 
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

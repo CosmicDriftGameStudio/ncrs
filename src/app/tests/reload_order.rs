@@ -1,4 +1,6 @@
 use crate::app::*;
+use ncrs_ops::prompt::PromptKind;
+use ncrs_ops::OpsMessage;
 
 /// Removes itself, so a failed assertion does not leave a directory that
 /// makes the next run fail.
@@ -25,12 +27,12 @@ fn the_reload_waits_for_the_create() {
 
     let mut app = App::with_environment(Environment::isolated()).0;
     app.panels.left.path = base.clone();
-    app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+    app.ops.prompt = Some(Prompt::create_dir(base.clone()).on_side(PanelSide::Left));
     app.ops.prompt.as_mut().unwrap().set_name("neu".into());
     // Submitting queues the reload instead of running it.
-    let _ = app.update(Message::PromptSubmit);
+    let _ = app.update(Message::Ops(OpsMessage::PromptSubmit));
     assert!(
-        app.panels.pending_reload.is_some(),
+        app.ops.pending_create.is_some(),
         "no reload was queued, so the panel would never refresh"
     );
     assert_ne!(
@@ -52,22 +54,19 @@ fn the_reload_runs_when_the_create_reports() {
 
     let mut app = App::with_environment(Environment::isolated()).0;
     app.panels.left.path = base.clone();
-    app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+    app.ops.prompt = Some(Prompt::create_dir(base.clone()).on_side(PanelSide::Left));
     app.ops.prompt.as_mut().unwrap().set_name("spaet".into());
     app.ops.prompt_request_id = 1;
-    app.panels.pending_reload = Some(PendingReload {
-        side: PanelSide::Left,
-        name: "spaet".into(),
-    });
+    app.ops.pending_create = Some(base.join("spaet"));
 
-    let _ = app.update(Message::PromptFinished {
-        prompt: PromptKind::CreateDir,
+    let _ = app.update(Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateDir,
         request_id: 1,
         result: Ok(()),
-    });
+    }));
 
     assert!(
-        app.panels.pending_reload.is_none(),
+        app.ops.pending_create.is_none(),
         "the reload was not consumed and would run again"
     );
     assert!(
@@ -86,25 +85,22 @@ fn a_failure_still_reloads() {
 
     let mut app = App::with_environment(Environment::isolated()).0;
     app.panels.left.path = base.clone();
-    app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+    app.ops.prompt = Some(Prompt::create_dir(base.clone()).on_side(PanelSide::Left));
     app.ops.prompt.as_mut().unwrap().set_name("weg".into());
     app.ops.prompt_request_id = 2;
-    app.panels.pending_reload = Some(PendingReload {
-        side: PanelSide::Left,
-        name: "weg".into(),
-    });
+    app.ops.pending_create = Some(base.join("weg"));
 
-    let _ = app.update(Message::PromptFinished {
-        prompt: PromptKind::CreateDir,
+    let _ = app.update(Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateDir,
         request_id: 2,
         result: Err(fs::CreateDirError::AlreadyExists {
             path: base.join("weg"),
             source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists"),
         }),
-    });
+    }));
 
     assert!(
-        app.panels.pending_reload.is_none(),
+        app.ops.pending_create.is_none(),
         "a failed create left a reload queued"
     );
     assert!(
@@ -141,14 +137,14 @@ async fn submit_new_file(base: &Path, name: &str) -> (App, Arc<RecordingLauncher
     app.panels.left.path = base.to_path_buf();
     drop(app.update(Message::CreateFilePrompt));
     app.ops.prompt.as_mut().unwrap().set_name(name.into());
-    drop(app.update(Message::PromptSubmit));
+    drop(app.update(Message::Ops(OpsMessage::PromptSubmit)));
 
     let result = fs::create_file(base.join(name)).await;
-    drop(app.update(Message::PromptFinished {
-        prompt: PromptKind::CreateFile,
+    drop(app.update(Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateFile,
         request_id: app.ops.prompt_request_id,
         result,
-    }));
+    })));
     (app, launcher)
 }
 
@@ -209,7 +205,10 @@ async fn an_existing_name_is_refused_and_nothing_is_opened() {
         .expect("the prompt stays for a retry");
     assert!(!prompt.busy());
     assert_eq!(prompt.name(), "note.txt");
-    assert!(prompt.error().is_some_and(|text| text.contains("note.txt")));
+    assert!(prompt.error().is_some_and(|error| matches!(
+        error,
+        ncrs_ops::prompt::PromptError::Failed(text) if text.contains("note.txt")
+    )));
     assert_eq!(std::fs::read(base.join("note.txt")).unwrap(), b"keep me");
     assert!(launcher.0.lock().unwrap().is_empty());
 }
@@ -220,20 +219,17 @@ async fn an_existing_name_is_refused_and_nothing_is_opened() {
 fn a_stale_result_touches_neither() {
     let mut app = App::with_environment(Environment::isolated()).0;
     app.ops.prompt_request_id = 5;
-    app.panels.pending_reload = Some(PendingReload {
-        side: PanelSide::Left,
-        name: "x".into(),
-    });
+    app.ops.pending_create = Some(PathBuf::from("/x"));
 
-    let _ = app.update(Message::PromptFinished {
-        prompt: PromptKind::CreateDir,
+    let _ = app.update(Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateDir,
         request_id: 4,
         result: Ok(()),
-    });
+    }));
 
     assert!(app.ops.prompt.is_none());
     assert!(
-        app.panels.pending_reload.is_some(),
+        app.ops.pending_create.is_some(),
         "a stale result consumed the queued reload"
     );
 }

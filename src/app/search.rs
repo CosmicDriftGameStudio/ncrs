@@ -26,6 +26,7 @@ impl App {
             favourites_bar_height: self.favourites_bar_height(),
             side_is_remote: self.panel(self.search.side).remote().is_some(),
             has_keys: self.search_has_keys(),
+            home: ncrs_fs::home_dir(),
             index: self
                 .hermes
                 .filing
@@ -61,7 +62,7 @@ impl App {
             }
             return self.focus_search_field();
         }
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.job_error = None;
         self.notice = None;
         let side = self.panels.active;
@@ -110,7 +111,7 @@ impl App {
             scope: view.root.clone(),
         };
         let origin = self.search.side;
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.job_error = None;
         self.notice = None;
         let closed = if target == origin {

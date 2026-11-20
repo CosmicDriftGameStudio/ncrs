@@ -76,14 +76,28 @@ pub fn start_view_copy(
         .as_mut()
         .and_then(|copies| copies.slot(&group).ok());
     let Some(slot) = made else {
-        let text = ctx
-            .lang
-            .text(if group_is_server(&group) {
-                Msg::ErrorRemoteViewUnavailable
-            } else {
-                Msg::ErrorArchiveViewUnavailable
-            })
-            .to_owned();
+        let on_server = group_is_server(&group);
+        let text = match ops.view_copies_problem.as_ref() {
+            Some((problem_kind, system_text)) => fill_template(
+                ctx.lang.text(if on_server {
+                    Msg::ErrorRemoteViewUnavailableReason
+                } else {
+                    Msg::ErrorArchiveViewUnavailableReason
+                }),
+                &[(
+                    "{reason}",
+                    &ncrs_ui_kit::io_reason::io_reason_text(*problem_kind, system_text, ctx.lang),
+                )],
+            ),
+            None => ctx
+                .lang
+                .text(if on_server {
+                    Msg::ErrorRemoteViewUnavailable
+                } else {
+                    Msg::ErrorArchiveViewUnavailable
+                })
+                .to_owned(),
+        };
         return actions(vec![Action::ShowError(text)]);
     };
     let generation = ops.generation;
@@ -175,7 +189,21 @@ pub fn view_extracted(
                     ctx.lang.text(Msg::ErrorRemoteUnsafeName),
                     &[("{name}", &name)],
                 ),
-                RowFailure::Conflict(reason) | RowFailure::Other(reason) => reason,
+                other
+                @ (RowFailure::Conflict(_) | RowFailure::Io { .. } | RowFailure::Other(_)) => {
+                    let name = finished
+                        .as_ref()
+                        .and_then(|job| job.shown.file_name())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    fill_template(
+                        ctx.lang.text(Msg::ErrorViewCopyFailed),
+                        &[
+                            ("{name}", &name),
+                            ("{reason}", &other.reason_text(ctx.lang)),
+                        ],
+                    )
+                }
             };
             asked.push(Action::ShowError(text));
         }

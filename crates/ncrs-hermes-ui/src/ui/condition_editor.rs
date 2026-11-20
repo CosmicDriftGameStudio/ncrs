@@ -16,7 +16,7 @@ use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem};
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::theme::spacing;
+use ncrs_ui_kit::theme::{size, spacing};
 
 pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
     "condition-value-0",
@@ -36,7 +36,7 @@ pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
 const REMOVE_ICON: &str = "×";
 
 /// The room of the kind dropdown in a row, in pixels.
-const KIND_WIDTH: f32 = 160.0;
+const KIND_WIDTH: f32 = size::FIELD_SHORT;
 
 /// The room of the has / has not dropdown in a row, in pixels.
 const NEGATION_WIDTH: f32 = 104.0;

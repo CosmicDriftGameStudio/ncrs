@@ -349,16 +349,6 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         }
     }
 
-    /// Like [`Self::keyed`], only while `when` holds: a row whose buttons are
-    /// off answers no key either.
-    pub fn keyed_if(self, when: bool, key: RowKey<M>) -> Self {
-        if when {
-            self.keyed(key)
-        } else {
-            self
-        }
-    }
-
     /// A row of a list set in under the row above it, for the members of a
     /// group.
     pub fn indented(self) -> Self {

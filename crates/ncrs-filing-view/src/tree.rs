@@ -1,10 +1,10 @@
 //! The tree of the write folder: the folders that get something, the new
 //! files in them and a few of the files that are there already.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use ncrs_filing::chat_work::{LivePlan, LiveState};
+use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveState};
 
 use crate::state::Session;
 
@@ -83,6 +83,15 @@ fn folders_shown(session: &Session, plan: &LivePlan) -> BTreeSet<PathBuf> {
 
 pub fn tree_items(session: &Session, plan: &LivePlan) -> Vec<Item> {
     let mut items = Vec::new();
+    let mut new_by_folder: HashMap<&Path, Vec<(&LiveFile, &String)>> = HashMap::new();
+    for file in &plan.files {
+        if let LiveState::Filed { folder, name, .. } = &file.state {
+            new_by_folder
+                .entry(folder.as_path())
+                .or_default()
+                .push((file, name));
+        }
+    }
     for folder in folders_shown(session, plan) {
         let hidden = folder
             .ancestors()
@@ -93,16 +102,7 @@ pub fn tree_items(session: &Session, plan: &LivePlan) -> Vec<Item> {
         }
         let depth = depth_of(&folder);
         let open = !session.closed_folders.contains(&folder);
-        let new_files: Vec<_> = plan
-            .files
-            .iter()
-            .filter_map(|file| match &file.state {
-                LiveState::Filed {
-                    folder: to, name, ..
-                } if *to == folder => Some((file, name)),
-                _ => None,
-            })
-            .collect();
+        let new_files = new_by_folder.remove(folder.as_path()).unwrap_or_default();
         items.push(Item::Folder {
             path: folder.clone(),
             depth,

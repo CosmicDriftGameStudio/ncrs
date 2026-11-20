@@ -8,9 +8,6 @@
 //! Where the end state of a key needs the disk or a server, the key is routed
 //! or noted and the state it would reach is set directly.
 
-// reason: test code; a failing setup is the signal.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -20,9 +17,11 @@ use iced::keyboard::{key::Code, key::Named, key::Physical, Key, Modifiers};
 
 use crate::app::{route_press, App};
 use crate::fs::FileEntry;
-use crate::messages::{BatchRenameMessage, CommandPaletteMessage, Message, PanelSide};
+use crate::messages::{
+    BatchRenameMessage, CommandPaletteMessage, Message, PanelMessage, PanelSide,
+};
 use crate::palette::ThemePreset;
-use crate::screenshot_tests::write_view_to;
+use crate::shot_file::write_view_to;
 use crate::trailer_data::{
     archive_listing, dense_compare_app, dense_search_results, dense_showcase_app,
     downloads_position, server_listing, FRAME_SIZE,
@@ -434,8 +433,8 @@ fn batch_rename(recorder: &mut Recorder) {
         "Holiday {counter}{extension}",
         "Holiday {date modified} {counter}{extension}",
     ] {
-        recorder.send(Message::BatchRename(BatchRenameMessage::PatternInput(
-            pattern.to_owned(),
+        recorder.send(Message::from(ncrs_ops::OpsMessage::BatchRename(
+            BatchRenameMessage::PatternInput(pattern.to_owned()),
         )));
         recorder.frame(1.2);
     }
@@ -490,10 +489,12 @@ fn sftp(recorder: &mut Recorder) {
     recorder.frame(0.5);
     let address = "sftp://alex@nas.local/home/alex";
     recorder.aim(Focus::new(0.0, 1030.0, 960.0, 50.0));
-    recorder.type_into(address, 4, Message::PathFieldInput);
+    recorder.type_into(address, 4, |typed| {
+        Message::Panel(PanelMessage::PathFieldInput(typed))
+    });
     recorder.frame(0.45);
     recorder.press_for_fixture(Key::Named(Named::Enter), Modifiers::default());
-    recorder.send(Message::PathFieldCancel);
+    recorder.send(Message::Panel(PanelMessage::PathFieldCancel));
     let folder = PathBuf::from(address);
     let listing = server_listing(address);
     let left = recorder.panel(PanelSide::Left);
@@ -545,7 +546,7 @@ fn themed_app(preset: ThemePreset) -> App {
 }
 
 #[test]
-#[ignore = "writes target/trailer; run with `cargo test -p ncrs trailer_frames -- --ignored`"]
+#[ignore = "writes target/trailer; run with `scripts/trailer/render.sh`"]
 fn trailer_frames() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let _entered = runtime.enter();

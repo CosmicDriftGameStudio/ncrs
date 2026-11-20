@@ -8,7 +8,7 @@ export PATH="${NCRS_TOOLCHAIN_BIN:-$HOME/.rustup/toolchains/1.98.1-aarch64-apple
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target/ncrs}"
 export NCRS_PDFIUM_DIR="${NCRS_PDFIUM_DIR:-$PWD/target/pdfium/lib}"
 
-cargo test -p ncrs trailer_frames -- --ignored
+cargo test -p ncrs --features media-tools trailer_frames -- --ignored
 
 cd scripts/trailer
 [ -d node_modules ] || bun install

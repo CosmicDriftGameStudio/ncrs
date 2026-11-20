@@ -202,7 +202,9 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::DeletePermanently
         | KeyAction::OpenTrashInFinder => at(3),
         KeyAction::AbortJob => at(4),
+        KeyAction::ShowProgress => at(4),
         KeyAction::GrantFolderAccess => at(4).dialog(),
+        KeyAction::OpenPrivacySettings => at(4),
         KeyAction::Quit => at(5),
         KeyAction::ToggleTag | KeyAction::TagAll | KeyAction::ClearTags => at(0),
         KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
@@ -302,6 +304,7 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         }
         KeyAction::OpenTrashInFinder => Command::plain(action, File, Msg::ActionOpenTrashInFinder),
         KeyAction::AbortJob => Command::plain(action, File, Msg::ActionAbortJob),
+        KeyAction::ShowProgress => Command::plain(action, File, Msg::ActionShowProgress),
         KeyAction::Quit => Command::plain(action, File, Msg::ActionQuit),
         KeyAction::ToggleTag => Command::themed(
             action,
@@ -445,6 +448,9 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
             FuturamaName::ActionDownloadAiModel,
         ),
         KeyAction::GrantFolderAccess => Command::plain(action, File, Msg::ActionGrantFolderAccess),
+        KeyAction::OpenPrivacySettings => {
+            Command::plain(action, File, Msg::ActionOpenPrivacySettings)
+        }
         KeyAction::ConnectServer => Command::themed(
             action,
             Go,
@@ -477,12 +483,6 @@ pub fn all() -> impl Iterator<Item = Command> {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

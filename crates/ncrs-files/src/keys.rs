@@ -44,6 +44,19 @@ pub enum VolumeMenuKey {
     Remove,
 }
 
+/// The keys of the column menu over a header: Escape closes it, the arrows
+/// move its highlight and Enter takes the entry; nothing else reaches the
+/// panels behind it.
+pub fn header_menu_key(key: &Key) -> Option<PanelMessage> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(PanelMessage::HeaderMenuClose),
+        Key::Named(Named::Enter) => Some(PanelMessage::HeaderMenuChoose),
+        Key::Named(Named::ArrowUp) => Some(PanelMessage::HeaderMenuMove(-1)),
+        Key::Named(Named::ArrowDown) => Some(PanelMessage::HeaderMenuMove(1)),
+        _ => None,
+    }
+}
+
 /// The keys of the drive menu; any other key does nothing until it is closed.
 pub fn volume_menu_key(key: &Key) -> Option<VolumeMenuKey> {
     match key.as_ref() {
@@ -58,12 +71,18 @@ pub fn volume_menu_key(key: &Key) -> Option<VolumeMenuKey> {
     }
 }
 
-/// A printable character with at most Shift held. With Option held a Mac types
-/// another character, so Alt, Ctrl and Cmd all rule it out.
+/// A printable character with at most Shift held. On a Mac, Option types
+/// another character (`@`, `[`, `|` on a German layout), so it counts as typing
+/// there; the callers try the key bindings first. Ctrl and Cmd never type.
 pub fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<PanelMessage> {
     let Key::Character(typed) = key else {
         return None;
     };
-    ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
+    let typing = if cfg!(target_os = "macos") {
+        Modifiers::SHIFT | Modifiers::ALT
+    } else {
+        Modifiers::SHIFT
+    };
+    ((modifiers - typing).is_empty() && typed.chars().all(|c| !c.is_control()))
         .then(|| PanelMessage::TypeAhead(typed.to_string()))
 }

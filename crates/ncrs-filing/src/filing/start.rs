@@ -12,6 +12,26 @@ impl FilingModule {
         Self::start_picking(filing, db_path, store, random_group)
     }
 
+    /// Whether the settling that follows the confirmation of a plain file is
+    /// still running.
+    pub fn is_settling(&self) -> bool {
+        self.settling
+    }
+
+    /// Work of the chat, the review list or the filing tab is under way: it
+    /// would fail, or be cut in two, if the index were replaced now.
+    pub fn index_work_running(&self) -> bool {
+        self.index_work.running()
+    }
+
+    /// Why the interrupted runs of the open index could not all be settled.
+    pub fn settle_problem(&self) -> Option<String> {
+        self.settle_problem
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     pub(in crate::filing) fn start_picking(
         filing: &Filing,
         db_path: Option<PathBuf>,
@@ -42,13 +62,17 @@ impl FilingModule {
             after_recovery_key: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
-            chat_text_chain: OnceLock::new(),
+            chat_text_chain: Arc::default(),
             pipeline_text_chain: Mutex::new(None),
+            settle_problem: SettleNote::default(),
+            index_work: crate::index_work::IndexWork::default(),
+            settling: false,
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());
             return Some((module, None));
         }
+        module.warm_chat_text_chain();
         let work = module.new_work(Job::Start {
             locations: filing.locations.clone(),
         });

@@ -1,6 +1,6 @@
 use crate::app::*;
-use crate::fs::search::{LineMatch, SearchEvent};
 use crate::messages::SearchMessage;
+use ncrs_search::engine::{LineMatch, SearchEvent};
 
 struct Hits {
     app: App,
@@ -50,7 +50,7 @@ fn read_all(app: &mut App, side: PanelSide, files: &[PathBuf]) {
     let request_id = app.panel(side).request_id;
     let entries = files
         .iter()
-        .filter_map(|path| fs::FileEntry::from_path(path))
+        .filter_map(|path| fs::entry_from_path(path))
         .collect();
     drop(app.update(Message::HitList(HitListMessage::Read {
         side,
@@ -159,7 +159,7 @@ fn a_read_of_an_older_open_is_ignored() {
 fn a_file_that_is_gone_is_not_listed() {
     let hits = searched(&["a.txt"]);
     std::fs::remove_file(&hits.files[0]).unwrap();
-    assert!(fs::FileEntry::from_path(&hits.files[0]).is_none());
+    assert!(fs::entry_from_path(&hits.files[0]).is_none());
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn escape_goes_back_to_the_search_with_its_fields() {
     };
     assert_eq!(
         route_key(&running, Key::Named(Named::Escape), Modifiers::default()),
-        Some(Message::AbortJob)
+        Some(Message::Ops(OpsMessage::AbortJob))
     );
 
     drop(
@@ -277,12 +277,12 @@ fn renaming_a_hit_lists_it_under_the_new_path_before_the_list_is_read_again() {
     std::fs::rename(&from, &to).unwrap();
     let request_id = hits.app.ops.rename_request_id;
 
-    drop(hits.app.update(Message::Renamed {
+    drop(hits.app.update(Message::Ops(OpsMessage::Renamed {
         request_id,
         side: PanelSide::Left,
         from: from.clone(),
         result: Ok(to.clone()),
-    }));
+    })));
 
     let panel = hits.app.panel(PanelSide::Left);
     assert!(panel.is_hit_list());
@@ -304,12 +304,12 @@ fn renaming_a_folder_lists_its_hits_under_the_new_path_in_either_panel() {
     std::fs::rename(&folder, &renamed).unwrap();
     let request_id = hits.app.ops.rename_request_id;
 
-    drop(hits.app.update(Message::Renamed {
+    drop(hits.app.update(Message::Ops(OpsMessage::Renamed {
         request_id,
         side: PanelSide::Left,
         from: folder.clone(),
         result: Ok(renamed.clone()),
-    }));
+    })));
 
     let panel = hits.app.panel(PanelSide::Right);
     assert!(panel.is_hit_list());
@@ -357,7 +357,7 @@ fn a_list_is_refused_as_the_target_of_a_copy() {
     let mut hits = opened(&["a.txt"], PanelSide::Right);
     let own = hits.files[0].clone();
     let folder = hits.folder.path().to_path_buf();
-    let entry = fs::FileEntry::from_path(&own).unwrap();
+    let entry = fs::entry_from_path(&own).unwrap();
     hits.app
         .panel_mut(PanelSide::Left)
         .apply_listing(folder, vec![entry], None, None, 12);
@@ -521,7 +521,10 @@ fn a_query_that_is_no_file_name_falls_back_to_the_folder_name() {
 fn keep_folders_toggles_in_the_prompt_and_is_off_at_first() {
     let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
     pack_prompt_of(&mut hits);
-    drop(hits.app.update(Message::PromptToggleKeepFolders));
+    drop(
+        hits.app
+            .update(Message::Ops(OpsMessage::PromptToggleKeepFolders)),
+    );
     let prompt = hits.app.ops.prompt.as_ref().unwrap();
     assert!(prompt.hits().unwrap().keep_folders);
     assert_eq!(
@@ -536,7 +539,10 @@ fn keep_folders_toggles_in_the_prompt_and_is_off_at_first() {
                 .as_path()
         )
     );
-    drop(hits.app.update(Message::PromptToggleKeepFolders));
+    drop(
+        hits.app
+            .update(Message::Ops(OpsMessage::PromptToggleKeepFolders)),
+    );
     assert!(hits
         .app
         .ops

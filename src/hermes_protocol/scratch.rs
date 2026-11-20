@@ -11,12 +11,12 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
         if name.to_string_lossy().starts_with('.') {
             continue;
         }
-        let Ok(kind) = entry.file_type() else {
+        let Ok(meta) = entry.metadata() else {
             continue;
         };
-        if kind.is_dir() {
+        if meta.is_dir() {
             copy_tree(&entry.path(), &to.join(&name))?;
-        } else if !kind.is_dir() {
+        } else if meta.is_file() {
             copy_file_reporting(&entry.path(), &to.join(&name));
         }
     }
@@ -40,6 +40,8 @@ pub fn report_removal(path: &Path, outcome: io::Result<()>) {
 }
 
 /// The same tree as hard links, so a language's run can move files freely.
+/// Files may be replaced or removed, never written in place: that would change
+/// the master they share.
 pub fn link_tree(from: &Path, to: &Path) -> io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)?.filter_map(Result::ok) {
@@ -129,4 +131,12 @@ pub fn count_indexable(dir: &Path) -> usize {
                 .sum()
         })
         .unwrap_or(0)
+}
+
+/// Makes `link` point at the folder `target`.
+pub fn link_folder(target: &Path, link: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    return std::os::windows::fs::symlink_dir(target, link);
 }

@@ -22,7 +22,7 @@ use std::time::SystemTime;
 pub use extract::copy_out;
 pub use extract_here::{extract_here, Extracted};
 pub use index::{ArchiveIndex, Totals};
-pub use names::safe_components;
+pub use names::{is_creatable_name, is_device_name, safe_components};
 pub use sevenz::{refusal_of, SevenZipRefusal};
 pub use view::restrict_to_owner;
 pub use view::{extract_for_view, ViewCopies, ViewCopy};
@@ -224,17 +224,12 @@ fn recently_used(key: &IndexKey) -> Option<Arc<ArchiveIndex>> {
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::fixtures::{

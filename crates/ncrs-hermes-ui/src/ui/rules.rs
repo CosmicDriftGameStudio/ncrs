@@ -138,7 +138,12 @@ fn rule_row<'a>(
     SettingRow::listed_buttons(label, Some(second), Some(status), actions, palette)
 }
 
-fn problem_text(detail: &str, lang: Language) -> String {
+fn problem_text(raw_detail: &str, lang: Language) -> String {
+    let detail = if raw_detail == ncrs_core::INDEX_NOT_OPEN {
+        lang.text(Msg::IndexNotOpen)
+    } else {
+        raw_detail
+    };
     fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)])
 }
 
@@ -273,10 +278,7 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
     };
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
     if let Some(detail) = &form.failure {
-        rows.push(page_kit::error_line(
-            fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)]),
-            palette,
-        ));
+        rows.push(page_kit::error_line(problem_text(detail, lang), palette));
     }
     rows.push(page_kit::form_row(
         lang.text(Msg::RulesFormName),
@@ -529,12 +531,6 @@ fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {
 #[cfg(test)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
     use crate::rules_page::fixtures::page;

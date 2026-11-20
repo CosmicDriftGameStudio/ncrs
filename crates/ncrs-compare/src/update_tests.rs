@@ -1,11 +1,3 @@
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -203,6 +195,33 @@ fn a_comparison_that_could_not_read_a_folder_ends_with_the_error_and_no_marks() 
     assert!(actions.iter().any(
         |action| matches!(action, Action::ShowError(text) if text.contains("permission denied"))
     ));
+}
+
+#[test]
+fn a_refusal_by_the_disk_is_told_without_the_system_text() {
+    let mut compare = Compare::default();
+    let (left, right) = (Path::new(LEFT), Path::new(RIGHT));
+    run(&mut compare, Message::Open, left, right);
+    run(&mut compare, Message::Confirm, left, right);
+    let generation = compare.generation;
+
+    let actions = run(
+        &mut compare,
+        Message::Finished {
+            generation,
+            result: Err(ScanError::Io {
+                kind: std::io::ErrorKind::PermissionDenied,
+                text: "Permission denied (os error 13)".to_owned(),
+            }),
+        },
+        left,
+        right,
+    );
+
+    assert!(compare.run.is_none());
+    assert!(actions
+        .iter()
+        .any(|action| matches!(action, Action::ShowError(text) if !text.contains("os error"))));
 }
 
 #[test]

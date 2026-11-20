@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 // Its own test binary: pdfium can be bound once per process, and a load that
 // finds it already bound would not touch the path this test is about. On
 // Windows the canonical path carries the `\\?\` prefix, which is what ncrs

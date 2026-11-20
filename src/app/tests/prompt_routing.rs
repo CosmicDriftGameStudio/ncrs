@@ -1,5 +1,8 @@
 use crate::app::*;
 use iced::keyboard::key::Named;
+use ncrs_ops::prompt::PromptKind;
+use ncrs_ops::prompt::{PromptError, PromptProblem};
+use ncrs_ops::OpsMessage;
 
 fn app() -> App {
     App::with_environment(Environment::isolated()).0
@@ -7,7 +10,7 @@ fn app() -> App {
 
 fn with_prompt() -> App {
     let mut app = app();
-    app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
+    app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")).on_side(PanelSide::Left));
     app
 }
 
@@ -153,11 +156,11 @@ fn enter_submits_and_escape_cancels() {
     let app = with_prompt();
     assert_eq!(
         press(&app, Key::Named(Named::Enter)),
-        Some(Message::PromptSubmit)
+        Some(Message::Ops(OpsMessage::PromptSubmit))
     );
     assert_eq!(
         press(&app, Key::Named(Named::Escape)),
-        Some(Message::PromptCancel)
+        Some(Message::Ops(OpsMessage::PromptCancel))
     );
 }
 
@@ -170,15 +173,15 @@ fn typing_and_backspace_edit_the_name() {
 
     assert_eq!(
         press(&app, Key::Character("d".into())),
-        Some(Message::PromptInput("abcd".into()))
+        Some(Message::Ops(OpsMessage::PromptInput("abcd".into())))
     );
     assert_eq!(
         press(&app, Key::Named(Named::Space)),
-        Some(Message::PromptInput("abc ".into()))
+        Some(Message::Ops(OpsMessage::PromptInput("abc ".into())))
     );
     assert_eq!(
         press(&app, Key::Named(Named::Backspace)),
-        Some(Message::PromptInput("ab".into()))
+        Some(Message::Ops(OpsMessage::PromptInput("ab".into())))
     );
 }
 
@@ -187,7 +190,7 @@ fn typing_and_backspace_edit_the_name() {
 #[test]
 fn typing_clears_a_validation_error() {
     let mut prompt = Prompt::create_dir(PathBuf::from("/tmp"));
-    prompt.set_validation_error("empty_name");
+    prompt.set_validation_error(PromptProblem::EmptyName);
     assert!(prompt.error().is_some());
 
     prompt.set_name("x".into());
@@ -262,7 +265,7 @@ fn f7_then_a_name_then_enter_readies_the_operation() {
     assert_eq!(app.ops.prompt.as_ref().unwrap().name(), "neuer ordner");
 
     // Submit starts the operation and marks the prompt busy.
-    let _task = app.update(Message::PromptSubmit);
+    let _task = app.update(Message::Ops(OpsMessage::PromptSubmit));
     assert!(
         app.ops.prompt.is_some(),
         "the prompt closed before the work ran"
@@ -282,14 +285,17 @@ fn submitting_an_empty_name_reports_it_without_closing() {
     app.panels.left.path = base.clone();
 
     press_and_update(&mut app, Key::Named(Named::F7));
-    let _task = app.update(Message::PromptSubmit);
+    let _task = app.update(Message::Ops(OpsMessage::PromptSubmit));
 
     assert!(
         app.ops.prompt.is_some(),
         "the prompt closed on an invalid name"
     );
     assert!(!app.ops.prompt.as_ref().unwrap().busy());
-    assert_eq!(app.ops.prompt.as_ref().unwrap().error(), Some("empty_name"));
+    assert_eq!(
+        app.ops.prompt.as_ref().unwrap().error(),
+        Some(&PromptError::Problem(PromptProblem::EmptyName))
+    );
 }
 
 /// Escape closes the prompt and leaves no state behind.
@@ -301,7 +307,6 @@ fn escape_closes_the_prompt() {
 
     press_and_update(&mut app, Key::Named(Named::Escape));
     assert!(app.ops.prompt.is_none());
-    assert_eq!(app.ops.prompt_side, None);
 }
 
 /// A result that arrives after the user dismissed the prompt is dropped:
@@ -313,13 +318,13 @@ fn a_result_from_a_dismissed_prompt_is_ignored() {
     app.ops.prompt_request_id = 7;
     press_and_update(&mut app, Key::Named(Named::Escape));
 
-    let stale = Message::PromptFinished {
-        prompt: PromptKind::CreateDir,
+    let stale = Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateDir,
         request_id: 7,
         result: Err(fs::CreateDirError::TaskFailed {
             reason: "stale".into(),
         }),
-    };
+    });
     let _task = app.update(stale);
     assert!(app.ops.prompt.is_none());
 }

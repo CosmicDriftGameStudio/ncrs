@@ -163,22 +163,15 @@ impl ThemeFetch {
     }
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;

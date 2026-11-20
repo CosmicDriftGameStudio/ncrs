@@ -175,12 +175,6 @@ pub fn is_plain_name(name: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::super::test_server::{short_timeouts, symlink, Fixture};
     #[cfg(unix)]

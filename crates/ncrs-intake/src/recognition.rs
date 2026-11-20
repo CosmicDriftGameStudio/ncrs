@@ -3,7 +3,12 @@
 //! fictitious documents. The corpus lives in `tests/fixtures/recognition`: a
 //! header with the expected values, a `---` line, then the document text.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test code: a failing assertion is the signal"
+)]
 
 use std::collections::BTreeSet;
 use std::fmt;

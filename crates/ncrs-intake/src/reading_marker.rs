@@ -129,11 +129,8 @@ impl Drop for ReadingMarker {
 
 #[cfg(test)]
 #[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::mem_forget
+    clippy::mem_forget,
+    reason = "the test simulates a crash: nothing may be cleaned up"
 )]
 mod tests {
     use super::*;

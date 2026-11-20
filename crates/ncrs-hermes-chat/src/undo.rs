@@ -1,5 +1,7 @@
 //! Taking the last run back.
 
+use std::path::Path;
+
 use ncrs_filing::chat_work::{ChatWork, RunSummary, UndoReport};
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
@@ -43,11 +45,20 @@ pub fn last_run_done(state: &mut State, ctx: &Ctx, result: Result<Option<RunSumm
         .as_ref()
         .map(|folder| folder_name(ctx, folder))
         .unwrap_or_default();
+    let name = if summary.automatic {
+        fill(
+            ctx.lang,
+            Msg::HermesChatRunNameAutomatic,
+            &[("folder", &folder_name(ctx, Path::new(&summary.name)))],
+        )
+    } else {
+        summary.name.clone()
+    };
     let sentence = fill(
         ctx.lang,
         msg,
         &[
-            ("name", &summary.name),
+            ("name", &name),
             ("count", &number(summary.items)),
             ("when", &when_text(ctx, summary.finished_at)),
             ("folder", &folder),
@@ -71,11 +82,19 @@ pub fn put_back(state: &mut State, ctx: &Ctx) {
         return;
     };
     state.step = Step::Idle;
-    work(
-        state,
+    let chain = std::mem::take(&mut state.session.run_chain);
+    let work_to_do = if chain.len() > 1 && chain.contains(&summary.batch) {
+        ChatWork::UndoAll {
+            batches: chain.into_iter().rev().collect(),
+        }
+    } else {
         ChatWork::Undo {
             batch: summary.batch,
-        },
+        }
+    };
+    work(
+        state,
+        work_to_do,
         Some(text(ctx.lang, Msg::HermesChatWorkingUndo)),
     );
 }

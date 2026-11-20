@@ -153,7 +153,7 @@ fn a_vscode_theme_is_found_under_the_home_folder_by_tilde() {
     assert_eq!(config.vscode_warning, None);
     assert_eq!(
         config.palette.background,
-        iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        iced_core::Color::from_rgb8(0x11, 0x22, 0x33)
     );
 }
 

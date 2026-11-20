@@ -18,6 +18,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use super::archive;
@@ -28,6 +29,7 @@ mod sweep;
 #[cfg(all(test, unix))]
 use place::create_entry;
 use place::place;
+pub use place::same_bytes;
 pub use skipped::{SkipKind, Skipped};
 #[cfg(any(test, feature = "test-support"))]
 pub use sweep::let_time_pass_for_sweep;
@@ -160,14 +162,22 @@ pub struct Reporting<'a> {
     sender: &'a mpsc::UnboundedSender<Tick>,
     /// The last count sent, so a tick goes out only when the count changed.
     last_sent: usize,
+    /// When the last tick went out. Between two ticks at least `TICK_EVERY`
+    /// lie, except for the one that finishes the run.
+    last_sent_at: Option<Instant>,
     skipped: Vec<Skipped>,
 }
+
+/// A hundred thousand small files would otherwise be a hundred thousand
+/// messages for a window that can show ten changes a second.
+const TICK_EVERY: Duration = Duration::from_millis(100);
 
 impl<'a> Reporting<'a> {
     pub fn new(sender: &'a mpsc::UnboundedSender<Tick>) -> Self {
         Self {
             sender,
             last_sent: 0,
+            last_sent_at: None,
             skipped: Vec::new(),
         }
     }
@@ -183,11 +193,19 @@ impl Progress for Reporting<'_> {
         if done == self.last_sent {
             return Ok(());
         }
+        let finishing = total > 0 && done >= total;
+        let due = finishing
+            || self
+                .last_sent_at
+                .is_none_or(|sent| sent.elapsed() >= TICK_EVERY);
+        if !due {
+            return self.keep_going();
+        }
         self.last_sent = done;
+        self.last_sent_at = Some(Instant::now());
         // A closed channel means the app is gone, and that is the one case that
         // should stop a copy — it is also how a stopped app reaches the blocking
-        // thread. An unbounded channel cannot fill up, so there is no
-        // backpressure here to reason about.
+        // thread.
         self.sender
             .send(Tick { done, total })
             .map_err(|closed| io::Error::other(format!("the app is gone: {closed}")))
@@ -478,10 +496,8 @@ fn out_of_archive<P: Progress>(
     })
 }
 
-/// Counts but does not report. For a caller that only wants the work done —
-/// `run_reporting` is what the app uses, and this is what its own tests use to
-/// check that a plain run stays quiet.
-#[allow(dead_code)]
+/// Counts but does not report; tests use it to check that a plain run stays quiet.
+#[cfg(test)]
 pub fn run(
     source: &Path,
     target_dir: &Path,
@@ -501,37 +517,8 @@ pub fn run(
     }
 }
 
-/// The names a transfer would create in `target_dir`, so the caller can show
-/// them before the dialog and detect a name that is already taken.
-///
-/// The app does not use this yet: it asks about a conflict when the walk
-/// reaches it rather than before it starts, which is correct for a tag list of
-/// fifty thousand but means the dialog names a file the user has not seen yet.
-/// Kept because it is the piece that fixes that, and deleting it would lose
-/// the only test that says what it should return.
-#[allow(dead_code)]
-pub fn conflicts(source: &Path, target_dir: &Path) -> Option<PathBuf> {
-    let name = source.file_name()?;
-    let target = target_dir.join(name);
-    target.exists().then_some(target)
-}
-
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;
 
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod reporting_tests;

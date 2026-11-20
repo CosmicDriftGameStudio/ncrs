@@ -1,9 +1,7 @@
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
 //! While folders are compared every row reserves the Compare column, so Size
 //! and Modified stay in line on the `..` row and on rows without a mark.
 
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -68,7 +66,7 @@ fn rows_without_a_mark_keep_the_compare_column_free() {
     let matches = simulator
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image("tests/snapshots/compare-column-blank-cells.png")
+        .matches_reference_image("tests/snapshots/compare-column-blank-cells.png")
         .unwrap();
     assert!(matches, "the Compare column differs from its image");
 }

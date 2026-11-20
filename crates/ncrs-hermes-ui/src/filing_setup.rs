@@ -69,7 +69,6 @@ impl FilingSetup {
             .enumerate()
             .map(|(index, location)| FilingLocation {
                 is_target: Some(index) == target,
-                transfer: Default::default(),
                 ..location.clone()
             })
             .collect()
@@ -168,13 +167,6 @@ pub fn write_locations(
     config::write_filing_locations(config_path, &canonical).map(|config| config.filing)
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,6 +324,15 @@ mod tests {
         let targets: Vec<_> = list.iter().filter(|l| l.is_target).collect();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].path, folder("Old"));
+    }
+
+    #[test]
+    fn giving_another_folder_a_role_keeps_copy_on_the_others() {
+        let mut list = configured();
+        list[0].transfer = config::LocationTransfer::Copy;
+        let written =
+            locations_with_role(&list, &folder("Old"), FolderRole::FilingLocation).unwrap();
+        assert_eq!(written[0].transfer, config::LocationTransfer::Copy);
     }
 
     #[test]

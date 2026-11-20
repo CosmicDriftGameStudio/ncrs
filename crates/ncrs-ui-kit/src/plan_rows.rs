@@ -135,9 +135,18 @@ pub fn editing_row<'a, M: Clone + 'a>(depth: usize, field: Element<'a, M>) -> El
         .into()
 }
 
-/// `rows` in a vertical scrollable that fills the room.
-pub fn pane_scroll<'a, M: 'a>(rows: Vec<Element<'a, M>>) -> Element<'a, M> {
+/// `row` as the one [`crate::row_scroll::row_into_view`] looks for with `row_id`.
+pub fn marked_row<'a, M: 'a>(row: Element<'a, M>, row_id: &'static str) -> Element<'a, M> {
+    container(row).id(row_id).into()
+}
+
+/// `rows` in a vertical scrollable with `scroll_id` that fills the room.
+pub fn pane_scroll<'a, M: 'a>(
+    scroll_id: &'static str,
+    rows: Vec<Element<'a, M>>,
+) -> Element<'a, M> {
     scrollable(column(rows))
+        .id(scroll_id)
         .direction(scrollable::Direction::Vertical(
             scrollable::Scrollbar::new()
                 .width(SCROLLBAR_WIDTH)

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use iced::Color;
+use iced_core::Color;
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 
 use crate::config::read_source;
@@ -294,13 +294,6 @@ fn parse_color(text: &str) -> Option<Color> {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

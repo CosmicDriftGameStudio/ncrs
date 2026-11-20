@@ -52,6 +52,7 @@ pub fn filed_in_tab(state: &mut State, ctx: &Ctx, done: FiledInTab) {
         items: done.filed,
         finished_at: ctx.now.timestamp(),
         source_folder: Some(done.source),
+        automatic: false,
     });
     state.step = Step::UndoAsk;
     let chips: Vec<Chip> = vec![chip(ctx, Msg::HermesChatUndo, ChipReply::PutBack, false)];

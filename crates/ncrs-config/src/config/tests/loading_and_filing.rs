@@ -78,16 +78,16 @@ pub fn load_fixture(text: &str) -> Config {
     .unwrap()
 }
 
-pub fn pressed(config: &Config, key: iced::keyboard::key::Named) -> Option<KeyAction> {
+pub fn pressed(config: &Config, key: iced_core::keyboard::key::Named) -> Option<KeyAction> {
     config.keymap.action_for(
-        &iced::keyboard::Key::Named(key),
-        iced::keyboard::Modifiers::default(),
+        &iced_core::keyboard::Key::Named(key),
+        iced_core::keyboard::Modifiers::default(),
         crate::keymap::KeyScope::Panel,
     )
 }
 
 pub fn assert_the_0_3_0_settings(config: &Config) {
-    use iced::keyboard::key::Named;
+    use iced_core::keyboard::key::Named;
     assert_eq!(config.version, Version(1));
     assert_eq!(config.lang, Some(Language::German));
     let view = config.open.view.as_ref().unwrap();
@@ -113,11 +113,11 @@ pub fn assert_the_0_3_0_settings(config: &Config) {
     assert_eq!(config.palette.background, classic.background);
     assert_eq!(
         config.palette.directory,
-        iced::Color::from_rgb8(0xff, 0xff, 0x55)
+        iced_core::Color::from_rgb8(0xff, 0xff, 0x55)
     );
     assert_eq!(
         config.palette.tagged,
-        iced::Color::from_rgb8(0xaa, 0x55, 0x00)
+        iced_core::Color::from_rgb8(0xaa, 0x55, 0x00)
     );
 }
 
@@ -168,7 +168,7 @@ fn the_config_of_0_5_0_still_loads() {
 
 #[test]
 fn the_config_of_0_7_0_still_loads() {
-    use iced::keyboard::key::Named;
+    use iced_core::keyboard::key::Named;
     let config = load_fixture(include_str!(
         "../../../../../tests/fixtures/config/v0.7.0.toml"
     ));
@@ -179,9 +179,47 @@ fn the_config_of_0_7_0_still_loads() {
     assert_eq!(config.keymap.bindings_of(KeyAction::Quit).count(), 2);
     assert_eq!(
         config.palette.directory,
-        iced::Color::from_rgb8(0xff, 0xff, 0x55)
+        iced_core::Color::from_rgb8(0xff, 0xff, 0x55)
     );
     assert_the_filing_settings(&config);
+}
+
+#[test]
+fn the_configs_of_the_1_x_releases_still_load() {
+    use iced_core::keyboard::key::Named;
+    let releases = [
+        (
+            "1.0.0",
+            Named::F12,
+            include_str!("../../../../../tests/fixtures/config/v1.0.0.toml"),
+        ),
+        (
+            "1.2.0",
+            Named::F11,
+            include_str!("../../../../../tests/fixtures/config/v1.2.0.toml"),
+        ),
+        (
+            "1.5.1",
+            Named::F11,
+            include_str!("../../../../../tests/fixtures/config/v1.5.1.toml"),
+        ),
+    ];
+    for (release, copy_key, text) in releases {
+        let config = load_fixture(text);
+        assert_eq!(config.lang, Some(Language::German), "{release}");
+        assert_eq!(
+            pressed(&config, copy_key),
+            Some(KeyAction::Copy),
+            "{release}"
+        );
+        assert_eq!(
+            pressed(&config, Named::F3),
+            Some(KeyAction::Edit),
+            "{release}"
+        );
+        assert_eq!(config.filing.locations.len(), 2, "{release}");
+        assert_eq!(config.servers.len(), 1, "{release}");
+    }
 }
 
 pub fn default_pattern_of(content: &str) -> Option<String> {

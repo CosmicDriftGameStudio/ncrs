@@ -1,13 +1,5 @@
 //! Update and title of the filing tab on a hand-built plan, without a model.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -123,7 +115,7 @@ fn escape_while_renaming_keeps_the_name() {
 
 #[test]
 fn an_empty_name_or_one_with_a_separator_keeps_the_field_open() {
-    for bad in ["", "  ", "x/y.pdf"] {
+    for bad in ["", "  ", "x/y.pdf", ".", ".."] {
         let mut state = simple(true);
         send(&mut state, Message::StartRename);
         send(&mut state, Message::RenameInput(bad.into()));
@@ -302,4 +294,61 @@ fn a_missing_agreement_to_send_folder_names_is_said_and_not_shown_as_no_folder()
 
     assert!(refused.contains("agreement"), "{refused}");
     assert_ne!(refused, failed);
+}
+
+#[test]
+fn cancel_waits_while_the_files_are_carried_out() {
+    let mut state = simple(true);
+    state.session.as_mut().unwrap().filing = true;
+
+    let action = send(&mut state, Message::Cancel);
+
+    assert_eq!(action, None);
+    assert!(state.session.is_some());
+}
+
+#[test]
+fn cancel_closes_the_tab_when_nothing_runs() {
+    let mut state = simple(true);
+
+    let action = send(&mut state, Message::Cancel);
+
+    assert_eq!(action, Some(Action::Close));
+    assert!(state.session.is_none());
+}
+
+#[test]
+fn nothing_is_filed_when_no_file_goes_anywhere() {
+    let mut state = state_with(vec![file("a.pdf", LiveState::NoFolder)], true);
+
+    send(&mut state, Message::File(Transfer::Copy));
+
+    assert!(!session(&state).filing);
+}
+
+#[test]
+fn enter_copies_and_shift_enter_moves() {
+    use iced::keyboard::key::Named;
+    use iced::keyboard::{Key, Modifiers};
+
+    let enter = Key::Named(Named::Enter);
+    assert_eq!(
+        crate::filing_key(&enter, Modifiers::empty(), false),
+        Some(Message::File(Transfer::Copy))
+    );
+    assert_eq!(
+        crate::filing_key(&enter, Modifiers::SHIFT, false),
+        Some(Message::File(Transfer::Move))
+    );
+    assert_eq!(crate::filing_key(&enter, Modifiers::empty(), true), None);
+}
+
+#[test]
+fn the_tab_says_while_the_files_are_carried_out() {
+    let mut state = simple(true);
+    state.session.as_mut().unwrap().filing = true;
+
+    let title = tab_title(&state, Language::English).unwrap();
+
+    assert!(!title.contains('✓'));
 }

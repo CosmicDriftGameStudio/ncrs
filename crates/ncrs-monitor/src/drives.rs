@@ -109,7 +109,6 @@ pub fn is_system_volume(mount: &Path, file_system: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};

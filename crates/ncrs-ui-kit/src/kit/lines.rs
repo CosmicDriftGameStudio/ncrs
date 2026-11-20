@@ -1,9 +1,9 @@
 //! Lines of text, sections, dividers and form rows.
 
 use iced::widget::text::{IntoFragment, Wrapping};
-use iced::widget::{column, container, row, rule, text, Column, Row};
+use iced::widget::{button, column, container, row, rule, scrollable, text, Column, Row};
 use iced::{alignment, Element, Length};
-use ncrs_index::ConditionKind;
+use ncrs_index_types::ConditionKind;
 
 use crate::palette::Palette;
 use crate::theme::{self, font_size, spacing};
@@ -53,6 +53,43 @@ pub fn dim_line<'a, M: Clone + 'a>(content: String, palette: &Palette) -> Elemen
         .into()
 }
 
+/// A file name in the file font, on one line; the caller has cut it to fit.
+pub fn file_name<'a, M: Clone + 'a>(name: String, palette: &Palette) -> Element<'a, M> {
+    text(name)
+        .font(crate::APP_FONT)
+        .size(font_size::FILE)
+        .color(palette.text)
+        .wrapping(Wrapping::None)
+        .into()
+}
+
+/// The names a dialog is about, one under the other in a bordered box. With
+/// `scroll_height` the box is that tall and scrolls; `more` is a dimmed last
+/// line for the names left out.
+pub fn name_list<'a, M: Clone + 'a>(
+    names: Vec<String>,
+    more: Option<String>,
+    scroll_height: Option<f32>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut lines: Column<'a, M> = Column::new().spacing(spacing::XS / 2.0);
+    for name in names {
+        lines = lines.push(file_name(name, palette));
+    }
+    if let Some(more_line) = more {
+        lines = lines.push(dim_line(more_line, palette));
+    }
+    let body = container(lines).padding([spacing::M, spacing::M]);
+    let inside: Element<'a, M> = match scroll_height {
+        Some(height) => scrollable(body).height(height).into(),
+        None => body.into(),
+    };
+    container(inside)
+        .width(Length::Fill)
+        .style(theme::outlined(palette))
+        .into()
+}
+
 /// Running text.
 pub fn paragraph<'a, M: Clone + 'a>(
     content: impl IntoFragment<'a>,
@@ -63,27 +100,6 @@ pub fn paragraph<'a, M: Clone + 'a>(
         .color(palette.text)
         .wrapping(Wrapping::Word)
         .into()
-}
-
-/// Running text lines under a bullet each; a long one wraps under its own
-/// first word.
-pub fn bullet_list<'a, M: Clone + 'a>(
-    items: impl IntoIterator<Item = String>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut list = Column::new().spacing(spacing::XS);
-    for item in items {
-        list = list.push(
-            row![
-                text("\u{2022}")
-                    .size(font_size::BODY)
-                    .color(palette.dim_text),
-                paragraph(item, palette),
-            ]
-            .spacing(spacing::M),
-        );
-    }
-    list.into()
 }
 
 pub fn error_line<'a, M: Clone + 'a>(
@@ -190,6 +206,72 @@ pub fn divider<'a, M: Clone + 'a>(palette: &Palette) -> Element<'a, M> {
         .into()
 }
 
+/// The title above a group of rows in a list, under a dividing line.
+pub fn group_heading<'a, M: Clone + 'a>(
+    title: impl IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    column![
+        divider(palette),
+        text(title).size(font_size::BODY).color(palette.dim_text),
+    ]
+    .padding([0.0, spacing::CELL_PADDING_X])
+    .spacing(spacing::LINE_GAP)
+    .into()
+}
+
+/// A row of a list of places: the name, a smaller share of the width for
+/// where it is. `present` is false for a place that is gone, drawn dim.
+pub fn place_row<'a, M: Clone + 'a>(
+    name: String,
+    path: String,
+    present: bool,
+    is_selected: bool,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let name_color = match (is_selected, present) {
+        (true, _) => palette.cursor_text,
+        (false, true) => palette.directory,
+        (false, false) => palette.dim_text,
+    };
+    let path_color = if is_selected {
+        palette.cursor_text
+    } else {
+        palette.dim_text
+    };
+    let cell = |shown: String, color, portion| {
+        container(
+            text(shown)
+                .size(font_size::BODY)
+                .color(color)
+                .wrapping(Wrapping::None),
+        )
+        .width(Length::FillPortion(portion))
+        .clip(true)
+        .into()
+    };
+    let content = Row::with_children([cell(name, name_color, 2), cell(path, path_color, 3)])
+        .spacing(spacing::CELL_PADDING_X);
+    button(content)
+        .on_press(on_press)
+        .width(Length::Fill)
+        .style(theme::row(palette, false, is_selected, true))
+        .into()
+}
+
+/// The frame around the body of a panel: fills its space in the panel colors.
+pub fn panel_frame<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    container(content)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(theme::panel(palette))
+        .into()
+}
+
 /// One setting: its name, the name of the theme it belongs to and a
 /// description on the left, the control in a column of `control_width` on the
 /// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
@@ -228,5 +310,37 @@ pub fn form_row_with_problem<'a, M: Clone + 'a>(
         .padding([spacing::XS, 0.0]),
         divider(palette),
     ]
+    .into()
+}
+
+/// `content` centred over the window on a dimmed backdrop, so clicks outside it
+/// do not reach what is below.
+pub fn scrim<'a, M: 'a>(content: iced::Element<'a, M>) -> iced::Element<'a, M> {
+    iced::widget::container(content)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .style(|_theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(crate::theme::SCRIM)),
+            ..iced::widget::container::Style::default()
+        })
+        .into()
+}
+
+/// `content` with `label` in a small box on hover.
+pub fn tooltip<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    label: impl IntoFragment<'a>,
+    position: iced::widget::tooltip::Position,
+    palette: &Palette,
+) -> Element<'a, M> {
+    iced::widget::tooltip(
+        content,
+        container(text(label).size(font_size::SMALL).wrapping(Wrapping::None))
+            .padding([spacing::XS, spacing::M])
+            .style(theme::dialog(palette)),
+        position,
+    )
     .into()
 }

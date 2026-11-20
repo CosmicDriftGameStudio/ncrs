@@ -54,7 +54,7 @@ impl ModuleState {
             | Phase::ShowRecoveryKey { .. }
             | Phase::PlainFileWarning => Self::WaitsForYou,
             Phase::AskRecoveryKey { .. } => Self::KeyMissing,
-            Phase::Failed(_) => Self::Failed,
+            Phase::FromNewerVersion | Phase::Failed(_) => Self::Failed,
             Phase::Dismissed => Self::Dismissed,
             Phase::Encrypting => Self::Encrypting,
             Phase::StartingOver => Self::StartingOver,
@@ -228,7 +228,6 @@ impl OverviewFacts {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use ncrs_index::StatusCounts;
 
