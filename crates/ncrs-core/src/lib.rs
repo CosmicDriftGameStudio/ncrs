@@ -11,6 +11,7 @@ mod found_document;
 mod function_keys;
 mod index_not_open;
 mod note_link;
+pub mod notes_sync;
 pub mod palette;
 mod panel_side;
 pub mod selection;

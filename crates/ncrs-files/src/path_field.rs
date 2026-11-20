@@ -10,7 +10,9 @@ use ncrs_fs::{Destination, PathProblem};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
+use crate::platform::Platform;
 use crate::state::Panels;
+use crate::typed_path_text::{expand, strip_quotes};
 
 /// The answer to the look at a path that Enter submitted.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +53,7 @@ impl Panels {
         let Some(raw_path) = self.path_field.clone() else {
             return (Task::none(), Vec::new());
         };
-        let typed = raw_path.trim();
+        let typed = strip_quotes(&raw_path);
         if typed.is_empty() {
             self.set_path_field(None);
             return (Task::none(), vec![Action::ReleaseFocus]);
@@ -62,7 +64,10 @@ impl Panels {
         if let Some(actions) = self.open_typed_remote(side, typed, ctx) {
             return (Task::none(), actions);
         }
-        let target = ncrs_fs::resolve_typed_path(&self.active_panel().path, ctx.home, typed);
+        let expanded = expand(typed, Platform::current(), ctx.home, &|name| {
+            std::env::var(name).ok()
+        });
+        let target = ncrs_fs::resolve_typed_path(&self.active_panel().path, ctx.home, &expanded);
         self.path_check_id = self.path_check_id.wrapping_add(1);
         let request_id = self.path_check_id;
         let located = Task::perform(ncrs_fs::locate(target.clone()), move |result| PathChecked {

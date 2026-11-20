@@ -151,6 +151,12 @@
       "de": "Lade…"
     },
     {
+      "key": "status.git_changed",
+      "context": "Status bar, right of the file info, while the active panel is in a git repository: how many files git lists as changed, untracked or in conflict, after the branch and its distance to the upstream, e.g. \"⎇ main ↑2 ↓0 · 5 changed\". {count} is the number; keep the placeholder verbatim. Short, no verb.",
+      "en": "{count} changed",
+      "de": "{count} geändert"
+    },
+    {
       "key": "shortcut.switch_language",
       "context": "Label of the F9 slot in the function key bar at the bottom of the window. The key switches the interface language; one short word, at most 8 characters, the slot clips longer text.",
       "en": "Lang",
@@ -461,6 +467,12 @@
       "context": "Status bar while a file is being unpacked from an archive into a temporary copy so the viewer can open it. Same shape as job.copy.",
       "en": "Extracting…",
       "de": "Entpacke…"
+    },
+    {
+      "key": "job.folder_sizes",
+      "context": "Status bar while the sizes of folders are being measured, before the counter ({done} of {total}) and the name of the folder being measured. Noun phrase, no ellipsis.",
+      "en": "Folder sizes",
+      "de": "Ordnergrößen"
     },
     {
       "key": "job.progress",
@@ -7225,6 +7237,150 @@
       "de": "Neuer Chat"
     },
     {
+      "key": "hermes_chat.list_new",
+      "context": "Hermes chat (F2): Button at the top of the chat list at the left. It starts a new chat and keeps the old ones. A plus sign and two words; the key of the button is shown beside it.",
+      "en": "+ New chat",
+      "de": "+ Neuer Chat"
+    },
+    {
+      "key": "hermes_chat.list_new_key",
+      "context": "Hermes chat (F2): The key that starts a new chat, shown on the button of the chat list. {mod} is the modifier key of the system (Cmd on a Mac, Ctrl elsewhere); keep the placeholder.",
+      "en": "{mod}N",
+      "de": "{mod}N"
+    },
+    {
+      "key": "hermes_chat.list_search",
+      "context": "Hermes chat (F2): Grey hint inside the search field above the chat list. The search looks in the titles and in the messages of all chats.",
+      "en": "Search chats",
+      "de": "Chats durchsuchen"
+    },
+    {
+      "key": "hermes_chat.list_today",
+      "context": "Hermes chat (F2): Heading of the group of chats used today, in the chat list. Short, capital letters.",
+      "en": "TODAY",
+      "de": "HEUTE"
+    },
+    {
+      "key": "hermes_chat.list_yesterday",
+      "context": "Hermes chat (F2): Heading of the group of chats used yesterday, in the chat list. Short, capital letters.",
+      "en": "YESTERDAY",
+      "de": "GESTERN"
+    },
+    {
+      "key": "hermes_chat.list_earlier",
+      "context": "Hermes chat (F2): Heading of the group of chats used before yesterday, in the chat list. Short, capital letters.",
+      "en": "EARLIER",
+      "de": "FRÜHER"
+    },
+    {
+      "key": "hermes_chat.list_empty",
+      "context": "Hermes chat (F2): Note in the chat list when there is no chat yet.",
+      "en": "No chats yet.",
+      "de": "Noch keine Chats."
+    },
+    {
+      "key": "hermes_chat.list_no_match",
+      "context": "Hermes chat (F2): Note in the chat list when the search finds no chat.",
+      "en": "No chat matches.",
+      "de": "Kein Chat passt."
+    },
+    {
+      "key": "hermes_chat.status_plan_open",
+      "context": "Hermes chat (F2): Status of a chat in the list, first part of the second line: Hermes made a plan that the user has not accepted or dropped yet.",
+      "en": "Plan open",
+      "de": "Plan offen"
+    },
+    {
+      "key": "hermes_chat.status_done",
+      "context": "Hermes chat (F2): Status of a chat in the list, first part of the second line: the work of the chat is finished.",
+      "en": "done",
+      "de": "erledigt"
+    },
+    {
+      "key": "hermes_chat.status_question",
+      "context": "Hermes chat (F2): Status of a chat in the list, first part of the second line: Hermes asked something and waits for the answer.",
+      "en": "question",
+      "de": "Rückfrage"
+    },
+    {
+      "key": "hermes_chat.status_running",
+      "context": "Hermes chat (F2): Status of a chat in the list, first part of the second line: the chat set up filing that goes on all the time for a folder.",
+      "en": "running",
+      "de": "läuft"
+    },
+    {
+      "key": "hermes_chat.list_detail",
+      "context": "Hermes chat (F2): Second line of a chat in the list. {status} is the status of the chat, {when} the time of day (today) or the date; the dot between them stays.",
+      "en": "{status} · {when}",
+      "de": "{status} · {when}"
+    },
+    {
+      "key": "hermes_chat.list_marked",
+      "context": "Hermes chat (F2): Footer of the chat list while chats are marked with the space key. {count} is how many.",
+      "en": "{count} marked",
+      "de": "{count} markiert"
+    },
+    {
+      "key": "hermes_chat.list_delete",
+      "context": "Hermes chat (F2): Button in the footer of the chat list that deletes the marked chats. A verb.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "hermes_chat.menu_rename",
+      "context": "Hermes chat (F2): Entry of the menu of a chat in the list: change the title of the chat. A verb.",
+      "en": "Rename",
+      "de": "Umbenennen"
+    },
+    {
+      "key": "hermes_chat.menu_delete",
+      "context": "Hermes chat (F2): Entry of the menu of a chat in the list: delete the chat. A verb.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "hermes_chat.menu_delete_done",
+      "context": "Hermes chat (F2): Entry of the menu of a chat in the list: delete every chat whose status is done.",
+      "en": "Delete all finished",
+      "de": "Alle erledigten löschen"
+    },
+    {
+      "key": "hermes_chat.ask_delete_running",
+      "context": "Hermes chat (F2): Question in the footer of the chat list before a chat is deleted that still files documents all the time. {title} is the title of the chat.",
+      "en": "“{title}” keeps filing. Delete it anyway?",
+      "de": "„{title}“ sortiert laufend ein. Trotzdem löschen?"
+    },
+    {
+      "key": "hermes_chat.ask_delete_running_many",
+      "context": "Hermes chat (F2): Question in the footer of the chat list before chats are deleted of which some still file documents all the time. {count} is how many chats run.",
+      "en": "{count} of them keep filing. Delete them anyway?",
+      "de": "{count} davon sortieren laufend ein. Trotzdem löschen?"
+    },
+    {
+      "key": "hermes_chat.delete_running_keep",
+      "context": "Hermes chat (F2): Button that answers the question about deleting a running chat with no; the chat stays.",
+      "en": "Keep",
+      "de": "Behalten"
+    },
+    {
+      "key": "hermes_chat.read_only_hint",
+      "context": "Hermes chat (F2): Grey text in the disabled message field of a chat that was closed earlier and is only shown to read.",
+      "en": "This chat is closed. Start a new chat to go on.",
+      "de": "Dieser Chat ist beendet. Starte einen neuen Chat, um weiterzumachen."
+    },
+    {
+      "key": "hermes_chat.list_keys_hint",
+      "context": "Hermes chat (F2): Hint in the bottom bar below the chat. {mod} is the modifier key of the system (Cmd on a Mac, Ctrl elsewhere); keep the placeholder and the arrows.",
+      "en": "{mod}N new chat · {mod}↑/{mod}↓ switch chat · chats stay after a restart",
+      "de": "{mod}N neuer Chat · {mod}↑/{mod}↓ Chat wechseln · Chats bleiben nach Neustart"
+    },
+    {
+      "key": "hermes_chat.list_mark_hint",
+      "context": "Hermes chat (F2): Hint in the bottom bar below the chat while the message field is empty: how to mark and delete chats in the list.",
+      "en": "Space marks a chat · Del deletes",
+      "de": "Leertaste markiert · Entf löscht"
+    },
+    {
       "key": "hermes_chat.placeholder",
       "context": "Hermes chat (F2): Grey hint inside the empty message field of the chat. The quoted example is a sentence the user can type.",
       "en": "Write to Hermes, e.g. “tidy up my Downloads”",
@@ -8845,6 +9001,42 @@
       "de": "Verlauf"
     },
     {
+      "key": "settings.hermes_section_chats",
+      "context": "Heading of the section of the Hermes page about the saved chats with Hermes. Plural noun.",
+      "en": "Chats",
+      "de": "Chats"
+    },
+    {
+      "key": "settings.hermes_row_chat_keep",
+      "context": "Row of the Hermes page: after how long old chats of the Hermes chat are deleted, counted from the last time a chat was used. The choices are at the right.",
+      "en": "Delete chats after",
+      "de": "Chats löschen nach"
+    },
+    {
+      "key": "settings.hermes_row_chat_keep_note",
+      "context": "Note under the row about deleting old chats on the Hermes page: when it happens.",
+      "en": "Old chats are deleted when ncrs starts.",
+      "de": "Alte Chats werden beim Start von ncrs gelöscht."
+    },
+    {
+      "key": "settings.hermes_chat_keep_never",
+      "context": "Choice of the row about deleting old chats on the Hermes page: chats are never deleted by age. One word.",
+      "en": "never",
+      "de": "nie"
+    },
+    {
+      "key": "settings.hermes_chat_keep_30",
+      "context": "Choice of the row about deleting old chats on the Hermes page: chats unused for 30 days are deleted.",
+      "en": "30 days",
+      "de": "30 Tagen"
+    },
+    {
+      "key": "settings.hermes_chat_keep_90",
+      "context": "Choice of the row about deleting old chats on the Hermes page: chats unused for 90 days are deleted.",
+      "en": "90 days",
+      "de": "90 Tagen"
+    },
+    {
       "key": "settings.hermes_history_empty",
       "context": "Line under the History heading on the Hermes page when Hermes has not filed anything yet.",
       "en": "Nothing filed yet.",
@@ -9551,6 +9743,42 @@
       "context": "Explanation under the terminal setting: Automatic means the first terminal found on the computer; in an own command, {path} is replaced by the folder.",
       "en": "Automatic takes the first terminal found. In your own command {path} stands for the folder.",
       "de": "Automatisch nimmt das erste gefundene Terminal. Im eigenen Befehl steht {path} für den Ordner."
+    },
+    {
+      "key": "settings.row_explorer_menu",
+      "context": "Name of an on/off switch on the programs page, Windows only: ncrs is added to the right-click menu of folders and files in the Explorer.",
+      "en": "Show in the Explorer context menu",
+      "de": "Im Explorer-Kontextmenü anzeigen"
+    },
+    {
+      "key": "settings.row_explorer_menu_note",
+      "context": "Explanation under the Explorer context menu switch on the programs page (Windows only).",
+      "en": "Adds \"Open in ncrs\" to the right-click menu of folders, of the folder background and of files.",
+      "de": "Fügt „In ncrs öffnen“ zum Rechtsklick-Menü von Ordnern, Ordnerhintergrund und Dateien hinzu."
+    },
+    {
+      "key": "settings.row_default_folders",
+      "context": "Name of an on/off switch on the programs page (Windows and Linux only): ncrs is the program that opens folders when another program or the system asks for the folder manager.",
+      "en": "ncrs as the default file manager",
+      "de": "ncrs als Standard-Dateimanager"
+    },
+    {
+      "key": "settings.row_default_folders_note",
+      "context": "Explanation under the default file manager switch on the programs page. Turning it off gives folders back to the program that opened them before.",
+      "en": "Folders other programs open go to ncrs. Turning this off goes back to the earlier choice.",
+      "de": "Ordner, die andere Programme öffnen, gehen an ncrs. Beim Ausschalten gilt wieder die frühere Wahl."
+    },
+    {
+      "key": "settings.integration_failed",
+      "context": "Status message when the default file manager or Explorer menu switch on the programs page could not be changed. {reason} is the system's own error text.",
+      "en": "Could not change this: {reason}",
+      "de": "Das ließ sich nicht ändern: {reason}"
+    },
+    {
+      "key": "settings.explorer_menu_entry",
+      "context": "The words of the ncrs entry in the Windows Explorer right-click menu. Starts with a verb; written into the registry when the switch is turned on.",
+      "en": "Open in ncrs",
+      "de": "In ncrs öffnen"
     },
     {
       "key": "settings.terminal_automatic",
@@ -10657,6 +10885,78 @@
       "de": "Favorit 5 öffnen"
     },
     {
+      "key": "action.open_favourite_6",
+      "context": "Entry of the command palette that runs the key action open_favourite_6: opens the sixth favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 6",
+      "de": "Favorit 6 öffnen"
+    },
+    {
+      "key": "action.open_favourite_7",
+      "context": "Entry of the command palette that runs the key action open_favourite_7: opens the seventh favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 7",
+      "de": "Favorit 7 öffnen"
+    },
+    {
+      "key": "action.open_favourite_8",
+      "context": "Entry of the command palette that runs the key action open_favourite_8: opens the eighth favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 8",
+      "de": "Favorit 8 öffnen"
+    },
+    {
+      "key": "action.open_favourite_9",
+      "context": "Entry of the command palette that runs the key action open_favourite_9: opens the ninth favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 9",
+      "de": "Favorit 9 öffnen"
+    },
+    {
+      "key": "action.tag_by_pattern",
+      "context": "Entry of the command palette and the menu that runs the key action tag_by_pattern: asks for a pattern of file names (* and ?, several separated by semicolons) and tags every row of the active panel that matches. The key bound to it is shown beside it.",
+      "en": "Tag by pattern",
+      "de": "Nach Muster markieren"
+    },
+    {
+      "key": "action.untag_by_pattern",
+      "context": "Entry of the command palette and the menu that runs the key action untag_by_pattern: asks for a pattern of file names (* and ?, several separated by semicolons) and takes the tag off every row of the active panel that matches. The key bound to it is shown beside it.",
+      "en": "Untag by pattern",
+      "de": "Markierung nach Muster aufheben"
+    },
+    {
+      "key": "action.go_to_path",
+      "context": "Entry of the command palette and the menu that runs the key action go_to_path: puts the cursor in the path field of the status bar with the path selected, so a typed or pasted path replaces it. Imperative, as short as a menu entry.",
+      "en": "Go to path",
+      "de": "Zu Pfad gehen"
+    },
+    {
+      "key": "dialog.tag_pattern.title",
+      "context": "Title of the dialog that asks for a pattern of file names and tags the rows of the active panel that match. Imperative, matches the other dialog titles.",
+      "en": "Tag by pattern",
+      "de": "Nach Muster markieren"
+    },
+    {
+      "key": "dialog.tag_pattern.label",
+      "context": "Label next to the text field of the tag-by-pattern and untag-by-pattern dialogs. The field holds a pattern of file names: * stands for any characters, ? for one character, several patterns are separated by semicolons, upper and lower case do not matter. One or two words, no colon.",
+      "en": "Pattern",
+      "de": "Muster"
+    },
+    {
+      "key": "dialog.tag_pattern.confirm",
+      "context": "Confirm button in the tag-by-pattern dialog. Verb, what the button does.",
+      "en": "Tag",
+      "de": "Markieren"
+    },
+    {
+      "key": "dialog.untag_pattern.title",
+      "context": "Title of the dialog that asks for a pattern of file names and takes the tag off the rows of the active panel that match. Imperative, matches the other dialog titles.",
+      "en": "Untag by pattern",
+      "de": "Markierung nach Muster aufheben"
+    },
+    {
+      "key": "dialog.untag_pattern.confirm",
+      "context": "Confirm button in the untag-by-pattern dialog. Verb, what the button does.",
+      "en": "Untag",
+      "de": "Markierung aufheben"
+    },
+    {
       "key": "favourites_bar.open_in_other",
       "context": "Entry of the menu of a slot of the favourites bar under the tabs: opens that favourite in the panel that is not active. Verb, imperative.",
       "en": "Open in the other panel",
@@ -10681,6 +10981,12 @@
       "de": "Favoriten verwalten …"
     },
     {
+      "key": "favourites_bar.overflow_tooltip",
+      "context": "Tooltip of the button at the right end of the favourites bar under the path tabs. The bar shows as many favourites as fit; the button opens a menu with the others. Short, no full stop.",
+      "en": "More favourites",
+      "de": "Weitere Favoriten"
+    },
+    {
       "key": "settings.feature_favourites",
       "context": "Entry of the feature list on the settings tab, in the group of the files: the page for the favourite folders. One word, plural noun.",
       "en": "Favourites",
@@ -10689,8 +10995,236 @@
     {
       "key": "settings.feature_favourites_intro",
       "context": "Line under the heading of the Favourites page on the settings tab. The bar is the row of numbered favourites under the path tabs.",
-      "en": "Folders you reach in one step. The first five sit in the bar under the tabs.",
-      "de": "Ordner, die du in einem Schritt erreichst. Die ersten fünf stehen in der Leiste unter den Tabs."
+      "en": "Folders you reach in one step. As many as fit sit in the bar under the tabs, the rest in its menu.",
+      "de": "Ordner, die du in einem Schritt erreichst. So viele, wie passen, stehen in der Leiste unter den Tabs, der Rest in deren Menü."
+    },
+    {
+      "key": "settings.feature_notes",
+      "context": "Entry of the feature list on the settings tab, in the group of the files: the page for the notes. One word, plural noun.",
+      "en": "Notes",
+      "de": "Notizen"
+    },
+    {
+      "key": "settings.feature_notes_intro",
+      "context": "Line under the heading of the Notes page on the settings tab. Encryption and sync are about the notes tab.",
+      "en": "Where your notes live, a copy in a second folder, and encryption.",
+      "de": "Wo deine Notizen liegen, eine Kopie in einem zweiten Ordner und die Verschlüsselung."
+    },
+    {
+      "key": "settings.notes_title_folder",
+      "context": "Heading of a section on the Notes page of the settings: where the notes are stored. Short, upper case in German is drawn by the program.",
+      "en": "Storage",
+      "de": "Ablage"
+    },
+    {
+      "key": "settings.notes_title_sync",
+      "context": "Heading of a section on the Notes page of the settings: the copy of the notes in a second folder, for example a cloud folder. Short.",
+      "en": "Sync",
+      "de": "Sync"
+    },
+    {
+      "key": "settings.notes_title_encryption",
+      "context": "Heading of a section on the Notes page of the settings: encrypting the notes with a key kept in the system's credential store. Short.",
+      "en": "Encryption",
+      "de": "Verschlüsselung"
+    },
+    {
+      "key": "settings.notes_title_hermes",
+      "context": "Heading of a section on the Notes page of the settings: what the assistant Hermes may do with the notes. Short, a name, not translated.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "settings.row_notes_folder",
+      "context": "Row label on the Notes page of the settings: the folder the notes are stored in. Its value is shown beside it.",
+      "en": "Notes folder",
+      "de": "Notizordner"
+    },
+    {
+      "key": "settings.row_notes_folder_note",
+      "context": "Note under the notes folder row on the Notes page of the settings: where the folder is changed. The config file is the file named config.toml.",
+      "en": "Set with the folder entry in [notes] of the config file.",
+      "de": "Wird mit dem Eintrag folder unter [notes] in der Konfigurationsdatei festgelegt."
+    },
+    {
+      "key": "settings.row_notes_sync_folder",
+      "context": "Row label on the Notes page of the settings: the second folder the notes are copied to, for example a folder of a cloud service. Empty means no sync.",
+      "en": "Sync folder",
+      "de": "Sync-Ordner"
+    },
+    {
+      "key": "settings.row_notes_sync_folder_note",
+      "context": "Note under the sync folder row on the Notes page of the settings: type the path and press Enter; leave it empty to turn the sync off.",
+      "en": "Type the path and press Enter. Empty turns the sync off.",
+      "de": "Pfad eingeben und Enter drücken. Leer schaltet den Sync aus."
+    },
+    {
+      "key": "settings.row_notes_direction",
+      "context": "Row label on the Notes page of the settings: which way the notes travel to the sync folder. The choices are 'One way' and 'Both ways'.",
+      "en": "Direction",
+      "de": "Richtung"
+    },
+    {
+      "key": "settings.row_notes_direction_note",
+      "context": "Note under the direction row on the Notes page of the settings: what each choice does. One way copies only, never deletes; both ways keeps both versions when a note changed on both sides.",
+      "en": "One way only copies new and changed notes and never deletes. Both ways keeps both versions when a note changed on both sides.",
+      "de": "Nur hin kopiert neue und geänderte Notizen und löscht nie. Beide Richtungen behält beide Fassungen, wenn eine Notiz auf beiden Seiten geändert wurde."
+    },
+    {
+      "key": "settings.row_notes_when",
+      "context": "Row label on the Notes page of the settings: when the sync runs by itself. The choices are after saving, at start and every few minutes.",
+      "en": "When",
+      "de": "Zeitpunkt"
+    },
+    {
+      "key": "settings.row_notes_last_sync",
+      "context": "Row label on the Notes page of the settings: when the notes were last synced, with the button that syncs now beside it.",
+      "en": "Last sync",
+      "de": "Letzter Sync"
+    },
+    {
+      "key": "settings.row_notes_encrypt_all",
+      "context": "Row label on the Notes page of the settings: a switch that makes every note encrypted, the existing ones and new ones.",
+      "en": "Encrypt all notes",
+      "de": "Alle Notizen verschlüsseln"
+    },
+    {
+      "key": "settings.row_notes_encrypt_all_note",
+      "context": "Note under the encrypt-all row on the Notes page of the settings: encrypted notes are stored as .md.enc files and only readable after unlocking.",
+      "en": "Encrypted notes are stored as .md.enc files and open after you unlock them.",
+      "de": "Verschlüsselte Notizen liegen als .md.enc-Dateien vor und lassen sich nach dem Entsperren öffnen."
+    },
+    {
+      "key": "settings.row_notes_lock",
+      "context": "Row label on the Notes page of the settings: after how long without input the key leaves memory and encrypted notes lock again.",
+      "en": "Lock after",
+      "de": "Sperren nach"
+    },
+    {
+      "key": "settings.row_notes_recovery",
+      "context": "Row label on the Notes page of the settings: the recovery key, a text that opens the encrypted notes on another computer. Shown on request.",
+      "en": "Recovery key",
+      "de": "Wiederherstellungsschlüssel"
+    },
+    {
+      "key": "settings.row_notes_recovery_note",
+      "context": "Note under the recovery key row on the Notes page of the settings: keep it safe, anyone with it can read the encrypted notes.",
+      "en": "Keep it somewhere safe. Anyone who has it can read your encrypted notes.",
+      "de": "Bewahre ihn sicher auf. Wer ihn hat, kann deine verschlüsselten Notizen lesen."
+    },
+    {
+      "key": "settings.row_notes_restore",
+      "context": "Row label on the Notes page of the settings: a field to type a recovery key into on a computer that has no key yet.",
+      "en": "Enter recovery key",
+      "de": "Wiederherstellungsschlüssel eingeben"
+    },
+    {
+      "key": "settings.row_notes_restore_note",
+      "context": "Note under the enter-recovery-key row on the Notes page of the settings: use it on a new computer, then press Enter.",
+      "en": "For a new computer. Paste the key and press Enter.",
+      "de": "Für einen neuen Computer. Schlüssel einfügen und Enter drücken."
+    },
+    {
+      "key": "settings.row_notes_hermes",
+      "context": "Row label on the Notes page of the settings: a switch that lets the assistant Hermes search, read and write notes. Encrypted notes only while unlocked.",
+      "en": "Hermes may read and write notes",
+      "de": "Hermes darf Notizen lesen und schreiben"
+    },
+    {
+      "key": "settings.row_notes_hermes_note",
+      "context": "Note under the Hermes row on the Notes page of the settings: encrypted notes are left out while they are locked.",
+      "en": "Encrypted notes are left out while they are locked.",
+      "de": "Verschlüsselte Notizen bleiben außen vor, solange sie gesperrt sind."
+    },
+    {
+      "key": "settings.notes_one_way",
+      "context": "Choice on the Notes page of the settings, direction of the sync: notes only travel to the sync folder. Short, fits a button.",
+      "en": "One way",
+      "de": "Nur hin"
+    },
+    {
+      "key": "settings.notes_both_ways",
+      "context": "Choice on the Notes page of the settings, direction of the sync: notes travel both ways and the newer one wins. Short, fits a button.",
+      "en": "Both ways",
+      "de": "Beide Richtungen"
+    },
+    {
+      "key": "settings.notes_after_save",
+      "context": "Choice on the Notes page of the settings, when the sync runs: after every saved note. Short, fits a button.",
+      "en": "After saving",
+      "de": "Nach dem Speichern"
+    },
+    {
+      "key": "settings.notes_at_start",
+      "context": "Choice on the Notes page of the settings, when the sync runs: once when the program starts. Short, fits a button.",
+      "en": "At start",
+      "de": "Beim Start"
+    },
+    {
+      "key": "settings.notes_every_minutes",
+      "context": "Choice on the Notes page of the settings, when the sync runs: every few minutes. {minutes} is the number of minutes. Short, fits a button.",
+      "en": "Every {minutes} min",
+      "de": "Alle {minutes} Min"
+    },
+    {
+      "key": "settings.notes_syncing",
+      "context": "Notes page of the settings: shown in place of the time of the last sync while a sync is running.",
+      "en": "Syncing...",
+      "de": "Synchronisiert..."
+    },
+    {
+      "key": "settings.notes_never_synced",
+      "context": "Notes page of the settings: shown in place of the time of the last sync when no sync has run since the program started.",
+      "en": "Not yet",
+      "de": "Noch nicht"
+    },
+    {
+      "key": "settings.notes_sync_now",
+      "context": "Button on the Notes page of the settings that copies the notes to the sync folder at once. Verb, imperative.",
+      "en": "Sync now",
+      "de": "Jetzt synchronisieren"
+    },
+    {
+      "key": "settings.notes_lock_never",
+      "context": "Choice on the Notes page of the settings, lock timeout: the encrypted notes never lock by themselves. One word, fits a button.",
+      "en": "Never",
+      "de": "Nie"
+    },
+    {
+      "key": "settings.notes_lock_minutes",
+      "context": "Choice on the Notes page of the settings, lock timeout in minutes. {minutes} is the number. Short, fits a button.",
+      "en": "{minutes} min",
+      "de": "{minutes} Min"
+    },
+    {
+      "key": "settings.notes_show_key",
+      "context": "Button on the Notes page of the settings that shows the recovery key. Verb, imperative, short.",
+      "en": "Show",
+      "de": "Anzeigen"
+    },
+    {
+      "key": "settings.notes_hide_key",
+      "context": "Button on the Notes page of the settings that hides the recovery key again. Verb, imperative, short.",
+      "en": "Hide",
+      "de": "Verbergen"
+    },
+    {
+      "key": "settings.notes_key_hidden",
+      "context": "Notes page of the settings: placeholder shown in place of the recovery key while it is hidden. Dots, not a word.",
+      "en": "••••-••••-••••",
+      "de": "••••-••••-••••"
+    },
+    {
+      "key": "settings.notes_restore_placeholder",
+      "context": "Placeholder of the field on the Notes page of the settings where a recovery key is pasted on a computer that has no key yet.",
+      "en": "Recovery key",
+      "de": "Wiederherstellungsschlüssel"
+    },
+    {
+      "key": "settings.notes_sync_folder_placeholder",
+      "context": "Placeholder of the field on the Notes page of the settings where the path of the sync folder is typed.",
+      "en": "Path of the sync folder",
+      "de": "Pfad des Sync-Ordners"
     },
     {
       "key": "settings.favourites_bar_title",
@@ -10706,15 +11240,15 @@
     },
     {
       "key": "settings.favourites_bar_switch_note_keys",
-      "context": "Description of the switch for the favourites bar. {first} and {last} are the key chords that open the first and the fifth favourite, for example Cmd+1 and Cmd+5.",
-      "en": "{first} to {last} open the first five. The keys can be changed under Keyboard shortcuts.",
-      "de": "{first} bis {last} öffnen die ersten fünf. Die Tasten lassen sich unter Tastenkürzel ändern."
+      "context": "Description of the switch for the favourites bar. {first} and {last} are the key chords that open the first and the ninth favourite, for example Cmd+1 and Cmd+9.",
+      "en": "{first} to {last} open the first nine. The keys can be changed under Keyboard shortcuts.",
+      "de": "{first} bis {last} öffnen die ersten neun. Die Tasten lassen sich unter Tastenkürzel ändern."
     },
     {
       "key": "settings.favourites_bar_switch_note",
-      "context": "Description of the switch for the favourites bar when the keys of the first five favourites are not numbered one after the other.",
-      "en": "Keys open the first five. They can be changed under Keyboard shortcuts.",
-      "de": "Tasten öffnen die ersten fünf. Sie lassen sich unter Tastenkürzel ändern."
+      "context": "Description of the switch for the favourites bar when the keys of the first nine favourites are not numbered one after the other.",
+      "en": "Keys open the first nine. They can be changed under Keyboard shortcuts.",
+      "de": "Tasten öffnen die ersten neun. Sie lassen sich unter Tastenkürzel ändern."
     },
     {
       "key": "settings.favourites_folders_title",
@@ -10733,12 +11267,6 @@
       "context": "Sentence under the heading of the folder list on the Favourites page when no key is bound to adding the current folder.",
       "en": "The order sets the number. The add-favourite action puts the folder you are in at the end.",
       "de": "Die Reihenfolge bestimmt die Nummer. Die Aktion Favorit hinzufügen fügt den Ordner, in dem du bist, am Ende an."
-    },
-    {
-      "key": "settings.favourites_menu_only",
-      "context": "Dim tag after a favourite on the Favourites page that has no slot in the bar (the sixth and later): it is listed in the drive menu only. Short, lowercase.",
-      "en": "drive menu only",
-      "de": "nur im Laufwerksmenü"
     },
     {
       "key": "settings.favourites_up",
@@ -11159,6 +11687,78 @@
       "context": "Notes tab: line in the tree when the notes folder holds no note yet. 'New note' is the name of the button above the tree.",
       "en": "No notes yet. Use \"New note\" to make one.",
       "de": "Noch keine Notizen. Mit „Neue Notiz“ legst du eine an."
+    },
+    {
+      "key": "notes.menu_encrypt",
+      "context": "Notes tab: entry of the menu on a note or folder in the tree (right click) that encrypts it. Verb, imperative, short.",
+      "en": "Encrypt",
+      "de": "Verschlüsseln"
+    },
+    {
+      "key": "notes.menu_decrypt",
+      "context": "Notes tab: entry of the menu on an encrypted note or folder in the tree (right click) that turns the encryption off for it. Verb, imperative, short.",
+      "en": "Decrypt",
+      "de": "Entschlüsseln"
+    },
+    {
+      "key": "notes.menu_lock_now",
+      "context": "Notes tab: entry of the menu in the tree that takes the key out of memory at once, so encrypted notes are locked until the next unlock. Verb, imperative, short.",
+      "en": "Lock encrypted notes now",
+      "de": "Verschlüsselte Notizen jetzt sperren"
+    },
+    {
+      "key": "notes.locked_body",
+      "context": "Notes tab: line on the page of an encrypted note while the key is not in memory. The button 'Unlock' is below it; the system may ask for the computer password then.",
+      "en": "This note is encrypted. Unlock it to read and edit it.",
+      "de": "Diese Notiz ist verschlüsselt. Entsperre sie, um sie zu lesen und zu bearbeiten."
+    },
+    {
+      "key": "notes.unlock",
+      "context": "Notes tab: button on the page of an encrypted note that fetches the key from the system's credential store (Keychain on macOS). Verb, imperative, short.",
+      "en": "Unlock",
+      "de": "Entsperren"
+    },
+    {
+      "key": "notes.locked_new_note",
+      "context": "Notes tab: notice when a new note was asked for in an encrypted folder but the key is not in memory yet. The key is fetched; the person asks for the note again.",
+      "en": "That folder is encrypted. Unlocking it now; then make the note again.",
+      "de": "Dieser Ordner ist verschlüsselt. Er wird jetzt entsperrt, danach legst du die Notiz noch einmal an."
+    },
+    {
+      "key": "notes.no_key",
+      "context": "Notes tab: error when the system's credential store holds no key for the encrypted notes, for example on a new computer. The recovery key can be entered in the settings.",
+      "en": "No key for encrypted notes is stored on this computer. Enter the recovery key under Settings > Notes.",
+      "de": "Auf diesem Computer ist kein Schlüssel für verschlüsselte Notizen gespeichert. Gib den Wiederherstellungsschlüssel unter Einstellungen > Notizen ein."
+    },
+    {
+      "key": "notes.key_failed",
+      "context": "Notes tab: error when the key of the encrypted notes could not be fetched, stored or read. {reason} is the system's own text.",
+      "en": "The key for encrypted notes is not available: {reason}",
+      "de": "Der Schlüssel für verschlüsselte Notizen ist nicht verfügbar: {reason}"
+    },
+    {
+      "key": "notes.unlock_first",
+      "context": "Notes tab: notice when decrypting was asked for while the key is not in memory. The key is fetched; the person asks again.",
+      "en": "Unlocking first; then decrypt again.",
+      "de": "Wird zuerst entsperrt, danach entschlüsselst du noch einmal."
+    },
+    {
+      "key": "notes.restored",
+      "context": "Notes tab: notice after a recovery key was accepted and stored on this computer; encrypted notes can be read now.",
+      "en": "Recovery key accepted. Encrypted notes are unlocked.",
+      "de": "Wiederherstellungsschlüssel angenommen. Verschlüsselte Notizen sind entsperrt."
+    },
+    {
+      "key": "notes.sync_no_folder",
+      "context": "Notes tab: error when a sync was asked for but no sync folder is set in the settings.",
+      "en": "No sync folder is set. Choose one under Settings > Notes.",
+      "de": "Es ist kein Sync-Ordner festgelegt. Wähle einen unter Einstellungen > Notizen."
+    },
+    {
+      "key": "notes.sync_failed",
+      "context": "Notes tab: error when copying the notes to the sync folder failed. {reason} is the system's own text.",
+      "en": "Syncing the notes failed: {reason}",
+      "de": "Das Synchronisieren der Notizen ist fehlgeschlagen: {reason}"
     },
     {
       "key": "notes.status_note",
@@ -11639,6 +12239,264 @@
       "context": "Error when F3 meets something that is not an ordinary file, such as a named pipe or a device. {name} is the file name.",
       "en": "{name} is not an ordinary file and is not shown.",
       "de": "{name} ist keine normale Datei und wird nicht angezeigt."
+    },
+    {
+      "key": "action.git_view",
+      "context": "Entry of the command list and of the folder context menu that opens the Git tab for the repository the cursor or the folder is in. Only offered inside a Git repository. Verb phrase, imperative.",
+      "en": "Open Git view",
+      "de": "Git-Ansicht öffnen"
+    },
+    {
+      "key": "git_view.not_a_repository",
+      "context": "Status line when the Git view is asked for in a folder that is not inside a Git repository.",
+      "en": "This folder is not inside a Git repository.",
+      "de": "Dieser Ordner liegt in keinem Git-Repository."
+    },
+    {
+      "key": "git_view.tab_title",
+      "context": "Title of the Git tab. {repo} is the name of the repository folder. Git is the product name and stays as it is.",
+      "en": "Git · {repo}",
+      "de": "Git · {repo}"
+    },
+    {
+      "key": "git_view.mode",
+      "context": "Mode field at the left of the status bar of the Git tab. Product name, stays as it is.",
+      "en": "Git",
+      "de": "Git"
+    },
+    {
+      "key": "git_view.loading",
+      "context": "Git tab: what a list or the right side says while the repository is being read.",
+      "en": "Reading the repository…",
+      "de": "Repository wird gelesen …"
+    },
+    {
+      "key": "git_view.no_commits",
+      "context": "Git tab: what the commit list says when the repository has no commits or the filter matches none.",
+      "en": "No commits.",
+      "de": "Keine Commits."
+    },
+    {
+      "key": "git_view.load_more",
+      "context": "Git tab: button below the commit list that reads the next commits. Verb, imperative.",
+      "en": "Load more commits",
+      "de": "Mehr Commits laden"
+    },
+    {
+      "key": "git_view.read_failed",
+      "context": "Git tab: shown in the status line when the repository cannot be read. {reason} is the reason Git gives.",
+      "en": "Git could not be read: {reason}",
+      "de": "Git konnte nicht gelesen werden: {reason}"
+    },
+    {
+      "key": "git_view.filter_placeholder",
+      "context": "Git tab: placeholder of the filter field in the header; it filters the commit list by message, author or the start of the commit hash (SHA).",
+      "en": "Filter: message, author or SHA",
+      "de": "Filter: Nachricht, Autor oder SHA"
+    },
+    {
+      "key": "git_view.section_local",
+      "context": "Git tab: heading of the group of local branches in the left list. Upper case, short.",
+      "en": "LOCAL",
+      "de": "LOKAL"
+    },
+    {
+      "key": "git_view.section_remote",
+      "context": "Git tab: heading of the group of remote branches in the left list. Upper case, short.",
+      "en": "REMOTE",
+      "de": "REMOTE"
+    },
+    {
+      "key": "git_view.section_tags",
+      "context": "Git tab: heading of the group of tags in the left list. Upper case, short. Tags are named marks on commits, like releases.",
+      "en": "TAGS",
+      "de": "TAGS"
+    },
+    {
+      "key": "git_view.section_stashes",
+      "context": "Git tab: heading of the group of stashes in the left list, the number of shelved changes is added in brackets. Upper case, short.",
+      "en": "STASHES",
+      "de": "STASHES"
+    },
+    {
+      "key": "git_view.section_worktrees",
+      "context": "Git tab: heading of the group of worktrees in the left list. A worktree is a second folder of the same repository with its own branch checked out. Upper case, short.",
+      "en": "WORKTREES",
+      "de": "WORKTREES"
+    },
+    {
+      "key": "git_view.worktree_wip",
+      "context": "Git tab: part of a worktree line that says the worktree has unsaved changes (work in progress). {count} is the number of changed files. Keep it very short.",
+      "en": "WIP {count}",
+      "de": "WIP {count}"
+    },
+    {
+      "key": "git_view.worktree_clean",
+      "context": "Git tab: part of a worktree line that says the worktree has no changes. One word.",
+      "en": "clean",
+      "de": "sauber"
+    },
+    {
+      "key": "git_view.worktree_to_main",
+      "context": "Git tab: second line of a worktree row, after the branch name, when the worktree has changes or commits of its own: the arrows on the first line count commits against the main branch. {main} is the name of the main branch, e.g. main. Short, lower case.",
+      "en": "to {main}",
+      "de": "zu {main}"
+    },
+    {
+      "key": "git_view.worktree_merged",
+      "context": "Git tab: part of a worktree line that says everything on its branch is already in the main branch, so the worktree can go. One word.",
+      "en": "merged",
+      "de": "gemergt"
+    },
+    {
+      "key": "git_view.worktree_detached",
+      "context": "Git tab: part of a worktree line that says no branch is checked out in it, only a single commit. One word.",
+      "en": "detached",
+      "de": "losgelöst"
+    },
+    {
+      "key": "git_view.worktree_detached_at",
+      "context": "Git tab: shown in the header instead of the branch name when no branch is checked out. {sha} is the first characters of the commit.",
+      "en": "detached at {sha}",
+      "de": "losgelöst bei {sha}"
+    },
+    {
+      "key": "git_view.working_copy",
+      "context": "Git tab: the first line of the commit list when the folder has changes that are not committed yet. {count} is the number of changed files.",
+      "en": "Working copy ({count} changes)",
+      "de": "Arbeitskopie ({count} Änderungen)"
+    },
+    {
+      "key": "git_view.column_message",
+      "context": "Git tab: header of the column with the commit messages. Upper case, short.",
+      "en": "MESSAGE",
+      "de": "NACHRICHT"
+    },
+    {
+      "key": "git_view.column_author",
+      "context": "Git tab: header of the column with the authors of the commits. Upper case, short.",
+      "en": "AUTHOR",
+      "de": "AUTOR"
+    },
+    {
+      "key": "git_view.column_date",
+      "context": "Git tab: header of the column with the dates of the commits. Upper case, short.",
+      "en": "DATE",
+      "de": "DATUM"
+    },
+    {
+      "key": "git_view.column_sha",
+      "context": "Git tab: header of the column with the short commit hashes. SHA is the name of the hash and stays as it is.",
+      "en": "SHA",
+      "de": "SHA"
+    },
+    {
+      "key": "git_view.detail_empty",
+      "context": "Git tab: what the right side says while no commit is chosen.",
+      "en": "Choose a commit.",
+      "de": "Wähle einen Commit."
+    },
+    {
+      "key": "git_view.detail_path",
+      "context": "Git tab: segment that lists the changed files of a commit with their full paths. Noun, short.",
+      "en": "Path",
+      "de": "Pfad"
+    },
+    {
+      "key": "git_view.detail_tree",
+      "context": "Git tab: segment that lists the changed files of a commit as a tree of folders. Noun, short.",
+      "en": "Tree",
+      "de": "Baum"
+    },
+    {
+      "key": "git_view.detail_files",
+      "context": "Git tab: number of files a commit changed, above the file list. {count} is the number.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "git_view.diff_back",
+      "context": "Git tab: hint at the top left of a file's diff that Escape goes back to the commit list. Keep the arrow and the key name Esc.",
+      "en": "← Esc back to the list",
+      "de": "← Esc zurück zur Liste"
+    },
+    {
+      "key": "git_view.diff_side_by_side",
+      "context": "Git tab: segment that shows the diff with the old file on the left and the new file on the right. Short.",
+      "en": "Side by side",
+      "de": "Nebeneinander"
+    },
+    {
+      "key": "git_view.diff_unified",
+      "context": "Git tab: segment that shows the diff as one column with removed and added lines one above the other. Short.",
+      "en": "Unified",
+      "de": "Einspaltig"
+    },
+    {
+      "key": "git_view.diff_ignore_whitespace",
+      "context": "Git tab: checkbox of the diff; when on, lines that differ only in spaces and tabs count as equal.",
+      "en": "Ignore whitespace",
+      "de": "Leerzeichen ignorieren"
+    },
+    {
+      "key": "git_view.diff_loading",
+      "context": "Git tab: what the diff says while the two versions of the file are being compared.",
+      "en": "Comparing…",
+      "de": "Vergleiche …"
+    },
+    {
+      "key": "git_view.diff_binary",
+      "context": "Git tab: what the diff says for a file that is not text (an image, an archive).",
+      "en": "Binary file, no text to compare.",
+      "de": "Binärdatei, kein Text zum Vergleichen."
+    },
+    {
+      "key": "git_view.diff_too_large",
+      "context": "Git tab: what the diff says for a text file that is too large to compare line by line.",
+      "en": "The file is too large to compare.",
+      "de": "Die Datei ist zu groß zum Vergleichen."
+    },
+    {
+      "key": "git_view.diff_no_changes",
+      "context": "Git tab: what the diff says when the two versions of the file do not differ, for example after ignoring whitespace.",
+      "en": "No differences.",
+      "de": "Keine Unterschiede."
+    },
+    {
+      "key": "git_view.status_loaded",
+      "context": "Git tab: note at the right end of the status bar. {count} is the number of commits read so far.",
+      "en": "{count} commits read",
+      "de": "{count} Commits gelesen"
+    },
+    {
+      "key": "git_view.status_sidebar",
+      "context": "Git tab: status line while the left list has the keys. Keep the key names as they are on the keyboard; Tab changes the area, the slash starts the filter.",
+      "en": "↑↓ choose · ←→ fold · Enter shows the worktree · Tab next area · / filter · Esc closes",
+      "de": "↑↓ wählen · ←→ falten · Enter zeigt den Worktree · Tab nächster Bereich · / Filter · Esc schließt"
+    },
+    {
+      "key": "git_view.status_commits",
+      "context": "Git tab: status line while the commit list has the keys. Keep the key names as they are on the keyboard.",
+      "en": "↑↓ choose · Enter to the files · Tab next area · / filter · Esc closes",
+      "de": "↑↓ wählen · Enter zu den Dateien · Tab nächster Bereich · / Filter · Esc schließt"
+    },
+    {
+      "key": "git_view.status_detail",
+      "context": "Git tab: status line while the file list of a commit has the keys. Keep the key names as they are on the keyboard.",
+      "en": "↑↓ choose · Enter opens the diff · Tab next area · / filter · Esc closes",
+      "de": "↑↓ wählen · Enter öffnet den Diff · Tab nächster Bereich · / Filter · Esc schließt"
+    },
+    {
+      "key": "git_view.status_filter",
+      "context": "Git tab: status line while the filter field has the keyboard. Keep the key names as they are on the keyboard.",
+      "en": "Type to filter · Enter or Esc back to the list",
+      "de": "Tippen zum Filtern · Enter oder Esc zurück zur Liste"
+    },
+    {
+      "key": "git_view.status_diff",
+      "context": "Git tab: status line while a diff is shown. n and p are keys, ⌘↑ and ⌘↓ are Cmd or Ctrl with the arrows, F3 is the function key. Keep all key names.",
+      "en": "↑↓ scroll · n/p next/previous change · ⌘↑/⌘↓ other file · F3 view file · Esc back",
+      "de": "↑↓ scrollen · n/p nächste/vorige Änderung · ⌘↑/⌘↓ andere Datei · F3 Datei ansehen · Esc zurück"
     }
   ]
 }

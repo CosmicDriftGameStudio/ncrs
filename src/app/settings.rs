@@ -192,6 +192,9 @@ impl App {
             Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
             Ask::OpenChat { area } => self.open_chat_from_settings(area),
             Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
+            Ask::NotesRecovery => self.update_notes(ncrs_notes::Message::RecoveryRequested),
+            Ask::NotesRestore(text) => self.update_notes(ncrs_notes::Message::Restore(text)),
+            Ask::NotesSyncNow => self.update_notes(ncrs_notes::Message::SyncNow),
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
@@ -396,6 +399,7 @@ impl App {
                 self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
                 Task::none()
             }
+            SettingChange::Notes(settings) => self.apply_notes_settings(&settings),
             SettingChange::CheckForUpdates(_) => {
                 self.update_check = config.check_for_updates;
                 self.update_updates(ncrs_updates::Message::CheckDue)
@@ -419,6 +423,10 @@ impl App {
             }
             SettingChange::FileListTags(_) => {
                 self.file_list_tags = config.file_list_tags;
+                Task::none()
+            }
+            SettingChange::HermesChatKeepDays(days) => {
+                self.hermes_chat.set_chat_keep_days(days);
                 Task::none()
             }
             SettingChange::HermesSwitch(_) | SettingChange::AiProvider(_) => {

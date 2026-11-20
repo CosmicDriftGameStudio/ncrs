@@ -10,7 +10,7 @@ use super::index_page::{
 use super::*;
 use crate::facts::{RunDay, RunFacts};
 use crate::folders::AddAs;
-use crate::message::SettingsMessage;
+use crate::message::{SettingChange, SettingsMessage};
 use ncrs_config::config::{FilingLocation, LocationTransfer};
 use ncrs_intake::LocationMode;
 
@@ -39,7 +39,44 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             order_rows(view),
         ),
         group(Msg::SettingsHermesSectionHistory, None, history_rows(view)),
+        group(
+            Msg::SettingsHermesSectionChats,
+            None,
+            vec![chat_keep_row(view)],
+        ),
     ]
+}
+
+fn chat_keep_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
+    let lang = view.lang;
+    let choices = [
+        (Msg::SettingsHermesChatKeepNever, None),
+        (Msg::SettingsHermesChatKeep30, Some(30)),
+        (Msg::SettingsHermesChatKeep90, Some(90)),
+    ];
+    let options: Vec<(&str, Message)> = choices
+        .iter()
+        .map(|&(label, days)| {
+            (
+                lang.text(label),
+                change(SettingChange::HermesChatKeepDays(days)),
+            )
+        })
+        .collect();
+    let chosen = choices
+        .iter()
+        .position(|&(_, days)| days == view.facts.chat_keep_days)
+        .unwrap_or(0);
+    simple_row(
+        Msg::SettingsHermesRowChatKeep,
+        Some(Msg::SettingsHermesRowChatKeepNote),
+        kit::segmented(&options, chosen, true, view.palette),
+        lang,
+    )
+    .keyed_maybe(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ))
 }
 
 /// "always · move · also images", in the words of the page.

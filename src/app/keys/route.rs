@@ -229,6 +229,19 @@ fn hermes_chat_key(
     match ncrs_hermes_chat::chat_key(key, key_modifiers) {
         ncrs_hermes_chat::ChatKey::Close => Some(Message::HermesChat(HermesChatMessage::Close)),
         ncrs_hermes_chat::ChatKey::CloseToCommandLine => Some(Message::HermesChatToCommandLine),
+        ncrs_hermes_chat::ChatKey::NewChat => Some(Message::HermesChat(HermesChatMessage::NewChat)),
+        ncrs_hermes_chat::ChatKey::PreviousChat => Some(Message::HermesChat(
+            HermesChatMessage::List(ncrs_hermes_chat::ListMessage::Previous),
+        )),
+        ncrs_hermes_chat::ChatKey::NextChat => Some(Message::HermesChat(HermesChatMessage::List(
+            ncrs_hermes_chat::ListMessage::Next,
+        ))),
+        ncrs_hermes_chat::ChatKey::MarkChat => Some(Message::HermesChat(HermesChatMessage::List(
+            ncrs_hermes_chat::ListMessage::KeyMark,
+        ))),
+        ncrs_hermes_chat::ChatKey::DeleteChat => Some(Message::HermesChat(
+            HermesChatMessage::List(ncrs_hermes_chat::ListMessage::KeyDelete),
+        )),
         ncrs_hermes_chat::ChatKey::Pass | ncrs_hermes_chat::ChatKey::Type => quit(),
         ncrs_hermes_chat::ChatKey::Swallow => None,
     }

@@ -1,0 +1,23 @@
+[package]
+name = "ncrs-git-view"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The Git tab: branches, worktrees, the commit graph and diffs of one repository, read only"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+ncrs-git = { path = "../ncrs-git", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

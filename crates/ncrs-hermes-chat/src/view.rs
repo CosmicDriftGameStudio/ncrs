@@ -1,15 +1,18 @@
 //! The chat as a messenger column, built from the kit.
 
-use iced::widget::operation;
-use iced::{Element, Task};
+use iced::widget::{column, operation, Row};
+use iced::{Element, Length, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
-    areas_card, chat_chip, chat_header, chat_input, chat_page, chat_text, chip_row, file_card,
-    folder_mention, hermes_bubble, levels_card, proposal_card, user_bubble, user_folder_bubble,
-    working_bubble, AreaLine, ChatInput,
+    areas_card, chat_chip, chat_header, chat_input, chat_list, chat_page, chat_text, chip_row,
+    file_card, folder_mention, hermes_bubble, levels_card, proposal_card, user_bubble,
+    user_folder_bubble, working_bubble, AreaLine, ChatInput,
 };
 use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::panel_footer::panel_footer;
 
+use crate::chat_store::{Line, Speaker};
+use crate::list_view::list_props;
 use crate::message::Message;
 use crate::state::{AreasCard, CountRow, Entry, FileCard, Part, State};
 use crate::texts::documents_label;
@@ -123,44 +126,90 @@ fn chips_of<'a>(state: &State, ctx: ViewCtx<'_>) -> Option<Element<'a, Message>>
     })
 }
 
+fn stored_entry<'a>(line: &Line, ctx: ViewCtx<'_>) -> Element<'a, Message> {
+    match line.speaker {
+        Speaker::User => user_bubble(&line.text, ctx.palette),
+        Speaker::Hermes => {
+            hermes_bubble(vec![chat_text(&line.text, ctx.palette.text)], ctx.palette)
+        }
+    }
+}
+
 pub fn view<'a>(state: &State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let lang = ctx.lang;
+    let read_only = state.chats.is_read_only();
+    let (name, tagline) = match state.chats.title_of_shown() {
+        Some(title) => (
+            title.to_owned(),
+            format!(
+                "{} \u{b7} {}",
+                lang.text(Msg::HermesChatTitle),
+                lang.text(Msg::HermesChatSubtitle)
+            ),
+        ),
+        None => (
+            lang.text(Msg::HermesChatTitle).to_owned(),
+            lang.text(Msg::HermesChatSubtitle).to_owned(),
+        ),
+    };
     let header = chat_header(
         AVATAR_LETTER,
-        lang.text(Msg::HermesChatTitle),
-        lang.text(Msg::HermesChatSubtitle),
-        (lang.text(Msg::HermesChatNewChat), Message::NewChat),
+        &name,
+        &tagline,
         lang.text(Msg::HermesChatEscHint),
         ctx.palette,
     );
     let waiting_for_answer = !state.chips().is_empty();
-    let placeholder = lang.text(if waiting_for_answer {
+    let placeholder = lang.text(if read_only {
+        Msg::HermesChatReadOnlyHint
+    } else if waiting_for_answer {
         Msg::HermesChatPlaceholderReply
     } else {
         Msg::HermesChatPlaceholder
     });
     let input = chat_input(
         ChatInput {
-            value: &state.input,
+            value: if read_only { "" } else { &state.input },
             placeholder,
             id: INPUT_ID,
             on_input: Message::InputChanged,
             on_submit: Message::Submit,
-            enabled: state.pending_work().is_none(),
+            enabled: !read_only && state.pending_work().is_none(),
             send_label: lang.text(Msg::HermesChatSend),
         },
         ctx.palette,
     );
-    chat_page(
-        header,
-        state
-            .thread()
-            .iter()
-            .map(|shown| entry(shown, ctx))
-            .collect(),
-        chips_of(state, ctx),
-        input,
-        SCROLL_ID,
-        ctx.palette,
-    )
+    let page = match state.chats.shown_stored() {
+        Some(stored) => chat_page(
+            header,
+            stored
+                .lines
+                .iter()
+                .map(|line| stored_entry(line, ctx))
+                .collect(),
+            None,
+            input,
+            SCROLL_ID,
+            ctx.palette,
+        ),
+        None => chat_page(
+            header,
+            state
+                .thread()
+                .iter()
+                .map(|shown| entry(shown, ctx))
+                .collect(),
+            chips_of(state, ctx),
+            input,
+            SCROLL_ID,
+            ctx.palette,
+        ),
+    };
+    let list = chat_list(list_props(state, ctx), ctx.palette);
+    let keys = crate::list_view::keys_line(lang);
+    column![
+        Row::new().push(list).push(page).height(Length::Fill),
+        panel_footer(keys, ctx.palette),
+    ]
+    .into()
 }

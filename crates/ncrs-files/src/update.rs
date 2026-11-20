@@ -77,6 +77,7 @@ pub fn update(
             let mut left_archive = None;
             let mut left_server = None;
             let mut changed_meanwhile = false;
+            let mut arrived = false;
             if panel.request_id == request_id {
                 let before = panel.remote();
                 left_archive = panel
@@ -96,6 +97,7 @@ pub fn update(
                 panel.record_arrival(previous, request_id);
                 left_server = before.filter(|server| panel.remote().as_ref() != Some(server));
                 changed_meanwhile = std::mem::take(&mut panel.changed_while_loading);
+                arrived = true;
                 actions.push(Action::CloseMenuOfReloaded(side));
             }
             if let Some(old) = left_archive {
@@ -106,10 +108,19 @@ pub fn update(
             }
             actions.push(Action::StopFolderSizeRunIfLeft(side));
             panels.drop_rename_of_missing_entry();
+            if arrived {
+                task = panels.start_git_scan(side);
+            }
             if changed_meanwhile {
                 actions.extend(reload_after_change_on_disk(panels, side));
             }
         }
+
+        PanelMessage::GitScanned {
+            side,
+            request_id,
+            scan,
+        } => panels.apply_git_scan(side, request_id, scan.map(|scan| *scan)),
 
         PanelMessage::FolderChangedOnDisk(side) => {
             let panel = panels.panel_mut(side);
@@ -167,6 +178,19 @@ pub fn update(
         }
         PanelMessage::ClearTags => {
             panels.active_panel_mut().selection.clear();
+        }
+        PanelMessage::TagByPattern {
+            side,
+            pattern,
+            untag,
+        } => {
+            let panel = panels.panel_mut(side);
+            crate::name_pattern::tag_matching(
+                &mut panel.selection,
+                &panel.entries,
+                &pattern,
+                untag,
+            );
         }
 
         // The overlays do not capture the wheel, so the panel behind one
@@ -234,8 +258,12 @@ pub fn update(
             }
         }
         PanelMessage::PanelDragMoved(position) => {
+            let git = panels
+                .header_press
+                .as_ref()
+                .is_some_and(|press| panels.panel(press.side).git.in_repository());
             if let Some(press) = panels.header_press.as_mut() {
-                let spans = header_spans(ctx, press.side);
+                let spans = header_spans(ctx, press.side, git);
                 press.moved_to(position, &spans, ctx.window_size.width);
             } else if let Some(drag) = panels.drag.as_mut() {
                 drag.moved_to(position);
@@ -330,8 +358,13 @@ pub fn update(
             panels.end_rename();
             actions.push(Action::ReleaseFocus);
         }
-        PanelMessage::FolderSizeMeasured { run, folder, size } => {
-            let walk = panels.folder_size_measured(run, folder, size, rows);
+        PanelMessage::FolderSizeMeasured {
+            run,
+            folder,
+            size,
+            below,
+        } => {
+            let walk = panels.folder_size_measured(run, folder, size, below, rows);
             task = walk_task(walk);
         }
         PanelMessage::RenameStart => task = panels.begin_rename(),
@@ -641,9 +674,9 @@ fn arm_panel_drag(
 
 /// The shown columns of `side` as they lie in the panel, for hit-testing a
 /// dragged title.
-fn header_spans(ctx: &Ctx<'_>, side: PanelSide) -> Vec<ColumnSpan> {
+fn header_spans(ctx: &Ctx<'_>, side: PanelSide, git: bool) -> Vec<ColumnSpan> {
     column_spans(
-        ctx.columns.layout(side, Language::default()),
+        ctx.columns.layout(side, Language::default()).with_git(git),
         header_drag::panel_width(ctx.window_size.width),
         ctx.has_hermes_column,
     )

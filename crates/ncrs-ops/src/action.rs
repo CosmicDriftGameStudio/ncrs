@@ -162,6 +162,12 @@ pub enum Action {
     DropFiles(Vec<PathBuf>),
     /// Stop the running job: the queue and the progress channel are the app's.
     AbortJob,
+    /// The pattern prompt of the panel on `side` was confirmed.
+    TagByPattern {
+        side: PanelSide,
+        pattern: String,
+        untag: bool,
+    },
     /// The quit question was answered with "stop and quit".
     ConfirmQuit,
 }

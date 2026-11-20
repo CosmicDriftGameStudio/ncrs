@@ -436,7 +436,7 @@ mod favourites_bar_ui_tests {
 
     fn slot(number: usize, label: &str, is_current: bool) -> Slot<()> {
         Slot {
-            number,
+            number: Some(number),
             label: label.to_owned(),
             is_current,
             tooltip: String::new(),
@@ -455,11 +455,13 @@ mod favourites_bar_ui_tests {
                 slot(4, "Downloads", false),
                 slot(5, "projects/ncrs", false),
             ],
+            None,
             Some("Cmd+1 … 5".to_owned()),
             &palette,
         );
         let few = favourites_bar::view(
             vec![slot(1, "~", true), slot(2, "Documents", false)],
+            None,
             None,
             &palette,
         );

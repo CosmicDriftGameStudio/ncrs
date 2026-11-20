@@ -35,9 +35,14 @@ pub enum SettingChange {
     CheckForUpdates(bool),
     /// The top-level `favourites_bar` switch.
     FavouritesBar(bool),
+    /// The notes settings besides their folder, all of them as they are to be written.
+    Notes(ncrs_core::notes_sync::NotesSettings),
     Load(Load),
     /// The `[hermes]` switch: off, nothing is watched and no model is called.
     HermesSwitch(bool),
+    /// The `[hermes]` `chat_keep_days`: chats unused this long are deleted at
+    /// start; `None` never.
+    HermesChatKeepDays(Option<u32>),
     /// `None` hands the file to the system default again.
     Program {
         kind: OpenKind,
@@ -98,6 +103,19 @@ pub enum FavouritesEdit {
     Remove(usize),
 }
 
+/// An edit on the Notes page that is not a change of the config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotesEdit {
+    SyncFolderText(String),
+    SyncFolderSubmit,
+    /// Asks the app for the recovery key and shows it once.
+    ShowRecovery,
+    HideRecovery,
+    RestoreText(String),
+    RestoreSubmit,
+    SyncNow,
+}
+
 /// A text field of the settings tab. What is typed stays a draft until
 /// Enter, which checks it and writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -143,6 +161,7 @@ pub enum SettingsMessage {
     Change(SettingChange),
     Columns(ColumnsEdit),
     Favourites(FavouritesEdit),
+    Notes(NotesEdit),
     Edit {
         field: SettingField,
         text: String,
@@ -230,7 +249,15 @@ pub enum SettingsMessage {
     SystemLoaded {
         terminals: Vec<ncrs_fs::KnownTerminal>,
         fonts: Vec<String>,
+        integration: ncrs_handoff::integration::State,
     },
+    /// A switch of "ncrs opens folders" on the programs page.
+    Integrate {
+        switch: ncrs_handoff::integration::Switch,
+        on: bool,
+    },
+    /// The system's state after a switch was changed, or why it was not.
+    Integrated(Result<ncrs_handoff::integration::State, String>),
     OpenAiModel,
     /// Asks before this model is removed from the computer.
     AskRemoveModel(ModelKind),

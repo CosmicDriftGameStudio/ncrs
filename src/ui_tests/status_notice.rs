@@ -38,6 +38,7 @@ fn status_bar<'a>(app: &'a App, failure: Option<&'a str>) -> iced::Element<'a, M
             blocked_by_sandbox: false,
             notice: app.notice_for_test(),
             hermes_line: None,
+            git: None,
             note_line: None,
             version: None,
             monitor: None,

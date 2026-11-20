@@ -4,8 +4,12 @@
 //! work that blocks runs through `ncrs_filing::chat_work`.
 
 pub mod action;
+mod chat_list;
+mod chat_list_update;
+mod chat_store;
 pub mod ctx;
 pub mod keys;
+mod list_view;
 pub mod message;
 mod state;
 mod update;
@@ -30,6 +34,9 @@ mod waiting;
 mod working;
 
 pub use action::Action;
+pub use chat_list::{day_group, ChatList, DayGroup, ListGroup, ListRow};
+pub use chat_list_update::ListMessage;
+pub use chat_store::{ChatId, ChatStatus};
 pub use ctx::{Availability, Ctx};
 pub use in_tab::{filed_in_tab, FiledInTab};
 pub use keys::{chat_key, ChatKey};

@@ -28,6 +28,7 @@ pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
 pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
 pub const NOTES_TAB_ID: &str = "title-tab-notes";
 pub const FILING_TAB_ID: &str = "title-tab-filing";
+pub const GIT_TAB_ID: &str = "title-tab-git";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 /// Characters of room the cross of a hit list tab takes from its title.
 const CROSS_CHARS: usize = 3;
@@ -77,6 +78,8 @@ pub enum PageTab {
     Notes,
     /// The filing tab; the title is already worded.
     Filing(String),
+    /// The Git tab; the title is already worded.
+    Git(String),
     Hermes,
 }
 
@@ -224,6 +227,16 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 NOTES_TAB_ID,
                 open.active,
                 (ShownTab::Notes, Message::Notes(ncrs_notes::Message::Close)),
+                palette,
+            ),
+            PageTab::Git(title) => page_tab(
+                title,
+                GIT_TAB_ID,
+                open.active,
+                (
+                    ShownTab::Git,
+                    Message::GitView(ncrs_git_view::Message::Close),
+                ),
                 palette,
             ),
             PageTab::Filing(title) => page_tab(

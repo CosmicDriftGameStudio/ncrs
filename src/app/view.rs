@@ -104,6 +104,8 @@ impl App {
 
         let below_title_bar = if self.filing_shown() {
             self.filing_area()
+        } else if self.git_shown() {
+            self.git_area()
         } else if self.notes_shown() {
             self.notes_area()
         } else if self.viewer_shown() {
@@ -181,6 +183,7 @@ impl App {
                         notice: self.notice.as_deref(),
                         hermes_line: self.hermes_line(),
                         note_line: self.note_line(),
+                        git: self.git_line(),
                         version: Some(statusbar::VersionBadge {
                             text: self.app_version.to_owned(),
                             on_press: Message::VersionPressed,

@@ -222,6 +222,15 @@ impl App {
             }
             Ask::AbortJob => self.abort_job(),
             Ask::ConfirmQuit => self.confirm_quit_with_job(),
+            Ask::TagByPattern {
+                side,
+                pattern,
+                untag,
+            } => self.update_panel(PanelMessage::TagByPattern {
+                side,
+                pattern,
+                untag,
+            }),
             Ask::EditFile(path) => {
                 self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
                 Task::none()
@@ -361,6 +370,20 @@ impl App {
             let facts = selection_facts(panels, source_side, sources);
             ncrs_ops::open_pack_prompt(ops, facts, ctx)
         })
+    }
+
+    /// `+` and `-`: the pattern prompt of the active panel.
+    pub(in crate::app) fn open_tag_pattern_prompt(&mut self, untag: bool) -> Task<Message> {
+        if self.overlay_is_open()
+            || self.text_field_has_keys()
+            || self.search_has_keys()
+            || self.trash_has_keys()
+            || self.shown_tab != ShownTab::Panels
+        {
+            return Task::none();
+        }
+        let parent = self.active_panel().path.clone();
+        self.open_prompt(Prompt::tag_pattern(parent, untag))
     }
 
     /// "Extract here": the tagged archives, else the one under the cursor.

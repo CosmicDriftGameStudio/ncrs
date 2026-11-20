@@ -236,6 +236,7 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
     let watch_source = always && !ctx.sources.contains(&source);
     let deciding = state.session.deciding.is_some();
     if always {
+        state.session.keeps_filing = true;
         if deciding && watch_source {
             state.queued_action = Some(Action::SetFolderRole {
                 folder: tidy.source.clone(),

@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use iced::widget::{column, container, responsive, row};
-use iced::{alignment, Element, Length};
+use iced::widget::{column, container, mouse_area, responsive, row, stack};
+use iced::{alignment, Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{button, segmented, text_area, text_field, Tone};
@@ -12,12 +12,14 @@ use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow, TREE_INDENT};
 
+use crate::crypt::is_encrypted_path;
 use crate::ctx::ViewCtx;
 use crate::message::{Message, Mode};
-use crate::state::State;
+use crate::state::{Seal, State};
 use crate::store::{Kind, Note};
 use crate::tree::RowKey;
 
@@ -26,6 +28,8 @@ pub const SEARCH_ID: &str = "notes-search";
 pub const EDITOR_ID: &str = "notes-editor";
 const TREE_ID: &str = "notes-tree";
 const NOTE_ID: &str = "notes-note";
+/// Drawn before the name of an encrypted note or folder in the tree.
+const LOCK_MARK: &str = "\u{1f512}";
 
 const SIDEBAR_WIDTH: f32 = size::SIDE_PANE;
 /// From this width of the note pane the editor and the rendered note sit side by side.
@@ -56,10 +60,54 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>, new_note_key: &str) -> Eleme
         container(note_pane(state, ctx)).width(Length::Fill),
     ]
     .height(Length::Fill);
-    column![body, page_status_bar(bar, palette)]
+    let page: Element<'a, Message> = column![body, page_status_bar(bar, palette)]
         .width(Length::Fill)
         .height(Length::Fill)
-        .into()
+        .into();
+    match context_menu(state, ctx) {
+        Some(menu) => stack![page, menu].into(),
+        None => page,
+    }
+}
+
+/// Where the first row of the tree starts below the top of the tab: the
+/// search field and the two buttons above it.
+const TREE_TOP: f32 = 96.0;
+
+/// The menu of the row that was pressed with the right button: encrypt or
+/// decrypt it, and lock everything now.
+fn context_menu<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message>> {
+    let key = state.menu.clone()?;
+    let index = state.rows().iter().position(|entry| entry.key == key)?;
+    let sealed = match &key {
+        RowKey::Folder(folder) => state.folder_is_sealed(folder),
+        RowKey::Note(path) => is_encrypted_path(path),
+        RowKey::Files => return None,
+    };
+    let entry = |label: Msg, on_press: Message| PopupEntry {
+        label: ctx.lang.text(label).to_owned(),
+        key: None,
+        is_selected: false,
+        on_press: Some(on_press),
+        on_hover: None,
+    };
+    let mut entries = vec![if sealed {
+        entry(Msg::NotesMenuDecrypt, Message::Seal(Seal::Row(key), false))
+    } else {
+        entry(Msg::NotesMenuEncrypt, Message::Seal(Seal::Row(key), true))
+    }];
+    if state.vault.is_unlocked() {
+        entries.push(entry(Msg::NotesMenuLockNow, Message::Lock));
+    }
+    let origin = Point::new(
+        SIDEBAR_WIDTH / 2.0,
+        TREE_TOP + index as f32 * size::SIDEBAR_ITEM,
+    );
+    Some(popup_layer(
+        popup_menu(entries, origin, ctx.palette),
+        Some(Message::CloseMenu),
+        RightPress::Dismiss,
+    ))
 }
 
 fn sidebar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -133,7 +181,18 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 })
                 .unwrap_or_default(),
         };
-        tree_row(
+        let locked = match &entry.key {
+            RowKey::Folder(folder) => state.folder_is_sealed(folder),
+            RowKey::Note(path) => is_encrypted_path(path),
+            RowKey::Files => false,
+        };
+        let label = if locked {
+            format!("{LOCK_MARK} {label}")
+        } else {
+            label
+        };
+        let key = entry.key.clone();
+        let row: Element<'a, Message> = tree_row(
             TreeRow {
                 depth: entry.depth,
                 open: entry.open,
@@ -143,7 +202,8 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 on_press: Message::Pressed(entry.key),
             },
             ctx.palette,
-        )
+        );
+        Element::from(mouse_area(row).on_right_press(Message::OpenMenu(key)))
     });
     column(rows).into()
 }
@@ -226,6 +286,9 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .padding(spacing::XXL)
         .into();
     };
+    if state.is_locked(note) {
+        return locked_page(note, ctx);
+    }
     let meta = match note.modified {
         Some(modified) => format!(
             "{} \u{b7} {}",
@@ -301,6 +364,30 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         content,
     ]
     .height(Length::Fill)
+    .into()
+}
+
+/// What stands where an encrypted note would be shown while the key is not in memory.
+fn locked_page<'a>(note: &'a Note, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    container(
+        column![
+            page_heading(&note.title, palette),
+            page_line(
+                ctx.lang.text(Msg::NotesLockedBody),
+                font_size::BODY,
+                palette.dim_text
+            ),
+            button(
+                ctx.lang.text(Msg::NotesUnlock),
+                Some(Message::Unlock),
+                Tone::Primary,
+                palette,
+            ),
+        ]
+        .spacing(spacing::L),
+    )
+    .padding(spacing::XXL)
     .into()
 }
 

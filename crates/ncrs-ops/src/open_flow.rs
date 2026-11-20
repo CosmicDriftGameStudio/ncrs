@@ -233,8 +233,29 @@ pub fn start_prompt_job(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
     match ops.prompt.as_ref().map(Prompt::kind) {
         Some(PromptKind::Pack) => check_pack_target(ops, ctx),
         Some(PromptKind::Paste) => stage_paste(ops),
+        Some(PromptKind::TagByPattern) => submit_pattern(ops, false),
+        Some(PromptKind::UntagByPattern) => submit_pattern(ops, true),
         Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => idle(),
     }
+}
+
+/// Enter in a pattern prompt: it closes and the panel it was opened for tags
+/// what matches.
+fn submit_pattern(ops: &mut Ops, untag: bool) -> Outcome {
+    let Some(prompt) = ops.prompt.take() else {
+        return idle();
+    };
+    let Some(side) = prompt.side() else {
+        return idle();
+    };
+    (
+        release_focus(),
+        vec![Action::TagByPattern {
+            side,
+            pattern: prompt.name().trim().to_owned(),
+            untag,
+        }],
+    )
 }
 
 /// Alt+F5: the name prompt for a new archive in the other panel's folder,

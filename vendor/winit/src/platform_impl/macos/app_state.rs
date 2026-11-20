@@ -1,14 +1,18 @@
 use std::cell::{Cell, RefCell};
 use std::mem;
+use std::path::PathBuf;
 use std::rc::Weak;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use objc2::rc::Retained;
-use objc2::{declare_class, msg_send_id, mutability, ClassType, DeclaredClass};
+use objc2::{declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
 };
-use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
+use objc2_foundation::{
+    MainThreadMarker, NSArray, NSNotification, NSObject, NSObjectProtocol, NSString,
+};
 
 use super::event_handler::EventHandler;
 use super::event_loop::{notify_windows_of_exit, stop_app_immediately, ActiveEventLoop, PanicInfo};
@@ -71,7 +75,28 @@ declare_class!(
             self.will_terminate(notification)
         }
     }
+
+    // NCRS-PATCH: Finder "Open With", `open -a` and a drop on the Dock icon.
+    unsafe impl ApplicationDelegate {
+        #[method(application:openFiles:)]
+        fn app_open_files(&self, sender: &NSApplication, filenames: &NSArray<NSString>) {
+            let mut opened = OPENED_PATHS.lock().unwrap_or_else(|p| p.into_inner());
+            opened.extend(filenames.iter().map(|name| PathBuf::from(name.to_string())));
+            // The system waits for the answer; 0 is NSApplicationDelegateReplySuccess.
+            unsafe {
+                let _: () = msg_send![sender, replyToOpenOrPrint: 0usize];
+            }
+        }
+    }
 );
+
+/// The paths the system asked the app to open, not yet taken.
+static OPENED_PATHS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// Takes the paths the system has asked the app to open since the last call.
+pub(crate) fn take_opened_paths() -> Vec<PathBuf> {
+    mem::take(&mut *OPENED_PATHS.lock().unwrap_or_else(|p| p.into_inner()))
+}
 
 impl ApplicationDelegate {
     pub(super) fn new(

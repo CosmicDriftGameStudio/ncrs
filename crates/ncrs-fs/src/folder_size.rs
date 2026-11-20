@@ -13,6 +13,26 @@ pub fn measure_folder(root: &Path, cancel: &AtomicBool) -> Option<FolderSize> {
     measure_folder_on(root, cancel, device_of)
 }
 
+/// How many folders below the root a walk keeps a size for. A walk over a
+/// whole disk would otherwise hold one path per folder of it.
+const KEPT_FOLDERS: usize = 20_000;
+
+/// The size of a folder and of the folders the walk went through below it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MeasuredTree {
+    pub total: FolderSize,
+    /// Every folder below the root the walk kept, parents before their
+    /// children; a folder's size includes its subfolders.
+    pub below: Vec<(PathBuf, FolderSize)>,
+}
+
+/// [`measure_folder`] that also keeps the size of the folders it walked
+/// through, so entering one shows its size without another walk. A hard link
+/// is counted in the folder the walk met it in first.
+pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredTree> {
+    measure_tree_on(root, cancel, device_of)
+}
+
 #[cfg(unix)]
 fn device_of(_path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {
     use std::os::unix::fs::MetadataExt as _;
@@ -29,19 +49,33 @@ fn measure_folder_on(
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
 ) -> Option<FolderSize> {
+    measure_tree_on(root, cancel, device_of).map(|tree| tree.total)
+}
+
+fn measure_tree_on(
+    root: &Path,
+    cancel: &AtomicBool,
+    device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
+) -> Option<MeasuredTree> {
     let root_device = std::fs::symlink_metadata(root)
         .ok()
         .and_then(|metadata| device_of(root, &metadata));
-    let mut bytes: u64 = 0;
-    let mut partial = false;
     let mut seen = SeenFiles::default();
-    let mut pending: Vec<PathBuf> = vec![root.to_path_buf()];
-    while let Some(folder) = pending.pop() {
+    let mut counted = vec![Counted {
+        path: root.to_path_buf(),
+        parent: None,
+        bytes: 0,
+        partial: false,
+    }];
+    // Each folder still to read, with the entry of `counted` its bytes go to:
+    // its own, or its nearest ancestor's once the walk stopped keeping them.
+    let mut pending: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    while let Some((folder, owner)) = pending.pop() {
         if cancel.load(Ordering::Relaxed) {
             return None;
         }
         let Ok(children) = std::fs::read_dir(&folder) else {
-            partial = true;
+            counted[owner].partial = true;
             continue;
         };
         for listed in children {
@@ -49,26 +83,60 @@ fn measure_folder_on(
                 return None;
             }
             let Ok(child) = listed else {
-                partial = true;
+                counted[owner].partial = true;
                 continue;
             };
             let path = child.path();
             let Ok(metadata) = std::fs::symlink_metadata(&path) else {
-                partial = true;
+                counted[owner].partial = true;
                 continue;
             };
             if metadata.is_dir() {
                 if root_device.is_some() && device_of(&path, &metadata) != root_device {
-                    partial = true;
+                    counted[owner].partial = true;
+                } else if counted.len() <= KEPT_FOLDERS {
+                    counted.push(Counted {
+                        path: path.clone(),
+                        parent: Some(owner),
+                        bytes: 0,
+                        partial: false,
+                    });
+                    pending.push((path, counted.len() - 1));
                 } else {
-                    pending.push(path);
+                    pending.push((path, owner));
                 }
             } else if seen.first_time(&metadata) {
-                bytes = bytes.saturating_add(metadata.len());
+                counted[owner].bytes = counted[owner].bytes.saturating_add(metadata.len());
             }
         }
     }
-    Some(FolderSize { bytes, partial })
+    // A folder is pushed after its parent, so walking backwards adds every
+    // folder to its parent once its own subfolders are in.
+    for index in (1..counted.len()).rev() {
+        if let Some(parent) = counted[index].parent {
+            let (bytes, partial) = (counted[index].bytes, counted[index].partial);
+            counted[parent].bytes = counted[parent].bytes.saturating_add(bytes);
+            counted[parent].partial |= partial;
+        }
+    }
+    let size_of = |entry: &Counted| FolderSize {
+        bytes: entry.bytes,
+        partial: entry.partial,
+    };
+    let total = size_of(&counted[0]);
+    let below = counted
+        .iter()
+        .skip(1)
+        .map(|entry| (entry.path.clone(), size_of(entry)))
+        .collect();
+    Some(MeasuredTree { total, below })
+}
+
+struct Counted {
+    path: PathBuf,
+    parent: Option<usize>,
+    bytes: u64,
+    partial: bool,
 }
 
 #[derive(Default)]
@@ -118,6 +186,29 @@ mod tests {
                 bytes: 35,
                 partial: false
             })
+        );
+    }
+
+    #[test]
+    fn every_folder_walked_through_keeps_its_own_size() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("tree/a.txt"), 10);
+        write(&root.path().join("tree/one/b.txt"), 20);
+        write(&root.path().join("tree/one/two/c.txt"), 5);
+
+        let tree = measure_folder_tree(&root.path().join("tree"), &running()).unwrap();
+
+        let size = |bytes| FolderSize {
+            bytes,
+            partial: false,
+        };
+        assert_eq!(tree.total, size(35));
+        assert_eq!(
+            tree.below,
+            vec![
+                (root.path().join("tree/one"), size(25)),
+                (root.path().join("tree/one/two"), size(5)),
+            ]
         );
     }
 

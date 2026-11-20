@@ -31,6 +31,7 @@ const BUNDLED_BOLD: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono
 pub mod badge_dot;
 pub mod choice_rows;
 pub mod column_header;
+pub mod commit_graph;
 pub mod compare_bar;
 pub mod compare_cell;
 pub mod data_table;
@@ -45,6 +46,8 @@ pub mod format;
 pub mod frame;
 #[cfg(test)]
 mod gallery_tests;
+pub mod git_mark;
+pub mod git_rows;
 pub mod hermes_kit;
 pub mod hermes_state;
 pub mod io_reason;

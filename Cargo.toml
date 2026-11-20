@@ -99,12 +99,17 @@ ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 # The settings: the settings page, the key bindings page, the theme fetch and the model pages.
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
+# Paths other programs hand to ncrs: the command line, a second start, the file manager D-Bus service.
+ncrs-handoff = { path = "crates/ncrs-handoff", version = "0.0.0" }
 # The SFTP connect feature: the connect dialog, the host key question and the keychain passwords.
-ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0" }
+ncrs-remote ={ path = "crates/ncrs-remote", version = "0.0.0" }
 ncrs-compare = { path = "crates/ncrs-compare", version = "0.0.0" }
 # The viewer tab: a file shown rendered or as text.
 ncrs-viewer = { path = "crates/ncrs-viewer", version = "0.0.0" }
 ncrs-notes = { path = "crates/ncrs-notes", version = "0.0.0" }
+# The Git tab, and the Git layer it reads the repository through.
+ncrs-git-view = { path = "crates/ncrs-git-view", version = "0.0.0" }
+ncrs-git = { path = "crates/ncrs-git", version = "0.0.0" }
 # The filing tab: a source folder planned live into the write folder.
 ncrs-filing-view = { path = "crates/ncrs-filing-view", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
@@ -145,6 +150,10 @@ arboard = { version = "3.6", default-features = false, features = ["image-data",
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
+# The files the system opens ncrs with (Finder "Open With", the Dock icon):
+# `take_opened_paths` is the addition of the vendored winit
+# (vendor/winit/NCRS-PATCH.md). Same package iced uses, no features of its own.
+winit = { version = "0.30", default-features = false }
 
 # winit 0.30 references the private CGS API (see vendor/winit/NCRS-PATCH.md).
 [patch.crates-io]

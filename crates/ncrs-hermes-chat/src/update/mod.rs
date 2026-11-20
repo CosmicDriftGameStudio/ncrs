@@ -30,11 +30,22 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
     if state.restart_when_idle && !is_busy(state) {
         restart_conversation(state, ctx);
     }
+    state.sync_chats(ctx.now);
     (launch(state, ctx), action)
 }
 
 fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
+    // A closed chat is only shown: nothing typed or pressed reaches it.
+    if state.chats.is_read_only()
+        && matches!(
+            message,
+            Message::InputChanged(_) | Message::Submit | Message::ChipPressed { .. }
+        )
+    {
+        return None;
+    }
     match message {
+        Message::List(list_message) => crate::chat_list_update::handle(state, list_message, ctx),
         Message::Open => {
             state.open = true;
             if !is_busy(state) && state.session.rule.take().is_some() {
@@ -51,6 +62,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             }
         }
         Message::Close => {
+            // Escape first closes what the list has opened.
+            if state.chats.dismiss_open_thing() {
+                return None;
+            }
             state.open = false;
             Some(Action::Close)
         }
@@ -234,13 +249,20 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
     let thinking = state.thinking.take();
     if is_busy(state) {
         state.thinking = thinking;
+        // The running conversation cannot be left; at least it is shown.
+        state.chats.show_live();
         return;
     }
     drop(thinking);
     restart_conversation(state, ctx);
 }
 
-fn restart_conversation(state: &mut State, ctx: &Ctx) {
+/// Starts a new conversation. The old one stays in the list as a closed chat.
+pub(crate) fn restart_conversation(state: &mut State, ctx: &Ctx) {
+    if state.chats.live().is_some() {
+        state.sync_chats(ctx.now);
+    }
+    let chats = std::mem::take(&mut state.chats);
     // The background job is not part of the conversation: a second one must
     // not start beside it.
     *state = State {
@@ -248,8 +270,10 @@ fn restart_conversation(state: &mut State, ctx: &Ctx) {
         picks_running: state.picks_running,
         picks_stop: Arc::clone(&state.picks_stop),
         picks_settled_at: state.picks_settled_at,
+        chats,
         ..State::default()
     };
+    state.chats.start_live(ctx.now.timestamp());
     open_thread(state, ctx);
 }
 
@@ -261,7 +285,7 @@ fn words_are_taken_as_text(step: Step) -> bool {
 
 /// Work or the model is running, or something waits for Hermes to start;
 /// typing and buttons wait for it.
-fn is_busy(state: &State) -> bool {
+pub(crate) fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
         || state.pending.is_some()
         || state.thinking.is_some()

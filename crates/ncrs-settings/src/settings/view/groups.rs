@@ -385,11 +385,47 @@ pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         title: String::new(),
         rows,
     };
-    vec![
+    let mut groups = vec![
         plain(vec![program_row(OpenKind::View, view)]),
         by_type_group(view),
         plain(vec![program_row(OpenKind::Edit, view), terminal_row(view)]),
-    ]
+    ];
+    let opener_rows = folder_opener_rows(view);
+    if !opener_rows.is_empty() {
+        groups.push(plain(opener_rows));
+    }
+    groups
+}
+
+/// The switches that make other programs hand folders to ncrs; only those the
+/// system has (Explorer menu on Windows, default file manager on Windows and
+/// Linux).
+fn folder_opener_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    use ncrs_handoff::integration::{available, Switch};
+    let lang = view.lang;
+    available()
+        .iter()
+        .map(|&switch| {
+            let (label, note) = match switch {
+                Switch::ExplorerMenu => (
+                    Msg::SettingsRowExplorerMenu,
+                    Msg::SettingsRowExplorerMenuNote,
+                ),
+                Switch::DefaultForFolders => (
+                    Msg::SettingsRowDefaultFolders,
+                    Msg::SettingsRowDefaultFoldersNote,
+                ),
+            };
+            let on = view.state.integration.is_on(switch);
+            let toggle = SettingsMessage::Integrate { switch, on: !on };
+            SettingRow::text(
+                lang.text(label).to_owned(),
+                Some(lang.text(note).to_owned()),
+                ncrs_ui_kit::setting_rows::switch(on, toggle.clone(), lang, view.palette),
+            )
+            .keyed(RowKey::Press(toggle))
+        })
+        .collect()
 }
 
 pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {

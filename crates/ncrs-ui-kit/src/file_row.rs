@@ -11,6 +11,7 @@ use crate::column_header::{column_alignment, ColumnLayout};
 use crate::compare_cell::{blank_compare_cell, compare_cell, CompareCell};
 use crate::file_icon::{file_icon, icon_color, icon_kind, note_marker, IconKind, SpecialFolder};
 use crate::format;
+use crate::git_mark::{git_cell, ignored_ink, repository_sign, GitCell, GitMark};
 use crate::hermes_state::{
     abbreviated, role_message, state_label, summary_items, FolderRole, FolderSummary,
     HermesFileState,
@@ -98,6 +99,7 @@ pub fn hit_row<'a, M: Clone + 'a>(
             hit_scope: Some((scope, height)),
             third_line,
             has_note: false,
+            git: GitCell::default(),
             columns: ColumnLayout::standard(lang),
             special: None,
         },
@@ -134,6 +136,8 @@ pub struct RowExtras<'a, M> {
     pub third_line: Option<Element<'a, M>>,
     /// A note belongs to this file: a small marker follows the name.
     pub has_note: bool,
+    /// What git says about the row.
+    pub git: GitCell,
 }
 
 impl<M> std::fmt::Debug for RowExtras<'_, M> {
@@ -163,6 +167,7 @@ pub fn file_row<'a, M: Clone + 'a>(
         hit_scope,
         third_line,
         has_note,
+        git,
     } = extras;
     let kind = icon_kind(entry, special);
     // The cursor row of the active panel is the one drawn as highlighted; a
@@ -175,6 +180,11 @@ pub fn file_row<'a, M: Clone + 'a>(
         mark.tagged,
         panel_active,
     );
+    let color = if git.mark == Some(GitMark::Ignored) && !highlighted {
+        ignored_ink(color)
+    } else {
+        color
+    };
     let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
             weight: iced::font::Weight::Bold,
@@ -212,6 +222,7 @@ pub fn file_row<'a, M: Clone + 'a>(
     let note_color = if highlighted { color } else { palette.dim_text };
     let name_cell = row![cell(shown_name)]
         .extend(has_note.then(|| note_marker(note_color, font_size::FILE)))
+        .extend(git.sign_after_name.then(|| repository_sign(note_color)))
         .extend(hermes.as_ref().and_then(HermesCell::role_tag))
         .extend(
             hermes
@@ -246,7 +257,17 @@ pub fn file_row<'a, M: Clone + 'a>(
     let cells: Vec<Element<'a, M>> = columns
         .shown()
         .map(|shown| match shown {
-            Column::Name => name_element.take().unwrap_or_else(|| Space::new().into()),
+            Column::Name => {
+                let name = name_element.take().unwrap_or_else(|| Space::new().into());
+                if columns.git {
+                    let on_cursor = highlighted.then_some(color);
+                    row![name, git_cell(git.mark, on_cursor, palette)]
+                        .width(Length::Fill)
+                        .into()
+                } else {
+                    name
+                }
+            }
             Column::Icon => container(file_icon(kind, symbol_color, FILE_ICON_SIZE))
                 .width(columns.width_of(Column::Icon))
                 .into(),

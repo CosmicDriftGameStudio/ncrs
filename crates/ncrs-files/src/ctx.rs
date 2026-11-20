@@ -57,6 +57,7 @@ impl<'a> ColumnSettings<'a> {
             date_format: self.date_format,
             size_format: self.size_format,
             lang,
+            git: false,
         }
     }
 }

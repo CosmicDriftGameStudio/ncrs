@@ -231,6 +231,7 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::UndoRename,
         KeyAction::CompareFolders,
         KeyAction::Notes,
+        KeyAction::GitView,
         KeyAction::ExtractHere,
         KeyAction::ShowProgress,
     ];

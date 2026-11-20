@@ -25,6 +25,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     panel.archive.as_ref()?;
     match message {
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
+        Message::OpenGitView => Some(Msg::GitViewNotARepository),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
@@ -61,7 +62,9 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
 
 /// What the panel refuses, whether it shows an archive or an SFTP server.
 pub(in crate::app) fn refusal_for(panel: &PanelState, message: &Message) -> Option<Msg> {
-    archive_refusal(panel, message).or_else(|| remote_refusal(panel, message))
+    archive_refusal(panel, message)
+        .or_else(|| remote_refusal(panel, message))
+        .or_else(|| git_refusal(panel, message))
 }
 
 /// What a panel on an SFTP server refuses: what would change something there,
@@ -75,6 +78,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
+        Message::OpenGitView => Some(Msg::GitViewNotARepository),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
         | Message::OpenExternal(fs::OpenKind::Edit)
@@ -377,6 +381,8 @@ impl App {
                 self.open_prompt(Prompt::create_file(parent))
             }
             Message::PackPrompt => self.open_pack_prompt(),
+            Message::TagPatternPrompt { untag } => self.open_tag_pattern_prompt(untag),
+            Message::GoToPath => self.focus_path_field(),
             Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
             Message::Ops(ops_message) => self.update_ops(ops_message),
@@ -441,8 +447,12 @@ impl App {
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
             Message::OpenNotes => self.open_notes(),
+            Message::GitView(git_message) => self.update_git_tab(git_message),
+            Message::OpenGitView => self.open_git_view(),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),
             Message::NoteOnFile => self.note_on_file(),
+            Message::HandoffPoll => self.poll_handoffs(),
+            Message::HandedOver(requests) => self.open_handed_over(requests),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
@@ -518,4 +528,29 @@ impl App {
             None => self.apply(message),
         }
     }
+}
+
+/// The Git view needs a folder of this computer that lies inside a repository.
+fn git_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
+    if !matches!(message, Message::OpenGitView) {
+        return None;
+    }
+    git_repository_of(panel)
+        .is_none()
+        .then_some(Msg::GitViewNotARepository)
+}
+
+/// The repository root of the folder under the cursor, or of the folder the
+/// panel shows.
+pub(in crate::app) fn git_repository_of(panel: &PanelState) -> Option<std::path::PathBuf> {
+    if panel.is_virtual() || panel.archive.is_some() || panel.remote().is_some() {
+        return None;
+    }
+    let under_cursor = panel
+        .selected_entry()
+        .filter(|entry| entry.is_dir && !entry.is_parent)
+        .map(|entry| panel.path.join(&entry.name));
+    under_cursor
+        .and_then(|folder| ncrs_git::repository_root_of(&folder))
+        .or_else(|| ncrs_git::repository_root_of(&panel.path))
 }

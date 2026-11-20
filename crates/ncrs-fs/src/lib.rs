@@ -40,7 +40,7 @@ pub use delete::{
     is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
 };
 pub use entry_read::{entry_from_dir_entry, entry_from_path};
-pub use folder_size::measure_folder;
+pub use folder_size::{measure_folder, measure_folder_tree, MeasuredTree};
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 pub use open::OpenCommand;
 pub use open::{

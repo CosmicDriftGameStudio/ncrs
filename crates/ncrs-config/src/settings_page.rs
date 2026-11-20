@@ -10,6 +10,7 @@ pub enum SettingsFeature {
     Servers,
     Columns,
     Favourites,
+    Notes,
     System,
     Updates,
     Index,
@@ -33,7 +34,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -43,6 +44,7 @@ impl SettingsFeature {
         Self::Servers,
         Self::Columns,
         Self::Favourites,
+        Self::Notes,
         Self::Index,
         Self::ReadErrors,
         Self::Reports,
@@ -67,7 +69,7 @@ impl SettingsFeature {
             Self::Look | Self::Language | Self::Keys | Self::System | Self::Updates => {
                 SettingsGroup::General
             }
-            Self::Programs | Self::Servers | Self::Columns | Self::Favourites => {
+            Self::Programs | Self::Servers | Self::Columns | Self::Favourites | Self::Notes => {
                 SettingsGroup::Files
             }
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
@@ -99,7 +101,7 @@ mod tests {
             SettingsFeature::ALL,
             [
                 Look, Language, Keys, System, Updates, Programs, Servers, Columns, Favourites,
-                Index, ReadErrors, Reports, Ai, Hermes, Rules, Tags, Usage
+                Notes, Index, ReadErrors, Reports, Ai, Hermes, Rules, Tags, Usage
             ]
         );
         let expected = [
@@ -112,6 +114,7 @@ mod tests {
             (Servers, SettingsGroup::Files),
             (Columns, SettingsGroup::Files),
             (Favourites, SettingsGroup::Files),
+            (Notes, SettingsGroup::Files),
             (Index, SettingsGroup::Documents),
             (ReadErrors, SettingsGroup::Documents),
             (Reports, SettingsGroup::Documents),

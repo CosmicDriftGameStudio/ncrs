@@ -76,6 +76,16 @@ pub fn view<'a, Message: Clone + 'a>(
             lang.text(Msg::DialogPackLabel),
             lang.text(Msg::DialogPackConfirm),
         ),
+        PromptKind::TagByPattern => (
+            lang.text(Msg::DialogTagPatternTitle),
+            lang.text(Msg::DialogTagPatternLabel),
+            lang.text(Msg::DialogTagPatternConfirm),
+        ),
+        PromptKind::UntagByPattern => (
+            lang.text(Msg::DialogUntagPatternTitle),
+            lang.text(Msg::DialogTagPatternLabel),
+            lang.text(Msg::DialogUntagPatternConfirm),
+        ),
     };
 
     let field = kit::text_field(

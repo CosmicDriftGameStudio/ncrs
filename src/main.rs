@@ -166,6 +166,10 @@ ncrs - a fast, keyboard-first dual-panel file manager
 
 USAGE:
     ncrs
+    ncrs <path>...
+        Opens a folder in the active panel, or a file's folder with the cursor
+        on the file. A file:// URI works too. If ncrs is already running, that
+        window shows it and comes to the front.
     ncrs --check-ai <models-dir>
         Loads the Hermes model from <models-dir> without opening a window,
         prints the compute devices, GPU or CPU and the time of three
@@ -247,7 +251,15 @@ DELETE:
     for good: Enter cancels there, Shift+F8 again confirms.
 
 Run ncrs without arguments; a GUI application with no arguments and no
-files to open.";
+files to open.
+
+OPEN FROM OTHER PROGRAMS:
+    macOS: ncrs is listed under Open With in the Finder; open -a ncrs <path>
+    and dropping a folder on the Dock icon work. Linux: ncrs is listed for
+    folders, and while it runs it answers \"Show in folder\" (the
+    org.freedesktop.FileManager1 service). Windows and Linux: the program
+    settings can make ncrs the default for folders; Windows can add it to
+    the Explorer context menu.";
 
 /// `ncrs --check-ai <models-dir>`: developer and CI output in English, not UI
 /// text, so it is not in strings.json. Returns the exit code.
@@ -327,6 +339,7 @@ fn main() -> iced::Result {
             return Ok(());
         }
         Some("--check-ai") => std::process::exit(check_ai(arguments.get(1).cloned())),
+        Some(path) if !path.starts_with('-') => {}
         Some(other) => {
             eprintln!("ncrs: unknown option: {other}");
             eprintln!("try 'ncrs --help'");
@@ -335,16 +348,44 @@ fn main() -> iced::Result {
         None => {}
     }
 
+    let opening = match requests_of(&arguments) {
+        Ok(requests) => requests,
+        Err(missing) => {
+            eprintln!("ncrs: no such file or folder: {missing}");
+            std::process::exit(2);
+        }
+    };
+
     backend::log_backend();
 
     let mut environment = app::Environment::of_the_user();
     fs::restore_grants(environment.index_path.as_deref());
     fs::warm_up_terminal_detection();
-    let instance = environment
+    let data_dir = environment
         .index_path
         .as_deref()
         .and_then(Path::parent)
-        .map(config::instance_lock::acquire);
+        .map(Path::to_path_buf);
+    let instance = data_dir.as_deref().map(config::instance_lock::acquire);
+    match (&instance, data_dir.as_deref()) {
+        // The running ncrs opens it; a start that cannot reach it goes on as
+        // a window of its own.
+        (Some(config::instance_lock::Instance::Second), Some(dir))
+            if !opening.is_empty() && ncrs_handoff::send(dir, &opening).is_ok() =>
+        {
+            std::process::exit(0);
+        }
+        (Some(config::instance_lock::Instance::First(_)), Some(dir)) => {
+            ncrs_handoff::discard_stale(dir);
+            // Our own inbox: the app reads it right after the window is up.
+            if !opening.is_empty() {
+                drop(ncrs_handoff::send(dir, &opening));
+            }
+            #[cfg(target_os = "linux")]
+            ncrs_handoff::serve_file_manager(dir.to_path_buf());
+        }
+        _ => {}
+    }
     let saved = environment
         .state_path
         .as_deref()
@@ -358,7 +399,34 @@ fn main() -> iced::Result {
     }
     // `instance` holds the lock until the process ends.
     program(window_size, move || {
-        App::new(environment.clone(), saved.clone())
+        let (app, started) = App::new(environment.clone(), saved.clone());
+        // Paths from the command line wait in the inbox, and on macOS the
+        // system may have opened files already.
+        let handed_over = app.poll_handoffs();
+        (app, iced::Task::batch([started, handed_over]))
     })
     .run()
+}
+
+/// The paths of the command line as requests: every argument is a folder or
+/// file, or a `file://` URI of one. `Err` names the first that does not exist.
+fn requests_of(arguments: &[std::ffi::OsString]) -> Result<Vec<ncrs_handoff::Request>, String> {
+    if arguments
+        .first()
+        .is_none_or(|first| first.to_string_lossy().starts_with('-'))
+    {
+        return Ok(Vec::new());
+    }
+    let cwd = env::current_dir().unwrap_or_default();
+    arguments
+        .iter()
+        .map(|given| {
+            let path = ncrs_handoff::path_from_argument(given, &cwd);
+            let request = ncrs_handoff::Request::Open(path);
+            match request.target() {
+                Some(_) => Ok(request),
+                None => Err(given.to_string_lossy().into_owned()),
+            }
+        })
+        .collect()
 }

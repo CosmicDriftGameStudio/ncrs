@@ -132,6 +132,8 @@ mod file_drop_tests;
 #[cfg(test)]
 mod folder_size_tests;
 #[cfg(test)]
+mod handoff_tests;
+#[cfg(test)]
 mod hermes_chat_ai_tests;
 #[cfg(test)]
 mod hermes_model_order_tests;

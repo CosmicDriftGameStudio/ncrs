@@ -48,13 +48,19 @@ fn snippet_around(text: &str, at: usize, length: usize) -> String {
 /// The notes that have `query` in their title, their text or, for a note on a
 /// file, the path of the file; titles first.
 pub fn search(notes: &[Note], query: &str) -> Vec<Hit> {
+    search_where(notes, query, |_| true)
+}
+
+/// As [`search`], over the notes `searchable` says yes to: an encrypted note
+/// that cannot be read is neither found by its title nor by its text.
+pub fn search_where(notes: &[Note], query: &str, searchable: impl Fn(&Note) -> bool) -> Vec<Hit> {
     let needle = folded(query.trim());
     if needle.is_empty() {
         return Vec::new();
     }
     let mut by_title = Vec::new();
     let mut by_text = Vec::new();
-    for note in notes {
+    for note in notes.iter().filter(|note| searchable(note)) {
         let in_text = find(&folded(&note.text), &needle);
         let in_title = find(&folded(&note.title), &needle).is_some()
             || matches!(&note.kind, Kind::File { file, .. }

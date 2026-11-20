@@ -636,13 +636,41 @@ fn a_config_binding_left_or_ctrl_tab_takes_the_key_from_the_new_defaults() {
 }
 
 #[test]
-fn cmd_1_to_5_open_the_favourites_on_every_platform() {
+fn cmd_a_tags_all_and_cmd_g_goes_to_the_path_on_every_platform() {
+    assert_eq!(
+        press_physical("a", Code::KeyA, Modifiers::COMMAND),
+        Some(Message::Panel(PanelMessage::TagAll))
+    );
+    assert_eq!(
+        press_physical("g", Code::KeyG, Modifiers::COMMAND),
+        Some(Message::GoToPath)
+    );
+}
+
+#[test]
+fn plus_and_minus_ask_for_a_pattern_to_tag_or_untag() {
+    assert_eq!(
+        press_physical("+", Code::NumpadAdd, Modifiers::default()),
+        Some(Message::TagPatternPrompt { untag: false })
+    );
+    assert_eq!(
+        press_physical("-", Code::NumpadSubtract, Modifiers::default()),
+        Some(Message::TagPatternPrompt { untag: true })
+    );
+}
+
+#[test]
+fn cmd_1_to_9_open_the_favourites_on_every_platform() {
     for (digit, code, index) in [
         ("1", Code::Digit1, 0),
         ("2", Code::Digit2, 1),
         ("3", Code::Digit3, 2),
         ("4", Code::Digit4, 3),
         ("5", Code::Digit5, 4),
+        ("6", Code::Digit6, 5),
+        ("7", Code::Digit7, 6),
+        ("8", Code::Digit8, 7),
+        ("9", Code::Digit9, 8),
     ] {
         assert_eq!(
             press_physical(digit, code, Modifiers::COMMAND),

@@ -5,6 +5,7 @@ use iced::widget::{column, mouse_area, Column, Row};
 use iced::{Element, Length};
 use ncrs_ui_kit::compare_cell::CompareCell;
 use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
+use ncrs_ui_kit::git_mark::{GitCell, GitMark};
 use ncrs_ui_kit::kit::panel_frame;
 use ncrs_ui_kit::panel_footer::panel_footer;
 use ncrs_ui_kit::rename_row::{rename_row, RenameRow};
@@ -36,7 +37,10 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     } else {
         TrailingColumn::None
     };
-    let layout = ctx.columns.layout(side, lang);
+    let layout = ctx
+        .columns
+        .layout(side, lang)
+        .with_git(state.git.in_repository());
     let on_row_click = move |index, click| match click {
         RowClick::Open => PanelMessage::RowActivated {
             side,
@@ -110,6 +114,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                         .filter(|_| entry.is_dir),
                     third_line: None,
                     has_note: ctx.noted.contains(&entry.path),
+                    git: git_cell_of(state, &entry.name),
                     hermes: hermes_cell.map(|cell| cell(entry)),
                     compare: compare_marks.map_or(CompareCell::Off, |marks| {
                         marks
@@ -155,4 +160,13 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     .on_enter(PanelMessage::PanelEntered(side))
     .on_exit(PanelMessage::PanelExited(side))
     .into()
+}
+
+/// What the Git column and the name of a row say about git.
+fn git_cell_of(state: &PanelState, name: &std::ffi::OsString) -> GitCell {
+    let mark = state.git.mark_of(name);
+    GitCell {
+        mark,
+        sign_after_name: !state.git.in_repository() && mark == Some(GitMark::Repository),
+    }
 }

@@ -63,4 +63,9 @@ pub enum Action {
     /// Switching Hermes on was not saved: the reason. Wherever the user asked
     /// from, the app tells them there.
     HermesNotTurnedOn(String),
+    /// Show the recovery key of the notes once; the app sets it in `NotesPage`.
+    NotesRecovery,
+    /// A recovery key typed in on a computer that has none.
+    NotesRestore(String),
+    NotesSyncNow,
 }

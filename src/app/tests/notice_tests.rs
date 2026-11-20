@@ -117,6 +117,7 @@ fn quitting_with_a_note_that_cannot_be_saved_warns_once() {
         generation: 1,
         root: scratch.path().to_owned(),
         background: false,
+        key: None,
     });
 
     drop(app.update(Message::Quit));
@@ -146,6 +147,7 @@ fn unsaveable_note(app: &mut App, scratch: &std::path::Path) {
         generation: 1,
         root: scratch.to_owned(),
         background: false,
+        key: None,
     });
 }
 

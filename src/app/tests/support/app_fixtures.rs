@@ -111,6 +111,7 @@ impl App {
             passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
             remote_ui: ncrs_remote::Remote::default(),
             compare: ncrs_compare::Compare::default(),
+            git_view: ncrs_git_view::State::default(),
             saved_servers: Vec::new(),
         };
         for (side, names) in [

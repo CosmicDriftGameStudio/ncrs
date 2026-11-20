@@ -9,6 +9,7 @@ use ncrs_fs::remote::{RemotePath, ServerId};
 use ncrs_fs::{sort_entries, ReadError, SortColumn, SortKey};
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT, ROW_HEIGHT};
 
+use crate::git_status::PanelGit;
 use crate::hit_list::HitList;
 use crate::name_match::composed;
 use crate::panel_history::PanelHistory;
@@ -64,6 +65,8 @@ pub struct PanelState {
     /// Rows a folder comparison keeps out of the list ("only differences");
     /// a new listing drops them, the app filters again.
     pub compare_hidden: Vec<FileEntry>,
+    /// What git says about the folder.
+    pub git: PanelGit,
 }
 
 impl PanelState {
@@ -86,6 +89,7 @@ impl PanelState {
             hit_list: None,
             rename: None,
             compare_hidden: Vec::new(),
+            git: PanelGit::default(),
         }
     }
 

@@ -93,6 +93,7 @@ fn measured(app: &mut App, run: u64, name: &str, bytes: u64) {
         run,
         folder: directory().join(name),
         size: Some(size(bytes)),
+        below: Vec::new(),
     })));
 }
 
@@ -193,6 +194,7 @@ async fn a_partial_value_is_marked() {
             bytes: 1024,
             partial: true,
         }),
+        below: Vec::new(),
     })));
 
     assert_eq!(shown(&app, "alpha"), "1.0 KB+");
@@ -209,6 +211,7 @@ async fn a_stopped_walk_leaves_no_value_behind() {
         run: id,
         folder: directory().join("alpha"),
         size: None,
+        below: Vec::new(),
     })));
 
     assert_eq!(shown(&app, "alpha"), "<DIR>");

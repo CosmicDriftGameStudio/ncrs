@@ -244,6 +244,10 @@ pub struct HermesSection {
     /// A file without the key has Hermes on.
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Chats of the Hermes chat unused for this many days are deleted when
+    /// the app starts; a file without the key never deletes them.
+    #[serde(default)]
+    pub chat_keep_days: Option<u32>,
 }
 
 /// The `[modules.filing.ai]` section, unchecked.

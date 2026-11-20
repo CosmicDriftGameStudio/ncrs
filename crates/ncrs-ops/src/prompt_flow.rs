@@ -82,7 +82,7 @@ impl Ops {
     /// neither creates an entry by itself, each starts its own job.
     pub fn valid_prompt_has_its_own_job(&self) -> bool {
         self.prompt.as_ref().is_some_and(|prompt| {
-            matches!(prompt.kind(), PromptKind::Pack | PromptKind::Paste)
+            (matches!(prompt.kind(), PromptKind::Pack | PromptKind::Paste) || prompt.is_pattern())
                 && prompt.validate().is_ok()
         })
     }
@@ -138,7 +138,10 @@ pub fn submit_create_prompt(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
         PromptKind::CreateDir => Task::perform(ncrs_fs::create_dir(target), finished),
         PromptKind::CreateFile => Task::perform(ncrs_fs::create_file(target), finished),
         // A pack and a paste have their own jobs.
-        PromptKind::Pack | PromptKind::Paste => Task::none(),
+        PromptKind::Pack
+        | PromptKind::Paste
+        | PromptKind::TagByPattern
+        | PromptKind::UntagByPattern => Task::none(),
     };
     (task, Vec::new())
 }

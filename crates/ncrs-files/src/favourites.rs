@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use ncrs_core::PanelSide;
 use ncrs_i18n::Language;
-use ncrs_ui_kit::favourites_bar::FAVOURITES_BAR_SLOTS as BAR_SLOTS;
 
 use crate::action::Action;
 use crate::state::Panels;
@@ -22,10 +21,10 @@ fn last_component(path: &Path, home: Option<&Path>) -> String {
     )
 }
 
-/// The labels of the first favourites the bar has slots for: the last path
-/// component, `~` for home, and `parent/name` where two of them share a name.
+/// The labels of the favourites: the last path component, `~` for home, and
+/// `parent/name` where two of them share a name.
 pub fn slot_labels(favourites: &[PathBuf], home: Option<&Path>) -> Vec<String> {
-    let shown = favourites.iter().take(BAR_SLOTS).collect::<Vec<_>>();
+    let shown: Vec<&PathBuf> = favourites.iter().collect();
     let names: Vec<String> = shown
         .iter()
         .map(|path| last_component(path, home))
@@ -46,19 +45,18 @@ pub fn slot_labels(favourites: &[PathBuf], home: Option<&Path>) -> Vec<String> {
 }
 
 impl Panels {
-    /// The slot of the active panel's folder, when it is one of the bar's.
+    /// The place in the list of the active panel's folder, when it is a favourite.
     pub fn current_slot(&self) -> Option<usize> {
         let here = &self.panel(self.active).path;
         self.favourites
             .iter()
-            .take(BAR_SLOTS)
             .position(|favourite| favourite == here)
     }
 
     /// Opens favourite `index` in `side`, the way Enter on it in the drive menu
-    /// does. An index without a slot does nothing.
+    /// does. An index without a favourite does nothing.
     pub fn open_favourite(&mut self, index: usize, side: PanelSide, lang: Language) -> Vec<Action> {
-        let Some(path) = self.favourites.get(index).filter(|_| index < BAR_SLOTS) else {
+        let Some(path) = self.favourites.get(index) else {
             return Vec::new();
         };
         let row = FavouriteRow {
@@ -139,13 +137,25 @@ mod tests {
     }
 
     #[test]
-    fn only_five_get_a_slot() {
-        let labels = slot_labels(&paths(&["/1", "/2", "/3", "/4", "/5", "/6"]), None);
-        assert_eq!(labels.len(), 5);
-        // A sixth with the name of a fifth does not rename the fifth.
-        let with_a_sixth_twin =
-            slot_labels(&paths(&["/1", "/2", "/3", "/4", "/x/5", "/y/5"]), None);
-        assert_eq!(with_a_sixth_twin[4], "5");
+    fn every_favourite_gets_a_label_without_a_limit() {
+        let many: Vec<String> = (0..30).map(|number| format!("/{number}")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert_eq!(slot_labels(&paths(&many), None).len(), 30);
+        // A twin far down the list still gets its parent.
+        let twins = slot_labels(
+            &paths(&["/1", "/2", "/3", "/4", "/5", "/6", "/x/7", "/y/7"]),
+            None,
+        );
+        assert_eq!(twins[6], "x/7");
+    }
+
+    #[test]
+    fn a_favourite_past_the_ninth_still_opens() {
+        let mut panels = panels(&["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9", "/10"]);
+        assert!(!panels
+            .open_favourite(9, PanelSide::Left, Language::English)
+            .is_empty());
+        assert_eq!(panels.current_slot(), None);
     }
 
     #[test]

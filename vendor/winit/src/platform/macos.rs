@@ -529,3 +529,9 @@ pub enum OptionAsAlt {
     #[default]
     None,
 }
+
+/// NCRS-PATCH: the paths the system asked the app to open (Finder "Open
+/// With", `open -a`, a drop on the Dock icon) since the last call.
+pub fn take_opened_paths() -> Vec<std::path::PathBuf> {
+    crate::platform_impl::take_opened_paths()
+}

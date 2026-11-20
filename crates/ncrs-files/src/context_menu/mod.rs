@@ -28,6 +28,8 @@ pub enum ContextAction {
     CopyName,
     ComputeFolderSizes,
     CompareFolders,
+    /// Only inside a Git repository.
+    GitView,
     /// Only for a folder that is not a favourite yet.
     AddFavourite,
     /// Only for a folder that is a favourite.
@@ -47,7 +49,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 23] = [
+    pub const ALL: [ContextAction; 24] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -62,6 +64,7 @@ impl ContextAction {
         ContextAction::CopyName,
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
+        ContextAction::GitView,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
         ContextAction::Trash,
@@ -100,6 +103,7 @@ impl ContextAction {
             | ContextAction::NoteOnFile
             | ContextAction::ExtractHere
             | ContextAction::Pack
+            | ContextAction::GitView
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -130,6 +134,7 @@ impl ContextAction {
             | ContextAction::NoteOnFile
             | ContextAction::ExtractHere
             | ContextAction::Pack
+            | ContextAction::GitView
             | ContextAction::DeletePermanently => false,
         }
     }
@@ -150,6 +155,7 @@ impl ContextAction {
             ContextAction::CopyName => Msg::ContextMenuCopyName,
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
             ContextAction::CompareFolders => Msg::ActionCompareFolders,
+            ContextAction::GitView => Msg::ActionGitView,
             ContextAction::AddFavourite => Msg::ContextMenuAddFavourite,
             ContextAction::RemoveFavourite => Msg::ContextMenuRemoveFavourite,
             ContextAction::Trash => Msg::ContextMenuTrash,
@@ -187,6 +193,7 @@ pub const GROUPS: [&[ContextAction]; 6] = [
     &[
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
+        ContextAction::GitView,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
     ],

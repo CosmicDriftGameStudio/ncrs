@@ -31,6 +31,7 @@ impl ContextActionMessage for ContextAction {
             ContextAction::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
             ContextAction::ComputeFolderSizes => Message::ComputeFolderSizes,
             ContextAction::CompareFolders => Message::Compare(CompareMessage::Open),
+            ContextAction::GitView => Message::OpenGitView,
             ContextAction::AddFavourite => Message::AddFavourite,
             ContextAction::RemoveFavourite => Message::RemoveFavourite,
             ContextAction::Trash => Message::Delete { permanent: false },
@@ -95,6 +96,7 @@ mod tests {
                     action,
                     ContextAction::ComputeFolderSizes
                         | ContextAction::CompareFolders
+                        | ContextAction::GitView
                         | ContextAction::RemoveFavourite
                         | ContextAction::ShowPackageContents
                         | ContextAction::ExtractHere

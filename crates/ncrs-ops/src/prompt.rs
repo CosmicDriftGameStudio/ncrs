@@ -53,6 +53,10 @@ pub enum PromptKind {
     /// Cmd+V with a picture or text on the clipboard — ask for the name of the
     /// file it is saved as in the active panel.
     Paste,
+    /// Ask for a pattern of names and tag the entries of the panel that match.
+    TagByPattern,
+    /// The same, to take the tag off the entries that match.
+    UntagByPattern,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,6 +124,19 @@ impl Prompt {
         Self::new(PromptKind::CreateFile, parent)
     }
 
+    /// The pattern prompt of the panel folder `parent`, starting with every name.
+    pub fn tag_pattern(parent: PathBuf, untag: bool) -> Self {
+        let kind = if untag {
+            PromptKind::UntagByPattern
+        } else {
+            PromptKind::TagByPattern
+        };
+        Self {
+            name: "*.*".to_owned(),
+            ..Self::new(kind, parent)
+        }
+    }
+
     /// The paste prompt for the folder `parent`, with the suggested file name.
     pub fn paste(parent: PathBuf, name: String) -> Self {
         Self {
@@ -183,6 +200,14 @@ impl Prompt {
         self.kind
     }
 
+    /// The prompt asks for a pattern of names, not for a name to create.
+    pub fn is_pattern(&self) -> bool {
+        matches!(
+            self.kind,
+            PromptKind::TagByPattern | PromptKind::UntagByPattern
+        )
+    }
+
     /// Replaces the typed name and clears any error: a new keystroke means the
     /// previous complaint no longer applies.
     pub fn set_name(&mut self, name: String) {
@@ -239,6 +264,13 @@ impl Prompt {
         let name = self.name().trim();
         if self.kind == PromptKind::Pack {
             return self.validate_pack(name);
+        }
+        if self.is_pattern() {
+            return if name.is_empty() {
+                Err(PromptProblem::EmptyName)
+            } else {
+                Ok(())
+            };
         }
         if name.contains('\\') {
             return Err(PromptProblem::SeparatorNotAllowed);
@@ -334,6 +366,19 @@ mod tests {
         let mut prompt = Prompt::create_dir(PathBuf::from("/tmp"));
         prompt.set_name(name.to_string());
         prompt
+    }
+
+    #[test]
+    fn a_pattern_may_hold_wildcards_and_separators_but_not_nothing() {
+        let mut prompt = Prompt::tag_pattern(PathBuf::from("/tmp"), false);
+        assert!(prompt.is_pattern());
+        assert_eq!(prompt.name(), "*.*");
+        assert_eq!(prompt.validate(), Ok(()));
+        prompt.set_name("*.jpg; IMG_??.png".to_owned());
+        assert_eq!(prompt.validate(), Ok(()));
+        prompt.set_name("  ".to_owned());
+        assert_eq!(prompt.validate(), Err(PromptProblem::EmptyName));
+        assert!(!Prompt::create_dir(PathBuf::from("/tmp")).is_pattern());
     }
 
     #[test]

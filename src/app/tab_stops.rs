@@ -17,6 +17,7 @@ pub(in crate::app) struct OpenPages {
     pub viewer: bool,
     pub notes: bool,
     pub filing: bool,
+    pub git: bool,
     pub hermes: bool,
 }
 
@@ -29,27 +30,30 @@ impl OpenPages {
             ShownTab::Viewer => self.viewer,
             ShownTab::Notes => self.notes,
             ShownTab::Filing => self.filing,
+            ShownTab::Git => self.git,
             ShownTab::Hermes => self.hermes,
         }
     }
 }
 
 /// The order Ctrl+Tab walks the tabs in.
-const TAB_ORDER: [ShownTab; 7] = [
+const TAB_ORDER: [ShownTab; 8] = [
     ShownTab::Panels,
     ShownTab::Settings,
     ShownTab::Monitor,
     ShownTab::Viewer,
     ShownTab::Notes,
     ShownTab::Filing,
+    ShownTab::Git,
     ShownTab::Hermes,
 ];
 
 /// When several pages open at once, the last of these is the one shown.
-const SHOWN_WHEN_OPENED: [ShownTab; 6] = [
+const SHOWN_WHEN_OPENED: [ShownTab; 7] = [
     ShownTab::Viewer,
     ShownTab::Notes,
     ShownTab::Filing,
+    ShownTab::Git,
     ShownTab::Hermes,
     ShownTab::Monitor,
     ShownTab::Settings,
@@ -138,6 +142,7 @@ mod tests {
         viewer: true,
         notes: true,
         filing: false,
+        git: false,
         hermes: true,
     };
     const NONE: OpenPages = OpenPages {
@@ -146,6 +151,7 @@ mod tests {
         viewer: false,
         notes: false,
         filing: false,
+        git: false,
         hermes: false,
     };
 

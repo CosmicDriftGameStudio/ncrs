@@ -5,14 +5,18 @@
 use crate::app::*;
 use crate::messages::FavouritesBarMessage;
 use ncrs_files::favourites_bar::{self as bar, BarAction, BarFacts};
-use ncrs_ui_kit::favourites_bar::{self as kit_bar, FAVOURITES_BAR_SLOTS};
+use ncrs_ui_kit::favourites_bar::{self as kit_bar, FAVOURITE_KEYS};
 
-const OPEN_ACTIONS: [KeyAction; FAVOURITES_BAR_SLOTS] = [
+const OPEN_ACTIONS: [KeyAction; FAVOURITE_KEYS] = [
     KeyAction::OpenFavourite1,
     KeyAction::OpenFavourite2,
     KeyAction::OpenFavourite3,
     KeyAction::OpenFavourite4,
     KeyAction::OpenFavourite5,
+    KeyAction::OpenFavourite6,
+    KeyAction::OpenFavourite7,
+    KeyAction::OpenFavourite8,
+    KeyAction::OpenFavourite9,
 ];
 
 impl App {
@@ -57,7 +61,7 @@ impl App {
         self.keymap.shortcut_label_of(*OPEN_ACTIONS.get(index)?)
     }
 
-    /// The first and the last key of the five when they are one run of keys.
+    /// The first and the last key of the nine when they are one run of keys.
     pub(in crate::app) fn open_keys_run(&self) -> Option<(String, String)> {
         bar::open_keys_run(|index| self.open_key_label(index))
     }
@@ -71,9 +75,11 @@ impl App {
             favourites: &self.panels.favourites,
             home: &self.home,
             current: self.panels.current_slot(),
-            key_labels: (0..FAVOURITES_BAR_SLOTS)
+            key_labels: (0..FAVOURITE_KEYS)
                 .map(|index| self.open_key_label(index))
                 .collect(),
+            width: self.window_size.width,
+            lang: self.lang,
         };
         Some(bar::bar_view(&facts, &self.palette).map(Message::FavouritesBar))
     }
@@ -84,7 +90,8 @@ impl App {
         Some(
             bar::menu_view(
                 menu,
-                self.panels.favourites.len(),
+                &self.panels.favourites,
+                &self.home,
                 self.lang,
                 self.window_size,
                 &self.palette,
@@ -93,7 +100,7 @@ impl App {
         )
     }
 
-    /// Cmd+1..5, the command list and the menu bar. Does nothing while
+    /// Cmd+1..9, the command list and the menu bar. Does nothing while
     /// something else has the keys or there is no favourite with that number.
     pub(in crate::app) fn open_favourite_by_key(&mut self, index: usize) -> Task<Message> {
         if !self.panels_have_the_keys() {

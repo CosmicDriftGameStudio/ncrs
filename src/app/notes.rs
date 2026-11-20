@@ -80,7 +80,44 @@ impl App {
             None => Task::none(),
         };
         self.follow_opened_pages(was_open);
+        self.show_notes_state_in_settings();
         Task::batch([task.map(Message::Notes), action_task])
+    }
+
+    /// What the settings say about the notes. Turning "encrypt all" on also
+    /// encrypts the notes that exist.
+    pub(in crate::app) fn apply_notes_settings(
+        &mut self,
+        settings: &ncrs_core::notes_sync::NotesSettings,
+    ) -> Task<Message> {
+        let was_encrypting = self.notes.options.encrypt_all;
+        ncrs_notes::apply_settings(&mut self.notes, settings);
+        if settings.encrypt_all && !was_encrypting {
+            return self.update_notes(ncrs_notes::Message::Seal(
+                ncrs_notes::Seal::Everything,
+                true,
+            ));
+        }
+        Task::none()
+    }
+
+    /// The sync and lock state the Notes page of the settings shows.
+    fn show_notes_state_in_settings(&mut self) {
+        let last = self
+            .notes
+            .sync
+            .last
+            .as_ref()
+            .and_then(|report| report.finished);
+        let line = last.map(|finished| {
+            ncrs_ui_kit::format::time_in(Some(finished), self.columns.date_format, self.lang)
+        });
+        let (syncing, unlocked) = (self.notes.sync.running, self.notes.vault.is_unlocked());
+        if let Some(page) = self.settings.page.as_mut() {
+            page.notes.last_sync = line;
+            page.notes.syncing = syncing;
+            page.notes.unlocked = unlocked;
+        }
     }
 
     fn run_notes_action(&mut self, action: Ask) -> Task<Message> {
@@ -110,6 +147,13 @@ impl App {
                         ))
                     },
                 )
+            }
+            Ask::Notice(text) => self.show_notice(text),
+            Ask::RecoveryKey(key) => {
+                if let Some(page) = self.settings.page.as_mut() {
+                    page.notes.recovery = Some(key);
+                }
+                Task::none()
             }
             Ask::Error(reason) => {
                 self.set_status_error(&reason);
