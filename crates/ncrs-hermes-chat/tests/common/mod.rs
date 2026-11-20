@@ -268,7 +268,7 @@ impl Talk {
     }
 
     pub fn path(&self, relative: &str) -> PathBuf {
-        self.root.join(relative)
+        self.root.join(relative.split('/').collect::<PathBuf>())
     }
 
     pub fn write(&self, relative: &str, content: &str) {
