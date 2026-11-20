@@ -6,23 +6,25 @@ use crate::GitError;
 
 const SHORT_HASH_LENGTH: usize = 7;
 
-/// Opens the repository with every command a config could run removed: a
+/// Opens the repository without the commands its own config names: a
 /// repository from an unzipped download carries its own `.git/config`, and
-/// showing a folder must never execute what that file names.
+/// showing a folder must never execute what that file names. Drivers from the
+/// user's and the system's config stay, so LFS and similar filters still apply.
 pub fn open(root: &Path) -> Result<gix::Repository, GitError> {
     let mut repository = gix::open(root).map_err(GitError::open)?;
-    drop_command_drivers(&mut repository);
+    drop_repository_command_drivers(&mut repository);
     Ok(repository)
 }
 
-fn drop_command_drivers(repository: &mut gix::Repository) {
+fn drop_repository_command_drivers(repository: &mut gix::Repository) {
     let mut snapshot = repository.config_snapshot_mut();
     let drivers: Vec<_> = snapshot
         .sections_and_ids()
         .filter(|(section, _)| {
             let header = section.header();
             let name = header.name();
-            header.subsection_name().is_some()
+            section.meta().source.kind() == gix::config::source::Kind::Repository
+                && header.subsection_name().is_some()
                 && (name.eq_ignore_ascii_case(b"filter") || name.eq_ignore_ascii_case(b"diff"))
         })
         .map(|(_, id)| id)
