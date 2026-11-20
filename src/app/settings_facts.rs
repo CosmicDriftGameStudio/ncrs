@@ -44,6 +44,7 @@ impl App {
             runs: loaded.runs,
             folder_files: loaded.folder_files,
             system_reads_scans: self.system_reads_scans,
+            chat_keep_days: self.hermes_chat.chat_keep_days(),
             ai_detail: ai_detail(&overview.ai_status, self.lang),
             rules: usize::try_from(counts.confirmed_rules).unwrap_or(usize::MAX),
             ai: match tile {

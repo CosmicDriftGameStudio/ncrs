@@ -14,6 +14,7 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-git = { path = "../ncrs-git", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
@@ -30,8 +31,10 @@ test-support = []
 [dev-dependencies]
 # The snapshot test of the Compare column renders headless.
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "tiny-skia"] }
+iced_runtime = "0.14"
 iced_test = "0.14"
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
+tempfile = "3.27"
 
 [lints]
 workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "ncrs-git"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The git layer of ncrs: finds repositories and reads branch, ahead/behind and file states. Knows nothing about the UI"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Pure Rust, no git binary and no libgit2. `status` brings the index-worktree
+# comparison with the directory walk for untracked and ignored files, `revision`
+# the walk behind ahead/behind, `parallel` makes the status interruptible (the
+# serial fallback computes everything before the first item), `sha1` is the
+# object hash that default-features = false would otherwise leave out.
+gix = { version = "0.90", default-features = false, features = ["sha1", "status", "revision", "parallel"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[lints]
+workspace = true

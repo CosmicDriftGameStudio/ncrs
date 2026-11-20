@@ -207,13 +207,15 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::OpenPrivacySettings => at(4),
         KeyAction::Quit => at(5),
         KeyAction::ToggleTag | KeyAction::TagAll | KeyAction::ClearTags => at(0),
+        KeyAction::TagByPattern | KeyAction::UntagByPattern => at(0).dialog(),
         KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
             at(1)
         }
         KeyAction::RestoreLastDeletion
         | KeyAction::UndoRename
         | KeyAction::ContextMenu
-        | KeyAction::NoteOnFile => at(2),
+        | KeyAction::NoteOnFile
+        | KeyAction::GitView => at(2),
         KeyAction::CompareFolders => at(1).dialog(),
         KeyAction::SortByName
         | KeyAction::SortByModified
@@ -226,6 +228,7 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::Settings | KeyAction::SystemMonitor => at(3),
         KeyAction::KeyBindings => at(3).dialog(),
         KeyAction::GoUp
+        | KeyAction::GoToPath
         | KeyAction::SwitchPanel
         | KeyAction::HistoryBack
         | KeyAction::HistoryForward => at(0),
@@ -247,7 +250,11 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::OpenFavourite2
         | KeyAction::OpenFavourite3
         | KeyAction::OpenFavourite4
-        | KeyAction::OpenFavourite5 => at(3).within(Favourites),
+        | KeyAction::OpenFavourite5
+        | KeyAction::OpenFavourite6
+        | KeyAction::OpenFavourite7
+        | KeyAction::OpenFavourite8
+        | KeyAction::OpenFavourite9 => at(3).within(Favourites),
         KeyAction::Search | KeyAction::SearchDocuments => at(0),
         KeyAction::SearchCase | KeyAction::SearchWholeWord | KeyAction::SearchRegex => {
             at(1).toggle()
@@ -315,6 +322,8 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::TagAll => {
             Command::themed(action, Edit, Msg::ActionTagAll, FuturamaName::ActionTagAll)
         }
+        KeyAction::TagByPattern => Command::plain(action, Edit, Msg::ActionTagByPattern),
+        KeyAction::UntagByPattern => Command::plain(action, Edit, Msg::ActionUntagByPattern),
         KeyAction::ClearTags => Command::themed(
             action,
             Edit,
@@ -346,6 +355,7 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::SystemMonitor => Command::plain(action, View, Msg::ActionSystemMonitor),
         KeyAction::Notes => Command::plain(action, Go, Msg::ActionNotes),
         KeyAction::NoteOnFile => Command::plain(action, File, Msg::ActionNoteOnFile),
+        KeyAction::GitView => Command::plain(action, File, Msg::ActionGitView),
         KeyAction::FileListTagsToggle => {
             Command::plain(action, View, Msg::ActionFileListTagsToggle)
         }
@@ -381,6 +391,11 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::OpenFavourite3 => Command::plain(action, Go, Msg::ActionOpenFavourite3),
         KeyAction::OpenFavourite4 => Command::plain(action, Go, Msg::ActionOpenFavourite4),
         KeyAction::OpenFavourite5 => Command::plain(action, Go, Msg::ActionOpenFavourite5),
+        KeyAction::OpenFavourite6 => Command::plain(action, Go, Msg::ActionOpenFavourite6),
+        KeyAction::OpenFavourite7 => Command::plain(action, Go, Msg::ActionOpenFavourite7),
+        KeyAction::OpenFavourite8 => Command::plain(action, Go, Msg::ActionOpenFavourite8),
+        KeyAction::OpenFavourite9 => Command::plain(action, Go, Msg::ActionOpenFavourite9),
+        KeyAction::GoToPath => Command::plain(action, Go, Msg::ActionGoToPath),
         KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
         KeyAction::HermesChat => Command::plain(action, Go, Msg::ActionHermesChat),
         KeyAction::QuickOpen => Command::themed(

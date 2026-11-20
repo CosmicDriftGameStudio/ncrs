@@ -16,6 +16,8 @@ pub enum SpecialFolder {
     Home,
     Desktop,
     Downloads,
+    /// The folder of the installed programs.
+    Programs,
     /// A folder Hermes reads from.
     ReadFolder,
     /// A folder Hermes files into.
@@ -30,6 +32,8 @@ pub enum IconKind {
     Home,
     Desktop,
     Downloads,
+    /// The folder of the installed programs.
+    Programs,
     ReadFolder,
     WriteFolder,
     BrokenLink,
@@ -91,6 +95,7 @@ pub fn icon_kind(entry: &FileEntry, special: Option<SpecialFolder>) -> IconKind 
             Some(SpecialFolder::Home) => IconKind::Home,
             Some(SpecialFolder::Desktop) => IconKind::Desktop,
             Some(SpecialFolder::Downloads) => IconKind::Downloads,
+            Some(SpecialFolder::Programs) => IconKind::Programs,
             Some(SpecialFolder::ReadFolder) => IconKind::ReadFolder,
             Some(SpecialFolder::WriteFolder) => IconKind::WriteFolder,
         };
@@ -133,13 +138,14 @@ const FILE_SHEET: &str = r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2
 const FOLDER_SHAPE: &str = r#"<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>"#;
 
 impl IconKind {
-    pub const ALL: [IconKind; 20] = [
+    pub const ALL: [IconKind; 21] = [
         Self::Folder,
         Self::FolderLink,
         Self::Parent,
         Self::Home,
         Self::Desktop,
         Self::Downloads,
+        Self::Programs,
         Self::ReadFolder,
         Self::WriteFolder,
         Self::BrokenLink,
@@ -164,6 +170,7 @@ impl IconKind {
             | Self::Home
             | Self::Desktop
             | Self::Downloads
+            | Self::Programs
             | Self::ReadFolder
             | Self::WriteFolder => Msg::ColumnTypeFolder,
             Self::FolderLink | Self::FileLink => Msg::ColumnTypeLink,
@@ -190,6 +197,7 @@ impl IconKind {
                 | Self::Home
                 | Self::Desktop
                 | Self::Downloads
+                | Self::Programs
         )
     }
 
@@ -204,6 +212,9 @@ impl IconKind {
             Self::Desktop => r#"<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>"#.to_owned(),
             Self::Downloads => format!(
                 r#"{FOLDER_SHAPE}<path d="M12 10v6"/><path d="m9 13 3 3 3-3"/>"#
+            ),
+            Self::Programs => format!(
+                r#"{FOLDER_SHAPE}<rect x="8" y="9" width="3" height="3"/><rect x="13" y="9" width="3" height="3"/><rect x="8" y="14" width="3" height="3"/><rect x="13" y="14" width="3" height="3"/>"#
             ),
             Self::ReadFolder => r#"<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>"#.to_owned(),
             Self::WriteFolder => r#"<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>"#.to_owned(),
@@ -277,6 +288,22 @@ pub fn note_marker<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
     static HANDLE: LazyLock<svg::Handle> = LazyLock::new(|| {
         svg::Handle::from_memory(
             document(r#"<path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 17h5"/>"#)
+                .into_bytes(),
+        )
+    });
+    Svg::new(LazyLock::force(&HANDLE).clone())
+        .width(size)
+        .height(size)
+        .style(move |_: &Theme, _| svg::Style { color: Some(color) })
+        .into()
+}
+
+/// The branch symbol of Git: the mark of a repository, in the Git column, its
+/// legend and the status bar. The font has no glyph for it.
+pub fn git_branch_icon<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
+    static HANDLE: LazyLock<svg::Handle> = LazyLock::new(|| {
+        svg::Handle::from_memory(
+            document(r#"<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>"#)
                 .into_bytes(),
         )
     });
@@ -361,6 +388,7 @@ mod tests {
         assert_eq!(special(SpecialFolder::Home), IconKind::Home);
         assert_eq!(special(SpecialFolder::Desktop), IconKind::Desktop);
         assert_eq!(special(SpecialFolder::Downloads), IconKind::Downloads);
+        assert_eq!(special(SpecialFolder::Programs), IconKind::Programs);
         assert_eq!(special(SpecialFolder::ReadFolder), IconKind::ReadFolder);
         assert_eq!(special(SpecialFolder::WriteFolder), IconKind::WriteFolder);
         assert_eq!(

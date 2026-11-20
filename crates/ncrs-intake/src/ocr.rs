@@ -226,14 +226,23 @@ impl OcrText {
         Ok(Some(Self { engine }))
     }
 
-    fn read_page(&self, page: &PageImage) -> Result<String, String> {
-        let source = ImageSource::from_bytes(&page.pixels, (page.width, page.height))
-            .map_err(|err| err.to_string())?;
-        let input = self
-            .engine
-            .prepare_input(source)
-            .map_err(|err| err.to_string())?;
-        self.engine.get_text(&input).map_err(|err| err.to_string())
+    /// Pixels that do not fit the page size are the document's fault and stay
+    /// `Unreadable`; a failure inside the engine is `EngineUnavailable`, so the
+    /// document is read again instead of being stored as textless for good.
+    fn read_page(&self, page: &PageImage) -> Result<String, TextError> {
+        let source =
+            ImageSource::from_bytes(&page.pixels, (page.width, page.height)).map_err(|err| {
+                TextError::Unreadable {
+                    path: PathBuf::new(),
+                    reason: format!("page image is malformed: {err}"),
+                }
+            })?;
+        let engine_failed = |err: ocrs::OcrError| TextError::EngineUnavailable {
+            path: PathBuf::new(),
+            reason: format!("text recognition failed: {err}"),
+        };
+        let input = self.engine.prepare_input(source).map_err(engine_failed)?;
+        self.engine.get_text(&input).map_err(engine_failed)
     }
 }
 
@@ -241,12 +250,7 @@ impl ImageTextSource for OcrText {
     fn recognise(&self, images: &[PageImage]) -> Result<Option<String>, TextError> {
         let mut pages = Vec::new();
         for page in images {
-            let text = self
-                .read_page(page)
-                .map_err(|reason| TextError::Unreadable {
-                    path: PathBuf::new(),
-                    reason: format!("text recognition failed: {reason}"),
-                })?;
+            let text = self.read_page(page)?;
             if !text.trim().is_empty() {
                 pages.push(text);
             }
@@ -438,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn a_page_with_inconsistent_pixels_is_an_error() {
+    fn a_page_with_inconsistent_pixels_is_unreadable() {
         let broken = PageImage {
             width: 10,
             height: 10,

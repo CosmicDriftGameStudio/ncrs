@@ -62,6 +62,45 @@ pub const SIZE_LIMIT: u64 = 1024 * 1024;
 pub struct NotesSection {
     #[serde(default)]
     pub folder: Option<PathBuf>,
+    /// The second folder the notes are copied to.
+    #[serde(default)]
+    pub sync_folder: Option<PathBuf>,
+    /// `one_way` or `both_ways`; anything else is the default.
+    #[serde(default)]
+    pub sync_direction: Option<String>,
+    /// `after_save`, `at_start` or `every_<minutes>`.
+    #[serde(default)]
+    pub sync_when: Option<String>,
+    #[serde(default)]
+    pub lock_minutes: Option<u32>,
+    #[serde(default)]
+    pub encrypt_all: Option<bool>,
+    #[serde(default)]
+    pub hermes: Option<bool>,
+}
+
+impl NotesSection {
+    /// The settings with the defaults where the file says nothing or something unknown.
+    pub fn settings(&self) -> ncrs_core::notes_sync::NotesSettings {
+        use ncrs_core::notes_sync::{NotesSettings, NotesSyncDirection, NotesSyncWhen};
+        let default = NotesSettings::default();
+        NotesSettings {
+            sync_folder: self.sync_folder.clone(),
+            direction: self
+                .sync_direction
+                .as_deref()
+                .and_then(NotesSyncDirection::from_key)
+                .unwrap_or(default.direction),
+            when: self
+                .sync_when
+                .as_deref()
+                .and_then(NotesSyncWhen::from_key)
+                .unwrap_or(default.when),
+            lock_minutes: self.lock_minutes.unwrap_or(default.lock_minutes),
+            encrypt_all: self.encrypt_all.unwrap_or(false),
+            hermes_access: self.hermes.unwrap_or(false),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -229,9 +268,9 @@ pub use self::sections::{
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,
     write_columns, write_default_pattern, write_favourites_bar, write_file_list_tags,
-    write_filing_load, write_hermes_enabled, write_keys, write_language, write_open_rules,
-    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
-    KeyChange, OwnDetail,
+    write_filing_load, write_hermes_chat_keep_days, write_hermes_enabled, write_keys,
+    write_language, write_notes_settings, write_open_rules, write_own_details, write_program,
+    write_system_settings, write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
 };
 use self::write_support::*;
 use self::writing::*;

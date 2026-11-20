@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::Chip;
 
 fn asked_with(labels: &[&str]) -> Asked {
     Asked {

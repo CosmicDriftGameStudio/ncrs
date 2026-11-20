@@ -115,8 +115,8 @@ binary, so ncrs reads PDFs without anything else installed. `install.sh` and
 ![The favourites bar](docs/screenshots/favourites.png)
 
 The favourites bar between the path tabs and the column headers: one slot per
-favourite folder (the first five), opened by a click or `Cmd`+`1` to `5`
-(`Ctrl`+`1` to `5` on Linux and Windows). Right-click a slot to open it in the
+favourite folder (as many as fit, the rest behind »), opened by a click or `Cmd`+`1` to `9`
+(`Ctrl`+`1` to `9` on Linux and Windows). Right-click a slot to open it in the
 other panel, move it or remove it. The Favourites settings page switches the bar
 off and orders the folders.
 
@@ -242,7 +242,7 @@ The same window in German, switched with F9.
   while you type.
   On a wide window the editor sits left and the rendered note right; on a narrow one "View" and
   "Edit" switch
-- A favourites bar with the first five favourite folders, `Cmd`+`1` to `5` (`Ctrl` on Linux and Windows)
+- A favourites bar with the favourite folders that fit, the rest behind », `Cmd`+`1` to `9` (`Ctrl` on Linux and Windows)
 - `Enter` and a double click open a file with the system's own program, like the Finder; a file
   that could run asks first. On macOS an app starts directly, and "Show package contents" enters it
 - Compare two folders: a Compare column, counts, "Only differences" and a sync with an explicit
@@ -268,7 +268,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Cmd`+`↑` / `Cmd`+`↓` | Page up / down (`Ctrl` on Linux and Windows) |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open the directory, or the file with the system's own program (a file that could run asks first) |
-| `Cmd`+`1` … `5` / `Ctrl`+`1` … `5` | Open favourite 1 to 5 of the favourites bar in the active panel |
+| `Cmd`+`1` … `9` / `Ctrl`+`1` … `9` | Open favourite 1 to 9 of the favourites bar in the active panel |
 | Any letter or digit | Jump to the first entry whose name starts with what you type (a character within one second extends the prefix, `Q` included) |
 | `Insert` / `Space` | Tag / untag the row, move down one      |
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |

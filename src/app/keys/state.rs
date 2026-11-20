@@ -38,6 +38,7 @@ impl App {
                 .session
                 .as_ref()
                 .is_some_and(|session| session.renaming.is_some());
+        input.git = self.git_shown() && !self.blocking_overlay_is_open();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
@@ -60,7 +61,7 @@ impl App {
 
     /// The state the key routing needs, cheap to clone.
     pub(in crate::app) fn prompt_key_state(&self) -> PromptKeyState {
-        let job_running = self.jobs.is_busy();
+        let job_running = self.jobs.is_busy() || self.panels.folder_size_run.is_some();
         let config_error = self.config_error.is_some();
         let volume_menu = self.panels.volume_menu.is_some();
         let header_menu = self.panels.header_menu.is_some();
@@ -118,6 +119,9 @@ impl App {
                 .session
                 .as_ref()
                 .is_some_and(|session| session.renaming.is_some());
+        let git = self.git_shown();
+        let git_filter = git && self.git_view.filter_focused;
+        let git_diff = git && self.git_view.diff.is_some();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
@@ -176,6 +180,9 @@ impl App {
             notes_editing,
             filing,
             filing_renaming,
+            git,
+            git_filter,
+            git_diff,
             // A conflict is asked while no prompt is open — the prompt is
             // gone by then, the transfer is what is running. Without this
             // the dialog's keys would fall through to the panels.

@@ -35,17 +35,37 @@ pub enum PanelMessage {
     PathChecked(crate::path_field::PathChecked),
     /// Escape, Tab or a click elsewhere: back to the panel's own path.
     PathFieldCancel,
+    /// Enter in the "Go to path" dialog with the typed text.
+    GoToPathSubmit(String),
+    /// The look at the path the dialog submitted.
+    GoToPathChecked(crate::path_field::PathChecked),
+    /// What the walk of `folder` has counted so far; only grows.
+    FolderSizeRunning {
+        run: u64,
+        folder: PathBuf,
+        bytes: u64,
+    },
     /// One folder of a size run is measured; `size` is `None` when the walk
     /// was stopped.
     FolderSizeMeasured {
         run: u64,
         folder: PathBuf,
         size: Option<ncrs_core::FolderSize>,
+        /// The folders the walk went through below `folder`, with their sizes.
+        below: Vec<(PathBuf, ncrs_core::FolderSize)>,
     },
 
     /// Another program added, removed or renamed something in the folder the
     /// panel shows.
     FolderChangedOnDisk(PanelSide),
+
+    /// What git says about the folder of a panel, read off the UI thread;
+    /// `None` when the read was stopped.
+    GitScanned {
+        side: PanelSide,
+        request_id: u64,
+        scan: Option<Box<crate::git_status::GitScan>>,
+    },
 
     // --- Navigation inside the active panel ---
     MoveSelection(isize),
@@ -70,10 +90,17 @@ pub enum PanelMessage {
     ToggleTag,
     /// Shift+Up/Down: tag or untag the row under the cursor, then move.
     TagMove(isize),
-    /// `*`: tag everything except `..`.
+    /// Cmd+A or `*`: tag everything except `..`.
     TagAll,
     /// Ctrl+`*`: drop every tag.
     ClearTags,
+    /// The pattern dialog was confirmed: tag (or untag) the entries of the
+    /// panel on `side` whose names match.
+    TagByPattern {
+        side: PanelSide,
+        pattern: String,
+        untag: bool,
+    },
 
     // --- The drive menu ---
     /// Up or Down in the open menu.

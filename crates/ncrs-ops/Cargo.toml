@@ -35,7 +35,7 @@ tempfile = "3.27"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # Batch rename: the find and replace of a pattern, and the date a photo was taken.
 regex = "1.13"
-kamadak-exif = "=0.6.1"
+kamadak-exif = "=0.6.2"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 # Without the data-control protocol the clipboard cannot be read or written on

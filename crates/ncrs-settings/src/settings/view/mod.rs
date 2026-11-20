@@ -5,6 +5,7 @@ mod font_rows;
 mod groups;
 mod hermes_page;
 mod index_page;
+mod notes_page;
 mod page;
 mod system_page;
 mod type_rows;
@@ -17,6 +18,7 @@ use font_rows::font_rows;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
+use notes_page::notes_groups;
 pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
@@ -166,6 +168,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
         SettingsFeature::Columns => Msg::SettingsFeatureColumns,
         SettingsFeature::Favourites => Msg::SettingsFeatureFavourites,
+        SettingsFeature::Notes => Msg::SettingsFeatureNotes,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
@@ -190,6 +193,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Servers
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
+        | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -222,6 +226,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Servers
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
+        | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -244,6 +249,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Servers
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
+        | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -264,6 +270,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
         SettingsFeature::Columns => Msg::SettingsFeatureColumnsIntro,
         SettingsFeature::Favourites => Msg::SettingsFeatureFavouritesIntro,
+        SettingsFeature::Notes => Msg::SettingsFeatureNotesIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
@@ -288,6 +295,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Servers => Some(SERVERS_SECTION),
         SettingsFeature::Columns => Some(COLUMNS_SECTION),
         SettingsFeature::Favourites => None,
+        SettingsFeature::Notes => Some(NOTES_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index => Some(FILING_SECTION),
         SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
@@ -320,7 +328,8 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
 }
 
 use ncrs_ui_kit::setting_rows::{
-    button_row, pressable, simple_row, status_text, with_button, RowButton, RowKey,
+    button_row, pressable, simple_row, status_text, with_button, wrapped_value_text, RowButton,
+    RowKey,
 };
 
 /// Left and Right step through `messages`, one per value, and stop at the ends.
@@ -358,6 +367,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Servers => servers_groups(view),
         SettingsFeature::Columns => columns_groups(view),
         SettingsFeature::Favourites => favourites_groups(view),
+        SettingsFeature::Notes => notes_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Ai => ai_groups(view),

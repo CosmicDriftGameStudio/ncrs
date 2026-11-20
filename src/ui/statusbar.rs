@@ -48,7 +48,7 @@ const PATH_EXTRA_WIDTH: f32 = 36.0;
 const PATH_MIN_WIDTH: f32 = 160.0;
 const PATH_MAX_WIDTH: f32 = 520.0;
 const ENTRY_SEPARATOR: &str = " · ";
-const PATH_FIELD_ID: &str = "statusbar-path";
+pub const PATH_FIELD_ID: &str = "statusbar-path";
 const COPY_ICON_SIZE: f32 = 14.0;
 const COPY_ICON_SQUARE: f32 = 9.0;
 
@@ -138,6 +138,8 @@ pub struct JobStatus {
     /// Whether the running job can be stopped. False while a prompt is open,
     /// where Escape means something else.
     pub abortable: bool,
+    /// What the job is working on right now, after the counter.
+    pub detail: Option<String>,
 }
 
 /// The filing progress at the right end of the bar; pressing it opens the
@@ -168,6 +170,51 @@ pub struct MonitorBadge<M> {
     pub on_press: M,
 }
 
+/// The branch of the repository the active panel is in, how far it is from its
+/// upstream, and how many files changed.
+pub struct GitLine {
+    /// The branch, or the short commit when HEAD is detached.
+    pub branch: String,
+    pub ahead: u32,
+    pub behind: u32,
+    /// "5 changed", already in the language of the UI.
+    pub changed: String,
+}
+
+fn git_line<'a, M: 'a>(line: GitLine, palette: &Palette) -> Element<'a, M> {
+    let part = |content: String, color| {
+        text(content)
+            .size(font_size::SMALL)
+            .color(color)
+            .wrapping(text::Wrapping::None)
+    };
+    container(
+        row![
+            row![
+                ncrs_ui_kit::file_icon::git_branch_icon(
+                    palette.accent,
+                    ncrs_ui_kit::git_mark::BRANCH_ICON_SIZE
+                ),
+                part(line.branch, palette.accent),
+            ]
+            .spacing(spacing::XS)
+            .align_y(alignment::Vertical::Center),
+            part(format!("\u{2191}{}", line.ahead), palette.success),
+            part(
+                format!("\u{2193}{}", line.behind),
+                ncrs_ui_kit::git_mark::GitMark::Modified.color(palette),
+            ),
+            part(
+                format!("{ENTRY_SEPARATOR}{}", line.changed),
+                palette.dim_text
+            ),
+        ]
+        .spacing(spacing::XS),
+    )
+    .padding([0.0, FIELD_PADDING_X])
+    .into()
+}
+
 /// What goes on in the background, at the right of the bar.
 pub struct Activity<'a, M> {
     /// The panel the bar speaks for: named in the mode field at its left end.
@@ -196,6 +243,8 @@ pub struct Activity<'a, M> {
     pub hermes_line: Option<String>,
     /// "Note: …": the first line of the note on the file under the cursor.
     pub note_line: Option<String>,
+    /// The repository the active panel is in, at the right of the file info.
+    pub git: Option<GitLine>,
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
@@ -273,6 +322,7 @@ pub fn view<'a, M: Clone + 'a>(
         notice,
         hermes_line,
         note_line,
+        git,
         version,
         monitor,
         test_folder,
@@ -370,8 +420,13 @@ pub fn view<'a, M: Clone + 'a>(
 
     /// The job line: what it is, how far along, and the abort hint. Returns
     /// None when nothing is running, so the bar falls back to the file info.
-    fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language, palette: &Palette) -> Element<'a, M> {
+    fn job_text<'a, M: Clone + 'a>(
+        job: &JobStatus,
+        lang: Language,
+        palette: &Palette,
+    ) -> Element<'a, M> {
         const SEPARATOR: &str = "  •  ";
+        const JOB_BAR_WIDTH: f32 = 80.0;
         let progress_values = [
             ("{done}", job.done.to_string()),
             ("{total}", job.total.to_string()),
@@ -388,6 +443,10 @@ pub fn view<'a, M: Clone + 'a>(
             let counter = fill_template(lang.text(Msg::JobProgress), &progress);
             format!("{}  {counter}", job.label)
         };
+        if let Some(detail) = &job.detail {
+            line.push_str(" · ");
+            line.push_str(detail);
+        }
         if job.waiting > 0 {
             let waiting = fill_template(
                 lang.text(Msg::JobQueued),
@@ -400,11 +459,21 @@ pub fn view<'a, M: Clone + 'a>(
             line.push_str(SEPARATOR);
             line.push_str(lang.text(Msg::JobAbort));
         }
-        text(line)
+        let words = text(line)
             .size(font_size::SMALL)
             .color(palette.text)
-            .wrapping(text::Wrapping::None)
-            .into()
+            .wrapping(text::Wrapping::None);
+        if job.total == 0 {
+            return words.into();
+        }
+        let fraction = job.done as f32 / job.total as f32;
+        row![
+            words,
+            container(ncrs_ui_kit::kit::progress_bar(fraction, palette)).width(JOB_BAR_WIDTH),
+        ]
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center)
+        .into()
     }
 
     // A running job replaces the file info, not the path: the path is where the
@@ -446,6 +515,9 @@ pub fn view<'a, M: Clone + 'a>(
             .clip(true),
     ]
     .align_y(alignment::Vertical::Center);
+    if let Some(line) = git {
+        bar = bar.push(git_line(line, palette));
+    }
     if let Some(shown) = notice {
         bar = bar.push(
             text(format!("\u{2713} {shown}"))

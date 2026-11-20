@@ -9,6 +9,7 @@ use iced::{alignment, Background, Element, Length, Point, Theme};
 use ncrs_core::{Column, DateFormat, SizeFormat, SortKey};
 use ncrs_i18n::{Language, Msg};
 
+use crate::git_mark::{git_column_title, GIT_COLUMN_WIDTH};
 use crate::layout::{
     standard_column_width, COLUMN_DROP_LINE_WIDTH, COLUMN_GRIP_WIDTH, COLUMN_HEADER_HEIGHT,
     HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, ICON_COLUMN_WIDTH, MAX_COLUMN_WIDTH, MENU_ITEM_HEIGHT,
@@ -33,6 +34,8 @@ pub struct ColumnLayout<'a> {
     pub date_format: DateFormat,
     pub size_format: SizeFormat,
     pub lang: Language,
+    /// The panel is in a repository: a narrow Git column follows the name.
+    pub git: bool,
 }
 
 impl ColumnLayout<'static> {
@@ -45,6 +48,7 @@ impl ColumnLayout<'static> {
             date_format: DateFormat::Iso,
             size_format: SizeFormat::Readable,
             lang,
+            git: false,
         }
     }
 }
@@ -73,10 +77,17 @@ impl<'a> ColumnLayout<'a> {
 
     /// What the columns besides the name take.
     pub fn fixed_width(self) -> f32 {
-        self.shown()
+        let git = if self.git { GIT_COLUMN_WIDTH } else { 0.0 };
+        git + self
+            .shown()
             .filter(|column| *column != Column::Name)
             .map(|column| self.width_of(column))
-            .sum()
+            .sum::<f32>()
+    }
+
+    pub const fn with_git(mut self, git: bool) -> Self {
+        self.git = git;
+        self
     }
 }
 
@@ -169,6 +180,9 @@ pub fn column_spans(
                 width,
             };
             left += width;
+            if column == Column::Name && layout.git {
+                left += GIT_COLUMN_WIDTH;
+            }
             span
         })
         .collect()
@@ -234,7 +248,18 @@ pub fn column_header<'a, M: Clone + 'a>(
     let shown: Vec<Column> = layout.shown().collect();
 
     let mut cells: Vec<Element<'a, M>> = Vec::with_capacity(shown.len() + 1);
+    let git_title = || -> Element<'a, M> {
+        container(git_column_title(palette))
+            .width(GIT_COLUMN_WIDTH)
+            .height(Length::Fill)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
+            .into()
+    };
     for (index, column) in shown.iter().copied().enumerate() {
+        if layout.git && index > 0 && shown.get(index - 1) == Some(&Column::Name) {
+            cells.push(git_title());
+        }
         if matches!(drag, Some(HeaderDrag::Reorder { drop_before, .. }) if drop_before == index) {
             cells.push(drop_line(palette));
         }
@@ -271,6 +296,7 @@ pub fn column_header<'a, M: Clone + 'a>(
         let cell = container(label)
             .width(length)
             .height(Length::Fill)
+            .align_y(alignment::Vertical::Center)
             .clip(true);
         let Some(handlers) = events.as_ref().filter(|_| column != Column::Icon) else {
             cells.push(cell.into());
@@ -298,6 +324,9 @@ pub fn column_header<'a, M: Clone + 'a>(
             .height(Length::Fill)
             .into(),
         );
+    }
+    if layout.git && shown.last() == Some(&Column::Name) {
+        cells.push(git_title());
     }
     if matches!(drag, Some(HeaderDrag::Reorder { drop_before, .. }) if drop_before >= shown.len()) {
         cells.push(drop_line(palette));

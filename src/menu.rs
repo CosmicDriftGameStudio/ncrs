@@ -227,7 +227,7 @@ pub enum Availability {
     Open(KeyScope),
     /// A text field has the focus: what it types stays its own. The clipboard
     /// chords are disabled, so the system hands them to the window and the
-    /// field pastes and copies text, not files.
+    /// field pastes and copies text, not files, and Cmd+A selects its text.
     EditingText(KeyScope),
 }
 
@@ -240,7 +240,11 @@ impl Availability {
             Self::Blocked => false,
             Self::Open(scope) => action.works_in(scope),
             Self::EditingText(scope) => {
-                action.works_in(scope) && !matches!(action, KeyAction::Paste | KeyAction::CopyFiles)
+                action.works_in(scope)
+                    && !matches!(
+                        action,
+                        KeyAction::Paste | KeyAction::CopyFiles | KeyAction::TagAll
+                    )
             }
         }
     }
@@ -448,7 +452,6 @@ mod tests {
             KeyAction::GoUp,
             KeyAction::SwitchPanel,
             KeyAction::ToggleTag,
-            KeyAction::TagAll,
             KeyAction::SearchCase,
         ] {
             assert_eq!(item(&model, action).accelerator, None, "{}", action.name());

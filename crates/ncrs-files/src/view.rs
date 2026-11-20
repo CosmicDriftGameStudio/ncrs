@@ -3,9 +3,12 @@
 
 use iced::widget::{column, mouse_area, Column, Row};
 use iced::{Element, Length};
+use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::compare_cell::CompareCell;
-use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
+use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras, SizeProgress};
+use ncrs_ui_kit::git_mark::{git_legend, GitCell};
 use ncrs_ui_kit::kit::panel_frame;
+use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::panel_footer::panel_footer;
 use ncrs_ui_kit::rename_row::{rename_row, RenameRow};
 
@@ -36,7 +39,10 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     } else {
         TrailingColumn::None
     };
-    let layout = ctx.columns.layout(side, lang);
+    let layout = ctx
+        .columns
+        .layout(side, lang)
+        .with_git(state.git.shows_column());
     let on_row_click = move |index, click| match click {
         RowClick::Open => PanelMessage::RowActivated {
             side,
@@ -110,6 +116,13 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                         .filter(|_| entry.is_dir),
                     third_line: None,
                     has_note: ctx.noted.contains(&entry.path),
+                    git: git_cell_of(state, &entry.name),
+                    size_progress: ctx
+                        .size_run
+                        .filter(|_| entry.is_dir && !entry.is_parent)
+                        .map_or(SizeProgress::Idle, |run| {
+                            run.progress_of(&state.path, &entry.path)
+                        }),
                     hermes: hermes_cell.map(|cell| cell(entry)),
                     compare: compare_marks.map_or(CompareCell::Off, |marks| {
                         marks
@@ -148,11 +161,42 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
             ),
             Column::with_children(rows).height(Length::Fill).clip(true),
             panel_footer(footer_text(&panel_totals(state), lang), palette),
-        ],
+        ]
+        .extend(git_legend_of(state, lang, palette)),
         palette,
     ))
     .on_scroll(move |delta| PanelMessage::PanelScrolled { side, delta })
     .on_enter(PanelMessage::PanelEntered(side))
     .on_exit(PanelMessage::PanelExited(side))
     .into()
+}
+
+/// What the Git column of a row says about git.
+fn git_cell_of(state: &PanelState, name: &std::ffi::OsString) -> GitCell {
+    GitCell {
+        mark: state.git.mark_of(name),
+    }
+}
+
+/// The line under the panel that explains its Git column, if it has one.
+fn git_legend_of<'a>(
+    state: &PanelState,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, PanelMessage>> {
+    if state.git.in_repository() {
+        Some(git_legend(
+            lang.text(Msg::GitLegendStates).to_owned(),
+            false,
+            palette,
+        ))
+    } else if state.git.holds_repositories() {
+        Some(git_legend(
+            lang.text(Msg::GitLegendRepositories).to_owned(),
+            true,
+            palette,
+        ))
+    } else {
+        None
+    }
 }

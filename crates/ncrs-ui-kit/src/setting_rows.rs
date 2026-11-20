@@ -437,6 +437,22 @@ pub fn status_text<'a, M: Clone + 'a>(content: String, color: Color) -> Element<
         .into()
 }
 
+/// A value that wraps inside the control column when it is longer than the
+/// column, for paths and keys that have no spaces to break at.
+pub fn wrapped_value_text<'a, M: Clone + 'a>(
+    content: String,
+    size: f32,
+    color: Color,
+) -> Element<'a, M> {
+    text(content)
+        .size(size)
+        .font(crate::APP_FONT)
+        .color(color)
+        .width(Length::Fill)
+        .wrapping(Wrapping::Glyph)
+        .into()
+}
+
 /// `value` with a secondary button beside it.
 pub fn with_button<'a, M: Clone + 'a>(
     value: Element<'a, M>,
@@ -645,7 +661,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 }
             })
             .collect();
-        if rows.is_empty() {
+        if rows.is_empty() && group.intro.is_none() {
             continue;
         }
         let mut content = Column::with_children(rows);

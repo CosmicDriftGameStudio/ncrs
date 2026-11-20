@@ -1,13 +1,14 @@
 //! A file row whose name is being edited: the name is an input, the other
 //! columns stay as they were, and why the name is refused shows under it.
 
-use iced::widget::{column, container, text, text_input, Row, Space};
+use iced::widget::{column, container, row, text, text_input, Row, Space};
 use iced::{alignment, Background, Border, Element, Length};
 use ncrs_core::{Column, FileEntry};
 
 use crate::column_header::{column_alignment, ColumnLayout};
 use crate::file_icon::{file_icon, icon_color, icon_kind, SpecialFolder};
 use crate::file_row::cell_text;
+use crate::git_mark::GIT_COLUMN_WIDTH;
 use crate::layout::{FILE_ICON_SIZE, TAG_COLUMN_WIDTH};
 use crate::palette::Palette;
 use crate::theme::{self, font_size, spacing};
@@ -69,9 +70,18 @@ pub fn rename_row<'a, M: Clone + 'a>(
     let cells: Vec<Element<'a, M>> = columns
         .shown()
         .map(|shown| match shown {
-            Column::Name => name_input
-                .take()
-                .map_or_else(|| Space::new().into(), Element::from),
+            Column::Name => {
+                let field: Element<'a, M> = name_input
+                    .take()
+                    .map_or_else(|| Space::new().into(), Element::from);
+                if columns.git {
+                    row![field, Space::new().width(GIT_COLUMN_WIDTH)]
+                        .width(Length::Fill)
+                        .into()
+                } else {
+                    field
+                }
+            }
             Column::Icon => container(file_icon(
                 kind,
                 icon_color(kind, palette, colors.text, true),

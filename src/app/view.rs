@@ -38,6 +38,7 @@ impl App {
                     special_folders: &self.special_folders,
                     noted: &self.notes.noted,
                     header_drag: self.panels.header_drag_view(side),
+                    size_run: self.panels.folder_size_run.as_ref(),
                 },
             )
             .map(Message::Panel)
@@ -104,6 +105,8 @@ impl App {
 
         let below_title_bar = if self.filing_shown() {
             self.filing_area()
+        } else if self.git_shown() {
+            self.git_area()
         } else if self.notes_shown() {
             self.notes_area()
         } else if self.viewer_shown() {
@@ -181,6 +184,7 @@ impl App {
                         notice: self.notice.as_deref(),
                         hermes_line: self.hermes_line(),
                         note_line: self.note_line(),
+                        git: self.git_line(),
                         version: Some(statusbar::VersionBadge {
                             text: self.app_version.to_owned(),
                             on_press: Message::VersionPressed,
@@ -190,7 +194,7 @@ impl App {
                         test_folder: config::data_dir_override().map(|dir| {
                             ncrs_i18n::fill_template(
                                 self.lang.text(Msg::StatusTestFolder),
-                                &[("dir", &dir.display().to_string())],
+                                &[("{dir}", &dir.display().to_string())],
                             )
                         }),
                         date_format: self.columns.date_format,

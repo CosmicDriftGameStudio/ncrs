@@ -9,8 +9,11 @@ use crate::state::{ChipReply, Step};
 pub enum Message {
     Open,
     Close,
-    /// The header button: the conversation starts over with a fresh greeting.
+    /// The button of the chat list: a new chat with a fresh greeting; the old
+    /// one stays in the list.
     NewChat,
+    /// Something done in the list of chats.
+    List(crate::chat_list_update::ListMessage),
     /// The index was started over: nothing of the conversation refers to it
     /// any more.
     IndexReplaced,
@@ -108,6 +111,7 @@ impl PartialEq for Message {
             | (Self::WorkTick, Self::WorkTick)
             | (Self::PicksRemembered, Self::PicksRemembered) => true,
             (Self::ReadingSettled(left), Self::ReadingSettled(right)) => left == right,
+            (Self::List(left), Self::List(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))
             | (Self::TurnOnFailed(left), Self::TurnOnFailed(right)) => left == right,

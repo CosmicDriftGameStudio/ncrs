@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use iced::widget::{column, container, responsive, row};
-use iced::{alignment, Element, Length};
+use iced::widget::{column, container, mouse_area, responsive, row, stack};
+use iced::{alignment, Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{button, segmented, text_area, text_field, Tone};
@@ -12,14 +12,23 @@ use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
-use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow, TREE_INDENT};
+use ncrs_ui_kit::tree_list::{result_row, tree_row_with_lock, ResultRow, TreeRow, TREE_INDENT};
+use ncrs_user_verify::Check;
 
+use crate::crypt::is_encrypted_path;
 use crate::ctx::ViewCtx;
 use crate::message::{Message, Mode};
-use crate::state::State;
+use crate::secure::denied_text;
+use crate::state::{Seal, State};
 use crate::store::{Kind, Note};
 use crate::tree::RowKey;
+
+/// Where the first row of the sidebar tree starts below the notes tab: the
+/// search field, the buttons, the rule and the padding of the list. Measured
+/// from the drawn page, as the layout is made of widgets, not of numbers.
+pub const SIDEBAR_ROWS_TOP: f32 = 84.0;
 
 /// The ids of the fields, for the focus tasks.
 pub const SEARCH_ID: &str = "notes-search";
@@ -56,10 +65,52 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>, new_note_key: &str) -> Eleme
         container(note_pane(state, ctx)).width(Length::Fill),
     ]
     .height(Length::Fill);
-    column![body, page_status_bar(bar, palette)]
+    let page: Element<'a, Message> = column![body, page_status_bar(bar, palette)]
         .width(Length::Fill)
         .height(Length::Fill)
-        .into()
+        .into();
+    match context_menu(state, ctx) {
+        Some(menu) => stack![page, menu].into(),
+        None => page,
+    }
+}
+
+/// The menu of the row that was pressed with the right button: encrypt or
+/// decrypt it, and lock everything now.
+fn context_menu<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message>> {
+    let key = state.menu.clone()?;
+    state
+        .rows()
+        .iter()
+        .any(|entry| entry.key == key)
+        .then_some(())?;
+    let sealed = match &key {
+        RowKey::Folder(folder) => state.folder_is_sealed(folder),
+        RowKey::Note(path) => is_encrypted_path(path),
+        RowKey::Files => return None,
+    };
+    let entry = |label: Msg, on_press: Message| PopupEntry {
+        label: ctx.lang.text(label).to_owned(),
+        key: None,
+        is_selected: false,
+        on_press: Some(on_press),
+        on_hover: None,
+    };
+    let mut entries = vec![if sealed {
+        entry(Msg::NotesMenuDecrypt, Message::Seal(Seal::Row(key), false))
+    } else {
+        entry(Msg::NotesMenuEncrypt, Message::Seal(Seal::Row(key), true))
+    }];
+    if state.vault.is_unlocked() {
+        entries.push(entry(Msg::NotesMenuLockNow, Message::Lock));
+    }
+    // The pointer is a position in the window; the tab starts below the title bar.
+    let origin = Point::new(state.menu_pointer.x, state.menu_pointer.y - size::TITLE_BAR);
+    Some(popup_layer(
+        popup_menu(entries, origin, ctx.palette),
+        Some(Message::CloseMenu),
+        RightPress::Dismiss,
+    ))
 }
 
 fn sidebar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -133,7 +184,13 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 })
                 .unwrap_or_default(),
         };
-        tree_row(
+        let locked = match &entry.key {
+            RowKey::Folder(folder) => state.folder_is_sealed(folder),
+            RowKey::Note(path) => is_encrypted_path(path),
+            RowKey::Files => false,
+        };
+        let key = entry.key.clone();
+        let row: Element<'a, Message> = tree_row_with_lock(
             TreeRow {
                 depth: entry.depth,
                 open: entry.open,
@@ -142,8 +199,10 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 dim: entry.key == RowKey::Files,
                 on_press: Message::Pressed(entry.key),
             },
+            locked,
             ctx.palette,
-        )
+        );
+        Element::from(mouse_area(row).on_right_press(Message::OpenMenu(key)))
     });
     column(rows).into()
 }
@@ -226,6 +285,9 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .padding(spacing::XXL)
         .into();
     };
+    if state.is_locked(note) {
+        return locked_page(state, note, ctx);
+    }
     let meta = match note.modified {
         Some(modified) => format!(
             "{} \u{b7} {}",
@@ -302,6 +364,39 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     ]
     .height(Length::Fill)
     .into()
+}
+
+/// What stands where an encrypted note would be shown while the key is not in memory.
+fn locked_page<'a>(state: &State, note: &'a Note, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let unlock_label = match state.vault.verifier().check() {
+        Check::TouchId => Msg::NotesUnlockTouchId,
+        Check::WindowsHello => Msg::NotesUnlockWindowsHello,
+        Check::Nothing => Msg::NotesUnlock,
+    };
+    let mut page = column![
+        page_heading(&note.title, palette),
+        page_line(
+            ctx.lang.text(Msg::NotesLockedBody),
+            font_size::BODY,
+            palette.dim_text
+        ),
+        button(
+            ctx.lang.text(unlock_label),
+            Some(Message::Unlock),
+            Tone::Primary,
+            palette,
+        ),
+    ]
+    .spacing(spacing::L);
+    if let Some(denied) = &state.unlock_denied {
+        page = page.push(page_line(
+            denied_text(denied, ctx.lang),
+            font_size::BODY,
+            palette.error,
+        ));
+    }
+    container(page).padding(spacing::XXL).into()
 }
 
 fn rendered<'a>(state: &'a State, palette: &'a Palette) -> Element<'a, Message> {

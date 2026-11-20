@@ -81,6 +81,13 @@ key_actions! {
     OpenFavourite3 => "open_favourite_3",
     OpenFavourite4 => "open_favourite_4",
     OpenFavourite5 => "open_favourite_5",
+    OpenFavourite6 => "open_favourite_6",
+    OpenFavourite7 => "open_favourite_7",
+    OpenFavourite8 => "open_favourite_8",
+    OpenFavourite9 => "open_favourite_9",
+    TagByPattern => "tag_by_pattern",
+    UntagByPattern => "untag_by_pattern",
+    GoToPath => "go_to_path",
     SortByName => "sort_by_name",
     SortByModified => "sort_by_modified",
     SortBySize => "sort_by_size",
@@ -110,6 +117,7 @@ key_actions! {
     SavedQueries => "saved_queries",
     Notes => "notes",
     NoteOnFile => "note_on_file",
+    GitView => "git_view",
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
@@ -235,6 +243,7 @@ impl KeyAction {
             | Self::Notes
             | Self::NoteOnFile
             | Self::SearchDocuments
+            | Self::GitView
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -259,6 +268,13 @@ impl KeyAction {
             | Self::OpenFavourite3
             | Self::OpenFavourite4
             | Self::OpenFavourite5
+            | Self::OpenFavourite6
+            | Self::OpenFavourite7
+            | Self::OpenFavourite8
+            | Self::OpenFavourite9
+            | Self::TagByPattern
+            | Self::UntagByPattern
+            | Self::GoToPath
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -399,6 +415,13 @@ impl KeyAction {
             | Self::OpenFavourite3
             | Self::OpenFavourite4
             | Self::OpenFavourite5
+            | Self::OpenFavourite6
+            | Self::OpenFavourite7
+            | Self::OpenFavourite8
+            | Self::OpenFavourite9
+            | Self::TagByPattern
+            | Self::UntagByPattern
+            | Self::GoToPath
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -448,6 +471,7 @@ impl KeyAction {
             | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::NoteOnFile
+            | Self::GitView
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments
@@ -508,6 +532,13 @@ impl KeyAction {
             | Self::OpenFavourite3
             | Self::OpenFavourite4
             | Self::OpenFavourite5
+            | Self::OpenFavourite6
+            | Self::OpenFavourite7
+            | Self::OpenFavourite8
+            | Self::OpenFavourite9
+            | Self::TagByPattern
+            | Self::UntagByPattern
+            | Self::GoToPath
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -556,6 +587,7 @@ impl KeyAction {
             | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::NoteOnFile
+            | Self::GitView
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments

@@ -391,6 +391,23 @@ mod tests {
                 | Msg::PermissionsSetuid
                 | Msg::PermissionsSetgid
                 | Msg::PermissionsSticky
+                // Git and Hermes terms, abbreviations and loanwords German keeps as they are.
+                | Msg::GitViewColumnSha
+                | Msg::GitViewMode
+                | Msg::GitViewSectionRemote
+                | Msg::GitViewSectionStashes
+                | Msg::GitViewSectionTags
+                | Msg::GitViewSectionWorktrees
+                | Msg::GitViewTabTitle
+                | Msg::GitViewWorktreeWip
+                | Msg::SettingsHermesSectionChats
+                | Msg::SettingsNotesKeyHidden
+                | Msg::SettingsNotesTitleHermes
+                | Msg::SettingsNotesTitleSync
+                // Only placeholders and a dot, the same in every language.
+                | Msg::HermesChatListDetail
+                // A key chord with a placeholder for the modifier, the same in every language.
+                | Msg::HermesChatListNewKey
                 // An arrow and a placeholder, the same in every language.
                 | Msg::FilingViewStateFiled
                 // Only placeholders and a comma.

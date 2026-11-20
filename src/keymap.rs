@@ -89,6 +89,13 @@ impl KeyActionMessage for KeyAction {
             Self::OpenFavourite3 => Message::OpenFavourite(2),
             Self::OpenFavourite4 => Message::OpenFavourite(3),
             Self::OpenFavourite5 => Message::OpenFavourite(4),
+            Self::OpenFavourite6 => Message::OpenFavourite(5),
+            Self::OpenFavourite7 => Message::OpenFavourite(6),
+            Self::OpenFavourite8 => Message::OpenFavourite(7),
+            Self::OpenFavourite9 => Message::OpenFavourite(8),
+            Self::TagByPattern => Message::TagPatternPrompt { untag: false },
+            Self::UntagByPattern => Message::TagPatternPrompt { untag: true },
+            Self::GoToPath => Message::GoToPath,
             Self::SortByName => Message::Panel(PanelMessage::SortActive(SortColumn::Name)),
             Self::SortByModified => Message::Panel(PanelMessage::SortActive(SortColumn::Modified)),
             Self::SortBySize => Message::Panel(PanelMessage::SortActive(SortColumn::Size)),
@@ -125,6 +132,7 @@ impl KeyActionMessage for KeyAction {
             Self::SavedQueries => Message::HermesPage(HermesPage::SavedQueries),
             Self::Notes => Message::OpenNotes,
             Self::NoteOnFile => Message::NoteOnFile,
+            Self::GitView => Message::OpenGitView,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
@@ -731,7 +739,8 @@ mod tests {
 
     #[test]
     fn plus_names_the_plus_character() {
-        let keymap = rebound("[keys]\ncopy = \"ctrl+plus\"\nmove = \"PLUS\"\n");
+        let keymap =
+            rebound("[keys]\ncopy = \"ctrl+plus\"\nmove = \"PLUS\"\ntag_by_pattern = []\n");
         assert_eq!(
             press(&keymap, Key::Character("+".into()), Modifiers::CTRL),
             Some(Message::Transfer(TransferKind::Copy))

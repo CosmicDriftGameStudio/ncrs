@@ -460,6 +460,22 @@ pub(in crate::app) fn filing_page_key(
     bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
 }
 
+/// The Git tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn git_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if let Some(message) =
+        ncrs_git_view::git_view_key(key, key_modifiers, prompt.git_filter, prompt.git_diff)
+    {
+        return Some(Message::GitView(message));
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+}
+
 pub(in crate::app) fn viewer_or_monitor_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -468,6 +484,8 @@ pub(in crate::app) fn viewer_or_monitor_key(
 ) -> Option<Message> {
     if prompt.filing {
         filing_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.git {
+        git_page_key(prompt, key, key_modifiers, scope)
     } else if prompt.notes {
         notes_page_key(prompt, key, key_modifiers, scope)
     } else if prompt.viewer {

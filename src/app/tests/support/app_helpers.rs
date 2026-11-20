@@ -862,3 +862,41 @@ fn is_check_answer(message: &Message) -> bool {
             )
     )
 }
+
+impl App {
+    /// The Git tab's state, for the acceptance run that reads the shown commit.
+    pub fn git_view_for_test(&self) -> &ncrs_git_view::State {
+        &self.git_view
+    }
+
+    /// Whether a menu of the favourites bar is up.
+    pub fn favourite_menu_is_open_for_test(&self) -> bool {
+        self.favourite_menu.is_some()
+    }
+}
+
+impl App {
+    /// What the status bar says about a running "Compute folder sizes".
+    pub fn folder_size_progress_for_test(
+        &self,
+    ) -> Option<ncrs_files::folder_size::FolderSizeProgress> {
+        self.panels.folder_size_progress()
+    }
+}
+
+impl App {
+    /// The id and the folder being walked of the running "Compute folder sizes".
+    pub fn folder_size_walk_for_test(&self) -> Option<(u64, Option<std::path::PathBuf>)> {
+        self.panels
+            .folder_size_run
+            .as_ref()
+            .map(|run| (run.id, run.current.clone()))
+    }
+}
+
+impl App {
+    /// Gives the notes a whole vault, to script what the system asks.
+    pub fn use_notes_vault_for_test(&mut self, vault: ncrs_notes::vault::Vault) {
+        self.notes.vault = vault;
+    }
+}

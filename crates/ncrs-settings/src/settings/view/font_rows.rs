@@ -160,6 +160,8 @@ fn preview_panel<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
                     hit_scope: None,
                     third_line: None,
                     has_note: false,
+                    git: ncrs_ui_kit::git_mark::GitCell::default(),
+                    size_progress: ncrs_ui_kit::file_row::SizeProgress::Idle,
                 },
             )
         });

@@ -1,11 +1,15 @@
 //! What happens in the notes tab.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use iced::widget::text_editor;
 use ncrs_core::NoteLink;
 
+use crate::crypt::NoteKey;
+use crate::state::Seal;
 use crate::store::{Scan, WriteError};
+use crate::sync::SyncReport;
 use crate::tree::RowKey;
 
 /// How the shown note is drawn.
@@ -56,4 +60,34 @@ pub enum Message {
     Escape,
     /// The cross of the tab.
     Close,
+    /// The clock of the app, a few times a minute: locks after the pause
+    /// without input and starts the sync that runs every few minutes.
+    Tick(Instant),
+    /// "Unlock": fetch the key from the credential store.
+    Unlock,
+    /// The key from the credential store, `None` when none was stored, and
+    /// when it came.
+    Unlocked(Result<Option<NoteKey>, String>, Instant),
+    /// The person was not verified, so the key was not fetched.
+    UnlockDenied(ncrs_user_verify::Denied),
+    /// Drop the key from memory now.
+    Lock,
+    /// A right press on a row of the tree.
+    OpenMenu(RowKey),
+    CloseMenu,
+    /// Encrypt (`true`) or decrypt (`false`) a note, a folder or every note.
+    Seal(Seal, bool),
+    /// The settings ask for the recovery key.
+    RecoveryRequested,
+    /// The recovery key as text, or why there is none.
+    RecoveryReady(Result<Option<String>, String>),
+    RecoveryDenied(ncrs_user_verify::Denied),
+    /// A recovery key typed in on a computer that has no key.
+    Restore(String),
+    /// The key from a recovery text was stored, and when.
+    Restored(Result<NoteKey, String>, Instant),
+    /// Copy the notes to the sync folder now.
+    SyncNow,
+    /// A run of the sync ended.
+    SyncDone(Result<SyncReport, String>),
 }

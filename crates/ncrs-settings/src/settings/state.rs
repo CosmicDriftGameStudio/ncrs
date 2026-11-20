@@ -33,6 +33,7 @@ pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";
 pub const SYSTEM_SECTION: &str = "[system]";
+pub const NOTES_SECTION: &str = "[notes]";
 pub const COLUMNS_SECTION: &str = "[columns]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
@@ -84,6 +85,9 @@ pub struct SettingsState {
     /// The terminals found on this computer when the tab opened; looked up
     /// then, not on every frame.
     pub terminals: Vec<KnownTerminal>,
+    /// The Explorer menu and default folder opener switches as the system has
+    /// them; read after the tab opened, changed by the switches.
+    pub integration: ncrs_handoff::integration::State,
     /// "Own command" was picked in the terminal list but nothing is saved
     /// for it yet.
     pub terminal_own: bool,
@@ -121,6 +125,9 @@ pub struct SettingsState {
     pub usage: Option<Vec<(u32, ncrs_ai::UsageSummary)>>,
     /// The system's text when the usage log could not be read whole.
     pub usage_problem: Option<String>,
+    /// What the Notes page shows besides the config: typed text, the sync
+    /// and the recovery key.
+    pub notes: NotesPage,
 }
 
 /// Why the value of a field was not written.
@@ -165,6 +172,7 @@ impl SettingsState {
             provider: None,
             sandboxed,
             terminals: Vec::new(),
+            integration: ncrs_handoff::integration::State::default(),
             terminal_own: false,
             folder_dialog: None,
             model_to_remove: None,
@@ -183,6 +191,7 @@ impl SettingsState {
             usage_days: crate::settings::DEFAULT_USAGE_DAYS,
             usage: None,
             usage_problem: None,
+            notes: NotesPage::default(),
         }
     }
 
@@ -614,8 +623,10 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::Language(_)
         | SettingChange::CheckForUpdates(_)
         | SettingChange::FavouritesBar(_)
+        | SettingChange::Notes(_)
         | SettingChange::Load(_)
         | SettingChange::HermesSwitch(_)
+        | SettingChange::HermesChatKeepDays(_)
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_)
         | SettingChange::OpenRules(_)
@@ -669,4 +680,19 @@ fn own_detail_change(detail: OwnDetail, typed: &str, mut entries: Vec<String>) -
         }
     }
     Ok(SettingChange::OwnDetails { detail, entries })
+}
+
+/// The runtime part of the Notes page, which the config does not hold.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NotesPage {
+    /// The sync folder as typed, until Enter.
+    pub sync_folder_draft: Option<String>,
+    /// The recovery key while it is shown; the person hides it again.
+    pub recovery: Option<String>,
+    pub restore_draft: String,
+    /// The last sync as a line of text, ready to show.
+    pub last_sync: Option<String>,
+    pub syncing: bool,
+    /// Whether the key is in memory.
+    pub unlocked: bool,
 }

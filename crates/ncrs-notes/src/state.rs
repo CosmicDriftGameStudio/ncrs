@@ -2,15 +2,20 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
+use std::time::Instant;
 
 use iced::widget::text_editor;
+use ncrs_core::notes_sync::{NotesSyncDirection, NotesSyncWhen};
 use ncrs_ui_kit::markdown_view::{parse_markdown, MarkdownItem};
 
+use crate::crypt::{is_encrypted_path, NoteKey};
 use crate::message::Mode;
-use crate::search::{search, Hit};
+use crate::search::{search_where, Hit};
 use crate::store::{Expect, Kind, Ledger, Note, Replaced, Scan};
+use crate::sync::SyncReport;
 use crate::tree::{rows, Row, RowKey};
+use crate::vault::Vault;
 
 /// Everything the tab keeps. The notes are held in memory: the folder is read
 /// once at start and when the tab opens, writes keep the list current.
@@ -62,6 +67,57 @@ pub struct State {
     pub write_counter: u64,
     /// The newest write done per file, shared with the blocking tasks.
     pub ledger: Ledger,
+    /// The key of the encrypted notes and whether it is in memory.
+    pub vault: Vault,
+    /// What the settings say about encryption, sync and Hermes.
+    pub options: Options,
+    pub sync: SyncRun,
+    /// The row whose context menu is open.
+    pub menu: Option<RowKey>,
+    /// The key is being fetched from the credential store.
+    pub unlocking: bool,
+    /// Why the last unlock was refused; the locked page says it.
+    pub unlock_denied: Option<ncrs_user_verify::Denied>,
+    /// Where the pointer was when the context menu was opened.
+    pub menu_pointer: iced::Point,
+    /// What was asked while the key had to be fetched first: the rows to seal
+    /// (`true`) or unseal (`false`).
+    pub pending_seal: Option<(Seal, bool)>,
+}
+
+/// What the encryption of notes is applied to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Seal {
+    /// A note or a folder of the tree.
+    Row(RowKey),
+    /// Every note of its own.
+    Everything,
+}
+
+/// What the settings say about the notes tab.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    /// New notes are written encrypted.
+    pub encrypt_all: bool,
+    /// Hermes may read and write notes.
+    pub hermes_access: bool,
+    pub sync_folder: Option<PathBuf>,
+    pub direction: NotesSyncDirection,
+    pub when: NotesSyncWhen,
+}
+
+/// The sync as it ran so far.
+#[derive(Debug, Clone, Default)]
+pub struct SyncRun {
+    pub running: bool,
+    /// The last run that ended without an error.
+    pub last: Option<SyncReport>,
+    /// Why the last run failed; the next success clears it.
+    pub error: Option<String>,
+    /// When the last run started, for the interval.
+    pub started_at: Option<Instant>,
+    /// A change was saved while a run was going: run again when it ends.
+    pub again: bool,
 }
 
 /// One note file to write: what the disk must look like for it to go ahead,
@@ -77,6 +133,8 @@ pub struct Write {
     pub root: PathBuf,
     /// Made by the program, not by an edit: a refusal drops it instead of saving a copy.
     pub background: bool,
+    /// Seals the text when the path is an encrypted note; `numbered` sets it.
+    pub key: Option<Arc<NoteKey>>,
 }
 
 impl State {
@@ -151,6 +209,7 @@ impl State {
     pub fn numbered(&mut self, mut write: Write) -> Write {
         self.write_counter += 1;
         write.generation = self.write_counter;
+        write.key = self.vault.key();
         if let Some(at) = self.unsaved.iter().position(|old| old.path == write.path) {
             let old = self.unsaved.remove(at);
             write.expect = old.expect;
@@ -256,8 +315,38 @@ impl State {
         self.items = parse_markdown(text.as_deref().unwrap_or(""));
     }
 
+    /// An encrypted note while the key is not in memory.
+    pub fn is_locked(&self, note: &Note) -> bool {
+        is_encrypted_path(&note.path) && (!self.vault.is_unlocked() || note.unread)
+    }
+
+    /// The shown note is encrypted and cannot be read now.
+    pub fn shown_is_locked(&self) -> bool {
+        self.shown().is_some_and(|note| self.is_locked(note))
+    }
+
+    /// Whether the folder holds notes and all of them, in its subfolders too,
+    /// are encrypted.
+    pub fn folder_is_sealed(&self, folder: &Path) -> bool {
+        let mut inside = self
+            .notes
+            .iter()
+            .filter(|note| note.kind == Kind::Topic && note.folder.starts_with(folder))
+            .peekable();
+        inside.peek().is_some() && inside.all(|note| is_encrypted_path(&note.path))
+    }
+
+    /// The notes Hermes may search, read and write: none unless the setting
+    /// allows it, and the encrypted ones only while unlocked.
+    pub fn notes_for_hermes(&self) -> impl Iterator<Item = &Note> {
+        let allowed = self.options.hermes_access;
+        self.notes
+            .iter()
+            .filter(move |note| allowed && !self.is_locked(note))
+    }
+
     pub fn refresh_hits(&mut self) {
-        self.hits = search(&self.notes, &self.query);
+        self.hits = search_where(&self.notes, &self.query, |note| !self.is_locked(note));
         self.hit_cursor = self.hit_cursor.min(self.hits.len().saturating_sub(1));
     }
 

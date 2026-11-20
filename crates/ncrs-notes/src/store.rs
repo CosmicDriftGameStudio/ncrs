@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
+use crate::crypt::{self, is_encrypted_path, NoteKey, ENCRYPTED_SUFFIX};
 use crate::frontmatter::{self, FrontMatter};
 use crate::state::Write;
 
@@ -49,6 +50,8 @@ pub struct Note {
     /// The hash of the bytes this note was read from or last written as;
     /// `None` for a note made in the tab and not written yet.
     pub base: Option<u64>,
+    /// An encrypted note read without the key: `text` is empty, not the content.
+    pub unread: bool,
 }
 
 impl Note {
@@ -95,18 +98,39 @@ pub struct Scan {
 fn is_markdown(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case(MARKDOWN))
+        || is_encrypted_path(path)
 }
 
 fn stem_of(path: &Path) -> String {
+    if is_encrypted_path(path) {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        return name
+            .get(..name.len().saturating_sub(ENCRYPTED_SUFFIX.len()))
+            .unwrap_or_default()
+            .to_owned();
+    }
     path.file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
-fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
+/// An encrypted note read without the key has no text; one the key does not
+/// open is left out, so nothing can overwrite it by mistake.
+fn read_note(path: &Path, folder: PathBuf, files_dir: bool, key: Option<&NoteKey>) -> Option<Note> {
     let bytes = fs::read(path).ok()?;
     let base = Some(content_hash(&bytes));
-    let text = String::from_utf8(bytes).ok()?;
+    let unread = is_encrypted_path(path) && key.is_none();
+    let text = if is_encrypted_path(path) {
+        match key {
+            Some(note_key) => crypt::decrypt(note_key, &bytes).ok()?,
+            None => String::new(),
+        }
+    } else {
+        String::from_utf8(bytes).ok()?
+    };
     let modified = fs::metadata(path).and_then(|meta| meta.modified()).ok();
     if files_dir {
         let (parsed, body) = frontmatter::split(&text);
@@ -127,6 +151,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
             text: body.to_owned(),
             modified,
             base,
+            unread,
         });
     }
     Some(Note {
@@ -137,10 +162,11 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
         text,
         modified,
         base,
+        unread,
     })
 }
 
-fn walk(root: &Path, relative: &Path, depth: usize, scan: &mut Scan) {
+fn walk(root: &Path, relative: &Path, depth: usize, scan: &mut Scan, key: Option<&NoteKey>) {
     let Ok(entries) = fs::read_dir(root.join(relative)) else {
         return;
     };
@@ -158,17 +184,22 @@ fn walk(root: &Path, relative: &Path, depth: usize, scan: &mut Scan) {
         if kind.is_dir() {
             if depth < MAX_DEPTH {
                 scan.folders.push(below.clone());
-                walk(root, &below, depth + 1, scan);
+                walk(root, &below, depth + 1, scan, key);
             }
         } else if !kind.is_dir() && is_markdown(&entry.path()) {
             scan.notes
-                .extend(read_note(&entry.path(), relative.to_owned(), false));
+                .extend(read_note(&entry.path(), relative.to_owned(), false, key));
         }
     }
 }
 
-/// Reads the notes folder. A folder that is not there yet is an empty one.
+/// Reads the notes folder without the key: encrypted notes are listed with no text.
 pub fn scan(root: &Path) -> Result<Scan, String> {
+    scan_with(root, None)
+}
+
+/// Reads the notes folder. A folder that is not there yet is an empty one.
+pub fn scan_with(root: &Path, key: Option<&NoteKey>) -> Result<Scan, String> {
     let mut scan = Scan {
         root: root.to_owned(),
         ..Scan::default()
@@ -179,12 +210,13 @@ pub fn scan(root: &Path) -> Result<Scan, String> {
     if !root.is_dir() {
         return Err(format!("{} is not a folder", root.display()));
     }
-    walk(root, Path::new(""), 0, &mut scan);
+    walk(root, Path::new(""), 0, &mut scan, key);
     if let Ok(entries) = fs::read_dir(root.join(FILES_DIR)) {
         for entry in entries.flatten() {
             let path = entry.path();
             if is_markdown(&path) {
-                scan.notes.extend(read_note(&path, PathBuf::new(), true));
+                scan.notes
+                    .extend(read_note(&path, PathBuf::new(), true, key));
             }
         }
     }
@@ -274,6 +306,16 @@ pub fn topic_path(root: &Path, folder: &Path, title: &str) -> PathBuf {
     root.join(folder).join(format!("{title}.{MARKDOWN}"))
 }
 
+/// As [`topic_path`], for an encrypted note when `sealed`.
+pub fn note_path(root: &Path, folder: &Path, title: &str, sealed: bool) -> PathBuf {
+    let path = topic_path(root, folder, title);
+    if sealed {
+        sealed_path(&path)
+    } else {
+        path
+    }
+}
+
 /// The disk state a write is based on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Expect {
@@ -344,7 +386,7 @@ fn new_file_builder() -> tempfile::Builder<'static, 'static> {
 fn write_atomic(
     path: &Path,
     root: &Path,
-    content: &str,
+    content: &[u8],
     expect: Expect,
 ) -> Result<u64, WriteError> {
     let describe = |err: std::io::Error| WriteError::Io(format!("{}: {err}", path.display()));
@@ -372,7 +414,7 @@ fn write_atomic(
         new_file_builder()
     };
     let mut file = builder.tempfile_in(folder).map_err(describe)?;
-    file.write_all(content.as_bytes()).map_err(describe)?;
+    file.write_all(content).map_err(describe)?;
     file.as_file().sync_all().map_err(describe)?;
     if existing.is_some() {
         let rights = fs::metadata(&target).map_err(describe)?.permissions();
@@ -381,7 +423,7 @@ fn write_atomic(
     } else {
         persist_new(file, &target, path)?;
     }
-    Ok(content_hash(content.as_bytes()))
+    Ok(content_hash(content))
 }
 
 /// Moves the temporary file to a name nobody has taken; a file system that
@@ -442,6 +484,41 @@ pub struct Written {
 /// against what this program wrote last rather than against a stale base.
 pub type Ledger = Arc<Mutex<HashMap<PathBuf, Written>>>;
 
+/// What goes into the file of `write`: the text, or for an encrypted note the
+/// sealed text. An encrypted note is never written without the key, so the
+/// plaintext cannot reach the disk under that name.
+fn bytes_of(write: &Write) -> Result<Vec<u8>, WriteError> {
+    if !is_encrypted_path(&write.path) {
+        return Ok(write.text.clone().into_bytes());
+    }
+    let describe = |reason: String| WriteError::Io(format!("{}: {reason}", write.path.display()));
+    let key = write
+        .key
+        .as_deref()
+        .ok_or_else(|| describe("locked".to_owned()))?;
+    crypt::encrypt(key, &write.text).map_err(|err| describe(err.to_string()))
+}
+
+/// The path of `path` as an encrypted note: `Name.md` is `Name.md.enc`.
+pub fn sealed_path(path: &Path) -> PathBuf {
+    if is_encrypted_path(path) {
+        return path.to_owned();
+    }
+    let mut name = path.as_os_str().to_owned();
+    name.push(".enc");
+    PathBuf::from(name)
+}
+
+/// The path of `path` as a plain note: `Name.md.enc` is `Name.md`.
+pub fn unsealed_path(path: &Path) -> PathBuf {
+    if !is_encrypted_path(path) {
+        return path.to_owned();
+    }
+    let text = path.to_string_lossy();
+    let kept = text.len().saturating_sub(".enc".len());
+    PathBuf::from(text.get(..kept).unwrap_or_default())
+}
+
 /// What the blocking task of a write does: the file, then removing the one it
 /// replaces when a note was renamed. A write older than one already done for
 /// the same file is not written, but the removal still happens. Returns the
@@ -460,7 +537,8 @@ pub fn write_note(write: &Write, ledger: &Ledger) -> Result<u64, WriteError> {
             let expect = known
                 .or_else(|| done.get(&other_name_of_path?.path).copied())
                 .map_or(write.expect, |last| Expect::Content(last.hash));
-            let hash = write_atomic(path, &write.root, &write.text, expect)?;
+            let content = bytes_of(write)?;
+            let hash = write_atomic(path, &write.root, &content, expect)?;
             done.insert(
                 path.to_owned(),
                 Written {

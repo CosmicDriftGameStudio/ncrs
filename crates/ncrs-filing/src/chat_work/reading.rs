@@ -1,7 +1,7 @@
 //! Reading a folder for the chat: what is in it, which order it follows and
 //! which files are duplicates that can go. Writes nothing.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::num::NonZeroUsize;
@@ -9,14 +9,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
-use ncrs_index::{
-    ContentHash, Document, DocumentFields, FileStamp, Finding, Kinds, NoActionReason, PlanOutcome,
-    SenderAliases,
-};
+use ncrs_index::{ContentHash, Document, DocumentFields, FileStamp, Kinds, SenderAliases};
 use ncrs_intake::{
-    date_in_file_stem, detect_fields, hash_path, is_eml_file, is_image_file, is_mail_body,
-    learn_archive, location_structure, plan_reorganisation, ArchiveDocument, LocationStructure,
-    OwnNames, PlanFile, ReorganisationInput, TextError,
+    date_in_file_stem, detect_fields, duplicate_copies, hash_path, is_eml_file, is_image_file,
+    is_mail_body, learn_archive, location_structure, ArchiveDocument, LocationStructure, OwnNames,
+    PlanFile, TextError,
 };
 use ncrs_pipeline::Load;
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
@@ -520,38 +517,14 @@ fn duplicates_of(
         })
         .collect();
     let profile = learn_archive(&documents);
-    let existing: BTreeSet<PathBuf> = files
-        .iter()
-        .map(|file| file.relative_path.clone())
-        .collect();
-    plan_reorganisation(&ReorganisationInput {
-        files,
-        profile: &profile,
-        unordered: structure,
-        rules: &[],
-        sender_aliases: &SenderAliases::default(),
-        existing: &existing,
-        kinds,
-    })
-    .into_iter()
-    .filter(|item| {
-        matches!(
-            item.outcome,
-            PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
-        )
-    })
-    .filter_map(|item| {
-        let keeper = item.findings.iter().find_map(|finding| match finding {
-            Finding::Duplicate { keeper } => Some(keeper),
-            _ => None,
-        })?;
-        Some(TrashItem {
-            path: root.join(&item.source),
-            expected_hash: item.hash,
-            keeper: root.join(keeper),
+    duplicate_copies(files, &profile, structure, kinds)
+        .into_iter()
+        .map(|copy| TrashItem {
+            path: root.join(copy.source),
+            expected_hash: copy.hash,
+            keeper: root.join(copy.keeper),
         })
-    })
-    .collect()
+        .collect()
 }
 
 #[cfg(test)]

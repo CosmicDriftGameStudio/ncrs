@@ -25,7 +25,7 @@ fn the_menu_has_the_six_groups_with_separators() {
         .filter(|entry| **entry == MenuEntry::Separator)
         .count();
     assert_eq!(separators, 5);
-    assert_eq!(menu.entries().len(), 18 + 5);
+    assert_eq!(menu.entries().len(), 19 + 5);
     assert_eq!(selected_action(&menu), ContextAction::Open);
 }
 
@@ -103,6 +103,8 @@ fn navigation_skips_separators_and_greyed_out_entries() {
     assert_eq!(selected_action(&menu), ContextAction::DeletePermanently);
     menu.move_by(-1);
     assert_eq!(selected_action(&menu), ContextAction::Trash);
+    menu.move_by(-1);
+    assert_eq!(selected_action(&menu), ContextAction::GitView);
     menu.move_by(-1);
     assert_eq!(selected_action(&menu), ContextAction::CompareFolders);
     menu.move_by(-1);

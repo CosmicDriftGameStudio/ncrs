@@ -71,7 +71,18 @@ impl App {
     /// What the status bar shows about the queue: the running job, how far
     /// along it is, how many wait, and whether Escape will stop it.
     pub(in crate::app) fn job_status(&self) -> Option<statusbar::JobStatus> {
-        let running = self.jobs.running()?;
+        let Some(running) = self.jobs.running() else {
+            // The folder size walks do not run through the queue.
+            let progress = self.panels.folder_size_progress()?;
+            return Some(statusbar::JobStatus {
+                label: self.lang.text(Msg::JobFolderSizes),
+                done: progress.done,
+                total: progress.total,
+                waiting: 0,
+                abortable: true,
+                detail: Some(progress.name),
+            });
+        };
         // The tick from the blocking thread, not a row counter: F5 on one
         // directory with fifty thousand files is one row and fifty thousand
         // items, and the bar has to say the second number.
@@ -87,6 +98,7 @@ impl App {
             // Escape belongs to the prompt while one is open, so the hint is
             // only true when nothing else is claiming the key.
             abortable: self.ops.prompt.is_none() && !self.ops.conflict_is_open(),
+            detail: None,
         })
     }
 
@@ -118,6 +130,24 @@ impl App {
             text: badge.text,
             failing: badge.failing,
             on_press: Message::FilingStatus(FilingStatusMessage::Open),
+        })
+    }
+
+    /// The repository of the active panel, once git has been read.
+    pub(in crate::app) fn git_line(&self) -> Option<statusbar::GitLine> {
+        let summary = self.active_panel().git.summary.as_ref()?;
+        let branch = summary
+            .branch
+            .clone()
+            .or_else(|| summary.head_short.clone())?;
+        Some(statusbar::GitLine {
+            branch,
+            ahead: summary.ahead,
+            behind: summary.behind,
+            changed: ncrs_i18n::fill_template(
+                self.lang.text(Msg::StatusGitChanged),
+                &[("{count}", &summary.changed.to_string())],
+            ),
         })
     }
 
@@ -187,6 +217,7 @@ impl App {
             viewer: self.viewer.is_open(),
             notes: self.notes.is_open(),
             filing: self.filing_view.session.is_some(),
+            git: self.git_view.is_open(),
             hermes: self.hermes_chat.open,
         }
     }
@@ -205,6 +236,10 @@ impl App {
 
     pub(in crate::app) fn notes_shown(&self) -> bool {
         self.notes.is_open() && self.shown_tab == ShownTab::Notes
+    }
+
+    pub(in crate::app) fn git_shown(&self) -> bool {
+        self.git_view.is_open() && self.shown_tab == ShownTab::Git
     }
 
     pub(in crate::app) fn filing_shown(&self) -> bool {
@@ -240,6 +275,12 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::Notes,
                 active: self.shown_tab == ShownTab::Notes,
+            });
+        }
+        if let Some(title) = ncrs_git_view::tab_title(&self.git_view, self.lang) {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Git(title),
+                active: self.shown_tab == ShownTab::Git,
             });
         }
         if let Some(title) = ncrs_filing_view::tab_title(&self.filing_view, self.lang) {

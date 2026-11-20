@@ -489,6 +489,9 @@ pub struct Session {
     pub rule_moves: Option<RuleMoves>,
     /// The sources "Rearrange now" still has to go through, one run each.
     pub rule_queue: Option<RuleQueue>,
+    /// The user chose to file a read folder all the time: the chat list
+    /// shows the chat as running.
+    pub keeps_filing: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -547,6 +550,9 @@ pub struct State {
     /// An action a result of work asks for; `update` hands it to the app.
     pub queued_action: Option<Action>,
     pub session: Session,
+    /// The chats of the list; the conversation above is the one of
+    /// `chats.live()`.
+    pub chats: crate::chat_list::ChatList,
 }
 
 impl Default for State {
@@ -577,6 +583,7 @@ impl Default for State {
             tick: 0,
             queued_action: None,
             session: Session::default(),
+            chats: crate::chat_list::ChatList::default(),
         }
     }
 }

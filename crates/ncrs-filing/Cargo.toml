@@ -22,7 +22,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # case-insensitive file systems where comparing paths would not.
 same-file = "1.0"
 # The typed key text is wiped from memory when it is dropped.
-zeroize = "1"
+zeroize.workspace = true
 # The temporary folders of the fixtures; only the `test-support` feature brings it in.
 tempfile = { version = "3.27", optional = true }
 

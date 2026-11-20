@@ -133,6 +133,17 @@ fn user_key_store() -> Arc<dyn KeyStore + Send + Sync> {
 }
 
 impl App {
+    /// Version 0 is no state file at all: the first start of ncrs, which
+    /// begins with the programs folder among the favourites.
+    pub(crate) fn with_first_start_favourites(mut saved: SessionState) -> SessionState {
+        if saved.version == 0 && saved.favourites.is_empty() {
+            saved.favourites = crate::session_state::record_paths(
+                &ncrs_files::special_folders::first_start_favourites(),
+            );
+        }
+        saved
+    }
+
     /// Initial state plus tasks that load both panels. The panels open where
     /// `saved` left them; without a saved folder the left panel starts in the
     /// working directory and the right in `$HOME`.
@@ -144,7 +155,11 @@ impl App {
             .config_path
             .is_some()
             .then(ncrs_i18n::Language::from_system);
-        let (app, loading) = Self::restored_in(environment, saved, start_language);
+        let (app, loading) = Self::restored_in(
+            environment,
+            Self::with_first_start_favourites(saved),
+            start_language,
+        );
         (app, then_install_native_menu(loading))
     }
 
@@ -266,6 +281,10 @@ impl App {
         db_path: Option<PathBuf>,
         store: Arc<dyn KeyStore + Send + Sync>,
     ) -> (Self, Task<Message>) {
+        if let Some(data_dir) = db_path.as_deref().and_then(std::path::Path::parent) {
+            self.hermes_chat
+                .use_chat_store(data_dir.join("hermes").join("chats"), chrono::Local::now());
+        }
         self.hermes.index_path = db_path;
         self.hermes.key_store = Some(ncrs_hermes_ui::KeyStoreHandle(store));
         let task = self.start_filing_module(filing);
@@ -283,9 +302,11 @@ impl App {
                 }
                 self.apply_look(config.clone());
                 self.open_programs = config.open;
+                let notes_settings = config.notes.settings();
                 if let Some(folder) = config.notes.folder {
                     self.notes = ncrs_notes::State::new(folder);
                 }
+                ncrs_notes::apply_settings(&mut self.notes, &notes_settings);
                 self.saved_servers = config.servers;
                 self.file_list_tags = config.file_list_tags;
                 self.columns = config.columns;
@@ -294,6 +315,8 @@ impl App {
                 self.monitor.set_settings(config.system);
                 self.update_check = config.check_for_updates;
                 self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
+                self.hermes_chat
+                    .set_chat_keep_days(config.hermes.chat_keep_days);
                 self.refresh_function_keys();
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
@@ -531,6 +554,7 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(notes_root),
             filing_view: ncrs_filing_view::State::default(),
+            git_view: ncrs_git_view::State::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),

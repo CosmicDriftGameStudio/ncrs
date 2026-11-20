@@ -1,9 +1,12 @@
 //! The rows of a tree and of a list of search results in a sidebar: an
 //! indented label with a fold mark, and a title with where it is and a snippet.
 
+use std::sync::LazyLock;
+
+use iced::widget::svg::{self, Svg};
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, text};
-use iced::{alignment, Element, Length, Padding};
+use iced::{alignment, Element, Length, Padding, Theme};
 
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
@@ -32,6 +35,33 @@ pub struct TreeRow<M> {
 }
 
 pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Element<'a, M> {
+    tree_row_with_lock(row_of, false, palette)
+}
+
+/// The size of the lock after the label of a locked row.
+const LOCK_SIZE: f32 = 12.0;
+
+/// A lock in the success color: the symbol font has no glyph that takes a color.
+fn lock_mark<'a, M: 'a>(color: iced::Color) -> Element<'a, M> {
+    static HANDLE: LazyLock<svg::Handle> = LazyLock::new(|| {
+        svg::Handle::from_memory(
+            br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"##.to_vec(),
+        )
+    });
+    Svg::new(LazyLock::force(&HANDLE).clone())
+        .width(LOCK_SIZE)
+        .height(LOCK_SIZE)
+        .style(move |_: &Theme, _| svg::Style { color: Some(color) })
+        .into()
+}
+
+/// [`tree_row`], with a green lock after the label when `locked` is set (an
+/// encrypted note or folder).
+pub fn tree_row_with_lock<'a, M: Clone + 'a>(
+    row_of: TreeRow<M>,
+    locked: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
     let ink = if row_of.chosen {
         palette.cursor_text
     } else if row_of.dim {
@@ -44,7 +74,7 @@ pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Ele
         Some(false) => MARK_CLOSED,
         None => "",
     };
-    let line = row![
+    let mut line = row![
         container(text(mark).size(font_size::BODY).color(ink)).width(MARK_WIDTH),
         text(row_of.label)
             .size(font_size::BODY)
@@ -53,6 +83,9 @@ pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Ele
     ]
     .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
+    if locked {
+        line = line.push(lock_mark(palette.success));
+    }
     let content = container(line)
         .padding(Padding {
             left: spacing::CELL_PADDING_X + TREE_INDENT * row_of.depth as f32,

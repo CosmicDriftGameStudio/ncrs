@@ -1,19 +1,53 @@
 //! The folders that get a symbol of their own in a panel.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use ncrs_config::config::FilingLocation;
 use ncrs_intake::LocationMode;
 use ncrs_ui_kit::file_icon::SpecialFolder;
 
+use crate::platform::Platform;
+
 /// Home, desktop and downloads of the user whose home is `home`. The app adds
 /// the folders Hermes reads and files into.
 pub fn system_folders(home: &Path) -> Vec<(PathBuf, SpecialFolder)> {
-    vec![
+    let mut folders = vec![
         (home.to_path_buf(), SpecialFolder::Home),
         (home.join("Desktop"), SpecialFolder::Desktop),
         (home.join("Downloads"), SpecialFolder::Downloads),
-    ]
+    ];
+    folders.extend(programs_folder().map(|folder| (folder, SpecialFolder::Programs)));
+    folders
+}
+
+/// The folder of the installed programs on this system; none on Linux, where
+/// the launchers are spread over several folders.
+pub fn programs_folder() -> Option<PathBuf> {
+    programs_folder_of(Platform::current(), std::env::var_os("ProgramFiles"))
+}
+
+/// [`programs_folder`] for `platform`, with `program_files` the value of the
+/// `ProgramFiles` variable.
+pub fn programs_folder_of(platform: Platform, program_files: Option<OsString>) -> Option<PathBuf> {
+    match platform {
+        Platform::Mac => Some(PathBuf::from("/Applications")),
+        Platform::Windows => Some(
+            program_files
+                .filter(|folder| !folder.is_empty())
+                .map_or_else(|| PathBuf::from(r"C:\Program Files"), PathBuf::from),
+        ),
+        Platform::Unix => None,
+    }
+}
+
+/// The favourites of a first start, when no state of an earlier run exists:
+/// the programs folder, where there is one on this system.
+pub fn first_start_favourites() -> Vec<PathBuf> {
+    programs_folder()
+        .filter(|folder| folder.is_dir())
+        .into_iter()
+        .collect()
 }
 
 /// The folders with a symbol of their own: the ones Hermes reads and files
@@ -69,6 +103,23 @@ mod tests {
             special_folder_of(&folders, Path::new("/home/m/Music")),
             None
         );
+    }
+
+    #[test]
+    fn the_programs_folder_is_per_system() {
+        assert_eq!(
+            programs_folder_of(Platform::Mac, None),
+            Some(PathBuf::from("/Applications"))
+        );
+        assert_eq!(
+            programs_folder_of(Platform::Windows, Some(r"D:\Programs".into())),
+            Some(PathBuf::from(r"D:\Programs"))
+        );
+        assert_eq!(
+            programs_folder_of(Platform::Windows, None),
+            Some(PathBuf::from(r"C:\Program Files"))
+        );
+        assert_eq!(programs_folder_of(Platform::Unix, None), None);
     }
 
     #[test]

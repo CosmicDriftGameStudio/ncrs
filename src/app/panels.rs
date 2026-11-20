@@ -603,6 +603,23 @@ impl App {
                 Task::none()
             }
             Action::ReleaseFocus => release_focus(),
+            Action::GoToPathAnswer(answer) => {
+                let asks =
+                    self.ops.prompt.as_ref().is_some_and(|prompt| {
+                        prompt.kind() == ncrs_ops::prompt::PromptKind::GoToPath
+                    });
+                match answer {
+                    Ok(()) if asks => {
+                        self.ops.prompt = None;
+                        release_focus()
+                    }
+                    Err(text) if asks => {
+                        self.ops.set_prompt_error_text(&text);
+                        Task::none()
+                    }
+                    Ok(()) | Err(_) => Task::none(),
+                }
+            }
             Action::LeaveCommandLine => {
                 self.command_line.leave();
                 Task::none()

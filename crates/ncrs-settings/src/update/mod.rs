@@ -6,6 +6,7 @@ mod consent_tests;
 mod documents;
 mod keys;
 mod models;
+mod notes;
 mod own_server;
 mod page;
 mod theme;

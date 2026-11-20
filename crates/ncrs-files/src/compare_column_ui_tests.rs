@@ -60,6 +60,7 @@ fn rows_without_a_mark_keep_the_compare_column_free() {
                 special_folders: &[],
                 noted: &noted,
                 header_drag: None,
+                size_run: None,
             },
         ),
     );

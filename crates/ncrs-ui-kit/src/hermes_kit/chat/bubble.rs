@@ -14,7 +14,6 @@ const BUBBLE_RADIUS: f32 = 16.0;
 const BUBBLE_TIP: f32 = spacing::XS;
 const BUBBLE_PAD_Y: f32 = spacing::L;
 const BUBBLE_PAD_X: f32 = spacing::XL;
-const BUBBLE_MAX_WIDTH: f32 = 620.0;
 const CHAT_TEXT: f32 = 14.0;
 const CHAT_LINE: f32 = 20.0;
 const CHIP_PAD_Y: f32 = spacing::M;
@@ -78,12 +77,11 @@ pub fn avatar<'a, M: 'a>(letter: &str, palette: &Palette) -> Element<'a, M> {
 }
 
 /// The top of the chat: the avatar, the name with what Hermes does, and at the
-/// right the button that starts a new chat and the key that closes the chat.
+/// right the key that closes the chat.
 pub fn chat_header<'a, M: Clone + 'a>(
     letter: &str,
     name: &str,
     tagline: &str,
-    new_chat: (&str, M),
     close_hint: &str,
     palette: &Palette,
 ) -> Element<'a, M> {
@@ -101,7 +99,6 @@ pub fn chat_header<'a, M: Clone + 'a>(
                 .push(small(tagline.to_owned(), palette.dim_text)),
         )
         .push(Space::new().width(Length::Fill))
-        .push(chat_chip_small(new_chat.0, false, new_chat.1, palette))
         .push(small(close_hint.to_owned(), palette.dim_text))
         .spacing(GAP_S + GAP_XS)
         .padding([0.0, THREAD_PADDING])
@@ -115,7 +112,6 @@ pub fn hermes_bubble<'a, M: 'a>(parts: Vec<Element<'a, M>>, palette: &Palette) -
     let colors = *palette;
     let body = container(Column::with_children(parts).spacing(GAP_S))
         .padding([BUBBLE_PAD_Y, BUBBLE_PAD_X])
-        .max_width(BUBBLE_MAX_WIDTH)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(colors.dialog)),
             border: Border {
@@ -166,7 +162,6 @@ fn user_bubble_around<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> 
     let (fill, _) = palette.primary_button();
     let body = container(content)
         .padding([BUBBLE_PAD_Y, BUBBLE_PAD_X])
-        .max_width(BUBBLE_MAX_WIDTH)
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(fill)),
             border: Border {

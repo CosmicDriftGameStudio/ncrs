@@ -64,7 +64,7 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
             endpoint,
             model,
             consented_origins,
-        } => match http_ai_provider(endpoint, model, consented_origins, db_path) {
+        } => match http_ai_provider(endpoint, model, consented_origins, db_path).ok() {
             Some(provider) => match ncrs_ai::endpoint_origin(endpoint) {
                 Ok(origin) => AiWiring::Http {
                     provider,
@@ -84,15 +84,6 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
 /// address only gets documents once the user agreed to its origin in the
 /// settings (`consented_origins`), for each kind of data; the ledger grants no other.
 pub fn http_ai_provider(
-    endpoint: &str,
-    model: &str,
-    consented_origins: &ncrs_ai::ConsentedOrigins,
-    db_path: &Path,
-) -> Option<Arc<ncrs_ai::OpenAiCompatible>> {
-    checked_http_provider(endpoint, model, consented_origins, db_path).ok()
-}
-
-fn checked_http_provider(
     endpoint: &str,
     model: &str,
     consented_origins: &ncrs_ai::ConsentedOrigins,
@@ -137,7 +128,7 @@ pub fn chat_model(
             endpoint,
             model,
             consented_origins,
-        } => checked_http_provider(endpoint, model, consented_origins, db_path)
+        } => http_ai_provider(endpoint, model, consented_origins, db_path)
             .map(|server| server as Arc<dyn ncrs_ai::ChatModel>),
         #[cfg(feature = "local-ai")]
         AiSetting::Local { threads } => Ok(shared_local_model(db_path, load, *threads)),

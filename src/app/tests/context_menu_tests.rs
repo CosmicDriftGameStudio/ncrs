@@ -514,8 +514,11 @@ fn in_an_archive_the_f4_slot_is_dimmed_and_the_palette_drops_the_command() {
     assert!(plain.iter().all(|dimmed| !dimmed));
     assert_eq!(
         app.commands_the_panel_refuses(),
-        vec![ncrs_config::keymap::KeyAction::UndoRename],
-        "no batch is remembered, so only the undo is refused"
+        vec![
+            ncrs_config::keymap::KeyAction::UndoRename,
+            ncrs_config::keymap::KeyAction::GitView
+        ],
+        "no batch is remembered and the folder is no repository, so only the undo and the Git view are refused"
     );
 
     app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));

@@ -41,6 +41,7 @@ fn job(path: &Path, text: &str, expect: Expect, generation: u64) -> Write {
         generation,
         root: path.parent().unwrap().to_owned(),
         background: false,
+        key: None,
     }
 }
 
@@ -806,6 +807,7 @@ async fn a_failed_write_is_kept_and_the_note_shown_now_is_not_marked() {
         generation: 1,
         root: a.parent().unwrap().to_owned(),
         background: false,
+        key: None,
     };
     state.dirty = false;
     state.running = Some(failing);

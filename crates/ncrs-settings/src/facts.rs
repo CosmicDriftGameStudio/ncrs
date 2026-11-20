@@ -58,6 +58,8 @@ pub struct DocumentsFacts {
     pub ai_detail: Option<String>,
     /// The system brings a recognizer for scans and photos (macOS Vision).
     pub system_reads_scans: bool,
+    /// Days after which unused Hermes chats are deleted; `None` never.
+    pub chat_keep_days: Option<u32>,
 }
 
 /// What the Favourites page shows: the app keeps the list, the page reports

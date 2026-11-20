@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use ncrs_core::FolderSize;
 
@@ -11,6 +12,42 @@ use ncrs_core::FolderSize;
 /// set. Blocking.
 pub fn measure_folder(root: &Path, cancel: &AtomicBool) -> Option<FolderSize> {
     measure_folder_on(root, cancel, device_of)
+}
+
+/// How many folders below the root a walk keeps a size for. A walk over a
+/// whole disk would otherwise hold one path per folder of it.
+const KEPT_FOLDERS: usize = 20_000;
+
+/// The size of a folder and of the folders the walk went through below it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MeasuredTree {
+    pub total: FolderSize,
+    /// Every folder below the root the walk kept, parents before their
+    /// children; a folder's size includes its subfolders.
+    pub below: Vec<(PathBuf, FolderSize)>,
+}
+
+/// [`measure_folder`] that also keeps the size of the folders it walked
+/// through, so entering one shows its size without another walk. A hard link
+/// is counted in the folder the walk met it in first.
+pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredTree> {
+    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX)
+}
+
+/// How often a running walk reports what it has counted so far.
+pub const RUNNING_REPORT_INTERVAL: Duration = Duration::from_millis(100);
+
+/// [`measure_folder_tree`] that also calls `on_running` with the bytes counted
+/// so far, at most every `report_every`. The bytes only grow and the last
+/// value is at most the final total (hard links and skipped folders are not
+/// in it).
+pub fn measure_folder_tree_reporting(
+    root: &Path,
+    cancel: &AtomicBool,
+    report_every: Duration,
+    on_running: impl FnMut(u64),
+) -> Option<MeasuredTree> {
+    measure_tree_on(root, cancel, device_of, on_running, report_every)
 }
 
 #[cfg(unix)]
@@ -29,19 +66,37 @@ fn measure_folder_on(
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
 ) -> Option<FolderSize> {
+    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX).map(|tree| tree.total)
+}
+
+fn measure_tree_on(
+    root: &Path,
+    cancel: &AtomicBool,
+    device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
+    mut on_running: impl FnMut(u64),
+    report_every: Duration,
+) -> Option<MeasuredTree> {
+    let mut running: u64 = 0;
+    let mut last_report = Instant::now();
     let root_device = std::fs::symlink_metadata(root)
         .ok()
         .and_then(|metadata| device_of(root, &metadata));
-    let mut bytes: u64 = 0;
-    let mut partial = false;
     let mut seen = SeenFiles::default();
-    let mut pending: Vec<PathBuf> = vec![root.to_path_buf()];
-    while let Some(folder) = pending.pop() {
+    let mut counted = vec![Counted {
+        path: root.to_path_buf(),
+        parent: None,
+        bytes: 0,
+        partial: false,
+    }];
+    // Each folder still to read, with the entry of `counted` its bytes go to:
+    // its own, or its nearest ancestor's once the walk stopped keeping them.
+    let mut pending: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    while let Some((folder, owner)) = pending.pop() {
         if cancel.load(Ordering::Relaxed) {
             return None;
         }
         let Ok(children) = std::fs::read_dir(&folder) else {
-            partial = true;
+            mark_partial(&mut counted, owner);
             continue;
         };
         for listed in children {
@@ -49,26 +104,82 @@ fn measure_folder_on(
                 return None;
             }
             let Ok(child) = listed else {
-                partial = true;
+                mark_partial(&mut counted, owner);
                 continue;
             };
             let path = child.path();
             let Ok(metadata) = std::fs::symlink_metadata(&path) else {
-                partial = true;
+                mark_partial(&mut counted, owner);
                 continue;
             };
             if metadata.is_dir() {
                 if root_device.is_some() && device_of(&path, &metadata) != root_device {
-                    partial = true;
+                    mark_partial(&mut counted, owner);
+                } else if counted.len() <= KEPT_FOLDERS {
+                    counted.push(Counted {
+                        path: path.clone(),
+                        parent: Some(owner),
+                        bytes: 0,
+                        partial: false,
+                    });
+                    pending.push((path, counted.len() - 1));
                 } else {
-                    pending.push(path);
+                    pending.push((path, owner));
                 }
             } else if seen.first_time(&metadata) {
-                bytes = bytes.saturating_add(metadata.len());
+                add_bytes(&mut counted, owner, metadata.len());
+                running = running.saturating_add(metadata.len());
+                if last_report.elapsed() >= report_every {
+                    on_running(running);
+                    last_report = Instant::now();
+                }
             }
         }
     }
-    Some(FolderSize { bytes, partial })
+    // A folder is pushed after its parent, so walking backwards adds every
+    // folder to its parent once its own subfolders are in.
+    for index in (1..counted.len()).rev() {
+        let Some((parent, bytes, partial)) = counted
+            .get(index)
+            .and_then(|entry| Some((entry.parent?, entry.bytes, entry.partial)))
+        else {
+            continue;
+        };
+        add_bytes(&mut counted, parent, bytes);
+        if partial {
+            mark_partial(&mut counted, parent);
+        }
+    }
+    let size_of = |entry: &Counted| FolderSize {
+        bytes: entry.bytes,
+        partial: entry.partial,
+    };
+    let total = size_of(counted.first()?);
+    let below = counted
+        .iter()
+        .skip(1)
+        .map(|entry| (entry.path.clone(), size_of(entry)))
+        .collect();
+    Some(MeasuredTree { total, below })
+}
+
+fn mark_partial(counted: &mut [Counted], index: usize) {
+    if let Some(entry) = counted.get_mut(index) {
+        entry.partial = true;
+    }
+}
+
+fn add_bytes(counted: &mut [Counted], index: usize, bytes: u64) {
+    if let Some(entry) = counted.get_mut(index) {
+        entry.bytes = entry.bytes.saturating_add(bytes);
+    }
+}
+
+struct Counted {
+    path: PathBuf,
+    parent: Option<usize>,
+    bytes: u64,
+    partial: bool,
 }
 
 #[derive(Default)]
@@ -118,6 +229,29 @@ mod tests {
                 bytes: 35,
                 partial: false
             })
+        );
+    }
+
+    #[test]
+    fn every_folder_walked_through_keeps_its_own_size() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("tree/a.txt"), 10);
+        write(&root.path().join("tree/one/b.txt"), 20);
+        write(&root.path().join("tree/one/two/c.txt"), 5);
+
+        let tree = measure_folder_tree(&root.path().join("tree"), &running()).unwrap();
+
+        let size = |bytes| FolderSize {
+            bytes,
+            partial: false,
+        };
+        assert_eq!(tree.total, size(35));
+        assert_eq!(
+            tree.below,
+            vec![
+                (root.path().join("tree/one"), size(25)),
+                (root.path().join("tree/one/two"), size(5)),
+            ]
         );
     }
 
@@ -211,6 +345,30 @@ mod tests {
                 partial: true
             })
         );
+    }
+
+    #[test]
+    fn running_totals_arrive_before_the_result_and_only_grow() {
+        let root = tempfile::tempdir().unwrap();
+        for n in 0..6 {
+            write(&root.path().join(format!("tree/sub/file-{n}.txt")), 10 + n);
+        }
+        write(&root.path().join("tree/top.txt"), 7);
+        let mut reported = Vec::new();
+
+        let tree = measure_tree_on(
+            &root.path().join("tree"),
+            &running(),
+            device_of,
+            |bytes| reported.push(bytes),
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        assert_eq!(reported.len(), 7, "one report per counted file");
+        assert!(reported.is_sorted());
+        assert!(reported.iter().all(|bytes| *bytes <= tree.total.bytes));
+        assert_eq!(reported.last().copied(), Some(tree.total.bytes));
     }
 
     #[test]

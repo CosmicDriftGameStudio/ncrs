@@ -135,6 +135,12 @@ pub enum Message {
     CreateDirPrompt,
     /// Shift+F4: open the new-file prompt.
     CreateFilePrompt,
+    /// `+` or `-`: ask for the pattern of the names to tag or untag.
+    TagPatternPrompt {
+        untag: bool,
+    },
+    /// Cmd/Ctrl+G: edit the path of the active panel in the status bar.
+    GoToPath,
     /// Alt+F5: ask for the name of a new archive in the other panel's folder.
     PackPrompt,
     /// Unpack the archives under the cursor or tagged next to themselves.
@@ -166,10 +172,19 @@ pub enum Message {
     // --- The notes tab, opened from the command list or on a file ---
     Notes(ncrs_notes::Message),
     OpenNotes,
+    // --- The Git tab, opened from the command list or the folder context menu ---
+    GitView(ncrs_git_view::Message),
+    OpenGitView,
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),
     /// The note on the file under the cursor, made when there is none.
     NoteOnFile,
+    // --- Paths other programs hand to ncrs ---
+    /// Time to look at the inbox of the second starts and, on macOS, at the
+    /// files the system opened ncrs with.
+    HandoffPoll,
+    /// What the look found, oldest first.
+    HandedOver(Vec<ncrs_handoff::Request>),
     // --- The check for a newer release ---
     Updates(ncrs_updates::Message),
     /// The version at the right of the status bar: the Updates page, or the
@@ -261,6 +276,7 @@ pub enum ShownTab {
     Monitor,
     Viewer,
     Notes,
+    Git,
     Filing,
     Hermes,
 }

@@ -1,7 +1,7 @@
 //! The Favourites page: the switch for the bar under the tabs and the list of
 //! folders, whose order sets the numbers.
 
-use ncrs_ui_kit::favourites_bar::{number_cap, number_cap_gap, FAVOURITES_BAR_SLOTS};
+use ncrs_ui_kit::favourites_bar::{number_cap, number_cap_gap, FAVOURITE_KEYS};
 
 use super::index_page::add_folder_row;
 use super::*;
@@ -89,14 +89,12 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                     Some(FavouritesEdit::Remove(index)),
                 ),
             ];
-            let status = (index >= FAVOURITES_BAR_SLOTS)
-                .then(|| lang.text(Msg::SettingsFavouritesMenuOnly).to_owned());
-            let lead = if index < FAVOURITES_BAR_SLOTS {
+            let lead = if index < FAVOURITE_KEYS {
                 number_cap(index + 1, palette)
             } else {
                 number_cap_gap()
             };
-            SettingRow::listed_buttons(shown_path(path, view.home), None, status, buttons, palette)
+            SettingRow::listed_buttons(shown_path(path, view.home), None, None, buttons, palette)
                 .with_leading(lead)
         })
         .collect();

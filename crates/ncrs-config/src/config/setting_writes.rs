@@ -348,6 +348,27 @@ pub fn write_appearance(path: &Path, appearance: &Appearance) -> Result<Config, 
     )
 }
 
+pub fn hermes_chat_keep_days_setting(days: Option<u32>) -> Setting {
+    Setting {
+        tables: &[HERMES_TABLE],
+        key: "chat_keep_days",
+        value: days.map(|count| toml_edit::Value::from(i64::from(count))),
+    }
+}
+
+/// Sets `chat_keep_days` in `[hermes]`; `None` removes it. Same guarantees as
+/// [`write_theme_preset`].
+pub fn write_hermes_chat_keep_days(
+    path: &Path,
+    days: Option<u32>,
+) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        hermes_chat_keep_days_setting(days),
+        home_from_env().as_deref(),
+    )
+}
+
 /// Sets `enabled` in `[hermes]`, the switch for every call to a model; same
 /// guarantees as [`write_theme_preset`].
 pub fn write_hermes_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
@@ -651,4 +672,41 @@ pub fn put_setting(
         }
     }
     Ok(())
+}
+
+pub const NOTES_TABLE: &str = "notes";
+
+/// The `[notes]` settings except the folder of the notes; no sync folder
+/// drops its line.
+pub fn notes_settings(settings: &ncrs_core::notes_sync::NotesSettings) -> [Setting; 6] {
+    let setting = |key: &'static str, value: Option<toml_edit::Value>| Setting {
+        tables: &[NOTES_TABLE],
+        key,
+        value,
+    };
+    [
+        setting(
+            "sync_folder",
+            settings
+                .sync_folder
+                .as_ref()
+                .map(|folder| toml_edit::Value::from(folder.to_string_lossy().as_ref())),
+        ),
+        setting("sync_direction", Some(settings.direction.key().into())),
+        setting("sync_when", Some(settings.when.key().into())),
+        setting(
+            "lock_minutes",
+            Some(i64::from(settings.lock_minutes).into()),
+        ),
+        setting("encrypt_all", Some(settings.encrypt_all.into())),
+        setting("hermes", Some(settings.hermes_access.into())),
+    ]
+}
+
+/// Writes the `[notes]` settings; same guarantees as [`write_theme_preset`].
+pub fn write_notes_settings(
+    path: &Path,
+    settings: &ncrs_core::notes_sync::NotesSettings,
+) -> Result<Config, FilingWriteError> {
+    write_settings(path, &notes_settings(settings), home_from_env().as_deref())
 }

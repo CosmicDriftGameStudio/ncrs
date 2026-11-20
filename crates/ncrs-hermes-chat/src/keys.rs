@@ -11,6 +11,17 @@ pub enum ChatKey {
     Swallow,
     /// A key for the input.
     Type,
+    /// Cmd+N: a new chat.
+    NewChat,
+    /// Cmd+Up: the chat above in the list.
+    PreviousChat,
+    /// Cmd+Down: the chat below in the list.
+    NextChat,
+    /// Space: marks the chat in the list. The input types it as well; the
+    /// chat only marks when the input is empty.
+    MarkChat,
+    /// Del: deletes the marked chats; only when the input is empty.
+    DeleteChat,
 }
 
 const FUNCTION_KEYS: [Named; 12] = [
@@ -29,7 +40,13 @@ const FUNCTION_KEYS: [Named; 12] = [
 ];
 
 pub fn chat_key(key: &Key, modifiers: Modifiers) -> ChatKey {
+    let command_only = modifiers.command() && !modifiers.shift() && !modifiers.alt();
     match key.as_ref() {
+        Key::Character("n") if command_only => ChatKey::NewChat,
+        Key::Named(Named::ArrowUp) if command_only => ChatKey::PreviousChat,
+        Key::Named(Named::ArrowDown) if command_only => ChatKey::NextChat,
+        Key::Named(Named::Space) if modifiers.is_empty() => ChatKey::MarkChat,
+        Key::Named(Named::Delete) if modifiers.is_empty() => ChatKey::DeleteChat,
         Key::Named(Named::Escape) => ChatKey::Close,
         Key::Named(Named::F2) if modifiers.shift() => ChatKey::CloseToCommandLine,
         Key::Named(Named::F2) => ChatKey::Close,
@@ -55,6 +72,23 @@ mod tests {
             named(Named::F2, Modifiers::SHIFT),
             ChatKey::CloseToCommandLine
         );
+    }
+
+    #[test]
+    fn the_chat_list_has_its_keys() {
+        let command = Modifiers::COMMAND;
+        assert_eq!(
+            chat_key(&Key::Character("n".into()), command),
+            ChatKey::NewChat
+        );
+        assert_eq!(named(Named::ArrowUp, command), ChatKey::PreviousChat);
+        assert_eq!(named(Named::ArrowDown, command), ChatKey::NextChat);
+        assert_eq!(named(Named::Space, Modifiers::empty()), ChatKey::MarkChat);
+        assert_eq!(
+            named(Named::Delete, Modifiers::empty()),
+            ChatKey::DeleteChat
+        );
+        assert_eq!(named(Named::ArrowUp, Modifiers::empty()), ChatKey::Type);
     }
 
     #[test]

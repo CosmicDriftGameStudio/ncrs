@@ -19,4 +19,8 @@ pub enum Action {
     ResolveLinks(Vec<NoteLink>),
     /// Something is wrong with the folder or a file; the text is ready to show.
     Error(String),
+    /// Something went well that the person should hear of; the text is ready to show.
+    Notice(String),
+    /// The recovery key the settings asked for, to be shown once.
+    RecoveryKey(String),
 }

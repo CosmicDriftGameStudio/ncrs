@@ -868,11 +868,17 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
     }
 
     let mut screen = simulator(&app);
-    for header in [
-        Msg::HermesChatSubtitle,
-        Msg::HermesChatEscHint,
-        Msg::HermesChatPlaceholderReply,
-    ] {
+    // With a chat title shown, the header line names Hermes before the subtitle.
+    let tagline = |language: Language| {
+        format!(
+            "{} \u{b7} {}",
+            language.text(Msg::HermesChatTitle),
+            language.text(Msg::HermesChatSubtitle)
+        )
+    };
+    screen.find(tagline(Language::English)).unwrap();
+    screen.find(tagline(Language::German)).unwrap_err();
+    for header in [Msg::HermesChatEscHint, Msg::HermesChatPlaceholderReply] {
         screen.find(Language::English.text(header)).unwrap();
         screen.find(Language::German.text(header)).unwrap_err();
     }

@@ -37,7 +37,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (A::ActivateLeftPanel, Binding::key(KeyNamed(ArrowLeft))),
         (A::ActivateRightPanel, Binding::key(KeyNamed(ArrowRight))),
         (A::SwitchLanguage, Binding::key(KeyNamed(F9))),
-        // --- selection: tagged rows, not advertised ---
+        // --- selection: tagged rows ---
         (A::ToggleTag, Binding::key(KeyNamed(Insert))),
         (A::ToggleTag, Binding::key(KeyNamed(Space))),
         (
@@ -49,6 +49,17 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(KeyNamed(ArrowUp), Modifiers::SHIFT),
         ),
         (A::TagAll, Binding::key(Character("*".into()))),
+        (
+            A::TagAll,
+            Binding::with_modifiers(Character("a".into()), Modifiers::COMMAND),
+        ),
+        // Total Commander's numpad keys; the dialog starts with `*.*`.
+        (A::TagByPattern, Binding::key(Character("+".into()))),
+        (A::UntagByPattern, Binding::key(Character("-".into()))),
+        (
+            A::GoToPath,
+            Binding::with_modifiers(Character("g".into()), Modifiers::COMMAND),
+        ),
         (
             A::ClearTags,
             Binding::with_modifiers(Character("*".into()), Modifiers::CTRL),
@@ -166,6 +177,22 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::OpenFavourite5,
             Binding::with_modifiers(Character("5".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite6,
+            Binding::with_modifiers(Character("6".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite7,
+            Binding::with_modifiers(Character("7".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite8,
+            Binding::with_modifiers(Character("8".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite9,
+            Binding::with_modifiers(Character("9".into()), Modifiers::COMMAND),
         ),
         (A::SortByName, sort_binding(SortColumn::Name)),
         (A::SortByModified, sort_binding(SortColumn::Modified)),
@@ -320,7 +347,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
 
 /// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in classic dual-panel file managers. A Mac takes Ctrl+F-keys
 /// for itself, so there it is Option+Cmd+1 (name), Option+Cmd+2 (size) and Option+Cmd+3
-/// (modified); plain Cmd+1 to Cmd+5 open the favourites.
+/// (modified); plain Cmd+1 to Cmd+9 open the first nine favourites.
 pub fn sort_binding(column: SortColumn) -> Binding {
     use key::Named::{F3, F5, F6};
     if cfg!(target_os = "macos") {

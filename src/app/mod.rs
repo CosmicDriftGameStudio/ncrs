@@ -171,6 +171,8 @@ mod context_menu;
 mod dialogs;
 mod favourites_bar;
 mod filing_tab;
+mod git_tab;
+mod handoff;
 mod hermes;
 mod hermes_chat;
 mod hermes_pages;
@@ -347,6 +349,8 @@ pub struct App {
     notes: ncrs_notes::State,
     /// The filing tab, shown while it has a session.
     filing_view: ncrs_filing_view::State,
+    /// The Git tab, shown while a repository is open in it.
+    git_view: ncrs_git_view::State,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -557,6 +561,12 @@ pub struct PromptKeyState {
     pub filing: bool,
     /// A file name is being typed in the filing tab, so the keys are the field's.
     pub filing_renaming: bool,
+    /// The Git tab is up: its keys move in its lists and Escape goes back.
+    pub git: bool,
+    /// The filter field of the Git tab has the keyboard.
+    pub git_filter: bool,
+    /// A diff is shown in the Git tab.
+    pub git_diff: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -588,7 +598,7 @@ pub struct PromptKeyState {
 impl PromptKeyState {
     /// The viewer, the notes or the System page is up and takes the keys.
     pub fn shows_viewer_or_monitor(&self) -> bool {
-        self.viewer || self.monitor || self.notes || self.filing
+        self.viewer || self.monitor || self.notes || self.filing || self.git
     }
 }
 
@@ -635,6 +645,9 @@ impl Default for PromptKeyState {
             notes_editing: false,
             filing: false,
             filing_renaming: false,
+            git: false,
+            git_filter: false,
+            git_diff: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             quit_dialog: false,

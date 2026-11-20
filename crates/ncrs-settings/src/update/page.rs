@@ -6,7 +6,7 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::font;
 
-use super::{documents, keys, models, own_server, theme};
+use super::{documents, keys, models, notes, own_server, theme};
 use crate::action::Action;
 use crate::ai_model::InstallOutcome;
 use crate::ctx::Ctx;
@@ -33,10 +33,50 @@ pub fn update(
             leave_page(settings, ctx, close_settings)
         }
         SettingsMessage::Toggle => open_settings(settings, ctx),
-        SettingsMessage::SystemLoaded { terminals, fonts } => {
+        SettingsMessage::SystemLoaded {
+            terminals,
+            fonts,
+            integration,
+        } => {
             if let Some(state) = settings.page.as_mut() {
                 state.terminals = terminals;
                 state.installed_fonts = fonts;
+                state.integration = integration;
+            }
+            Task::none()
+        }
+        SettingsMessage::Integrate { switch, on } => {
+            let label = ctx.lang.text(Msg::SettingsExplorerMenuEntry).to_owned();
+            let memory_dir = ctx
+                .config_path
+                .and_then(|path| path.parent())
+                .map(std::path::Path::to_path_buf);
+            Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        let context = ncrs_handoff::integration::Context {
+                            memory_dir: memory_dir.as_deref(),
+                            menu_label: &label,
+                        };
+                        ncrs_handoff::integration::apply(switch, on, &context)
+                    })
+                    .await
+                    .unwrap_or_else(|error| Err(error.to_string()))
+                },
+                |result| Message::Settings(SettingsMessage::Integrated(result)),
+            )
+        }
+        SettingsMessage::Integrated(result) => {
+            match result {
+                Ok(now) => {
+                    if let Some(state) = settings.page.as_mut() {
+                        state.integration = now;
+                    }
+                }
+                Err(reason) => actions.push(Action::ShowNotice(fill_template(
+                    ctx.lang.text(Msg::SettingsIntegrationFailed),
+                    &[("{reason}", &reason)],
+                ))),
             }
             Task::none()
         }
@@ -198,6 +238,7 @@ pub fn update(
         | SettingsMessage::UsageLoaded(..)) => own_server::update(settings, own, ctx),
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
+        SettingsMessage::Notes(edit) => notes::update(settings, edit, ctx, actions),
         SettingsMessage::Favourites(edit) => {
             actions.push(Action::EditFavourites(edit));
             Task::none()
@@ -365,13 +406,21 @@ fn load_system_lists() -> Task<Message> {
     Task::perform(
         async {
             tokio::task::spawn_blocking(|| {
-                (ncrs_fs::detect_terminals(), font::installed_monospace())
+                (
+                    ncrs_fs::detect_terminals(),
+                    font::installed_monospace(),
+                    ncrs_handoff::integration::read(),
+                )
             })
             .await
         },
         |joined| {
-            let (terminals, fonts) = joined.unwrap_or_default();
-            Message::Settings(SettingsMessage::SystemLoaded { terminals, fonts })
+            let (terminals, fonts, integration) = joined.unwrap_or_default();
+            Message::Settings(SettingsMessage::SystemLoaded {
+                terminals,
+                fonts,
+                integration,
+            })
         },
     )
 }

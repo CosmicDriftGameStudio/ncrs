@@ -12,10 +12,13 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::markdown_view::{classify, parse_markdown, Link};
 
 use crate::action::Action;
+use crate::crypt::{is_encrypted_path, NoteKey};
 use crate::ctx::Ctx;
 use crate::message::{Message, Mode};
+use crate::secure;
 use crate::state::{State, Write};
 use crate::store::{self, Expect, Kind, Note, Replaced, Scan, WriteError};
+use crate::syncing;
 use crate::tree::RowKey;
 use crate::view::{EDITOR_ID, SEARCH_ID};
 
@@ -24,10 +27,12 @@ const SAVE_PAUSE: Duration = Duration::from_millis(400);
 
 /// Reads the notes folder on a blocking thread; the answer is
 /// [`Message::Loaded`].
-fn load(root: PathBuf, epoch: u64) -> Task<Message> {
+fn load(root: PathBuf, epoch: u64, key: Option<Arc<NoteKey>>) -> Task<Message> {
     let fallback = root.clone();
     Task::perform(
-        async move { tokio::task::spawn_blocking(move || store::scan(&root)).await },
+        async move {
+            tokio::task::spawn_blocking(move || store::scan_with(&root, key.as_deref())).await
+        },
         move |joined| {
             let scan = joined
                 .unwrap_or_else(|err| Err(format!("{}: {err}", fallback.display())))
@@ -46,7 +51,7 @@ pub fn reload(state: &mut State) -> Task<Message> {
     }
     state.reload_after_writes = false;
     state.loading = true;
-    load(state.root.clone(), state.write_counter)
+    load(state.root.clone(), state.write_counter, state.vault.key())
 }
 
 /// Shows the tab and reads the folder again.
@@ -64,7 +69,15 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
             | Message::SaveDue(_)
             | Message::Up
             | Message::Down
+            | Message::Tick(_)
     );
+    // The clock and the answers of the tasks are not input.
+    if !matches!(
+        message,
+        Message::Tick(_) | Message::SyncDone(..) | Message::Loaded(_) | Message::Saved(..)
+    ) {
+        state.vault.note_activity();
+    }
     let result = update_inner(state, message, ctx);
     if changes_noted_files {
         state.refresh_noted();
@@ -85,14 +98,14 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
             state.refresh_hits();
             nothing
         }
-        Message::SearchSubmit | Message::Enter => (enter(state), None),
+        Message::SearchSubmit | Message::Enter => (enter(state, ctx), None),
         Message::FocusSearch => (operation::focus(SEARCH_ID), None),
-        Message::NewNote => (new_note(state, ctx), None),
+        Message::NewNote => new_note(state, ctx),
         Message::NewFolder => (new_folder(state, ctx), None),
         Message::FolderMade(Ok(_)) => nothing,
         Message::FolderMade(Err(reason)) => (Task::none(), Some(failed(ctx, &reason))),
         Message::Saved(path, generation, result) => saved(state, &path, generation, result, ctx),
-        Message::SetMode(mode) => (set_mode(state, mode), None),
+        Message::SetMode(mode) => (set_mode(state, mode, ctx), None),
         Message::Edited(action) => (edited(state, action), None),
         Message::SaveDue(generation) if generation == state.generation => (flush(state), None),
         Message::SaveDue(_) => nothing,
@@ -108,8 +121,23 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
             step(state, 1);
             nothing
         }
-        Message::Escape => escape(state),
+        Message::Escape => escape(state, ctx),
         Message::Close => close(state),
+        Message::Tick(_)
+        | Message::Unlock
+        | Message::Unlocked(..)
+        | Message::UnlockDenied(_)
+        | Message::Lock
+        | Message::OpenMenu(_)
+        | Message::CloseMenu
+        | Message::Seal(..)
+        | Message::RecoveryRequested
+        | Message::RecoveryReady(_)
+        | Message::RecoveryDenied(_)
+        | Message::Restore(_)
+        | Message::Restored(..)
+        | Message::SyncNow
+        | Message::SyncDone(..) => secure::handle(state, message, ctx),
     }
 }
 
@@ -123,7 +151,7 @@ fn failed(ctx: &Ctx, reason: &str) -> Action {
 /// Writes go one at a time, in the order they were asked for: a later write
 /// of a note must not be overtaken by an earlier one, and a rename's removal of
 /// the old file must come after the first write of it.
-fn written(state: &mut State, write: Write) -> Task<Message> {
+pub fn written(state: &mut State, write: Write) -> Task<Message> {
     if state.writing() {
         state.queue(write);
         return Task::none();
@@ -158,6 +186,7 @@ fn saved(
         .running
         .take_if(|running| running.path == path && running.generation == generation);
     let mut action = None;
+    let wrote = result.is_ok();
     match result {
         Ok(hash) => state.set_base(path, hash),
         Err(WriteError::Io(reason)) => {
@@ -185,7 +214,12 @@ fn saved(
     } else {
         Task::none()
     };
-    (Task::batch([next, reread]), action)
+    let synced = if wrote {
+        syncing::after_save(state, ctx)
+    } else {
+        Task::none()
+    };
+    (Task::batch([next, reread, synced]), action)
 }
 
 fn conflicted(ctx: &Ctx, copy: &str) -> Action {
@@ -223,11 +257,12 @@ fn resolve_conflict(
         };
         (folder, format!("{} ({suffix})", note.title))
     };
+    let sealed = is_encrypted_path(&write.path);
     let title = store::unique_title(&base_title, |candidate| {
-        let path = store::topic_path(&state.root, &folder, candidate);
+        let path = store::note_path(&state.root, &folder, candidate, sealed);
         store::is_taken(&path) || state.note(&path).is_some()
     });
-    let path = store::topic_path(&state.root, &folder, &title);
+    let path = store::note_path(&state.root, &folder, &title, sealed);
     let copy_name = (!name_was_taken).then(|| title.clone());
     if let Some(moved) = state.note_mut(&write.path) {
         moved.path = path.clone();
@@ -258,6 +293,7 @@ fn resolve_conflict(
         generation: 0,
         root: state.root.clone(),
         background: false,
+        key: None,
     });
     (Some(retry), copy_name)
 }
@@ -326,7 +362,7 @@ fn loaded(
 /// Writes the shown note when it has changes, and tries again what failed
 /// earlier. A note made here that takes its title from its first line is
 /// renamed with the write.
-fn flush(state: &mut State) -> Task<Message> {
+pub fn flush(state: &mut State) -> Task<Message> {
     let mut tasks = Vec::new();
     if let Some(write) = pending_write(state) {
         tasks.push(written(state, write));
@@ -411,6 +447,7 @@ fn planned_write(state: &mut State, old: &Path) -> Option<Write> {
         generation: 0,
         root: state.root.clone(),
         background: false,
+        key: None,
     }))
 }
 
@@ -428,13 +465,14 @@ fn renamed(state: &mut State, old: &Path) -> Option<PathBuf> {
         return None;
     }
     let folder = note.folder.clone();
+    let sealed = is_encrypted_path(old);
     let title = store::unique_title(&wanted, |candidate| {
-        let path = store::topic_path(&state.root, &folder, candidate);
+        let path = store::note_path(&state.root, &folder, candidate, sealed);
         path != old
             && !store::is_same_file(&path, old)
             && (path.exists() || state.note(&path).is_some())
     });
-    let path = store::topic_path(&state.root, &folder, &title);
+    let path = store::note_path(&state.root, &folder, &title, sealed);
     let renamed = state.note_mut(old)?;
     renamed.path = path.clone();
     renamed.title = title;
@@ -496,13 +534,13 @@ fn open_hit(state: &mut State, index: usize) -> Task<Message> {
     select(state, path)
 }
 
-fn enter(state: &mut State) -> Task<Message> {
+fn enter(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if state.searching() {
         return open_hit(state, state.hit_cursor);
     }
     match state.cursor.clone() {
         Some(RowKey::Note(path)) if state.current.as_ref() == Some(&path) => {
-            set_mode(state, Mode::Edit)
+            set_mode(state, Mode::Edit, ctx)
         }
         Some(key) => pressed(state, key),
         None => Task::none(),
@@ -531,9 +569,12 @@ fn step(state: &mut State, by: isize) {
     }
 }
 
-fn set_mode(state: &mut State, mode: Mode) -> Task<Message> {
+fn set_mode(state: &mut State, mode: Mode, ctx: &Ctx) -> Task<Message> {
     if state.current.is_none() {
         return Task::none();
+    }
+    if mode == Mode::Edit && state.shown_is_locked() {
+        return secure::unlock(state, false, ctx);
     }
     state.mode = mode;
     match mode {
@@ -572,15 +613,25 @@ fn edited(state: &mut State, action: text_editor::Action) -> Task<Message> {
     })
 }
 
-fn new_note(state: &mut State, ctx: &Ctx) -> Task<Message> {
-    let saved = flush(state);
+fn new_note(state: &mut State, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let folder = state.target_folder();
+    let sealed = state.options.encrypt_all || state.folder_is_sealed(&folder);
+    if sealed && !state.vault.is_unlocked() {
+        // An encrypted note is never started without the key; the person
+        // asks again once the key is here.
+        return secure::unlock_for_new_note(state, ctx);
+    }
+    (new_note_in(state, ctx, folder, sealed), None)
+}
+
+fn new_note_in(state: &mut State, ctx: &Ctx, folder: PathBuf, sealed: bool) -> Task<Message> {
+    let saved = flush(state);
     let base = ctx.lang.text(Msg::NotesNewNote);
     let title = store::unique_title(base, |candidate| {
-        let path = store::topic_path(&state.root, &folder, candidate);
+        let path = store::note_path(&state.root, &folder, candidate, sealed);
         path.exists() || state.note(&path).is_some()
     });
-    let path = store::topic_path(&state.root, &folder, &title);
+    let path = store::note_path(&state.root, &folder, &title, sealed);
     state
         .expanded
         .extend(folder.ancestors().map(Path::to_owned));
@@ -592,6 +643,7 @@ fn new_note(state: &mut State, ctx: &Ctx) -> Task<Message> {
         text: String::new(),
         modified: None,
         base: None,
+        unread: false,
     });
     state.query.clear();
     state.hits.clear();
@@ -701,6 +753,7 @@ fn links_resolved(
                 generation: 0,
                 root: state.root.clone(),
                 background: true,
+                key: None,
             });
             written(state, write)
         })
@@ -764,6 +817,7 @@ fn make_file_note_current(
                 text: String::new(),
                 modified: None,
                 base: None,
+                unread: false,
             });
             (new_path, true)
         }
@@ -781,9 +835,9 @@ fn make_file_note_current(
     Ok(Task::batch([saved, written, operation::focus(EDITOR_ID)]))
 }
 
-fn escape(state: &mut State) -> (Task<Message>, Option<Action>) {
+fn escape(state: &mut State, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     if state.editing() {
-        return (set_mode(state, Mode::View), None);
+        return (set_mode(state, Mode::View, ctx), None);
     }
     if state.searching() {
         state.query.clear();

@@ -10,7 +10,9 @@ use ncrs_fs::{Destination, PathProblem};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
+use crate::platform::Platform;
 use crate::state::Panels;
+use crate::typed_path_text::{expand, strip_quotes};
 
 /// The answer to the look at a path that Enter submitted.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,18 +53,79 @@ impl Panels {
         let Some(raw_path) = self.path_field.clone() else {
             return (Task::none(), Vec::new());
         };
-        let typed = raw_path.trim();
+        let typed = strip_quotes(&raw_path);
         if typed.is_empty() {
             self.set_path_field(None);
             return (Task::none(), vec![Action::ReleaseFocus]);
         }
+        self.check_typed_path(typed, ctx)
+    }
+
+    /// Enter in the "Go to path" dialog: the same look at the typed path as in
+    /// the path field. The answer is an [`Action::GoToPathAnswer`], so the
+    /// dialog closes on a destination and shows the problem otherwise.
+    pub fn go_to_path_from_dialog(
+        &mut self,
+        text: &str,
+        ctx: &TypedPathCtx<'_>,
+    ) -> (Task<PathChecked>, Vec<Action>) {
+        let typed = strip_quotes(text);
+        if typed.is_empty() {
+            return (Task::none(), Vec::new());
+        }
+        let (task, mut actions) = self.check_typed_path(typed, ctx);
+        let refused = actions.iter().find_map(|action| match action {
+            Action::ShowError(problem) => Some(problem.clone()),
+            _ => None,
+        });
+        if let Some(problem) = refused {
+            return (task, vec![Action::GoToPathAnswer(Err(problem))]);
+        }
+        if !actions.is_empty() {
+            actions.push(Action::GoToPathAnswer(Ok(())));
+        }
+        (task, actions)
+    }
+
+    /// The answer to [`Self::go_to_path_from_dialog`]. An answer to an older
+    /// look is dropped.
+    pub fn finish_go_to_path_check(&mut self, lang: Language, checked: PathChecked) -> Vec<Action> {
+        if checked.request_id != self.path_check_id {
+            return Vec::new();
+        }
+        match checked.result {
+            Ok(destination) => vec![
+                Action::ClearMessages,
+                Action::Load {
+                    side: checked.side,
+                    path: destination.directory,
+                    select: destination.select,
+                },
+                Action::GoToPathAnswer(Ok(())),
+            ],
+            Err(problem) => vec![Action::GoToPathAnswer(Err(problem_text(
+                lang,
+                &problem,
+                &checked.target,
+            )))],
+        }
+    }
+
+    fn check_typed_path(
+        &mut self,
+        typed: &str,
+        ctx: &TypedPathCtx<'_>,
+    ) -> (Task<PathChecked>, Vec<Action>) {
         let side = self.active;
         // Before anything that asks the disk: an address, or a path typed
         // while the panel is on a server, is no path of this computer.
         if let Some(actions) = self.open_typed_remote(side, typed, ctx) {
             return (Task::none(), actions);
         }
-        let target = ncrs_fs::resolve_typed_path(&self.active_panel().path, ctx.home, typed);
+        let expanded = expand(typed, Platform::current(), ctx.home, &|name| {
+            std::env::var(name).ok()
+        });
+        let target = ncrs_fs::resolve_typed_path(&self.active_panel().path, ctx.home, &expanded);
         self.path_check_id = self.path_check_id.wrapping_add(1);
         let request_id = self.path_check_id;
         let located = Task::perform(ncrs_fs::locate(target.clone()), move |result| PathChecked {

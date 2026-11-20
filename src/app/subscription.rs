@@ -3,6 +3,9 @@ use crate::app::*;
 /// How often the working line of the chat moves and recounts.
 const HERMES_CHAT_TICK_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
 
+/// How often the notes look at the clock for the lock and the timed sync.
+const NOTES_TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// How often an open app asks the update check whether a day has passed.
 const UPDATE_CHECK_ASKS_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
@@ -102,6 +105,9 @@ impl App {
                         _ => None,
                     }
                 }),
+            // The clock of the notes: auto-lock and the timed sync.
+            iced::time::every(NOTES_TICK_EVERY)
+                .map(|now| Message::Notes(ncrs_notes::Message::Tick(now))),
             // Keeps the status bar's progress and the open page current.
             if self.hermes.pipeline.is_some() || self.hermes.filing_status.page_open() {
                 iced::time::every(self.hermes.filing_status.tick_every())
@@ -120,6 +126,11 @@ impl App {
             if self.update_check_runs() {
                 iced::time::every(UPDATE_CHECK_ASKS_EVERY)
                     .map(|_| Message::Updates(ncrs_updates::Message::CheckDue))
+            } else {
+                Subscription::none()
+            },
+            if self.takes_handoffs() {
+                iced::time::every(super::handoff::POLL_EVERY).map(|_| Message::HandoffPoll)
             } else {
                 Subscription::none()
             },

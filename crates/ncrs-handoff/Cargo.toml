@@ -1,0 +1,27 @@
+[package]
+name = "ncrs-handoff"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Paths other programs hand to ncrs (command line, second start, file manager D-Bus service) and the system settings that make ncrs the folder opener"
+license = "MIT"
+publish = false
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The org.freedesktop.FileManager1 service ("Show in folder" of browsers and
+# IDEs). Default features: the async-io executor and the blocking API are what
+# the Secret Service store of the keyring already builds into the tree, and the
+# service runs on a thread of its own, so it needs nothing of tokio.
+zbus = "5"
+
+[target.'cfg(windows)'.dependencies]
+# The Explorer menu entries live under HKCU. Safe wrapper; already in the lock
+# through the resource compiler of the build script.
+winreg = "0.56"
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[lints]
+workspace = true

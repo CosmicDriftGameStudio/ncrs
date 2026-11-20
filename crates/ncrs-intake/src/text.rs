@@ -287,6 +287,13 @@ impl TextChain {
                     path: path.to_path_buf(),
                     reason,
                 },
+                TextError::EngineUnavailable {
+                    path: empty,
+                    reason,
+                } if empty.as_os_str().is_empty() => TextError::EngineUnavailable {
+                    path: path.to_path_buf(),
+                    reason,
+                },
                 other => other,
             })? {
                 if !text.trim().is_empty() {
