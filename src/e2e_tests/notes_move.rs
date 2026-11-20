@@ -72,7 +72,7 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
 ) -> (NoteOnIndexedFile, Session<impl Live>) {
     let data = tempfile::TempDir::new().unwrap();
     let archive = tempfile::TempDir::new().unwrap();
-    let root = std::fs::canonicalize(archive.path()).unwrap();
+    let root = ncrs_intake::canonical_path(archive.path()).unwrap();
     write(
         &root.join("offer.txt"),
         "Angebot Heizung Vaillant, gueltig bis Dezember",

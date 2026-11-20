@@ -15,16 +15,37 @@ use crate::config::from_text;
 use crate::i18n::Language;
 use crate::messages::SettingsFeature;
 
+// Windows does not count a path without a drive as absolute, and the config
+// refuses a relative location; the macOS pictures keep the Unix path.
+#[cfg(windows)]
+macro_rules! home {
+    () => {
+        "C:/home/test"
+    };
+}
+#[cfg(not(windows))]
+macro_rules! home {
+    () => {
+        "/home/test"
+    };
+}
+
 fn filled_config() -> &'static str {
-    "[modules.filing]\nenabled = true\nown_names = [\"Max Muster\", \"Muster GmbH\"]\nown_ibans = [\"DE89370400440532013000\"]\nown_tax_ids = [\"12/345/67890\"]\n\n[[modules.filing.locations]]\npath = \"/home/test/Downloads/Scans\"\nmode = \"inbox\"\nimages = true\n\n[[modules.filing.locations]]\npath = \"/home/test/Documents/Filed\"\nmode = \"archive\"\ntarget = true\n"
+    concat!(
+        "[modules.filing]\nenabled = true\nown_names = [\"Max Muster\", \"Muster GmbH\"]\nown_ibans = [\"DE89370400440532013000\"]\nown_tax_ids = [\"12/345/67890\"]\n\n[[modules.filing.locations]]\npath = \"",
+        home!(),
+        "/Downloads/Scans\"\nmode = \"inbox\"\nimages = true\n\n[[modules.filing.locations]]\npath = \"",
+        home!(),
+        "/Documents/Filed\"\nmode = \"archive\"\ntarget = true\n"
+    )
 }
 
 fn loaded_areas() -> LoadedFacts {
     let area = |name: &str, files: usize, order: &str| AreaFacts {
         name: name.to_owned(),
         files,
-        read_folder: PathBuf::from("/home/test/Downloads/Scans"),
-        root: PathBuf::from("/home/test/Downloads/Scans").join(name),
+        read_folder: PathBuf::from(concat!(home!(), "/Downloads/Scans")),
+        root: PathBuf::from(concat!(home!(), "/Downloads/Scans")).join(name),
         order: order.to_owned(),
     };
     let run = |batch: i64,
@@ -92,7 +113,7 @@ fn loaded_areas() -> LoadedFacts {
             ),
         ],
         folder_files: std::collections::BTreeMap::from([(
-            PathBuf::from("/home/test/Downloads/Scans"),
+            PathBuf::from(concat!(home!(), "/Downloads/Scans")),
             214,
         )]),
         read_folders: Some(ncrs_settings::facts::ReadFolderCoverage {
@@ -100,7 +121,7 @@ fn loaded_areas() -> LoadedFacts {
             with_text: 300,
             understood: 298,
         }),
-        disconnected: vec![PathBuf::from("/home/test/Documents/Filed")],
+        disconnected: vec![PathBuf::from(concat!(home!(), "/Documents/Filed"))],
         error: None,
     }
 }
@@ -236,7 +257,7 @@ fn the_folder_dialog_matches_its_snapshots() -> TestResult {
         )?
         .in_language(language);
         if let Some(state) = app.settings.page.as_mut() {
-            state.folder_dialog = Some(PathBuf::from("/home/test/Downloads/Scans"));
+            state.folder_dialog = Some(PathBuf::from(concat!(home!(), "/Downloads/Scans")));
         }
         matches_snapshot(
             &app,

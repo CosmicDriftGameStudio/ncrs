@@ -318,7 +318,7 @@ jobs:
       - name: Tests
         env:
           TZ: Europe/Berlin
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       - name: Tests, App Store build (macOS)
         if: runner.os == 'macOS'
