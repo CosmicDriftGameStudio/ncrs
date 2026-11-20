@@ -129,7 +129,7 @@ mod tests {
         let found = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
 
         missing.unwrap_err();
-        assert_eq!(found.path, fs::canonicalize(dir.path()).unwrap());
+        assert_eq!(found.path, ncrs_intake::canonical_path(dir.path()).unwrap());
     }
 
     #[test]

@@ -63,7 +63,10 @@ pub use filing_plan::{
     FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
-pub use location::{location_of, relative_to_location, Location, LocationMode};
+pub use location::{
+    canonical_path, location_of, relative_to_location, without_verbatim_prefix, Location,
+    LocationMode,
+};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,

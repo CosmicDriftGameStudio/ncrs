@@ -154,7 +154,7 @@ pub fn update(
 /// The folder as the rules compare it; one that cannot be resolved is kept as
 /// the dialog gave it.
 fn canonical(path: PathBuf) -> PathBuf {
-    std::fs::canonicalize(&path).unwrap_or(path)
+    ncrs_intake::canonical_path(&path).unwrap_or(path)
 }
 
 fn page_flag(

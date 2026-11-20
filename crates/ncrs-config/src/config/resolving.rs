@@ -61,7 +61,9 @@ pub fn resolve_filing(
             span: entry.path.span(),
             reason,
         };
-        let path = expand_location_path(entry.path.get_ref(), home).map_err(path_error)?;
+        let path = ncrs_intake::without_verbatim_prefix(
+            expand_location_path(entry.path.get_ref(), home).map_err(path_error)?,
+        );
         filing.locations.push(FilingLocation {
             path,
             mode: LocationMode::from(*entry.mode.get_ref()),

@@ -97,7 +97,7 @@ impl Talk {
             [],
         ));
         // Resolved folders are canonical, so the configured ones must be too.
-        let root = fs::canonicalize(dir.path()).unwrap();
+        let root = ncrs_intake::canonical_path(dir.path()).unwrap();
         let below = |names: &[&str]| names.iter().map(|name| root.join(name)).collect();
         let ctx = Ctx {
             lang: LANG,

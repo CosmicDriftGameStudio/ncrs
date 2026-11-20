@@ -142,7 +142,7 @@ pub fn locations_with_role(
 /// Blocking. The canonical path of the folder a panel shows: the rules
 /// compare canonical paths, and the intake works on them too.
 pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {
-    let canonical = std::fs::canonicalize(folder).map_err(|err| err.to_string())?;
+    let canonical = ncrs_intake::canonical_path(folder).map_err(|err| err.to_string())?;
     if !canonical.is_dir() {
         return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory).to_string());
     }
@@ -160,7 +160,8 @@ pub fn write_locations(
     let canonical: Vec<FilingLocation> = chosen
         .iter()
         .map(|location| FilingLocation {
-            path: std::fs::canonicalize(&location.path).unwrap_or_else(|_| location.path.clone()),
+            path: ncrs_intake::canonical_path(&location.path)
+                .unwrap_or_else(|_| location.path.clone()),
             ..location.clone()
         })
         .collect();
@@ -198,7 +199,7 @@ mod tests {
     #[test]
     fn a_config_from_the_first_setup_loads_and_saves_back_with_the_same_meaning() {
         let base = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(base.path()).unwrap();
+        let root = ncrs_intake::canonical_path(base.path()).unwrap();
         for name in ["tubes", "records", "filed"] {
             std::fs::create_dir(root.join(name)).unwrap();
         }
@@ -241,7 +242,7 @@ mod tests {
         let spelled_round_about = base.path().join("real").join(".");
         assert_eq!(
             resolve_folder(&spelled_round_about).unwrap(),
-            std::fs::canonicalize(&real).unwrap()
+            ncrs_intake::canonical_path(&real).unwrap()
         );
         resolve_folder(&file).unwrap_err();
         resolve_folder(&base.path().join("missing")).unwrap_err();
@@ -265,7 +266,7 @@ mod tests {
 
         assert_eq!(
             filing.locations[0].path,
-            std::fs::canonicalize(&real).unwrap()
+            ncrs_intake::canonical_path(&real).unwrap()
         );
         assert!(filing.enabled);
     }

@@ -60,7 +60,7 @@ where
 fn process_again_takes_the_marked_files_and_folders_and_skips_the_excluded() {
     let data = tempfile::TempDir::new().unwrap();
     let documents = tempfile::TempDir::new().unwrap();
-    let root = std::fs::canonicalize(documents.path()).unwrap();
+    let root = ncrs_intake::canonical_path(documents.path()).unwrap();
     for name in ["one", "two", "three"] {
         write(
             &root.join("Haus").join(format!("{name}.txt")),
@@ -71,7 +71,7 @@ fn process_again_takes_the_marked_files_and_folders_and_skips_the_excluded() {
     write(&root.join("single.txt"), "Rechnung Einzeldatei");
     // Excluding needs the target archive; the folder under test stays read-only.
     let target_dir = tempfile::TempDir::new().unwrap();
-    let target = std::fs::canonicalize(target_dir.path()).unwrap();
+    let target = ncrs_intake::canonical_path(target_dir.path()).unwrap();
     std::fs::write(
         data.path().join("config.toml"),
         format!(

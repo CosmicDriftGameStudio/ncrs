@@ -844,3 +844,18 @@ fn the_update_check_setting_is_off_on_or_left_to_the_channel() {
     assert!(written.contains("# mine\n"), "{written}");
     assert!(written.contains("check_for_updates = false"), "{written}");
 }
+
+#[cfg(windows)]
+#[test]
+fn a_location_written_with_the_verbatim_prefix_loads_without_it() {
+    let config = load_text(
+        "version = 1\n\
+         [modules.filing]\nenabled = true\n\
+         [[modules.filing.locations]]\npath = '\\\\?\\C:\\x'\nmode = \"archive\"\ntarget = true\n",
+    );
+
+    assert_eq!(
+        config.filing.locations.first().map(|l| l.path.clone()),
+        Some(PathBuf::from(r"C:\x"))
+    );
+}

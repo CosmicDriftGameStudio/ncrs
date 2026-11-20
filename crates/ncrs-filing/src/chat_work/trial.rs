@@ -552,7 +552,7 @@ fn ask_model(
             to_remember.push((entry.hash, folder_name.clone()));
         }
         if let Some(folder) = folder_name {
-            offer_model_folder(ask, entries, position, PathBuf::from(folder));
+            offer_model_folder(ask, entries, position, folder_path(&folder));
         }
     }
     // The picks are a cache: a trial without them is only slower next time.
@@ -593,7 +593,7 @@ fn apply_stored_picks(
         match stored.get(&entry.hash) {
             Some(None) => {}
             Some(Some(folder)) if ask.folders.entries.iter().any(|(known, _)| known == folder) => {
-                offer_model_folder(ask, entries, position, PathBuf::from(folder));
+                offer_model_folder(ask, entries, position, folder_path(folder));
             }
             Some(Some(_)) | None => remaining.push(position),
         }
@@ -603,6 +603,12 @@ fn apply_stored_picks(
 
 /// Makes the file unsure with the model's `folder` first, then what the
 /// neighbours offered.
+/// The folder lists spell folders with `/`; a plain root would otherwise get mixed
+/// separators on Windows.
+fn folder_path(folder: &str) -> PathBuf {
+    folder.split('/').collect()
+}
+
 fn offer_model_folder(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
@@ -738,4 +744,15 @@ fn in_sample_order(entries: Vec<TrialEntry>) -> Vec<TrialEntry> {
             .then(left.1.cmp(&right.1))
     });
     ranked.into_iter().map(|(_, _, entry)| entry).collect()
+}
+
+#[cfg(test)]
+mod folder_path_tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_of_the_list_becomes_its_components() {
+        let parts: Vec<_> = folder_path("A/B").iter().map(ToOwned::to_owned).collect();
+        assert_eq!(parts, ["A", "B"]);
+    }
 }
