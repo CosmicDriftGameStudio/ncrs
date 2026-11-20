@@ -7,9 +7,9 @@
 -- Share form:  \\?\UNC\s... -> \\s...
 -- Anything else (\\?\Volume{...}\, plain, Unix) stays as it is.
 
--- A document whose plain path another document already holds keeps its
--- prefixed path: the two rows are different files, and neither may be merged
--- or removed by a path rewrite.
+-- ncrs wrote document paths on Windows only below canonicalized roots, so a
+-- plain row with the same path did not come from it. Which of the two is
+-- stale cannot be told here: both are left as they are.
 UPDATE document SET path = CASE
     WHEN substr(path, 1, 4) = '\\?\' AND substr(path, 6, 1) = ':'
         AND upper(substr(path, 5, 1)) BETWEEN 'A' AND 'Z' THEN substr(path, 5)
