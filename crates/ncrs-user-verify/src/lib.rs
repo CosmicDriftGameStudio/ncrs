@@ -165,6 +165,17 @@ mod tests {
         assert_eq!(verifier.asked(), ["a", "b", "c"]);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_system_verifier_answers_check_on_this_mac_without_asking_anyone() {
+        let name = match SystemVerifier.check() {
+            Check::Nothing => "Nothing",
+            Check::TouchId => "TouchId",
+            Check::WindowsHello => "WindowsHello",
+        };
+        eprintln!("SystemVerifier::check() on this Mac: {name}");
+    }
+
     #[test]
     fn the_system_verifier_names_what_this_os_asks() {
         let expected = if cfg!(target_os = "macos") {

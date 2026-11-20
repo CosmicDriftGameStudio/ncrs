@@ -179,8 +179,8 @@ pub(in crate::e2e_tests) struct World {
 impl World {
     pub(super) fn new(label: &str, config_tail: &str) -> Self {
         let data = tempfile::Builder::new()
-            .prefix(&format!("ncrs-acc160-{label}-"))
-            .tempdir()
+            .prefix(&format!("a{label}-"))
+            .tempdir_in("/tmp")
             .unwrap();
         let root = std::fs::canonicalize(data.path()).unwrap();
         let downloads = root.join("Downloads");
