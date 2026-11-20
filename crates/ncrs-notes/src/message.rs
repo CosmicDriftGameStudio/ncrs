@@ -81,6 +81,7 @@ pub enum Message {
     RecoveryRequested,
     /// The recovery key as text, or why there is none.
     RecoveryReady(Result<Option<String>, String>),
+    RecoveryDenied(ncrs_user_verify::Denied),
     /// A recovery key typed in on a computer that has no key.
     Restore(String),
     /// The key from a recovery text was stored, and when.

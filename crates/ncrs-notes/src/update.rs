@@ -133,6 +133,7 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
         | Message::Seal(..)
         | Message::RecoveryRequested
         | Message::RecoveryReady(_)
+        | Message::RecoveryDenied(_)
         | Message::Restore(_)
         | Message::Restored(..)
         | Message::SyncNow

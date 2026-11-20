@@ -11773,6 +11773,12 @@
       "de": "deine verschlüsselten Notizen zu entsperren"
     },
     {
+      "key": "notes.verify_recovery_reason",
+      "context": "Notes tab: the line the system's Touch ID or Windows Hello prompt shows while it asks the person before the recovery key of the encrypted notes is shown. Starts after the app name on macOS, so no capital and no full stop.",
+      "en": "show the recovery key of your encrypted notes",
+      "de": "den Wiederherstellungsschlüssel deiner verschlüsselten Notizen anzuzeigen"
+    },
+    {
       "key": "notes.unlock_cancelled",
       "context": "Notes tab: line on the page of an encrypted note after the person closed the Touch ID or Windows Hello prompt. The note stays locked.",
       "en": "Not unlocked: the prompt was cancelled. The note stays locked.",

@@ -111,3 +111,21 @@ fn both_ways_keeps_both_versions_when_both_sides_changed() {
         );
     }
 }
+
+#[test]
+fn a_sync_folder_inside_the_notes_folder_is_refused() {
+    let local = tempfile::tempdir().unwrap();
+    let inside = local.path().join("sync");
+    fs::create_dir(&inside).unwrap();
+    let job = job(local.path(), &inside, NotesSyncDirection::BothWays);
+    run(&job, SystemTime::now()).unwrap_err();
+}
+
+#[test]
+fn a_notes_folder_inside_the_sync_folder_is_refused() {
+    let target = tempfile::tempdir().unwrap();
+    let inside = target.path().join("notes");
+    fs::create_dir(&inside).unwrap();
+    let job = job(&inside, target.path(), NotesSyncDirection::OneWay);
+    run(&job, SystemTime::now()).unwrap_err();
+}

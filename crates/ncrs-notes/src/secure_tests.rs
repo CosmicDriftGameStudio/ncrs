@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 use ncrs_core::notes_sync::NotesSettings;
 use ncrs_i18n::Language;
 
+use crate::action::Action;
 use crate::crypt::{decrypt, encrypt, NoteKey};
-use crate::secure::{denied_text, verified_key};
+use crate::secure::{denied_text, verified_key, verified_recovery};
 use crate::state::Seal;
 use crate::store::{scan, scan_with};
 use crate::tree::RowKey;
@@ -313,4 +314,39 @@ fn the_unlock_button_names_what_the_system_asks() {
             .check(),
         Check::Nothing
     );
+}
+
+#[test]
+fn the_recovery_key_is_only_read_after_the_person_was_verified() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, _) = stored_key_state(dir.path());
+    let verifier = Scripted::new(Check::TouchId);
+    let shown = verified_recovery(&verifier, state.vault.store().as_ref(), "recovery");
+    assert!(matches!(shown, Ok(Ok(Some(_)))));
+    assert_eq!(verifier.asked(), ["recovery"]);
+}
+
+#[test]
+fn a_refused_prompt_reads_no_recovery_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, store) = stored_key_state(dir.path());
+    store.failing(Some("must not be asked"));
+    let verifier = Scripted::new(Check::TouchId).answering(Err(Denied::Cancelled));
+    let shown = verified_recovery(&verifier, state.vault.store().as_ref(), "recovery");
+    assert_eq!(shown, Err(Denied::Cancelled));
+}
+
+#[tokio::test]
+async fn a_refused_recovery_prompt_shows_the_reason_and_no_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state_with_note(dir.path(), "plain");
+    let (_, action) = update(
+        &mut state,
+        Message::RecoveryDenied(Denied::Failed("no match".to_owned())),
+        &CTX,
+    );
+    match action {
+        Some(Action::Error(text)) => assert!(text.contains("no match"), "{text}"),
+        other => panic!("expected the reason, got {other:?}"),
+    }
 }

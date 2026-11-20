@@ -225,8 +225,11 @@ pub fn run(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
         }
         fs::create_dir(&job.target).map_err(|err| format!("{}: {err}", job.target.display()))?;
     }
-    if same_folder(&job.local, &job.target) {
-        return Err("the sync folder is the notes folder".to_owned());
+    if folders_overlap(&job.local, &job.target) {
+        return Err(
+            "the sync folder and the notes folder must not be the same or inside one another"
+                .to_owned(),
+        );
     }
     match job.direction {
         NotesSyncDirection::OneWay => one_way(job, now),
@@ -234,9 +237,9 @@ pub fn run(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
     }
 }
 
-fn same_folder(first: &Path, second: &Path) -> bool {
+fn folders_overlap(first: &Path, second: &Path) -> bool {
     match (fs::canonicalize(first), fs::canonicalize(second)) {
-        (Ok(left), Ok(right)) => left == right,
+        (Ok(left), Ok(right)) => left.starts_with(&right) || right.starts_with(&left),
         _ => false,
     }
 }

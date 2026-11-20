@@ -93,7 +93,11 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
             (Task::none(), None)
         }
         Message::Seal(seal, on) => seal_rows(state, seal, on, ctx),
-        Message::RecoveryRequested => (recovery(state), None),
+        Message::RecoveryRequested => (recovery(state, ctx), None),
+        Message::RecoveryDenied(denied) => (
+            Task::none(),
+            Some(Action::Error(denied_text(&denied, ctx.lang))),
+        ),
         Message::RecoveryReady(result) => (Task::none(), Some(recovery_ready(result, ctx))),
         Message::Restore(text) => (restore(state, text), None),
         Message::Restored(result, now) => restored(state, result, now, ctx),
@@ -192,18 +196,35 @@ fn key_failed(ctx: &Ctx, reason: &str) -> Action {
     ))
 }
 
-fn recovery(state: &State) -> Task<Message> {
+/// The recovery key, read from the credential store only after the person was
+/// verified. Blocking.
+pub fn verified_recovery(
+    verifier: &dyn UserVerifier,
+    store: &dyn KeyStore,
+    reason: &str,
+) -> Result<Result<Option<String>, String>, Denied> {
+    verifier.verify(reason)?;
+    Ok(store
+        .load()
+        .map(|key| key.map(|found| found.recovery_text())))
+}
+
+fn recovery(state: &State, ctx: &Ctx) -> Task<Message> {
     let store = state.vault.store();
+    let verifier = state.vault.verifier();
+    let reason = ctx.lang.text(Msg::NotesVerifyRecoveryReason).to_owned();
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                store
-                    .load()
-                    .map(|key| key.map(|found| found.recovery_text()))
+                verified_recovery(verifier.as_ref(), store.as_ref(), &reason)
             })
             .await
         },
-        |joined| Message::RecoveryReady(joined.unwrap_or_else(|err| Err(err.to_string()))),
+        |joined| match joined {
+            Ok(Ok(result)) => Message::RecoveryReady(result),
+            Ok(Err(denied)) => Message::RecoveryDenied(denied),
+            Err(err) => Message::RecoveryReady(Err(err.to_string())),
+        },
     )
 }
 
