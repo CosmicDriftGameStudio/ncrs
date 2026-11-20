@@ -10,6 +10,10 @@ pub(in crate::app) const POLL_EVERY: std::time::Duration = std::time::Duration::
 /// What was handed over since the last look: the inbox of this data folder and,
 /// on macOS, the files the system opened ncrs with.
 fn collect(data_dir: Option<&Path>) -> Vec<Request> {
+    #[cfg_attr(
+        not(target_os = "macos"),
+        expect(unused_mut, reason = "only macOS adds the opened paths")
+    )]
     let mut requests = data_dir.map(ncrs_handoff::take).unwrap_or_default();
     #[cfg(target_os = "macos")]
     requests.extend(
