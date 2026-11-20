@@ -202,3 +202,48 @@ fn a_wrong_key_leaves_the_note_out_instead_of_breaking() {
         Some("mine")
     );
 }
+
+fn locked_state_with_sealed_note(root: &Path, key: &NoteKey) -> (State, Vec<u8>) {
+    let bytes = encrypt(key, "secret plan").unwrap();
+    fs::write(root.join("a.md.enc"), &bytes).unwrap();
+    let mut state = State::new(root.to_owned());
+    state.vault = Vault::with_store(Arc::new(MemoryKeyStore::default()));
+    let _ = update(&mut state, Message::Loaded(Box::new(scan(root))), &CTX);
+    (state, bytes)
+}
+
+#[tokio::test]
+async fn decrypting_before_the_keyed_reload_arrived_leaves_the_file_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = NoteKey::generate().unwrap();
+    let (mut state, bytes) = locked_state_with_sealed_note(dir.path(), &key);
+    let _ = update(
+        &mut state,
+        Message::Unlocked(Ok(Some(key)), Instant::now()),
+        &CTX,
+    );
+    let sealed = dir.path().join("a.md.enc");
+    let seal = Seal::Row(RowKey::Note(sealed.clone()));
+    let _ = update(&mut state, Message::Seal(seal, false), &CTX);
+    assert_eq!(flush_now(&mut state, &CTX), Vec::<String>::new());
+    assert_eq!(fs::read(&sealed).unwrap(), bytes);
+    assert!(!dir.path().join("a.md").exists());
+}
+
+#[tokio::test]
+async fn editing_before_the_keyed_reload_arrived_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = NoteKey::generate().unwrap();
+    let (mut state, bytes) = locked_state_with_sealed_note(dir.path(), &key);
+    let _ = update(
+        &mut state,
+        Message::Unlocked(Ok(Some(key)), Instant::now()),
+        &CTX,
+    );
+    let sealed = dir.path().join("a.md.enc");
+    state.current = Some(sealed.clone());
+    let _ = update(&mut state, Message::SetMode(crate::Mode::Edit), &CTX);
+    assert_ne!(state.mode, crate::Mode::Edit);
+    assert_eq!(flush_now(&mut state, &CTX), Vec::<String>::new());
+    assert_eq!(fs::read(&sealed).unwrap(), bytes);
+}

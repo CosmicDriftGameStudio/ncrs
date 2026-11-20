@@ -86,7 +86,11 @@ fn path_from_file_uri(uri: &str) -> Option<PathBuf> {
         return None;
     }
     let without_query = path.split(['?', '#']).next().unwrap_or(path);
-    Some(path_of_bytes(decode_percent(without_query)))
+    let decoded = decode_percent(without_query);
+    if decoded.contains(&0) {
+        return None;
+    }
+    Some(path_of_bytes(decoded))
 }
 
 fn decode_percent(text: &str) -> Vec<u8> {
@@ -150,6 +154,13 @@ mod tests {
         assert_eq!(path_from_file_uri("file://server/share/x"), None);
         assert_eq!(path_from_file_uri("https://example.org/x"), None);
         assert_eq!(path_from_file_uri("/plain/path"), None);
+    }
+
+    #[test]
+    fn an_escaped_nul_makes_the_uri_no_path() {
+        assert_eq!(path_from_file_uri("file:///tmp/a%00b"), None);
+        let uris = vec!["file:///tmp/a%00b".to_owned()];
+        assert!(requests_from_uris(&uris, false).is_empty());
     }
 
     #[test]

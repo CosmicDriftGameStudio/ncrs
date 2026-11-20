@@ -14,26 +14,33 @@ struct FileManager {
 }
 
 impl FileManager {
-    fn hand_over(&self, uris: &[String], reveal: bool) {
+    fn hand_over(&self, uris: &[String], reveal: bool) -> zbus::fdo::Result<()> {
         let requests = requests_from_uris(uris, reveal);
-        if !requests.is_empty() {
-            drop(send(&self.data_dir, &requests));
+        if requests.is_empty() {
+            return Ok(());
         }
+        send(&self.data_dir, &requests).map_err(|error| {
+            zbus::fdo::Error::Failed(format!("the inbox is not writable: {error}"))
+        })
     }
 }
 
 #[zbus::interface(name = "org.freedesktop.FileManager1")]
 impl FileManager {
-    fn show_folders(&self, uris: Vec<String>, _startup_id: String) {
-        self.hand_over(&uris, false);
+    fn show_folders(&self, uris: Vec<String>, _startup_id: String) -> zbus::fdo::Result<()> {
+        self.hand_over(&uris, false)
     }
 
-    fn show_items(&self, uris: Vec<String>, _startup_id: String) {
-        self.hand_over(&uris, true);
+    fn show_items(&self, uris: Vec<String>, _startup_id: String) -> zbus::fdo::Result<()> {
+        self.hand_over(&uris, true)
     }
 
-    fn show_item_properties(&self, uris: Vec<String>, _startup_id: String) {
-        self.hand_over(&uris, true);
+    fn show_item_properties(
+        &self,
+        uris: Vec<String>,
+        _startup_id: String,
+    ) -> zbus::fdo::Result<()> {
+        self.hand_over(&uris, true)
     }
 }
 

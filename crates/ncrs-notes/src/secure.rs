@@ -212,7 +212,7 @@ fn to_convert(state: &State, seal: &Seal, on: bool) -> Vec<PathBuf> {
     state
         .notes
         .iter()
-        .filter(|note| note.kind == Kind::Topic && inside(note))
+        .filter(|note| note.kind == Kind::Topic && !note.unread && inside(note))
         .filter(|note| is_encrypted_path(&note.path) != on)
         .map(|note| note.path.clone())
         .collect()

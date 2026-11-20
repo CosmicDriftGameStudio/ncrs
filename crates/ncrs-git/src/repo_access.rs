@@ -6,8 +6,30 @@ use crate::GitError;
 
 const SHORT_HASH_LENGTH: usize = 7;
 
+/// Opens the repository with every command a config could run removed: a
+/// repository from an unzipped download carries its own `.git/config`, and
+/// showing a folder must never execute what that file names.
 pub fn open(root: &Path) -> Result<gix::Repository, GitError> {
-    gix::open(root).map_err(GitError::open)
+    let mut repository = gix::open(root).map_err(GitError::open)?;
+    drop_command_drivers(&mut repository);
+    Ok(repository)
+}
+
+fn drop_command_drivers(repository: &mut gix::Repository) {
+    let mut snapshot = repository.config_snapshot_mut();
+    let drivers: Vec<_> = snapshot
+        .sections_and_ids()
+        .filter(|(section, _)| {
+            let header = section.header();
+            let name = header.name();
+            header.subsection_name().is_some()
+                && (name.eq_ignore_ascii_case(b"filter") || name.eq_ignore_ascii_case(b"diff"))
+        })
+        .map(|(_, id)| id)
+        .collect();
+    for id in drivers {
+        snapshot.remove_section_by_id(id);
+    }
 }
 
 pub fn short_hash(id: &ObjectId) -> String {

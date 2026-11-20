@@ -348,3 +348,48 @@ fn a_binary_file_has_no_hunks() {
     assert!(diff.binary);
     assert!(diff.hunks.is_empty());
 }
+
+/// A repository whose own config names `touch marker` as clean filter and
+/// textconv for every file, with a working copy that differs in content.
+#[cfg(unix)]
+fn repository_naming_commands(marker: &std::path::Path) -> std::io::Result<tempfile::TempDir> {
+    use std::io::Write as _;
+
+    let (dir, repository, _) = repository_with(&[("a.txt", "one\n")]);
+    write_file(dir.path(), ".gitattributes", "* filter=x diff=x\n");
+    let mut config = fs::OpenOptions::new()
+        .append(true)
+        .open(repository.git_dir().join("config"))?;
+    write!(
+        config,
+        "[filter \"x\"]\n\tclean = touch '{path}'\n[diff \"x\"]\n\ttextconv = touch '{path}'\n",
+        path = marker.display()
+    )?;
+    write_file(dir.path(), "a.txt", "two\n");
+    Ok(dir)
+}
+
+#[cfg(unix)]
+#[test]
+fn showing_the_status_does_not_run_filter_commands_of_the_repository() {
+    let marker_dir = tempfile::tempdir().expect("tempdir");
+    let marker = marker_dir.path().join("ran");
+    let dir = repository_naming_commands(&marker).expect("repository");
+    ncrs_git::status(dir.path(), &not_stopped()).expect("status");
+    assert!(!marker.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn showing_a_diff_does_not_run_textconv_commands_of_the_repository() {
+    let marker_dir = tempfile::tempdir().expect("tempdir");
+    let marker = marker_dir.path().join("ran");
+    let dir = repository_naming_commands(&marker).expect("repository");
+    let target = DiffTarget {
+        commit: None,
+        path: "a.txt".to_owned(),
+        old_path: None,
+    };
+    file_diff(dir.path(), &target, false, &not_stopped()).expect("diff");
+    assert!(!marker.exists());
+}

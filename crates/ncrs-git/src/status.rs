@@ -9,9 +9,8 @@ use gix::dir::walk::EmissionMode;
 use gix::status::index_worktree::{self, iter::Summary};
 use gix::status::{Item, UntrackedFiles};
 
+use crate::repo_access::{open, short_hash};
 use crate::{FileState, GitError};
-
-const SHORT_HASH_LENGTH: usize = 7;
 
 /// Branch, distance to the upstream and the changed files of one repository.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -32,12 +31,12 @@ pub struct RepoStatus {
 /// [`GitError::Interrupted`].
 pub fn status(root: &Path, stop: &Arc<AtomicBool>) -> Result<RepoStatus, GitError> {
     check_stop(stop)?;
-    let repository = gix::open(root).map_err(GitError::open)?;
+    let repository = open(root)?;
 
     let head = repository.head().map_err(GitError::read)?;
     let branch = head.referent_name().map(|name| name.shorten().to_string());
     let head_id = head.id().map(|id| id.detach());
-    let head_short = head_id.map(|id| id.to_string().chars().take(SHORT_HASH_LENGTH).collect());
+    let head_short = head_id.map(|id| short_hash(&id));
     let (ahead, behind) = match (head.referent_name(), head_id) {
         (Some(name), Some(id)) => distance_to_upstream(&repository, name, id, stop)?,
         _ => (0, 0),

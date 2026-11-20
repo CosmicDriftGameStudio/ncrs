@@ -313,7 +313,7 @@ impl State {
 
     /// An encrypted note while the key is not in memory.
     pub fn is_locked(&self, note: &Note) -> bool {
-        is_encrypted_path(&note.path) && !self.vault.is_unlocked()
+        is_encrypted_path(&note.path) && (!self.vault.is_unlocked() || note.unread)
     }
 
     /// The shown note is encrypted and cannot be read now.

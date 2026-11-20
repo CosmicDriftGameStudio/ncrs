@@ -641,6 +641,7 @@ fn new_note_in(state: &mut State, ctx: &Ctx, folder: PathBuf, sealed: bool) -> T
         text: String::new(),
         modified: None,
         base: None,
+        unread: false,
     });
     state.query.clear();
     state.hits.clear();
@@ -814,6 +815,7 @@ fn make_file_note_current(
                 text: String::new(),
                 modified: None,
                 base: None,
+                unread: false,
             });
             (new_path, true)
         }

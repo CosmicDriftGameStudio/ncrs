@@ -50,6 +50,8 @@ pub struct Note {
     /// The hash of the bytes this note was read from or last written as;
     /// `None` for a note made in the tab and not written yet.
     pub base: Option<u64>,
+    /// An encrypted note read without the key: `text` is empty, not the content.
+    pub unread: bool,
 }
 
 impl Note {
@@ -120,6 +122,7 @@ fn stem_of(path: &Path) -> String {
 fn read_note(path: &Path, folder: PathBuf, files_dir: bool, key: Option<&NoteKey>) -> Option<Note> {
     let bytes = fs::read(path).ok()?;
     let base = Some(content_hash(&bytes));
+    let unread = is_encrypted_path(path) && key.is_none();
     let text = if is_encrypted_path(path) {
         match key {
             Some(note_key) => crypt::decrypt(note_key, &bytes).ok()?,
@@ -148,6 +151,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool, key: Option<&NoteKey
             text: body.to_owned(),
             modified,
             base,
+            unread,
         });
     }
     Some(Note {
@@ -158,6 +162,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool, key: Option<&NoteKey
         text,
         modified,
         base,
+        unread,
     })
 }
 

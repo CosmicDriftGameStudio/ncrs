@@ -8,6 +8,8 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use zeroize::Zeroizing;
+
 use crate::crypt::NoteKey;
 
 const SERVICE: &str = "ncrs";
@@ -34,7 +36,7 @@ impl KeyringKeyStore {
 impl KeyStore for KeyringKeyStore {
     fn load(&self) -> Result<Option<NoteKey>, String> {
         match Self::entry()?.get_secret() {
-            Ok(secret) => NoteKey::from_bytes(&secret)
+            Ok(secret) => NoteKey::from_bytes(&Zeroizing::new(secret))
                 .map(Some)
                 .ok_or_else(|| "the stored key has the wrong length".to_owned()),
             Err(keyring::Error::NoEntry) => Ok(None),

@@ -30,6 +30,14 @@ fn folder(data_dir: &Path) -> PathBuf {
 
 /// Leaves `requests` for the ncrs that holds the lock of `data_dir`.
 pub fn send(data_dir: &Path, requests: &[Request]) -> io::Result<()> {
+    let sendable: Vec<Request> = requests
+        .iter()
+        .filter(|request| !bytes_of(request.path().as_os_str().to_os_string()).contains(&SEPARATOR))
+        .cloned()
+        .collect();
+    if sendable.is_empty() {
+        return Ok(());
+    }
     let folder = folder(data_dir);
     fs::create_dir_all(&folder)?;
     let nanos = SystemTime::now()
@@ -42,7 +50,7 @@ pub fn send(data_dir: &Path, requests: &[Request]) -> io::Result<()> {
         COUNTER.fetch_add(1, Ordering::Relaxed)
     );
     let writing = folder.join(format!(".{name}.tmp"));
-    fs::write(&writing, encode(requests))?;
+    fs::write(&writing, encode(&sendable))?;
     fs::rename(&writing, folder.join(format!("{name}{FILE_END}")))
 }
 
@@ -165,6 +173,15 @@ mod tests {
             vec![open("/a"), Request::Reveal("/b c".into()), open("/d")]
         );
         assert!(take(scratch.path()).is_empty());
+    }
+
+    #[test]
+    fn a_path_with_the_separator_in_it_is_dropped() {
+        let scratch = tempfile::tempdir().expect("scratch folder");
+        send(scratch.path(), &[open("/a\0r/etc/passwd")]).expect("only dropped");
+        assert!(take(scratch.path()).is_empty());
+        send(scratch.path(), &[open("/a\0b"), open("/c")]).expect("one dropped");
+        assert_eq!(take(scratch.path()), vec![open("/c")]);
     }
 
     #[test]

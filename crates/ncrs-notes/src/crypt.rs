@@ -10,7 +10,7 @@ use std::path::Path;
 
 use aes_gcm::aead::{Aead as _, KeyInit as _, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use zeroize::Zeroize as _;
+use zeroize::{Zeroize as _, Zeroizing};
 
 /// The ending of an encrypted note: `Name.md.enc`.
 pub const ENCRYPTED_SUFFIX: &str = ".md.enc";
@@ -98,11 +98,12 @@ impl NoteKey {
 
     /// The key a recovery text names. Dashes, spaces and case do not matter.
     pub fn from_recovery_text(text: &str) -> Result<Self, CryptError> {
-        let cleaned: String = text
-            .chars()
-            .filter(|c| !c.is_whitespace() && *c != '-')
-            .map(|c| c.to_ascii_uppercase())
-            .collect();
+        let cleaned = Zeroizing::new(
+            text.chars()
+                .filter(|c| !c.is_whitespace() && *c != '-')
+                .map(|c| c.to_ascii_uppercase())
+                .collect::<String>(),
+        );
         let mut bytes = data_encoding::BASE32_NOPAD
             .decode(cleaned.as_bytes())
             .map_err(|_not_base32| CryptError::BadRecoveryKey)?;
