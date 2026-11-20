@@ -215,7 +215,7 @@ struct Places<'a> {
 pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRoot, ExecuteError> {
     Ok(SourceRoot {
         given: source.to_path_buf(),
-        resolved: fs::canonicalize(source).map_err(io_error(source))?,
+        resolved: ncrs_intake::canonical_path(source).map_err(io_error(source))?,
     })
 }
 
@@ -843,7 +843,7 @@ fn leaves_its_location(roots: &[PathBuf], item: &JournalItem) -> Option<SkipReas
 /// The check on the ancestors does not look at the root itself. A root that now
 /// leads somewhere else than when the run started refuses the whole undo.
 fn refuse_swapped_root(source: &SourceRoot) -> Result<(), ExecuteError> {
-    match fs::canonicalize(&source.given) {
+    match ncrs_intake::canonical_path(&source.given) {
         Ok(now) if now == source.resolved => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
         Ok(_) | Err(_) => Err(ExecuteError::Io {

@@ -861,7 +861,7 @@ pub fn setup_folders() -> SetupFolders {
     let canonical = |name: &str| {
         let folder = base.path().join(name);
         std::fs::create_dir(&folder).unwrap();
-        std::fs::canonicalize(folder).unwrap()
+        ncrs_intake::canonical_path(&folder).unwrap()
     };
     let (inbox, archive, target) = (
         canonical("inbox"),

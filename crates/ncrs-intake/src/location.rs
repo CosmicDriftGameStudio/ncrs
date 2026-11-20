@@ -40,13 +40,36 @@ pub fn location_of<'a>(path: &Path, roots: &'a [PathBuf]) -> Option<&'a Path> {
         .map(PathBuf::as_path)
 }
 
+/// `canonicalize` returns `\\?\C:\...` or `\\?\UNC\server\...` on Windows, while
+/// panels and `current_exe` show `C:\...` and `\\server\...`; without this the
+/// same folder would count as two.
+pub fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let plain = path.to_str().and_then(|text| {
+        let rest = text.strip_prefix(r"\\?\")?;
+        if let Some(share) = rest.strip_prefix(r"UNC\") {
+            return Some(PathBuf::from(format!(r"\\{share}")));
+        }
+        let mut chars = rest.chars();
+        let is_drive = chars
+            .next()
+            .is_some_and(|letter| letter.is_ascii_alphabetic())
+            && chars.next() == Some(':');
+        is_drive.then(|| PathBuf::from(rest))
+    });
+    plain.unwrap_or(path)
+}
+
+pub fn canonical_path(path: &Path) -> io::Result<PathBuf> {
+    fs::canonicalize(path).map(without_verbatim_prefix)
+}
+
 impl Location {
     /// The path is canonicalised and must be an existing directory. Walk and
     /// watcher both work on this root: on macOS FSEvents reports
     /// `/private/var/...` for a directory that is spelled `/var/...`, and two
     /// spellings of one file would be recorded as a fake copy.
     pub fn new(path: &Path, mode: LocationMode, images: bool) -> Result<Self, IntakeError> {
-        let canonical = fs::canonicalize(path).map_err(IntakeError::io(path))?;
+        let canonical = canonical_path(path).map_err(IntakeError::io(path))?;
         if !canonical.is_dir() {
             return Err(IntakeError::io(path)(io::Error::new(
                 io::ErrorKind::NotADirectory,
@@ -71,5 +94,29 @@ mod relative_tests {
         let path = Path::new("/a/Steuer/Inbox/new/x.pdf");
         assert_eq!(relative_to_location(path, &roots), Path::new("new/x.pdf"));
         assert_eq!(relative_to_location(path, &[]), path);
+    }
+}
+
+#[cfg(test)]
+mod verbatim_tests {
+    use super::*;
+
+    #[test]
+    fn the_verbatim_prefix_is_dropped_only_in_the_drive_and_share_forms() {
+        let cases = [
+            (r"\\?\C:\a", r"C:\a"),
+            (r"\\?\c:\a", r"c:\a"),
+            (r"\\?\UNC\s\x", r"\\s\x"),
+            (r"\\?\Volume{1}\x", r"\\?\Volume{1}\x"),
+            (r"C:\a", r"C:\a"),
+            ("/data", "/data"),
+        ];
+        for (given, expected) in cases {
+            assert_eq!(
+                without_verbatim_prefix(PathBuf::from(given)),
+                PathBuf::from(expected),
+                "{given}"
+            );
+        }
     }
 }

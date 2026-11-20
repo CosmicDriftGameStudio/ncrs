@@ -10,6 +10,7 @@ use pdfium_render::prelude::{
     PdfBitmapFormat, PdfPage, PdfRenderConfig, PdfSearchDirection, PdfSearchOptions, Pdfium,
 };
 
+use crate::location::without_verbatim_prefix;
 use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, PreviewPage, TextError, TextSource, MAX_TEXT_BYTES};
 
@@ -445,21 +446,6 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
     candidates_in(executable_dir, resolved_dir, development)
 }
 
-/// `canonicalize` returns `\\?\C:\...` on Windows, `current_exe` plain `C:\...`;
-/// without this the same folder would count as two.
-fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
-    let plain = dir.to_str().and_then(|text| {
-        let rest = text.strip_prefix(r"\\?\")?;
-        let mut chars = rest.chars();
-        let is_drive = chars
-            .next()
-            .is_some_and(|letter| letter.is_ascii_alphabetic())
-            && chars.next() == Some(':');
-        is_drive.then(|| PathBuf::from(rest))
-    });
-    plain.unwrap_or(dir)
-}
-
 /// `development` is `None` in release builds, otherwise the value of the
 /// override variable.
 fn candidates_in(
@@ -703,10 +689,6 @@ mod tests {
     fn a_verbatim_windows_prefix_is_dropped_so_the_same_folder_counts_once() {
         let plain = PathBuf::from(r"C:\app");
         let verbatim = PathBuf::from(r"\\?\C:\app");
-        assert_eq!(without_verbatim_prefix(verbatim.clone()), plain);
-        assert_eq!(without_verbatim_prefix(plain.clone()), plain);
-        let network = PathBuf::from(r"\\?\UNC\server\share");
-        assert_eq!(without_verbatim_prefix(network.clone()), network);
         let same = candidates_in(
             Some(plain.clone()),
             Some(without_verbatim_prefix(verbatim)),

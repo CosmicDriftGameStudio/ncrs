@@ -108,7 +108,7 @@ mod tests {
         std::fs::create_dir_all(talk.path("elsewhere")).unwrap();
         let typed = talk.path("elsewhere").to_string_lossy().into_owned();
         talk.type_text(&typed);
-        let real = std::fs::canonicalize(talk.path("elsewhere"))
+        let real = ncrs_intake::canonical_path(&talk.path("elsewhere"))
             .unwrap()
             .to_string_lossy()
             .into_owned();

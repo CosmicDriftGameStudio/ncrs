@@ -768,3 +768,178 @@ fn a_sound_index_reports_no_damage() {
     let index = Index::create_plain(&db_in(&dir)).unwrap();
     assert_eq!(index.damage().unwrap(), None);
 }
+
+const PATH_EXAMPLES: [(&str, &str); 6] = [
+    (r"\\?\C:\a", r"C:\a"),
+    (r"\\?\c:\a", r"c:\a"),
+    (r"\\?\UNC\s\x", r"\\s\x"),
+    (r"\\?\Volume{1}\x", r"\\?\Volume{1}\x"),
+    (r"C:\a", r"C:\a"),
+    ("/data", "/data"),
+];
+
+/// Like `PATH_EXAMPLES`, but no plain path is the stripped form of another
+/// row, as the columns with a uniqueness rule need.
+const DISTINCT_PATH_EXAMPLES: [(&str, &str); 6] = [
+    (r"\\?\C:\a", r"C:\a"),
+    (r"\\?\d:\b", r"d:\b"),
+    (r"\\?\UNC\s\x", r"\\s\x"),
+    (r"\\?\Volume{1}\x", r"\\?\Volume{1}\x"),
+    (r"E:\c", r"E:\c"),
+    ("/data", "/data"),
+];
+
+fn version_27_index(dir: &TempDir) -> Index {
+    let old = Index::create_plain_with_migrations(&db_in(dir), &MIGRATIONS[..27]).unwrap();
+    assert_eq!(user_version(&old), 27);
+    old
+}
+
+fn column_values(index: &Index, sql: &str) -> Vec<String> {
+    let mut statement = index.conn.prepare(sql).unwrap();
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap();
+    rows.map(Result::unwrap).collect()
+}
+
+#[test]
+fn a_version_27_database_gets_the_paths_the_app_now_compares() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let store = InMemoryKeyStore::empty();
+    let old = version_27_index(&dir);
+    for (seed, (given, _)) in PATH_EXAMPLES.iter().enumerate() {
+        let batch = i64::try_from(seed).unwrap() + 1;
+        old.conn
+            .execute(
+                "INSERT INTO execution_batch
+                    (id, kind, started_at, source_root, source_resolved, target_root, target_resolved)
+                 VALUES (?1, 'filing', 1, ?2, ?2, ?2, ?2)",
+                rusqlite::params![batch, given],
+            )
+            .unwrap();
+        old.conn
+            .execute(
+                "INSERT INTO execution_item (batch_id, seq, from_path, to_path, hash, duplicate, state)
+                 VALUES (?1, 1, ?2, ?2, zeroblob(32), 0, 'moved')",
+                rusqlite::params![batch, given],
+            )
+            .unwrap();
+    }
+    for (seed, (given, _)) in DISTINCT_PATH_EXAMPLES.iter().enumerate() {
+        old.conn
+            .execute(
+                "INSERT INTO document (hash, path, source, received_at, status)
+                 VALUES (randomblob(32), ?1, 'inbox', 1, 'new')",
+                [given],
+            )
+            .unwrap();
+        old.conn
+            .execute(
+                "INSERT INTO duplicate_path (document_id, path, seen_at) VALUES (1, ?1, 1)",
+                [given],
+            )
+            .unwrap();
+        old.conn
+            .execute("INSERT INTO excluded_path (path) VALUES (?1)", [given])
+            .unwrap();
+        old.conn
+            .execute(
+                "INSERT INTO execution_created_dir (batch_id, path) VALUES (?1, ?2)",
+                rusqlite::params![i64::try_from(seed).unwrap() + 1, given],
+            )
+            .unwrap();
+    }
+    drop(old);
+
+    let index = Index::open(&path, &store).unwrap();
+
+    let converted = |examples: &[(&str, &str)]| -> Vec<String> {
+        examples
+            .iter()
+            .map(|(_, plain)| (*plain).to_owned())
+            .collect()
+    };
+    for sql in [
+        "SELECT from_path FROM execution_item ORDER BY batch_id",
+        "SELECT to_path FROM execution_item ORDER BY batch_id",
+        "SELECT source_root FROM execution_batch ORDER BY id",
+        "SELECT source_resolved FROM execution_batch ORDER BY id",
+        "SELECT target_root FROM execution_batch ORDER BY id",
+        "SELECT target_resolved FROM execution_batch ORDER BY id",
+    ] {
+        assert_eq!(
+            column_values(&index, sql),
+            converted(&PATH_EXAMPLES),
+            "{sql}"
+        );
+    }
+    for sql in [
+        "SELECT path FROM document ORDER BY id",
+        "SELECT path FROM duplicate_path ORDER BY id",
+        "SELECT path FROM excluded_path ORDER BY rowid",
+        "SELECT path FROM execution_created_dir ORDER BY batch_id",
+    ] {
+        assert_eq!(
+            column_values(&index, sql),
+            converted(&DISTINCT_PATH_EXAMPLES),
+            "{sql}"
+        );
+    }
+}
+
+#[test]
+fn a_version_27_database_loses_no_row_when_a_prefixed_and_a_plain_path_meet() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let store = InMemoryKeyStore::empty();
+    let old = version_27_index(&dir);
+    for given in [r"\\?\C:\a", r"C:\a"] {
+        old.conn
+            .execute(
+                "INSERT INTO document (hash, path, source, received_at, status)
+                 VALUES (randomblob(32), ?1, 'inbox', 1, 'new')",
+                [given],
+            )
+            .unwrap();
+        old.conn
+            .execute(
+                "INSERT INTO duplicate_path (document_id, path, seen_at) VALUES (1, ?1, 1)",
+                [given],
+            )
+            .unwrap();
+        old.conn
+            .execute("INSERT INTO excluded_path (path) VALUES (?1)", [given])
+            .unwrap();
+    }
+    old.conn
+        .execute(
+            "INSERT INTO execution_batch (id, kind, started_at) VALUES (1, 'filing', 1)",
+            [],
+        )
+        .unwrap();
+    for given in [r"\\?\C:\a", r"C:\a"] {
+        old.conn
+            .execute(
+                "INSERT INTO execution_created_dir (batch_id, path) VALUES (1, ?1)",
+                [given],
+            )
+            .unwrap();
+    }
+    drop(old);
+
+    let index = Index::open(&path, &store).unwrap();
+
+    assert_eq!(
+        column_values(&index, "SELECT path FROM document ORDER BY id"),
+        [r"\\?\C:\a", r"C:\a"]
+    );
+    for sql in [
+        "SELECT path FROM duplicate_path",
+        "SELECT path FROM excluded_path",
+        "SELECT path FROM execution_created_dir",
+    ] {
+        assert_eq!(column_values(&index, sql), [r"C:\a"], "{sql}");
+    }
+}

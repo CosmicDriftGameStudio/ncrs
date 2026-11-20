@@ -20,6 +20,13 @@ pub fn create_folder_pick_table(conn: &Connection) -> Result<(), IndexError> {
              PRIMARY KEY (hash, target_root)
          )",
     )?;
+    conn.execute(
+        r"DELETE FROM folder_pick
+          WHERE (substr(target_root, 1, 4) = '\\?\' AND substr(target_root, 6, 1) = ':'
+                 AND upper(substr(target_root, 5, 1)) BETWEEN 'A' AND 'Z')
+             OR substr(target_root, 1, 8) = '\\?\UNC\'",
+        [],
+    )?;
     Ok(())
 }
 
@@ -232,5 +239,37 @@ mod tests {
             .folder_picks(&new_root, &[hash], 2)
             .unwrap()
             .contains_key(&hash));
+    }
+}
+
+#[cfg(test)]
+mod verbatim_root_tests {
+    use std::path::Path;
+
+    use crate::test_support::plain_index;
+
+    use super::*;
+
+    #[test]
+    fn picks_cached_under_a_verbatim_root_are_dropped_and_plain_ones_stay() {
+        let (_dir, index) = plain_index();
+        let hash = ContentHash([1; 32]);
+        for root in [r"\\?\C:\a", r"\\?\UNC\s\x", r"C:\a", "/data"] {
+            index
+                .store_folder_picks(Path::new(root), &[(hash, Some("Bank".to_owned()))], 1)
+                .unwrap();
+        }
+
+        create_folder_pick_table(index.connection()).unwrap();
+
+        let kept: Vec<String> = index
+            .connection()
+            .prepare("SELECT target_root FROM folder_pick ORDER BY target_root")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(kept, ["/data", r"C:\a"]);
     }
 }

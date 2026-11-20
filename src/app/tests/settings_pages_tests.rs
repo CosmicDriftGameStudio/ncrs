@@ -59,7 +59,7 @@ pub(in crate::app::tests) fn written(dir: &tempfile::TempDir) -> Result<String, 
 fn folder(dir: &tempfile::TempDir, name: &str) -> Result<std::path::PathBuf, Box<dyn Error>> {
     let path = dir.path().join(name);
     std::fs::create_dir(&path)?;
-    Ok(std::fs::canonicalize(path)?)
+    Ok(ncrs_intake::canonical_path(&path)?)
 }
 
 fn locations_of(app: &App) -> Vec<crate::config::FilingLocation> {

@@ -481,7 +481,7 @@ mod tests {
     }
 
     fn canonical(path: &std::path::Path) -> String {
-        std::fs::canonicalize(path)
+        ncrs_intake::canonical_path(path)
             .unwrap()
             .to_string_lossy()
             .into_owned()
@@ -605,7 +605,7 @@ mod tests {
     }
 
     fn canonical_path(path: &std::path::Path) -> std::path::PathBuf {
-        std::fs::canonicalize(path).unwrap()
+        ncrs_intake::canonical_path(path).unwrap()
     }
 
     #[test]
