@@ -8,7 +8,8 @@ mod folder_size;
 pub mod folder_watch;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;
-#[cfg(all(test, windows))]
+#[cfg(windows)]
+#[cfg(test)]
 mod long_path_tests;
 mod open;
 mod open_programs;

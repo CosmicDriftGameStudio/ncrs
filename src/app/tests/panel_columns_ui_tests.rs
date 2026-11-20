@@ -331,7 +331,7 @@ fn a_smaller_font_size_lets_the_panels_count_the_rows_that_now_fit() {
     let mut app = panel_app(Language::English);
     let rows_before = app.visible_rows;
     app.take_over_appearance(ncrs_config::panel_columns::Appearance {
-        font_size: ncrs_config::panel_columns::FontSizeChoice::Points(10),
+        font_size: ncrs_config::panel_columns::FontSizeChoice::Points(8),
         ..ncrs_config::panel_columns::Appearance::default()
     });
     assert!(app.scale_factor() < 1.0);

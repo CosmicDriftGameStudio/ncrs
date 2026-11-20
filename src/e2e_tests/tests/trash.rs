@@ -277,7 +277,10 @@ fn the_restore_key_puts_back_exactly_the_latest_deletion() {
 #[test]
 fn the_restore_key_puts_back_the_latest_deletion_from_the_real_trash() {
     crate::fs::real_trash_tests::on_the_real_trash(
-        "e2e_tests::tests::the_restore_key_puts_back_the_latest_deletion_from_the_real_trash",
+        &crate::fs::real_trash_tests::test_path(
+            module_path!(),
+            "the_restore_key_puts_back_the_latest_deletion_from_the_real_trash",
+        ),
         |scene| {
             std::fs::create_dir_all(scene.work().join("home")).expect("the right panel");
             let older = scene.write("older.txt", "older");
@@ -343,7 +346,10 @@ fn restore_onto_a_taken_name(
 #[test]
 fn keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash() {
     restore_onto_a_taken_name(
-        "e2e_tests::tests::keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash",
+        &crate::fs::real_trash_tests::test_path(
+            module_path!(),
+            "keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash",
+        ),
         &[Named::Escape],
         |scene| {
             assert_eq!(
@@ -363,7 +369,10 @@ fn keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash() {
 #[test]
 fn overwriting_sends_the_file_in_the_way_to_the_real_trash() {
     restore_onto_a_taken_name(
-        "e2e_tests::tests::overwriting_sends_the_file_in_the_way_to_the_real_trash",
+        &crate::fs::real_trash_tests::test_path(
+            module_path!(),
+            "overwriting_sends_the_file_in_the_way_to_the_real_trash",
+        ),
         &[Named::Tab, Named::Enter],
         |scene| {
             assert_eq!(

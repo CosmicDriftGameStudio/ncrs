@@ -4,11 +4,14 @@ fn plain_file_card() -> App {
     App::with_fixed_filing(Phase::PlainFileWarning)
 }
 
-fn differs_from_the_plain_panels(app: &App) -> bool {
+/// Compared with the plain panels rendered here and now, not with the
+/// committed reference: that one was made on macOS and is not comparable
+/// elsewhere, where a card would count as not drawn.
+fn differs_from_the_plain_panels(app: &App, plain_panels: &std::path::Path) -> bool {
     !simulator(app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_reference_image("tests/snapshots/two_panels.png")
+        .matches_hash(plain_panels)
         .expect("compare with the panels")
 }
 
@@ -37,10 +40,20 @@ fn every_filing_card_is_drawn_over_the_panels() {
         },
         Phase::PlainFileWarning,
     ];
+    let folder = tempfile::tempdir().expect("a folder for the plain panels");
+    let plain_panels = folder.path().join("plain_panels");
+    assert!(
+        simulator(&App::with_fixed_panels())
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_hash(&plain_panels)
+            .expect("the first rendering writes the hash"),
+        "the plain panels must be recorded"
+    );
     for phase in cards {
         let name = format!("{phase:?}");
         assert!(
-            differs_from_the_plain_panels(&App::with_fixed_filing(phase)),
+            differs_from_the_plain_panels(&App::with_fixed_filing(phase), &plain_panels),
             "{name} is not drawn"
         );
     }

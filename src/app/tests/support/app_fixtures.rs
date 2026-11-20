@@ -774,7 +774,13 @@ impl fs::Trash for NoSystemTrash {
     }
 
     fn reach(&self) -> fs::TrashReach {
-        fs::TrashReach::FinderOnly
+        // What the system trash reports on each platform without a journal:
+        // macOS can only open the Finder, the others list everything.
+        if cfg!(target_os = "macos") {
+            fs::TrashReach::FinderOnly
+        } else {
+            fs::TrashReach::Everything
+        }
     }
 
     fn list(&self) -> Result<Vec<fs::TrashedItem>, String> {
