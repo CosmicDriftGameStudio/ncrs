@@ -38,8 +38,8 @@ regex = "1.13"
 # OCR for scans: the engine and the runtime that executes its models. The
 # models are not part of the app; see scripts/fetch-ocr-models.sh. They are
 # the `.onnx` files, so only that loader is built (no `.rten` flatbuffers).
-ocrs = { version = "=0.13.1", default-features = false, features = ["onnx"] }
-rten = { version = "=0.26.0", default-features = false, features = ["onnx_format"] }
+ocrs = { version = "=0.14.0", default-features = false, features = ["onnx"] }
+rten = { version = "=0.28.0", default-features = false, features = ["onnx_format"] }
 # Text of .docx and .odt: the zip package and its XML, read in memory with size
 # limits. Both are already in the lock; no features, so no extra dependencies.
 zip = { workspace = true }
