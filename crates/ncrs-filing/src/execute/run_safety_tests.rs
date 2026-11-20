@@ -221,7 +221,10 @@ fn the_recorded_target_folder_is_checked_by_the_undo() {
     let info = place.index.batch_info(report.batch).unwrap().unwrap();
     let recorded = info.target_root.unwrap();
     assert_eq!(recorded.given, place.target);
-    assert_eq!(recorded.resolved, ncrs_intake::canonical_path(&place.target).unwrap());
+    assert_eq!(
+        recorded.resolved,
+        ncrs_intake::canonical_path(&place.target).unwrap()
+    );
 
     #[cfg(unix)]
     {
