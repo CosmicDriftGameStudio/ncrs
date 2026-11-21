@@ -41,12 +41,12 @@ pub use ctx::{Availability, Ctx};
 pub use in_tab::{filed_in_tab, FiledInTab};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
+pub use picks::picks_line;
 pub use rule_flow::{RuleAnswer, RuleAsk};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, LevelsCard,
     NewLayout, Part, ProposalCard, State, Step,
 };
-pub use picks::picks_line;
 pub use texts::problem_text;
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

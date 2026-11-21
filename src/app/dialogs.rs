@@ -410,12 +410,12 @@ impl App {
             copies.close();
         }
         self.remote.close_all();
+        // Freeing the model on the GPU takes seconds and must finish before
+        // the process ends, so the window goes away first.
         #[cfg(feature = "local-ai")]
-        {
-            // Freeing the model on the GPU takes seconds and must finish before
-            // the process ends, so the window goes away first.
+        let ending = {
             self.quitting = true;
-            return iced::window::latest()
+            iced::window::latest()
                 .and_then(|id| iced::window::set_mode(id, iced::window::Mode::Hidden))
                 .chain(Task::perform(
                     async {
@@ -424,10 +424,11 @@ impl App {
                             .await;
                     },
                     |()| Message::QuitReady,
-                ));
-        }
+                ))
+        };
         #[cfg(not(feature = "local-ai"))]
-        iced::exit()
+        let ending = iced::exit();
+        ending
     }
 
     /// A click on the "access blocked" error: the Full Disk Access page of

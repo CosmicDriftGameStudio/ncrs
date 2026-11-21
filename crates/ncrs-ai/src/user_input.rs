@@ -12,10 +12,10 @@ use std::time::Instant;
 /// How long after the last input the model keeps waiting for a job a person
 /// waits for.
 #[cfg(any(test, feature = "llama"))]
-pub(crate) const QUIET_WAITING_MS: u64 = 300;
+pub const QUIET_WAITING_MS: u64 = 300;
 /// The same for work nobody waits for: it runs only while the window rests.
 #[cfg(any(test, feature = "llama"))]
-pub(crate) const QUIET_BACKGROUND_MS: u64 = 5_000;
+pub const QUIET_BACKGROUND_MS: u64 = 5_000;
 #[cfg(feature = "llama")]
 const POLL: Duration = Duration::from_millis(20);
 
@@ -42,7 +42,7 @@ fn should_yield(last_input_ms: u64, now_ms: u64, quiet_for_ms: u64) -> bool {
 /// Blocks while the last input is less than `quiet_for_ms` ago; returns at
 /// once when `stop` is set.
 #[cfg(feature = "llama")]
-pub(crate) fn wait_until_quiet(stop: &AtomicBool, quiet_for_ms: u64) {
+pub fn wait_until_quiet(stop: &AtomicBool, quiet_for_ms: u64) {
     while !stop.load(Ordering::Relaxed)
         && should_yield(
             LAST_INPUT_MS.load(Ordering::Relaxed),

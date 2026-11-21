@@ -302,10 +302,10 @@ impl LocalModel {
         batch: &mut LlamaBatch<'_>,
         tokens: &[LlamaToken],
         first_position: usize,
-        batch_len: usize,
+        max_batch_len: usize,
     ) -> Result<(), AiError> {
         let last = tokens.len().saturating_sub(1);
-        let batch_len = batch_len.min(MAX_PROMPT_CHUNK);
+        let batch_len = max_batch_len.min(MAX_PROMPT_CHUNK);
         for (chunk_number, chunk) in tokens.chunks(batch_len).enumerate() {
             self.yield_to_window()?;
             batch.clear();

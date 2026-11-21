@@ -322,7 +322,7 @@ fn plain_repository(path: &Path, commits: u64) {
 
 /// `Entwicklung` with the main repository, its linked worktree, three more
 /// repositories, plain folders and loose files: 56 rows.
-pub(super) fn build_development_folder(root: &Path) -> PathBuf {
+pub fn build_development_folder(root: &Path) -> PathBuf {
     let parent = root.join("Entwicklung");
     std::fs::create_dir_all(&parent).unwrap();
     build_main_repository(&parent);
@@ -342,7 +342,7 @@ fn git_ready(app: &App) -> bool {
     app.panel(PanelSide::Left).git.summary.is_some()
 }
 
-pub(super) fn git_scanned(app: &App) -> bool {
+pub fn git_scanned(app: &App) -> bool {
     app.panel(PanelSide::Left)
         .git
         .marks

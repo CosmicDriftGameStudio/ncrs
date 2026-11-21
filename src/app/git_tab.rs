@@ -77,7 +77,7 @@ impl App {
         self.git_tabs.drop_closed();
         self.follow_opened_pages(was_open);
         Task::batch([
-            task.map(move |message| Message::GitView(id, message)),
+            task.map(move |inner| Message::GitView(id, inner)),
             action_task,
         ])
     }

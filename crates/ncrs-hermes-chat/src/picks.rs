@@ -69,9 +69,15 @@ pub fn picks_line(state: &State, lang: Language) -> Option<String> {
         return None;
     }
     let total = state.picks_sources.len();
-    let done = state.picks_done.load(Ordering::Relaxed).min(total.saturating_sub(1));
+    let done = state
+        .picks_done
+        .load(Ordering::Relaxed)
+        .min(total.saturating_sub(1));
     let source = state.picks_sources.get(done)?;
-    let name = source.file_name().unwrap_or(source.as_os_str()).to_string_lossy();
+    let name = source
+        .file_name()
+        .unwrap_or(source.as_os_str())
+        .to_string_lossy();
     Some(fill_template(
         lang.text(Msg::StatusHermesPreparingFolder),
         &[
