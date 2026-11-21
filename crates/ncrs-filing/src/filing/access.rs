@@ -92,6 +92,7 @@ impl FilingModule {
         let root = self.target_root()?;
         Some(
             ReviewAccess::new(Arc::clone(&self.index), root)
+                .with_neighbour_cache(self.neighbour_cache.clone())
                 .with_location_roots(self.location_roots())
                 .with_copy_roots(self.copy_roots())
                 .with_kind_language(self.own.kind_language)

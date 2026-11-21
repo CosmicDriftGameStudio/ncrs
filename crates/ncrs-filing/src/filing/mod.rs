@@ -168,6 +168,8 @@ pub struct FilingModule {
     settle_problem: SettleNote,
     /// The chat, the review list and the filing tab count their work here.
     index_work: crate::index_work::IndexWork,
+    /// What the review list and the quick fix built from the archive.
+    neighbour_cache: crate::review_work::NeighbourCache,
     /// The plain file was confirmed and what a crash left is being settled;
     /// the module is ready when that is done.
     settling: bool,
