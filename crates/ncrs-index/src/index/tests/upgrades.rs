@@ -209,7 +209,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
     assert_eq!(sender_rule.spec.tags.len(), 1);
     assert!(sender_rule.spec.tags.contains("services"));
     assert!(index.rule_evidence(RuleId::new(8)).unwrap().is_some());
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(crate::model::Field::Kind),
         FieldOrigin::Rule(Some(RuleId::new(8)))
@@ -251,7 +251,7 @@ fn a_version_11_database_gains_sender_aliases() {
     let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
     assert_eq!(user_version(&index), latest_version());
-    let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+    let document = index.document(crate::DocumentId::new(1)).unwrap().unwrap();
     assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
     let rule = index.rule(RuleId::new(4)).unwrap().unwrap();
     assert_eq!(
@@ -307,7 +307,7 @@ fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
     let positions: Vec<_> = rules.iter().map(|rule| rule.position).collect();
     assert_eq!(positions, [2, 5, 7]);
     assert!(rules.iter().all(|rule| rule.spec.enabled));
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(Field::Kind),
         FieldOrigin::Rule(Some(RuleId::new(5)))
@@ -665,12 +665,12 @@ fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_
     assert_eq!(
         open,
         [
-            (DocumentId::new(1), ReviewReason::NoMatchingRule),
+            (crate::DocumentId::new(1), ReviewReason::NoMatchingRule),
             (DocumentId::new(2), ReviewReason::NoMatchingRule)
         ]
     );
 
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(Field::Sender),
         FieldOrigin::Rule(Some(RuleId::new(3)))
@@ -691,7 +691,7 @@ fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
 
     let (_dir, index) = migrated_from_19();
 
-    let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+    let document = index.document(crate::DocumentId::new(1)).unwrap().unwrap();
     assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
     assert_eq!(document.fields.number.as_deref(), Some("4711"));
     assert!(document.fields.tags.contains("services"));
@@ -716,7 +716,7 @@ fn a_version_19_database_keeps_the_text_search_and_the_cascade_of_its_documents(
 
     assert_eq!(
         index.search_text("miete", 10).unwrap(),
-        [DocumentId::new(1)]
+        [crate::DocumentId::new(1)]
     );
     let by_path: i64 = index
         .conn
@@ -1011,4 +1011,54 @@ fn a_version_30_database_marks_the_documents_that_have_a_text() {
         index.hermes_counts().unwrap().archive_documents_with_text,
         1
     );
+}
+
+#[test]
+fn a_version_34_database_keeps_its_copies_with_an_unknown_place() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..34]).unwrap();
+    assert_eq!(user_version(&old), 34);
+    old.conn
+        .execute_batch(
+            "INSERT INTO document (id, hash, path, source, received_at, status, file_size, file_mtime)
+                 VALUES (1, randomblob(32), 'a.pdf', 'inbox', 1700000000, 'new', 1, 1);
+             INSERT INTO duplicate_path (document_id, path, seen_at, file_size, file_mtime)
+                 VALUES (1, 'archive/copy.pdf', 1, 2, 3);",
+        )
+        .unwrap();
+    drop(old);
+
+    let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+    assert_eq!(user_version(&index), latest_version());
+    let copy = Path::new("archive/copy.pdf");
+    assert_eq!(
+        index.duplicate_paths(crate::DocumentId::new(1)).unwrap(),
+        vec![copy.to_path_buf()]
+    );
+    assert_eq!(index.duplicate_path_in_archive(copy).unwrap(), None);
+    index
+        .record_duplicate_path_in(
+            crate::DocumentId::new(1),
+            copy,
+            crate::FileStamp {
+                size: 2,
+                mtime: std::time::UNIX_EPOCH + std::time::Duration::from_nanos(3),
+            },
+            true,
+        )
+        .unwrap();
+    assert_eq!(index.duplicate_path_in_archive(copy).unwrap(), Some(true));
+    index
+        .record_duplicate_path(
+            crate::DocumentId::new(1),
+            copy,
+            crate::FileStamp {
+                size: 2,
+                mtime: std::time::UNIX_EPOCH + std::time::Duration::from_nanos(3),
+            },
+        )
+        .unwrap();
+    assert_eq!(index.duplicate_path_in_archive(copy).unwrap(), Some(true));
 }
