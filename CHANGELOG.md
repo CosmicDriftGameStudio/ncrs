@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-11-21
+
+### Added
+
+- Git status in the panels: a status column per file (M, A, ?, D) inside a
+  repository, a ⎇ mark on folders that are repositories, and the branch,
+  ahead/behind and changed count in the status line.
+- A Git tab (`Shift`+`Cmd`+`G`, `Shift`+`Ctrl`+`G` on Linux and Windows), one
+  per repository and as many as you like: history graph, branches, tags and
+  worktrees, commit details with +/− per file, side-by-side and unified diff,
+  and a filter by message, author or SHA. The arrow keys repeat while held;
+  `←`/`→` move between the areas.
+- Encrypted notes: AES-256-GCM, the key in the system credential store and a
+  recovery key for another computer. `Cmd`+`L` or a click on the lock locks
+  and unlocks; Touch ID on macOS and Windows Hello on Windows confirm before
+  the key is read. A sync folder for notes under Settings › Notes.
+- Notes by keyboard: `Cmd`+`F` searches, `F7` makes a folder, `F4` edits,
+  `←`/`→` fold folders.
+- Hermes keeps its chats: listed by Today, Yesterday and Earlier, to open,
+  continue or delete; Settings › Hermes can remove them after 30 or 90 days.
+- Open in ncrs from other apps: folders and files handed over by the system
+  open in the active panel, with the cursor on the file.
+- Go to path (`Cmd`+`G`, `Ctrl`+`G` on Linux and Windows): paste a path, the
+  active panel opens the folder or puts the cursor on the file.
+- Tag and untag by pattern with `+` and `-`.
+- The favourites bar takes more than five favourites, the rest behind ».
+- Folder sizes are measured in the background, with the running total in the
+  row and a progress bar in the status line.
+- The status bar shows what Hermes is preparing, with the files still left.
+
 ### Security
 
 - SFTP: revoked keys and host patterns in `known_hosts` are honoured in all
@@ -72,6 +102,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The window stays responsive while the built-in model works: the model waits
+  while you type or move the mouse.
+- Notes, the Git tab and the Filing tab draw their trees with one compact row.
+- `F10` closes the window at once and frees the model before ncrs exits.
 - An AI server on another computer is now agreed to for three kinds of data
   one by one: incoming documents, filed documents, and folders with file names.
   Of a kind you have not agreed to, nothing is sent. A settings file with the
