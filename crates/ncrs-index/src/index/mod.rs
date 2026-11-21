@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 use crate::error::IndexError;
 use crate::folder_pick::create_folder_pick_table;
 use crate::key::{IndexKey, RecoveryKey};
-use crate::key_store::{InMemoryKeyStore, KeyStore};
+use crate::key_store::KeyStore;
 use crate::kinds::KindCatalog;
 use crate::migrations::{run_migrations, MIGRATIONS};
 use crate::model::IndexStatistics;
@@ -424,13 +424,19 @@ fn export_encrypted_copy(
     Ok(())
 }
 
+/// Only unlocks and checks the copy: opening it as an `Index` would migrate it
+/// and leave a `.encrypting.before-vN` backup that nothing ever cleans up.
 fn check_copy_opens(copy_path: &Path, key: &IndexKey) -> Result<(), IndexError> {
-    let holding_key = InMemoryKeyStore::with_entry(key.as_bytes().to_vec());
-    let copy = Index::open(copy_path, &holding_key)?;
-    if copy.is_encrypted() {
+    if starts_with_plaintext_header(copy_path)? {
+        return Err(IndexError::NotEncrypted);
+    }
+    let conn = Connection::open(copy_path)?;
+    unlock(&conn, key)?;
+    let verdict: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if verdict == "ok" {
         Ok(())
     } else {
-        Err(IndexError::NotEncrypted)
+        Err(crate::model::corrupt("encrypted copy", &verdict))
     }
 }
 
