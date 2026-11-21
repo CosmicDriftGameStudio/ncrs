@@ -11,6 +11,7 @@ use pdfium_render::prelude::{
 };
 
 use crate::location::without_verbatim_prefix;
+use crate::page_budget::{collect_within_budget, MAX_SCAN_TOTAL_BYTES};
 use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, PreviewPage, TextError, TextSource, MAX_TEXT_BYTES};
 
@@ -94,22 +95,24 @@ impl PdfText {
         document: &pdfium_render::prelude::PdfDocument<'_>,
         path: &Path,
     ) -> Result<Vec<PageImage>, TextError> {
-        let mut images = Vec::new();
-        for page in document.pages().iter().take(MAX_SCAN_PAGES) {
-            let (width, height, pixels) = render_page(
-                &page,
-                path,
-                SCAN_DPI / POINTS_PER_INCH,
-                MAX_SCAN_SIDE_PIXELS,
-                grey_of_rendered,
-            )?;
-            images.push(trim_to_content(PageImage {
-                width,
-                height,
-                pixels,
-            }));
-        }
-        Ok(images)
+        collect_within_budget(
+            document.pages().iter().take(MAX_SCAN_PAGES),
+            MAX_SCAN_TOTAL_BYTES,
+            |page| {
+                let (width, height, pixels) = render_page(
+                    &page,
+                    path,
+                    SCAN_DPI / POINTS_PER_INCH,
+                    MAX_SCAN_SIDE_PIXELS,
+                    grey_of_rendered,
+                )?;
+                Ok(trim_to_content(PageImage {
+                    width,
+                    height,
+                    pixels,
+                }))
+            },
+        )
     }
 
     /// The first page of the PDF in colour, at most `max_side_pixels` on its
