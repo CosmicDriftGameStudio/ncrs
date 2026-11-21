@@ -59,4 +59,4 @@ pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;
 pub use rules::RuleSaved;
 pub use search_index::SearchIndex;
-pub use tags::TagTally;
+pub use tags::{TagGroup, TagTally};

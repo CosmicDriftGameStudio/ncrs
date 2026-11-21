@@ -541,7 +541,9 @@ fn a_version_20_database_gains_an_empty_file_list_tag_table() {
 
     assert_eq!(user_version(&index), latest_version());
     assert!(index.file_list_tag_exceptions().unwrap().is_empty());
-    index.set_file_list_tag("steuer", Some(false)).unwrap();
+    index
+        .set_file_list_tag(crate::TagGroup::Own, "steuer", Some(false))
+        .unwrap();
     assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
     assert_eq!(
         index.tag_tally().unwrap().own,
@@ -942,4 +944,36 @@ fn a_version_27_database_loses_no_row_when_a_prefixed_and_a_plain_path_meet() {
     ] {
         assert_eq!(column_values(&index, sql), [r"C:\a"], "{sql}");
     }
+}
+
+#[test]
+fn a_version_29_database_keeps_its_file_list_exceptions_in_every_group() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..29]).unwrap();
+    assert_eq!(user_version(&old), 29);
+    old.conn
+        .execute_batch(
+            "INSERT INTO file_list_tag (tag, shown) VALUES ('telekom', 0);
+             INSERT INTO file_list_tag (tag, shown) VALUES ('steuer', 1);",
+        )
+        .unwrap();
+    drop(old);
+
+    let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+    assert_eq!(user_version(&index), latest_version());
+    let exceptions = index.file_list_tag_exceptions().unwrap();
+    assert_eq!(exceptions.len(), 2 * crate::TagGroup::ALL.len());
+    for group in crate::TagGroup::ALL {
+        assert_eq!(exceptions[&(group, "telekom".to_owned())], false);
+        assert_eq!(exceptions[&(group, "steuer".to_owned())], true);
+    }
+    index
+        .set_file_list_tag(crate::TagGroup::Sender, "telekom", None)
+        .unwrap();
+    assert_eq!(
+        index.file_list_tag_exceptions().unwrap().len(),
+        2 * crate::TagGroup::ALL.len() - 1
+    );
 }
