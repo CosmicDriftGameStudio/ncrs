@@ -26,6 +26,7 @@ impl Runner {
             waiting_first: HashSet::new(),
             taken: HashMap::new(),
             deferred: Vec::new(),
+            gone: Default::default(),
             next_rescan: settings
                 .rescan_every
                 .and_then(|every| Instant::now().checked_add(every)),

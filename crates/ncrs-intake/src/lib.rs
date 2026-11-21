@@ -83,7 +83,8 @@ pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
 pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
 pub use scan::{
-    scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
+    scan_location, settle_gone_path, settle_location, walk_location, Found, ScanReport,
+    MAX_REPORTED_ERRORS,
 };
 pub use sender_detection::{detect_sender, DetectedSender, OwnIdentifiers, SenderSource};
 pub use stability::{StabilityTracker, STABLE_AFTER};
