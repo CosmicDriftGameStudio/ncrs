@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{Kinds, Rule};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Snapshots {
     rules: Arc<Mutex<Option<Vec<Rule>>>>,
     kinds: Arc<Mutex<Option<Kinds>>>,

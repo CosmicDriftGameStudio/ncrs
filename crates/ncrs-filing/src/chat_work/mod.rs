@@ -49,7 +49,7 @@ pub use pattern::PatternLevel;
 pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
-pub(crate) use snapshots::Snapshots;
+pub use snapshots::Snapshots;
 pub use trial::{
     ModelScope, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE,
 };

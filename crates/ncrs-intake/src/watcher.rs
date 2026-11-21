@@ -234,7 +234,7 @@ fn forward_files(
         forward(WatchEvent::Gone(path.to_path_buf()));
         return;
     }
-    let is_folder = metadata.is_ok_and(|metadata| metadata.is_dir());
+    let is_folder = metadata.is_ok_and(|meta| meta.is_dir());
     if is_folder && !expands_folders {
         return;
     }

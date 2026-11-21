@@ -21,9 +21,9 @@ pub(in crate::filing) fn mark_unconfirmed(db_path: &Path) -> std::io::Result<()>
     let Some(marker) = marker_path(db_path) else {
         return Ok(());
     };
-    let mut pending = marker.clone().into_os_string();
-    pending.push(".tmp");
-    let pending = PathBuf::from(pending);
+    let mut pending_name = marker.clone().into_os_string();
+    pending_name.push(".tmp");
+    let pending = PathBuf::from(pending_name);
     let mut file = std::fs::File::create(&pending)?;
     file.flush()?;
     file.sync_all()?;

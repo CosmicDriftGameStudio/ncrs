@@ -317,19 +317,18 @@ fn a_value_of_a_deleted_rule_stays_when_the_archive_is_read_again() {
     let calls = Arc::new(AtomicUsize::new(0));
     scan_with_files(&fixture, &location, &calls);
     let id = only_document(&fixture, &location);
-    {
-        let mut index = fixture.index.lock().unwrap();
-        let rule = index
-            .create_rule(&invoice_rule("{number}.pdf", true))
-            .unwrap();
-        let mut fields = index.document(id).unwrap().unwrap().fields;
-        fields.date = NaiveDate::from_ymd_opt(1978, 1, 2);
-        index
-            .set_document_fields(id, &fields, |_| FieldOrigin::Rule(Some(rule)))
-            .unwrap();
-        index.delete_rule(rule).unwrap();
-        index.set_fields_read_version(id, 1).unwrap();
-    }
+    let mut writer = fixture.index.lock().unwrap();
+    let rule = writer
+        .create_rule(&invoice_rule("{number}.pdf", true))
+        .unwrap();
+    let mut fields = writer.document(id).unwrap().unwrap().fields;
+    fields.date = NaiveDate::from_ymd_opt(1978, 1, 2);
+    writer
+        .set_document_fields(id, &fields, |_| FieldOrigin::Rule(Some(rule)))
+        .unwrap();
+    writer.delete_rule(rule).unwrap();
+    writer.set_fields_read_version(id, 1).unwrap();
+    drop(writer);
     assert_ne!(letter.date, NaiveDate::from_ymd_opt(1978, 1, 2));
 
     scan_with_files(&fixture, &location, &calls);
