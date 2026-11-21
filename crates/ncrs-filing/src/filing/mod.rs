@@ -68,7 +68,7 @@ pub use ai::{chat_model, http_ai_provider};
 use ai::{wire_ai, AiWiring};
 use index_ops::{
     apply_key, create_index, encrypt_index, open_existing, settle_held, start_over,
-    INDEX_NOT_REOPENED,
+    unconfirmed_key, INDEX_NOT_REOPENED,
 };
 pub use locations::lies_within;
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
@@ -77,6 +77,7 @@ pub use readers::{
     ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader, IndexFigures,
     IndexFiguresReader, NoteLinkFinder, TextSource,
 };
+use recovery_marker::{clear_unconfirmed, is_unconfirmed, mark_unconfirmed};
 pub use secrets::{SecretText, ShownRecoveryKey};
 use state::{next_generation, own_details};
 pub use state::{HeldReason, KeyError, KeyProblem, Phase, ProtectionNote};
@@ -96,6 +97,7 @@ mod locations;
 mod messages;
 mod pipeline;
 mod readers;
+mod recovery_marker;
 mod secrets;
 mod start;
 mod state;

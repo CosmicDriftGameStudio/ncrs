@@ -122,6 +122,7 @@ impl FilingModule {
             .nth(*group)
             .is_some_and(|expected| typed.as_str().trim().eq_ignore_ascii_case(expected));
         if matches {
+            drop(clear_unconfirmed(&self.db_path));
             match self.after_recovery_key.take() {
                 Some(opened) => self.enter(opened),
                 None => self.phase = Phase::Ready,
@@ -209,6 +210,7 @@ impl FilingModule {
                 error: None,
             },
             OpenOutcome::Opened => Phase::Ready,
+            OpenOutcome::OpenedKeyUnconfirmed(key) => self.show_key(key),
             OpenOutcome::OpenedWithoutKeyStore => {
                 self.key_store_reachable = false;
                 Phase::Ready
@@ -221,19 +223,21 @@ impl FilingModule {
         };
     }
 
+    fn show_key(&self, key: ShownRecoveryKey) -> Phase {
+        Phase::ShowRecoveryKey {
+            key,
+            group: (self.pick_group)(GROUP_COUNT) % GROUP_COUNT,
+            typed: SecretText::default(),
+            mismatch: false,
+        }
+    }
+
     fn finish_create(&mut self, result: Result<Option<ShownRecoveryKey>, String>) {
         if !matches!(self.phase, Phase::AskEncryption { busy: true, .. }) {
             return;
         }
         match result {
-            Ok(Some(key)) => {
-                self.phase = Phase::ShowRecoveryKey {
-                    key,
-                    group: (self.pick_group)(GROUP_COUNT) % GROUP_COUNT,
-                    typed: SecretText::default(),
-                    mismatch: false,
-                };
-            }
+            Ok(Some(key)) => self.phase = self.show_key(key),
             Ok(None) => self.phase = Phase::Ready,
             Err(reason) => self.phase = Phase::Failed(reason),
         }
@@ -265,12 +269,7 @@ impl FilingModule {
                         Some(ProtectionNote::EncryptFailed(INDEX_NOT_REOPENED.to_owned()));
                     self.after_recovery_key = Some(report.opened);
                 }
-                self.phase = Phase::ShowRecoveryKey {
-                    key,
-                    group: (self.pick_group)(GROUP_COUNT) % GROUP_COUNT,
-                    typed: SecretText::default(),
-                    mismatch: false,
-                };
+                self.phase = self.show_key(key);
             }
             Err(reason) => {
                 self.protection_note = Some(ProtectionNote::EncryptFailed(reason));

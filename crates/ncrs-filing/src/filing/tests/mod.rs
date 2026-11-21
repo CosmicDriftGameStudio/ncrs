@@ -120,4 +120,5 @@ impl KeyStore for UnavailableStore {
 
 mod access;
 mod protection;
+mod recovery_marker;
 mod start;
