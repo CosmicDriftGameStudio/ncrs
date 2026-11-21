@@ -45,6 +45,9 @@ pub enum WorkOutcome {
 pub enum OpenOutcome {
     NoIndexYet,
     Opened,
+    /// An encrypted index opened, but its recovery key was shown and never
+    /// confirmed: it is shown again.
+    OpenedKeyUnconfirmed(ShownRecoveryKey),
     /// An unencrypted index opened, but the credential store cannot be reached.
     OpenedWithoutKeyStore,
     PlainFileWithKeyEntry,

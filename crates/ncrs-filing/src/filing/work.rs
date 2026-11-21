@@ -61,7 +61,8 @@ impl Work {
         let note = &self.settle_problem;
         let outcome = match self.job {
             Job::Start { locations } => {
-                let opened = open_existing(db_path, store, slot, note);
+                let opened =
+                    unconfirmed_key(open_existing(db_path, store, slot, note), db_path, store);
                 let damage = lock(slot)
                     .as_ref()
                     .and_then(|index| index.damage().unwrap_or_else(|err| Some(err.to_string())));

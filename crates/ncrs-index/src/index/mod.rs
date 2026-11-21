@@ -149,6 +149,15 @@ impl Index {
         swapped.map(|()| key.recovery_key())
     }
 
+    /// The recovery key of the key in the store, to show it again when the user
+    /// has not yet confirmed it. `None` when the store holds no key.
+    pub fn stored_recovery_key(store: &dyn KeyStore) -> Result<Option<RecoveryKey>, IndexError> {
+        store
+            .load_protected()?
+            .map(|stored| IndexKey::from_stored(&stored).map(|key| key.recovery_key()))
+            .transpose()
+    }
+
     pub fn is_encrypted(&self) -> bool {
         self.encrypted
     }
