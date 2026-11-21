@@ -5,8 +5,6 @@ use crate::hermes_column::{is_excluded_sql, EXCLUDED_FOLDERS_CTE};
 use crate::index::Index;
 use crate::model::{DocumentId, DocumentSource, DocumentStatus, HermesCounts, StatusCounts};
 
-const WITHOUT_TEXT: &str = "(t.rowid IS NULL OR trim(t.body) = '')";
-
 impl Index {
     /// Whether text was ever stored for the document, an empty one included.
     pub fn has_document_text_row(&self, id: DocumentId) -> Result<bool, IndexError> {
@@ -79,9 +77,8 @@ impl Index {
             &format!(
                 "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
                  JOIN document d ON d.id = r.document_id
-                 LEFT JOIN document_text t ON t.rowid = r.document_id
                  WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
-                   AND {WITHOUT_TEXT} AND NOT {excluded}"
+                   AND d.has_text = 0 AND NOT {excluded}"
             ),
             [],
         )?;
@@ -104,12 +101,8 @@ impl Index {
                 [],
             )?,
             archive_documents_with_text: self.count(
-                &format!(
-                    "SELECT COUNT(*) FROM document d
-                     LEFT JOIN document_text t ON t.rowid = d.id
-                     WHERE d.source = 'archive' AND d.missing_since IS NULL
-                       AND NOT {WITHOUT_TEXT}"
-                ),
+                "SELECT COUNT(*) FROM document
+                 WHERE source = 'archive' AND missing_since IS NULL AND has_text = 1",
                 [],
             )?,
         })
@@ -241,6 +234,39 @@ mod tests {
             index.fields_read_version(missing),
             Err(IndexError::DocumentNotFound(_))
         ));
+    }
+
+    #[test]
+    fn the_text_counts_follow_every_write_of_the_text() {
+        let (_dir, mut index) = plain_index();
+        let id = index.insert_document(&archive_document(1)).unwrap();
+        index.add_review(id, ReviewReason::NoMatchingRule).unwrap();
+        let counts = |index: &Index| {
+            let counts = index.hermes_counts().unwrap();
+            (
+                counts.archive_documents_with_text,
+                counts.open_reviews_without_text,
+            )
+        };
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "Rent").unwrap();
+        assert_eq!(counts(&index), (1, 0));
+        index.set_document_text(id, "  ").unwrap();
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "Rent again").unwrap();
+        assert_eq!(counts(&index), (1, 0));
+        index
+            .replace_document_content(
+                id,
+                &crate::ContentHash([9; 32]),
+                crate::FileStamp::from_columns(Some(5), Some(6))
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "New text").unwrap();
+        assert_eq!(counts(&index), (1, 0));
     }
 
     #[test]

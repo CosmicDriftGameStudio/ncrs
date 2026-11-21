@@ -164,6 +164,10 @@ impl Index {
             "INSERT INTO document_text (rowid, body) VALUES (?1, ?2)",
             params![id.get(), text],
         )?;
+        tx.execute(
+            "UPDATE document SET has_text = (trim(?2) <> '') WHERE id = ?1",
+            params![id.get(), text],
+        )?;
         tx.commit()?;
         Ok(())
     }
