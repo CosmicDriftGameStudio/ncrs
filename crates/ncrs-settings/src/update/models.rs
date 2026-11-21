@@ -27,7 +27,7 @@ pub fn update_ocr(
         OcrModelsMessage::Download => start_ocr_download(settings, ctx),
         OcrModelsMessage::Progress => Task::none(),
         OcrModelsMessage::Downloaded { generation, result } => {
-            ocr_downloaded(settings, generation, result)
+            ocr_downloaded(settings, generation, result, actions)
         }
     }
 }
@@ -88,6 +88,7 @@ fn ocr_downloaded(
     settings: &mut Settings,
     generation: u64,
     result: Result<(), DownloadError>,
+    actions: &mut Vec<Action>,
 ) -> Task<Message> {
     if generation != settings.ocr_models_generation {
         return Task::none();
@@ -101,6 +102,7 @@ fn ocr_downloaded(
     if let Some(page) = settings.page.as_mut() {
         page.ocr_models_present = true;
     }
+    actions.push(Action::ReadTextlessAgain);
     Task::none()
 }
 

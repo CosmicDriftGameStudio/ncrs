@@ -335,6 +335,16 @@ pub fn update(
             process_found_again(hermes, result, ctx, actions);
             return Task::none();
         }
+        HermesFileMessage::TextlessFound(result) => {
+            match result {
+                Ok(found) => read_paths_again(hermes, found, ctx, actions),
+                Err(reason) => actions.push(Action::ShowError(fill_template(
+                    ctx.lang.text(Msg::StatusHermesColumnReadFailed),
+                    &[("{reason}", &reason)],
+                ))),
+            }
+            return Task::none();
+        }
         HermesFileMessage::ConfirmProcessAgain => {
             confirm_process_again(hermes, ctx, actions);
             return Task::none();
@@ -391,6 +401,7 @@ pub fn update(
         HermesFileMessage::SetRole(_)
         | HermesFileMessage::RoleSaved(_)
         | HermesFileMessage::ProcessAgainFound(_)
+        | HermesFileMessage::TextlessFound(_)
         | HermesFileMessage::ConfirmProcessAgain
         | HermesFileMessage::CancelProcessAgain
         | HermesFileMessage::Included { .. } => Task::none(),

@@ -153,6 +153,15 @@ impl fmt::Debug for ProcessAgainFinder {
 }
 
 impl ProcessAgainFinder {
+    /// The documents the index holds no text for, present and not excluded.
+    pub fn without_text(self) -> Result<Vec<PathBuf>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        index
+            .documents_without_text()
+            .map_err(|err| err.to_string())
+    }
+
     /// A folder stands for the documents below it, a file for itself (also
     /// when the index does not know it yet). Excluded ones are left out; no
     /// path comes twice.

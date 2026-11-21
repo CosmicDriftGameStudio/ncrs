@@ -188,3 +188,79 @@ fn it_is_not_opened_over_another_modal() {
     send(&mut app, OcrModelsMessage::Open);
     assert!(app.ocr_models_for_test().is_none());
 }
+
+fn settled_actions(app: &mut App, message: OcrModelsMessage) -> Vec<ncrs_settings::Action> {
+    app.with_settings(|settings, ctx| {
+        ncrs_settings::update(settings, ncrs_settings::Message::OcrModels(message), ctx)
+    })
+    .1
+}
+
+fn reads_textless_again(actions: &[ncrs_settings::Action]) -> bool {
+    actions
+        .iter()
+        .any(|action| matches!(action, ncrs_settings::Action::ReadTextlessAgain))
+}
+
+#[tokio::test]
+async fn a_finished_download_asks_for_the_documents_without_text_to_be_read_again() {
+    let mut app = app_with_data_folder();
+    send(&mut app, OcrModelsMessage::Open);
+    send(&mut app, OcrModelsMessage::Download);
+    let generation = app.settings.ocr_models_generation;
+    let actions = settled_actions(
+        &mut app,
+        OcrModelsMessage::Downloaded {
+            generation,
+            result: Ok(()),
+        },
+    );
+    assert!(reads_textless_again(&actions));
+}
+
+#[tokio::test]
+async fn a_failed_or_outdated_download_reads_nothing_again() {
+    let mut app = app_with_data_folder();
+    send(&mut app, OcrModelsMessage::Open);
+    send(&mut app, OcrModelsMessage::Download);
+    let generation = app.settings.ocr_models_generation;
+    let outdated = settled_actions(
+        &mut app,
+        OcrModelsMessage::Downloaded {
+            generation: generation.wrapping_add(1),
+            result: Ok(()),
+        },
+    );
+    let failed = settled_actions(
+        &mut app,
+        OcrModelsMessage::Downloaded {
+            generation,
+            result: Err(DownloadError::Network(
+                crate::open_vsx::FetchError::Network("offline".to_owned()),
+            )),
+        },
+    );
+    assert!(!reads_textless_again(&outdated));
+    assert!(!reads_textless_again(&failed));
+}
+
+#[tokio::test]
+async fn the_documents_found_without_text_are_queued_without_a_question() {
+    let mut app = app_with_data_folder();
+    app.hermes.filing_config.locations = vec![crate::config::FilingLocation {
+        path: PathBuf::from("/home/test/Scans"),
+        mode: ncrs_intake::LocationMode::Inbox,
+        images: false,
+        is_target: false,
+        transfer: Default::default(),
+    }];
+    let found = (0..3)
+        .map(|n| PathBuf::from(format!("/home/test/Scans/scan{n}.pdf")))
+        .collect();
+    drop(
+        app.update(Message::HermesFile(HermesFileMessage::TextlessFound(Ok(
+            found,
+        )))),
+    );
+    assert!(app.confirm_again_for_test().is_none());
+}
