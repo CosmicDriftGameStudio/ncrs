@@ -97,7 +97,7 @@ impl Index {
             return Err(IndexError::KeyStoreNotEmpty);
         }
         let key = recovery_key.key();
-        let conn = Connection::open(db_path)?;
+        let conn = open_connection(db_path)?;
         unlock(&conn, key)?;
         drop(conn);
         store_and_verify(store, key)
@@ -115,7 +115,7 @@ impl Index {
             return Err(IndexError::NotEncrypted);
         }
         let key = recovery_key.key();
-        let conn = Connection::open(db_path)?;
+        let conn = open_connection(db_path)?;
         unlock(&conn, key)?;
         drop(conn);
         store.replace(key.as_bytes())?;
@@ -215,7 +215,7 @@ impl Index {
     ) -> Result<(Self, RecoveryKey), IndexError> {
         require_no_file(db_path)?;
         let key = key_for_new_database(store)?;
-        let conn = Connection::open(db_path)
+        let conn = open_connection(db_path)
             .map_err(IndexError::from)
             .and_then(|conn| {
                 unlock(&conn, &key)?;
@@ -243,7 +243,7 @@ impl Index {
         migrations: &[&str],
     ) -> Result<Self, IndexError> {
         require_no_file(db_path)?;
-        let conn = Connection::open(db_path)
+        let conn = open_connection(db_path)
             .map_err(IndexError::from)
             .and_then(|mut conn| {
                 overwrite_deleted_pages(&conn)?;
@@ -266,7 +266,7 @@ impl Index {
     ) -> Result<Self, IndexError> {
         require_existing_file(db_path)?;
         let encrypted = !starts_with_plaintext_header(db_path)?;
-        let mut conn = Connection::open(db_path)?;
+        let mut conn = open_connection(db_path)?;
         if encrypted {
             // A key is never made for a file that exists: a new key could not
             // open it, and the data would be gone for good.
@@ -441,7 +441,7 @@ fn export_encrypted_copy(
     let copy_text = copy_path
         .to_str()
         .ok_or_else(|| IndexError::NonUtf8Path(copy_path.to_path_buf()))?;
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
     // The export copies tables one by one, so rows may not be checked against
     // tables that are not there yet.
     conn.pragma_update(None, "foreign_keys", false)?;
@@ -465,7 +465,7 @@ fn check_copy_opens(copy_path: &Path, key: &IndexKey) -> Result<(), IndexError> 
     if starts_with_plaintext_header(copy_path)? {
         return Err(IndexError::NotEncrypted);
     }
-    let conn = Connection::open(copy_path)?;
+    let conn = open_connection(copy_path)?;
     unlock(&conn, key)?;
     let verdict: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
     if verdict == "ok" {
@@ -491,6 +491,20 @@ fn sync_parent_directory(db_path: &Path) {
 
 /// The `x'..'` form skips the passphrase key derivation: the key is already 32
 /// random bytes, so stretching it would only cost start-up time.
+/// SQLite marks itself initialised before SQLCipher's own setup has finished,
+/// so a thread opening its first database while another is still in that setup
+/// fails with "sqlcipher not initialized". One in-memory open, finished before
+/// any other, completes the setup for the whole process.
+fn open_connection(path: &Path) -> rusqlite::Result<Connection> {
+    static SQLCIPHER_READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    SQLCIPHER_READY.get_or_init(|| {
+        if let Ok(conn) = Connection::open_in_memory() {
+            let _ = conn.query_row("PRAGMA cipher_version", [], |_| Ok(()));
+        }
+    });
+    Connection::open(path)
+}
+
 fn raw_key_text(key: &IndexKey) -> Zeroizing<String> {
     Zeroizing::new(format!("x'{}'", *key.to_hex()))
 }
