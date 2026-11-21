@@ -323,12 +323,15 @@ fn verify_copy(source: &Path, copy: &Path, seen: &mut Vec<Seen>) -> io::Result<(
         for name in listed {
             verify_copy(&source.join(&name), &copy.join(&name), seen)?;
         }
-        let below_kept = seen[at + 1..]
+        let below_kept = seen
             .iter()
+            .skip(at + 1)
             .any(|item| matches!(item.kind, SeenKind::Dir { kept_links: true }));
-        seen[at].kind = SeenKind::Dir {
-            kept_links: own_links_left || below_kept,
-        };
+        if let Some(dir) = seen.get_mut(at) {
+            dir.kind = SeenKind::Dir {
+                kept_links: own_links_left || below_kept,
+            };
+        }
         Ok(())
     } else if from.file_type().is_symlink() {
         if to.file_type().is_symlink() && std::fs::read_link(source)? == std::fs::read_link(copy)? {

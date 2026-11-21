@@ -414,6 +414,6 @@ mod tests {
         let broken = root.path().join("a.zip");
         std::fs::write(&broken, "not an archive").unwrap();
 
-        assert!(extract_all_here(&[broken], &mut fs::transfer::Counting).is_err());
+        extract_all_here(&[broken], &mut fs::transfer::Counting).unwrap_err();
     }
 }

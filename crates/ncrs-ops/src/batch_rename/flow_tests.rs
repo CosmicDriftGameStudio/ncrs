@@ -280,7 +280,7 @@ mod abort {
         with_model_ctx(None, step)
     }
 
-    pub(super) fn with_model_ctx<R>(
+    pub(in crate::batch_rename) fn with_model_ctx<R>(
         model: Option<Arc<dyn ncrs_ai::ChatModel>>,
         step: impl FnOnce(&FlowCtx<'_>) -> R,
     ) -> R {
@@ -536,7 +536,11 @@ mod hermes {
         ));
         let mut ops = Ops::default();
 
-        let sent = open_with(&mut ops, Some(model.clone())).await;
+        let sent = open_with(
+            &mut ops,
+            Some(Arc::clone(&model) as Arc<dyn ncrs_ai::ChatModel>),
+        )
+        .await;
 
         let turns = model.turns();
         assert_eq!(turns.len(), 1);

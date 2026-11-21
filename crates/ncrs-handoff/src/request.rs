@@ -51,11 +51,11 @@ pub fn path_from_argument(argument: &OsStr, cwd: &Path) -> PathBuf {
     let repaired = argument.to_str().and_then(drive_root_with_swallowed_slash);
     #[cfg(not(windows))]
     let repaired: Option<String> = None;
-    let argument = repaired.as_deref().map_or(argument, OsStr::new);
-    let path = argument
+    let named = repaired.as_deref().map_or(argument, OsStr::new);
+    let path = named
         .to_str()
         .and_then(path_from_file_uri)
-        .unwrap_or_else(|| PathBuf::from(argument));
+        .unwrap_or_else(|| PathBuf::from(named));
     if path.is_absolute() {
         path
     } else {
