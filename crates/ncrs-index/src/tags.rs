@@ -11,6 +11,42 @@ use crate::index::Index;
 use crate::model::{tag_name, ConditionKind, ContentHash, RuleId};
 use crate::names::{name_id, NameTable};
 
+/// A kind of tags the file list can show, as it is spelled in the config file
+/// and in the index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TagGroup {
+    Kind,
+    Recipient,
+    Sender,
+    Year,
+    Own,
+}
+
+impl TagGroup {
+    /// In the order the chips appear.
+    pub const ALL: [Self; 5] = [
+        Self::Kind,
+        Self::Recipient,
+        Self::Sender,
+        Self::Year,
+        Self::Own,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Kind => "kind",
+            Self::Recipient => "recipient",
+            Self::Sender => "sender",
+            Self::Year => "year",
+            Self::Own => "own",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|group| group.name() == name)
+    }
+}
+
 /// Per group of tags, each tag with the number of documents that have it,
 /// the most used first and then by name. Grouped and spelled as
 /// [`crate::FileTags`] shows them in the file list.
@@ -49,39 +85,54 @@ impl Counter {
 
 impl Index {
     /// The tags whose visibility in the file list differs from their group's.
-    pub fn file_list_tag_exceptions(&self) -> Result<BTreeMap<String, bool>, IndexError> {
+    pub fn file_list_tag_exceptions(
+        &self,
+    ) -> Result<BTreeMap<(TagGroup, String), bool>, IndexError> {
         let mut statement = self
             .connection()
-            .prepare("SELECT tag, shown FROM file_list_tag")?;
+            .prepare("SELECT grp, tag, shown FROM file_list_tag")?;
         let rows = statement
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
             })?
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        Ok(rows)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(group, tag, shown)| Some(((TagGroup::from_name(&group)?, tag), shown)))
+            .collect())
     }
 
     /// `None` removes the exception, so the tag follows its group again.
-    pub fn set_file_list_tag(&self, tag: &str, shown: Option<bool>) -> Result<(), IndexError> {
+    pub fn set_file_list_tag(
+        &self,
+        group: TagGroup,
+        tag: &str,
+        shown: Option<bool>,
+    ) -> Result<(), IndexError> {
         match shown {
             Some(visible) => self.connection().execute(
-                "INSERT INTO file_list_tag (tag, shown) VALUES (?1, ?2)
-                 ON CONFLICT (tag) DO UPDATE SET shown = excluded.shown",
-                params![tag, visible],
+                "INSERT INTO file_list_tag (grp, tag, shown) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (grp, tag) DO UPDATE SET shown = excluded.shown",
+                params![group.name(), tag, visible],
             )?,
-            None => self
-                .connection()
-                .execute("DELETE FROM file_list_tag WHERE tag = ?1", [tag])?,
+            None => self.connection().execute(
+                "DELETE FROM file_list_tag WHERE grp = ?1 AND tag = ?2",
+                params![group.name(), tag],
+            )?,
         };
         Ok(())
     }
 
-    pub fn clear_file_list_tags(&self, tags: &[String]) -> Result<(), IndexError> {
+    pub fn clear_file_list_tags(&self, group: TagGroup, tags: &[String]) -> Result<(), IndexError> {
         let mut statement = self
             .connection()
-            .prepare("DELETE FROM file_list_tag WHERE tag = ?1")?;
+            .prepare("DELETE FROM file_list_tag WHERE grp = ?1 AND tag = ?2")?;
         for tag in tags {
-            statement.execute([tag])?;
+            statement.execute(params![group.name(), tag])?;
         }
         Ok(())
     }
@@ -212,11 +263,15 @@ impl Index {
                 params![rule_id, position, new],
             )?;
         }
+        let own = TagGroup::Own.name();
         tx.execute(
-            "UPDATE OR IGNORE file_list_tag SET tag = ?2 WHERE tag = ?1",
-            [&old, &new],
+            "UPDATE OR IGNORE file_list_tag SET tag = ?2 WHERE grp = ?3 AND tag = ?1",
+            params![old, new, own],
         )?;
-        tx.execute("DELETE FROM file_list_tag WHERE tag = ?1", [&old])?;
+        tx.execute(
+            "DELETE FROM file_list_tag WHERE grp = ?2 AND tag = ?1",
+            params![old, own],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -244,7 +299,10 @@ impl Index {
             tx.execute("DELETE FROM rule_tag WHERE tag_id = ?1", [id])?;
             tx.execute("DELETE FROM saved_query_tag WHERE tag_id = ?1", [id])?;
         }
-        tx.execute("DELETE FROM file_list_tag WHERE tag = ?1", [&tag])?;
+        tx.execute(
+            "DELETE FROM file_list_tag WHERE grp = ?2 AND tag = ?1",
+            params![tag, TagGroup::Own.name()],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -384,16 +442,29 @@ mod tests {
     fn exceptions_are_set_changed_and_cleared() {
         let (_dir, index) = encrypted_index();
 
-        index.set_file_list_tag("steuer", Some(true)).unwrap();
-        index.set_file_list_tag("invoice", Some(false)).unwrap();
-        index.set_file_list_tag("steuer", Some(false)).unwrap();
+        index
+            .set_file_list_tag(TagGroup::Own, "steuer", Some(true))
+            .unwrap();
+        index
+            .set_file_list_tag(TagGroup::Kind, "invoice", Some(false))
+            .unwrap();
+        index
+            .set_file_list_tag(TagGroup::Own, "steuer", Some(false))
+            .unwrap();
         assert_eq!(
             index.file_list_tag_exceptions().unwrap(),
-            BTreeMap::from([("invoice".to_owned(), false), ("steuer".to_owned(), false)])
+            BTreeMap::from([
+                ((TagGroup::Kind, "invoice".to_owned()), false),
+                ((TagGroup::Own, "steuer".to_owned()), false)
+            ])
         );
 
-        index.set_file_list_tag("invoice", None).unwrap();
-        index.clear_file_list_tags(&["steuer".to_owned()]).unwrap();
+        index
+            .set_file_list_tag(TagGroup::Kind, "invoice", None)
+            .unwrap();
+        index
+            .clear_file_list_tags(TagGroup::Own, &["steuer".to_owned()])
+            .unwrap();
         assert!(index.file_list_tag_exceptions().unwrap().is_empty());
     }
 
@@ -446,7 +517,9 @@ mod tests {
                 },
             )
             .unwrap();
-        index.set_file_list_tag("old", Some(true)).unwrap();
+        index
+            .set_file_list_tag(TagGroup::Own, "old", Some(true))
+            .unwrap();
     }
 
     #[test]
@@ -477,7 +550,7 @@ mod tests {
         );
         assert_eq!(
             index.file_list_tag_exceptions().unwrap(),
-            BTreeMap::from([("new-name".to_owned(), true)])
+            BTreeMap::from([((TagGroup::Own, "new-name".to_owned()), true)])
         );
     }
 
@@ -537,7 +610,49 @@ mod tests {
         );
         assert_eq!(
             index.file_list_tag_exceptions().unwrap(),
-            BTreeMap::from([("old".to_owned(), true)])
+            BTreeMap::from([((TagGroup::Own, "old".to_owned()), true)])
+        );
+    }
+
+    #[test]
+    fn a_sender_exception_survives_renaming_and_deleting_the_own_tag_of_that_name() {
+        let (_dir, mut index) = encrypted_index();
+        index
+            .set_file_list_tag(TagGroup::Sender, "telekom", Some(false))
+            .unwrap();
+        index
+            .set_file_list_tag(TagGroup::Own, "telekom", Some(true))
+            .unwrap();
+        let sender_only = BTreeMap::from([((TagGroup::Sender, "telekom".to_owned()), false)]);
+
+        index.rename_own_tag("telekom", "phone").unwrap();
+        let mut expected = sender_only.clone();
+        expected.insert((TagGroup::Own, "phone".to_owned()), true);
+        assert_eq!(index.file_list_tag_exceptions().unwrap(), expected);
+
+        index
+            .set_file_list_tag(TagGroup::Own, "telekom", Some(true))
+            .unwrap();
+        index.delete_own_tag("telekom").unwrap();
+        assert_eq!(index.file_list_tag_exceptions().unwrap(), expected);
+    }
+
+    #[test]
+    fn the_same_name_has_one_exception_per_group() {
+        let (_dir, index) = encrypted_index();
+        index
+            .set_file_list_tag(TagGroup::Sender, "telekom", Some(false))
+            .unwrap();
+        index
+            .set_file_list_tag(TagGroup::Own, "telekom", Some(true))
+            .unwrap();
+        index
+            .clear_file_list_tags(TagGroup::Sender, &["telekom".to_owned()])
+            .unwrap();
+
+        assert_eq!(
+            index.file_list_tag_exceptions().unwrap(),
+            BTreeMap::from([((TagGroup::Own, "telekom".to_owned()), true)])
         );
     }
 }

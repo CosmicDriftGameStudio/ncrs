@@ -6,40 +6,10 @@ use std::collections::BTreeMap;
 use ncrs_index::{tag_name, FileTags, Kinds};
 
 pub use ncrs_core::tags::{FileChip, ShownTags};
+pub use ncrs_index::TagGroup;
 
 /// Most chips after one name; the rest is counted.
 pub const MOST_CHIPS: usize = 3;
-
-/// A kind of tags the panel can show, as it is spelled in the config file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TagGroup {
-    Kind,
-    Recipient,
-    Sender,
-    Year,
-    Own,
-}
-
-impl TagGroup {
-    /// In the order the chips appear.
-    pub const ALL: [Self; 5] = [
-        Self::Kind,
-        Self::Recipient,
-        Self::Sender,
-        Self::Year,
-        Self::Own,
-    ];
-
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Kind => "kind",
-            Self::Recipient => "recipient",
-            Self::Sender => "sender",
-            Self::Year => "year",
-            Self::Own => "own",
-        }
-    }
-}
 
 /// The `[file_list_tags]` setting as it is in effect.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,9 +59,10 @@ fn worded(group: TagGroup, tag: &str, kinds: &Kinds) -> String {
     }
 }
 
-/// The tags that differ from their group's default, by tag name: `true` shows
-/// the tag although its group is off, `false` hides it although the group is on.
-pub type TagExceptions = BTreeMap<String, bool>;
+/// The tags that differ from their group's default, by group and tag name:
+/// `true` shows the tag although its group is off, `false` hides it although
+/// the group is on.
+pub type TagExceptions = BTreeMap<(TagGroup, String), bool>;
 
 /// Kind, recipient, sender, year, then the own tags. A tag shows when its
 /// exception says so, else when its group is on. A tag that is both read and
@@ -108,7 +79,7 @@ pub fn shown_tags(
     }
     let wanted = |group: TagGroup, tag: &str| {
         exceptions
-            .get(&tag_name(tag))
+            .get(&(group, tag_name(tag)))
             .copied()
             .unwrap_or_else(|| setting.has_group(group))
     };
@@ -280,9 +251,9 @@ mod tests {
     #[test]
     fn an_exception_beats_the_default_of_its_group_in_both_directions() {
         let exceptions = TagExceptions::from([
-            ("telekom".to_owned(), true),
-            ("rechnung".to_owned(), false),
-            ("steuer".to_owned(), false),
+            ((TagGroup::Sender, "telekom".to_owned()), true),
+            ((TagGroup::Kind, "rechnung".to_owned()), false),
+            ((TagGroup::Own, "steuer".to_owned()), false),
         ]);
 
         let shown = shown_tags(
@@ -299,7 +270,7 @@ mod tests {
     fn the_exception_of_a_kind_is_found_by_the_tag_in_the_index_in_every_language() {
         let mut tags = read_document();
         tags.kind = Some("invoice".to_owned());
-        let exceptions = TagExceptions::from([("invoice".to_owned(), false)]);
+        let exceptions = TagExceptions::from([((TagGroup::Kind, "invoice".to_owned()), false)]);
 
         let shown = shown_tags(
             &tags,

@@ -214,7 +214,7 @@ impl TagsPage {
         let shown = self
             .loaded
             .as_ref()
-            .and_then(|loaded| loaded.exceptions.get(tag).copied())
+            .and_then(|loaded| loaded.exceptions.get(&(group, tag.to_owned())).copied())
             .unwrap_or_else(|| setting.has_group(group));
         if shown {
             Check::On
@@ -228,7 +228,7 @@ impl TagsPage {
         let has_exception = self.loaded.as_ref().is_some_and(|loaded| {
             self.tags_of(group)
                 .iter()
-                .any(|(tag, _)| loaded.exceptions.contains_key(tag))
+                .any(|(tag, _)| loaded.exceptions.contains_key(&(group, tag.clone())))
         });
         if has_exception {
             Check::Mixed
@@ -259,7 +259,7 @@ impl TagsPage {
         };
         self.tags_of(group)
             .iter()
-            .filter(|(tag, _)| loaded.exceptions.contains_key(tag))
+            .filter(|(tag, _)| loaded.exceptions.contains_key(&(group, tag.clone())))
             .map(|(tag, _)| tag.clone())
             .collect()
     }
@@ -399,7 +399,7 @@ pub mod fixtures {
                 recipient: tags(&["firma-a-gmbh"]),
                 year: tags(&["2026", "2025"]),
             },
-            exceptions: TagExceptions::from([("decision".to_owned(), false)]),
+            exceptions: TagExceptions::from([((TagGroup::Kind, "decision".to_owned()), false)]),
         });
         page
     }

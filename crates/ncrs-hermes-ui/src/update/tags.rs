@@ -64,7 +64,7 @@ pub fn update(
             };
             let shown = page.exception_after_toggle(ctx.file_list_tags, group, &tag);
             page.begin_change();
-            run_tags_work(hermes, move |access| access.set_shown(&tag, shown))
+            run_tags_work(hermes, move |access| access.set_shown(group, &tag, shown))
         }
         TagsMessage::ToggleGroup(group) => toggle_tag_group(hermes, ctx, group, actions),
         TagsMessage::SearchChanged(text) => {
@@ -136,7 +136,9 @@ fn toggle_tag_group(
     if let Some(open) = hermes.tags.as_mut() {
         open.begin_change();
     }
-    run_tags_work(hermes, move |access| access.clear_exceptions(&exceptional))
+    run_tags_work(hermes, move |access| {
+        access.clear_exceptions(group, &exceptional)
+    })
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {

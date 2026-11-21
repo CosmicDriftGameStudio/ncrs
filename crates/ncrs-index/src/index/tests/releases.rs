@@ -619,10 +619,15 @@ pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
 
     assert_eq!(
         index.file_list_tag_exceptions().unwrap(),
-        std::collections::BTreeMap::from([
-            ("project-x".to_owned(), false),
-            ("services".to_owned(), true),
-        ])
+        crate::TagGroup::ALL
+            .into_iter()
+            .flat_map(|group| {
+                [
+                    ((group, "project-x".to_owned()), false),
+                    ((group, "services".to_owned()), true),
+                ]
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
     );
 }
 
