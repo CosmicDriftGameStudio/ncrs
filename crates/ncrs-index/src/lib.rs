@@ -5,6 +5,7 @@ mod backup;
 mod condition_store;
 mod documents;
 mod error;
+mod filed_inbox;
 mod folder_pick;
 mod hermes_column;
 mod hermes_counts;
