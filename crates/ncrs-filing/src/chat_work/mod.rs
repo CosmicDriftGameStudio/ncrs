@@ -179,6 +179,7 @@ pub struct ChatAccess {
     copy_roots: Vec<PathBuf>,
     index_work: crate::index_work::IndexWork,
     last_kinds: Arc<Mutex<Option<Kinds>>>,
+    last_rules: Arc<Mutex<Option<Vec<Rule>>>>,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -205,6 +206,7 @@ impl ChatAccess {
             copy_roots: Vec::new(),
             index_work: crate::index_work::IndexWork::default(),
             last_kinds: Arc::default(),
+            last_rules: Arc::default(),
         }
     }
 
@@ -398,9 +400,13 @@ impl ChatAccess {
             return Err(RuleSaveFailure::Refused(problem));
         }
         self.with_index_mut(|index| {
-            index
+            let created = index
                 .create_rule_from(&spec, RuleOrigin::Chat)
-                .map_err(|err| err.to_string())
+                .map_err(|err| err.to_string())?;
+            if let Ok(rules) = index.rules() {
+                self.remember_rules(&rules);
+            }
+            Ok(created)
         })
         .map_err(RuleSaveFailure::Failed)?;
         Ok(label.to_owned())
@@ -437,9 +443,13 @@ impl ChatAccess {
             return Err(RuleSaveFailure::Refused(problem));
         }
         self.with_index_mut(|index| {
-            index
+            let saved = index
                 .save_rule_from(spec, RuleOrigin::Chat)
-                .map_err(|err| err.to_string())
+                .map_err(|err| err.to_string())?;
+            if let Ok(rules) = index.rules() {
+                self.remember_rules(&rules);
+            }
+            Ok(saved)
         })
         .map_err(RuleSaveFailure::Failed)
     }
@@ -453,9 +463,29 @@ impl ChatAccess {
         work(index)
     }
 
-    /// For the UI thread: `Err` at once while a run holds the index.
+    /// For the UI thread: while a run holds the index the rules last read or
+    /// saved are returned; `Err` at once only when there are none yet.
     pub fn try_rules(&self) -> Result<Vec<Rule>, String> {
-        self.try_with_index(|index| index.rules().map_err(|err| err.to_string()))
+        match self.try_with_index(|index| index.rules().map_err(|err| err.to_string())) {
+            Ok(rules) => {
+                self.remember_rules(&rules);
+                Ok(rules)
+            }
+            Err(err) if err == INDEX_BUSY => self
+                .last_rules
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+                .ok_or(err),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn remember_rules(&self, rules: &[Rule]) {
+        *self
+            .last_rules
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(rules.to_vec());
     }
 
     /// For the UI thread: while a run holds the index the kinds last read
