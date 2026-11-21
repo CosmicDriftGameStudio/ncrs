@@ -402,11 +402,11 @@ pub fn server_listing(folder: &str) -> Vec<FileEntry> {
 fn position_of(rows: &[FileEntry], name: &str) -> usize {
     rows.iter()
         .position(|row| row.name == name)
-        .unwrap_or_default()
+        .unwrap_or_else(|| panic!("{name} is not in the listing"))
 }
 
-/// The two dense panels: the project (cursor on `README.md`, `Cargo.toml` and
-/// `CHANGELOG.md` tagged) and Downloads (cursor on `project-backup.zip`).
+/// The two dense panels: the project (cursor on `Cargo.lock`, `Cargo.toml` and
+/// `CHANGELOG.md` tagged) and Downloads (cursor on `backup-project.zip`).
 pub fn dense_showcase_app() -> App {
     let mut app = App::with_fixed_panels().with_version_for_test(env!("CARGO_PKG_VERSION"));
     app = app

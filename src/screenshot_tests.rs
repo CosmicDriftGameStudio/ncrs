@@ -145,7 +145,7 @@ fn position_of(entries: &[FileEntry], name: &str) -> usize {
 
 /// Two realistic panels. The cursor is on `README.md`, `Cargo.toml` and
 /// `CHANGELOG.md` are tagged.
-pub fn showcase_app() -> App {
+fn showcase_app() -> App {
     let mut app = App::with_fixed_panels().with_version_for_test(env!("CARGO_PKG_VERSION"));
     app.set_visible_rows_for_test(VISIBLE_ROWS);
     app = app.with_favourites_for_test(FAVOURITES);
@@ -247,7 +247,7 @@ fn compared_showcase() -> ncrs_compare::Compared {
     }
 }
 
-pub fn compare_app() -> App {
+fn compare_app() -> App {
     let mut app = showcase_app();
     let backup = app.panel_mut_for_test(PanelSide::Right);
     backup.path = PathBuf::from(BACKUP_DIRECTORY);
@@ -287,9 +287,7 @@ fn own_server_app() -> App {
             text: text.to_owned(),
         })));
     }
-    let runtime = tokio::runtime::Runtime::new().expect("runtime");
-    let _entered = runtime.enter();
-    drop(app.update(Message::Settings(SettingsMessage::TestAiServer)));
+    app = app.asking_ai_server();
     let models = [
         "openai/gpt-5-mini",
         "openai/gpt-5",
@@ -304,7 +302,7 @@ fn own_server_app() -> App {
     app
 }
 
-pub fn showcase_search_results() -> Vec<(FileEntry, Vec<LineMatch>)> {
+fn showcase_search_results() -> Vec<(FileEntry, Vec<LineMatch>)> {
     let root = PathBuf::from(PROJECT_DIRECTORY);
     let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
         number,
