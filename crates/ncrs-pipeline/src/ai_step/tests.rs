@@ -798,7 +798,7 @@ fn document_with_guesses(fixture: &Fixture) -> DocumentId {
         ..DocumentFields::default()
     };
     index
-        .set_document_fields(document, &guessed, |_| FieldOrigin::Rule(None))
+        .set_document_fields(document, &guessed, |_| FieldOrigin::Detected)
         .unwrap();
     let by_hand = DocumentFields {
         number: Some("7".to_owned()),
@@ -886,8 +886,8 @@ fn an_unsure_ai_value_replaces_no_guess() {
         .unwrap()
         .field_origins(document)
         .unwrap();
-    assert_eq!(origins.of(Field::Sender), FieldOrigin::Rule(None));
-    assert_eq!(origins.of(Field::Date), FieldOrigin::Rule(None));
+    assert_eq!(origins.of(Field::Sender), FieldOrigin::Detected);
+    assert_eq!(origins.of(Field::Date), FieldOrigin::Detected);
 }
 
 #[test]
@@ -921,5 +921,37 @@ fn an_inbox_document_that_goes_to_review_after_the_answer_is_remembered_as_asked
             .unwrap(),
         AI_READ_VERSION,
         "the next scan must not send the same text again"
+    );
+}
+
+#[test]
+fn a_sure_ai_value_does_not_replace_a_value_of_a_deleted_rule() {
+    let fixture = Fixture::new();
+    let provider = Arc::new(FakeProvider::replying(
+        r#"{"sender": {"value": "Agency B", "confidence": 0.95}}"#,
+    ));
+    let steps = fixture.steps(&provider);
+    let document = fixture.add_document(1);
+    set_status(&fixture, document, DocumentStatus::Filed);
+    let mut index = fixture.index.lock().unwrap();
+    let rule = index
+        .create_rule(&invoice_rule("{number}.pdf", true))
+        .unwrap();
+    let by_rule = DocumentFields {
+        sender: Some("Company A".to_owned()),
+        ..DocumentFields::default()
+    };
+    index
+        .set_document_fields(document, &by_rule, |_| FieldOrigin::Rule(Some(rule)))
+        .unwrap();
+    index.delete_rule(rule).unwrap();
+    drop(index);
+    let mut item = fixture.item(document, INVOICE_TEXT);
+
+    run(&steps, AI, &mut item);
+
+    assert_eq!(
+        fixture.fields(document).sender.as_deref(),
+        Some("Company A")
     );
 }

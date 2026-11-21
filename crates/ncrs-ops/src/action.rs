@@ -151,6 +151,12 @@ pub enum Action {
         from: PathBuf,
         renamed_to: Option<PathBuf>,
     },
+    /// `from` was renamed to `to` by a rename the user has since replaced:
+    /// paths held by the panels follow it, but no input is touched.
+    RenameApplied {
+        from: PathBuf,
+        to: PathBuf,
+    },
     /// Shows the trash in place of the panel on this side.
     OpenTrash(PanelSide),
     /// Shows the trash folder in the Finder, where the app cannot list it.

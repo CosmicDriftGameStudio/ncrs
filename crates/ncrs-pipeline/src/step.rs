@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use ncrs_index::{DocumentId, Index, ReviewReason};
@@ -52,6 +52,12 @@ pub trait Step: Send + Sync + fmt::Debug {
     /// Called once the files found by a scan of the location have all passed
     /// the first step. Returns the paths it could not settle.
     fn after_scan(&self, _location: &Location) -> Result<Vec<PathBuf>, String> {
+        Ok(Vec::new())
+    }
+
+    /// Called when the watcher reports `path`, a file or a folder, deleted or
+    /// moved out of the location. Returns the paths it could not settle.
+    fn path_gone(&self, _location: &Location, _path: &Path) -> Result<Vec<PathBuf>, String> {
         Ok(Vec::new())
     }
 }

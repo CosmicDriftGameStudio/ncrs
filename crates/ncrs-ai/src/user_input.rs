@@ -12,15 +12,19 @@ use std::time::Instant;
 /// How long after the last input the model keeps waiting for a job a person
 /// waits for.
 #[cfg(any(test, feature = "llama"))]
-pub const QUIET_WAITING_MS: u64 = 300;
+const QUIET_WAITING_MS: u64 = 300;
 /// The same for work nobody waits for: it runs only while the window rests.
 #[cfg(any(test, feature = "llama"))]
-pub const QUIET_BACKGROUND_MS: u64 = 5_000;
+const QUIET_BACKGROUND_MS: u64 = 5_000;
 /// The longest a model waits in one go; then a chunk may compute.
 // ponytail: a pointer that never rests would starve the background work for
 // good; one chunk per 30 s is slow but moves on. Make it adaptive if it shows.
 #[cfg(any(test, feature = "llama"))]
-pub const MAX_WAIT_MS: u64 = 30_000;
+const MAX_WAIT_MS: u64 = 30_000;
+/// The same cap for a job a person waits for: every decoded token waits, so a
+/// long cap would stretch an answer by minutes while the pointer moves.
+#[cfg(any(test, feature = "llama"))]
+const MAX_WAIT_WAITING_MS: u64 = 100;
 #[cfg(feature = "llama")]
 const POLL: Duration = Duration::from_millis(20);
 
@@ -44,22 +48,48 @@ fn should_yield(last_input_ms: u64, now_ms: u64, quiet_for_ms: u64) -> bool {
     last_input_ms != 0 && now_ms.saturating_sub(last_input_ms) < quiet_for_ms
 }
 
-/// Keep waiting: the window is not quiet yet and the wait is under the cap.
+/// Who the running job is for; it decides how long the window must rest and
+/// how long one wait may last.
 #[cfg(any(test, feature = "llama"))]
-fn keep_waiting(last_input_ms: u64, now_ms: u64, quiet_for_ms: u64, waited_ms: u64) -> bool {
-    waited_ms < MAX_WAIT_MS && should_yield(last_input_ms, now_ms, quiet_for_ms)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Waiter {
+    Person,
+    Background,
 }
 
-/// Blocks while the last input is less than `quiet_for_ms` ago, at most
-/// [`MAX_WAIT_MS`]; returns at once when `stop` is set.
+#[cfg(any(test, feature = "llama"))]
+impl Waiter {
+    const fn quiet_for_ms(self) -> u64 {
+        match self {
+            Self::Person => QUIET_WAITING_MS,
+            Self::Background => QUIET_BACKGROUND_MS,
+        }
+    }
+
+    const fn cap_ms(self) -> u64 {
+        match self {
+            Self::Person => MAX_WAIT_WAITING_MS,
+            Self::Background => MAX_WAIT_MS,
+        }
+    }
+}
+
+/// Keep waiting: the window is not quiet yet and the wait is under the cap.
+#[cfg(any(test, feature = "llama"))]
+fn keep_waiting(last_input_ms: u64, now_ms: u64, waiter: Waiter, waited_ms: u64) -> bool {
+    waited_ms < waiter.cap_ms() && should_yield(last_input_ms, now_ms, waiter.quiet_for_ms())
+}
+
+/// Blocks while the window was used within the waiter's quiet time, at most
+/// its cap; returns at once when `stop` is set.
 #[cfg(feature = "llama")]
-pub fn wait_until_quiet(stop: &AtomicBool, quiet_for_ms: u64) {
+pub fn wait_until_quiet(stop: &AtomicBool, waiter: Waiter) {
     let started = now_ms();
     while !stop.load(Ordering::Relaxed)
         && keep_waiting(
             LAST_INPUT_MS.load(Ordering::Relaxed),
             now_ms(),
-            quiet_for_ms,
+            waiter,
             now_ms().saturating_sub(started),
         )
     {
@@ -84,18 +114,29 @@ mod tests {
     }
 
     #[test]
+    fn a_job_a_person_waits_for_never_waits_long_for_one_token() {
+        assert!(keep_waiting(
+            1_000,
+            1_010,
+            Waiter::Person,
+            MAX_WAIT_WAITING_MS - 1
+        ));
+        assert!(!keep_waiting(
+            1_000,
+            1_010,
+            Waiter::Person,
+            MAX_WAIT_WAITING_MS
+        ));
+    }
+
+    #[test]
     fn a_wait_ends_at_the_cap_even_when_the_window_never_rests() {
         assert!(keep_waiting(
             1_000,
             1_100,
-            QUIET_BACKGROUND_MS,
+            Waiter::Background,
             MAX_WAIT_MS - 1
         ));
-        assert!(!keep_waiting(
-            1_000,
-            1_100,
-            QUIET_BACKGROUND_MS,
-            MAX_WAIT_MS
-        ));
+        assert!(!keep_waiting(1_000, 1_100, Waiter::Background, MAX_WAIT_MS));
     }
 }

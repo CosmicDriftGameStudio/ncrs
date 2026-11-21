@@ -60,6 +60,9 @@ pub enum Action {
     /// The keymap read back after an edit of the keys.
     KeymapChanged(Arc<Keymap>),
     RefreshAiModel,
+    /// The OCR models were just installed: the documents the index holds no
+    /// text for are read again.
+    ReadTextlessAgain,
     /// Switching Hermes on was not saved: the reason. Wherever the user asked
     /// from, the app tells them there.
     HermesNotTurnedOn(String),

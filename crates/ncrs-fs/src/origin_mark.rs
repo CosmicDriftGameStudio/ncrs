@@ -67,6 +67,48 @@ fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<()> {
     }
 }
 
+/// The content of the zone stream for a file that came from `source_url`:
+/// zone 3 is "the internet", whatever server it was.
+#[cfg(any(windows, test))]
+fn zone_text_for(source_url: &str) -> String {
+    format!("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl={source_url}\r\n")
+}
+
+#[cfg(target_os = "macos")]
+fn put_quarantine(file: &Path) -> io::Result<()> {
+    use rustix::fs::{lsetxattr, XattrFlags};
+    use rustix::io::Errno;
+    // Flags 0081: downloaded, still to be approved on the first open.
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let value = format!("0081;{seconds:x};ncrs;");
+    match lsetxattr(
+        file,
+        "com.apple.quarantine",
+        value.as_bytes(),
+        XattrFlags::empty(),
+    ) {
+        Ok(()) | Err(Errno::NOTSUP) => Ok(()),
+        Err(other) => Err(other.into()),
+    }
+}
+
+/// Marks `file`, fetched from `source_url` (host and path, never a login), as
+/// coming from another computer. A mark that cannot be put on it is an error.
+/// Linux has no such mark, and nothing is done there.
+pub fn mark_downloaded(file: &Path, source_url: &str) -> io::Result<()> {
+    #[cfg(windows)]
+    match std::fs::write(zone_stream_of(file), zone_text_for(source_url)) {
+        Err(error) if !no_streams(&error) => return Err(error),
+        _ => {}
+    }
+    #[cfg(target_os = "macos")]
+    put_quarantine(file)?;
+    let _ = (file, source_url);
+    Ok(())
+}
+
 /// Puts the origin mark of `origin` on `copy`. A mark that cannot be put on
 /// the copy is an error: an unmarked copy of a marked file is never shown.
 /// Linux has no such mark, and nothing is done there.
@@ -121,6 +163,14 @@ mod tests {
         carry_zone_stream(&dir.path().join("local.zip"), &copy).unwrap();
 
         assert!(!dir.path().join("a.docm:Zone.Identifier").exists());
+    }
+
+    #[test]
+    fn the_zone_text_of_a_download_names_zone_3_and_the_source() {
+        assert_eq!(
+            zone_text_for("sftp://host/a"),
+            "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=sftp://host/a\r\n"
+        );
     }
 
     #[cfg(target_os = "macos")]

@@ -1,7 +1,7 @@
 use super::super::*;
 use super::keys::*;
 use crate::key_store::InMemoryKeyStore;
-use crate::model::{DocumentId, ReviewReason};
+use crate::model::{DocumentId, FileStamp, ReviewReason};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -59,7 +59,7 @@ pub(in crate::index::tests) fn copy_of_the_v1_6_0_index() -> (TempDir, PathBuf, 
 pub(in crate::index::tests) const FIXTURE_V0_6_0_VERSION: u32 = 9;
 pub(in crate::index::tests) const FIXTURE_V1_2_0_VERSION: u32 = 25;
 pub(in crate::index::tests) const FIXTURE_V1_5_1_VERSION: u32 = 26;
-pub(in crate::index::tests) const FIXTURE_V1_6_0_VERSION: u32 = 28;
+pub(in crate::index::tests) const FIXTURE_V1_6_0_VERSION: u32 = 35;
 
 pub(in crate::index::tests) fn latest_version() -> u32 {
     u32::try_from(MIGRATIONS.len()).unwrap()
@@ -251,12 +251,138 @@ pub(in crate::index::tests) fn tag_set(names: &[&str]) -> std::collections::BTre
 }
 
 pub(in crate::index::tests) fn assert_v1_2_0_content(index: &Index) {
+    assert_v1_2_0_content_but_tag_exceptions(index);
+    assert_eq!(
+        index.file_list_tag_exceptions().unwrap(),
+        crate::TagGroup::ALL
+            .into_iter()
+            .flat_map(|group| {
+                [
+                    ((group, "project-x".to_owned()), false),
+                    ((group, "services".to_owned()), true),
+                ]
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    );
+}
+
+fn assert_v1_2_0_content_but_tag_exceptions(index: &Index) -> DocumentId {
     let invoice = assert_v1_2_0_invoice(index);
     let (receipt, notice) = assert_v1_2_0_inbox_documents(index, invoice);
     assert_v1_2_0_rules(index);
     assert_v1_2_0_aliases_reviews_queries_and_tags(index, receipt, notice);
     assert_v1_2_0_reading_versions(index, invoice, notice);
     assert_v1_2_0_hermes_runs(index);
+    invoice
+}
+
+fn assert_v1_6_0_content(index: &mut Index) {
+    use crate::model::{Field, FieldOrigin};
+    use crate::test_support::{new_document, rule_spec};
+    use crate::TagGroup;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    let stamp = |size: u64, seconds: u64| FileStamp {
+        size,
+        mtime: UNIX_EPOCH + Duration::from_secs(seconds),
+    };
+    let invoice = assert_v1_2_0_content_but_tag_exceptions(index);
+
+    let blank = index
+        .document_by_path(Path::new("inbox/scan-5.pdf"))
+        .unwrap()
+        .unwrap();
+    let has_text: Vec<(String, i64)> = index
+        .conn
+        .prepare("SELECT path, has_text FROM document WHERE path LIKE '%scan-%' ORDER BY path")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        has_text,
+        [
+            ("inbox/scan-2.pdf".to_owned(), 1),
+            ("inbox/scan-3.pdf".to_owned(), 1),
+            ("inbox/scan-5.pdf".to_owned(), 0),
+        ]
+    );
+    assert_eq!(
+        index.field_origins(blank.id).unwrap().of(Field::Number),
+        FieldOrigin::Detected
+    );
+
+    assert_eq!(
+        index.file_list_tag_exceptions().unwrap(),
+        std::collections::BTreeMap::from([
+            ((TagGroup::Own, "project-x".to_owned()), false),
+            ((TagGroup::Own, "services".to_owned()), true),
+            ((TagGroup::Sender, "services".to_owned()), false),
+        ])
+    );
+
+    // The fixture was written on a machine that spells paths with `/`; an index
+    // of this machine keeps them with its own separator.
+    index
+        .conn
+        .execute(
+            "UPDATE excluded_path SET path = replace(path, '/', ?1)",
+            [std::path::MAIN_SEPARATOR_STR],
+        )
+        .unwrap();
+    let judged_path = crate::test_support::native("inbox/logo.png");
+    let judged = judged_path.as_path();
+    let private_path = crate::test_support::native("inbox/private");
+    let private = private_path.as_path();
+    assert!(index.is_excluded(judged).unwrap() && index.is_excluded(private).unwrap());
+    assert!(!index
+        .lift_outdated_automatic_exclusion(private, stamp(1, 1))
+        .unwrap());
+    assert!(!index
+        .lift_outdated_automatic_exclusion(judged, stamp(2048, 1_700_000_000))
+        .unwrap());
+    assert!(index
+        .lift_outdated_automatic_exclusion(judged, stamp(2049, 1_700_000_000))
+        .unwrap());
+    assert!(!index.is_excluded(judged).unwrap() && index.is_excluded(private).unwrap());
+
+    let filed = Path::new("inbox/invoice-4711.pdf");
+    assert_eq!(
+        index
+            .filed_document_for_inbox_path(filed, stamp(4096, 1_700_000_100))
+            .unwrap(),
+        Some(invoice)
+    );
+    assert_eq!(
+        index
+            .filed_document_for_inbox_path(filed, stamp(1, 1_700_000_100))
+            .unwrap(),
+        None
+    );
+
+    for (path, in_archive) in [
+        ("archive/copies/invoice-4711.pdf", Some(true)),
+        ("inbox/invoice-4711-copy.pdf", Some(false)),
+        ("elsewhere/invoice-4711.pdf", None),
+    ] {
+        assert_eq!(
+            index.duplicate_path_in_archive(Path::new(path)).unwrap(),
+            in_archive,
+            "{path}"
+        );
+    }
+
+    // Rule 5 (a dropped suggestion) and rule 7 are gone, and so is the review
+    // entry of a deleted document: none of the numbers comes back.
+    let next_rule = index.create_rule(&rule_spec()).unwrap();
+    assert_eq!(next_rule.get(), 8);
+    let fresh = index.insert_document(&new_document(9)).unwrap();
+    assert_eq!(fresh.get(), 7);
+    let next_entry = index
+        .add_review(fresh, ReviewReason::NoMatchingRule)
+        .unwrap();
+    assert_eq!(next_entry.get(), 4);
 }
 
 pub(in crate::index::tests) fn assert_v1_2_0_reading_versions(
@@ -616,14 +742,6 @@ pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
     assert_eq!(queries[0].spec.kind.as_deref(), Some("invoice"));
     assert_eq!(queries[0].spec.tags, tag_set(&["services"]));
     assert_eq!(queries[0].spec.full_text.as_deref(), Some("hosting"));
-
-    assert_eq!(
-        index.file_list_tag_exceptions().unwrap(),
-        std::collections::BTreeMap::from([
-            ("project-x".to_owned(), false),
-            ("services".to_owned(), true),
-        ])
-    );
 }
 
 #[test]
@@ -691,10 +809,10 @@ fn an_index_written_by_release_1_6_0_opens_with_all_its_content_and_applies_none
     let mut steps = vec!["this is not sql"; applied];
     steps.extend_from_slice(&MIGRATIONS[applied..]);
 
-    let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+    let mut index = Index::open_with_migrations(&path, &store, &steps).unwrap();
 
     assert_eq!(user_version(&index), latest_version());
-    assert_v1_2_0_content(&index);
+    assert_v1_6_0_content(&mut index);
 }
 
 #[test]
@@ -702,11 +820,11 @@ fn a_later_step_migrates_the_release_1_6_0_index_and_keeps_its_content() {
     let (_dir, path, store) = copy_of_the_v1_6_0_index();
     let steps = migrations_and(&[PROBE_COLUMN]);
 
-    let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+    let mut index = Index::open_with_migrations(&path, &store, &steps).unwrap();
 
     assert_eq!(user_version(&index), probe_version());
     assert!(has_column(&index, "document", "probe"));
-    assert_v1_2_0_content(&index);
+    assert_v1_6_0_content(&mut index);
 }
 
 #[test]

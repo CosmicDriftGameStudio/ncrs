@@ -8,13 +8,16 @@ use notify::event::{MetadataKind, ModifyKind, RenameMode};
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
-use crate::classify::classify;
+use crate::classify::{classify, is_eml_file, is_mail_body};
 use crate::error::IntakeError;
 use crate::location::Location;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent {
     File(PathBuf),
+    /// A file or folder was deleted or moved out of the location. Nothing is
+    /// known about what it held: the runner settles what the index has there.
+    Gone(PathBuf),
     /// The watcher backend failed for this location (event overflow, FSEvents
     /// errors), or a folder that appeared in it could not be read. The runner
     /// must rescan the location, because files may have been missed.
@@ -195,6 +198,12 @@ fn forward_received(
         });
         return;
     }
+    if is_disappearance(event.kind) {
+        for path in &event.paths {
+            forward(WatchEvent::Gone(path.clone()));
+        }
+        return;
+    }
     if !is_file_change(event.kind) {
         return;
     }
@@ -217,7 +226,15 @@ fn forward_files(
     expands_folders: bool,
     forward: &impl Fn(WatchEvent),
 ) {
-    let is_folder = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    let metadata = fs::symlink_metadata(path);
+    if metadata
+        .as_ref()
+        .is_err_and(|err| err.kind() == io::ErrorKind::NotFound)
+    {
+        forward(WatchEvent::Gone(path.to_path_buf()));
+        return;
+    }
+    let is_folder = metadata.is_ok_and(|meta| meta.is_dir());
     if is_folder && !expands_folders {
         return;
     }
@@ -242,8 +259,37 @@ fn forward_files(
     for file in files {
         if classify(location, &file).is_ok() {
             forward(WatchEvent::File(file));
+        } else if file.file_name().is_some_and(is_eml_file) {
+            forward_mail_bodies_beside(&file, forward);
         }
     }
+}
+
+/// A `body.txt` taken in before its `.eml` arrived is no document of its own.
+/// Reported as gone, the settling of the index drops it by the same rule the
+/// scan applies to a mail text that lies beside an `.eml`.
+fn forward_mail_bodies_beside(mail: &Path, forward: &impl Fn(WatchEvent)) {
+    let Some(folder) = mail.parent() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        if is_mail_body(&entry.file_name(), true) {
+            forward(WatchEvent::Gone(entry.path()));
+        }
+    }
+}
+
+/// A delete, or a rename that reports only the old name (inotify, Windows).
+/// macOS reports both names of a rename as `Name(Any)`; `forward_files` finds
+/// the old one gone.
+fn is_disappearance(kind: EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(RenameMode::From))
+    )
 }
 
 /// A new modification time is the only change a polling backend reports for a
@@ -333,6 +379,9 @@ mod tests {
                 WatchEvent::File(path) => {
                     WatchEvent::File(path.strip_prefix(&watched.path).unwrap().to_path_buf())
                 }
+                WatchEvent::Gone(path) => {
+                    WatchEvent::Gone(path.strip_prefix(&watched.path).unwrap().to_path_buf())
+                }
                 other => other,
             })
             .collect()
@@ -340,7 +389,7 @@ mod tests {
 
     #[test]
     fn the_events_of_a_polling_backend_are_file_changes_like_native_ones() {
-        use notify::event::{CreateKind, DataChange, RemoveKind};
+        use notify::event::{CreateKind, DataChange};
 
         let expected = vec![WatchEvent::File(PathBuf::from("a.pdf"))];
         for kind in [
@@ -351,12 +400,81 @@ mod tests {
             assert_eq!(forwarded_for_file(kind, "a.pdf"), expected, "{kind:?}");
         }
         for kind in [
-            EventKind::Remove(RemoveKind::Any),
             EventKind::Modify(ModifyKind::Metadata(MetadataKind::Permissions)),
             EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any)),
         ] {
             assert!(forwarded_for_file(kind, "a.pdf").is_empty(), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn a_mail_arriving_after_its_body_text_reports_the_body_text_as_gone() {
+        use notify::event::CreateKind;
+
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        let body = watched.path.join("Body.TXT");
+        let mail = watched.path.join("mail.eml");
+        fs::write(&body, b"text").unwrap();
+        fs::write(&mail, b"mail").unwrap();
+        let seen = RefCell::new(Vec::new());
+
+        forward_received(
+            Ok(Event::new(EventKind::Create(CreateKind::File)).add_path(mail)),
+            &watched,
+            std::slice::from_ref(&watched.path),
+            &|event| {
+                seen.borrow_mut().push(event);
+            },
+        );
+
+        assert_eq!(seen.into_inner(), vec![WatchEvent::Gone(body)]);
+    }
+
+    #[test]
+    fn a_delete_and_a_rename_away_are_forwarded_as_gone() {
+        use notify::event::RemoveKind;
+
+        for kind in [
+            EventKind::Remove(RemoveKind::File),
+            EventKind::Remove(RemoveKind::Folder),
+            EventKind::Remove(RemoveKind::Any),
+            EventKind::Modify(ModifyKind::Name(RenameMode::From)),
+        ] {
+            assert_eq!(
+                forwarded_for_file(kind, "a.pdf"),
+                vec![WatchEvent::Gone(PathBuf::from("a.pdf"))],
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rename_reported_as_any_forwards_the_vanished_old_name_as_gone() {
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        let old = watched.path.join("old.pdf");
+        let new = watched.path.join("new.pdf");
+        fs::write(&new, b"content").unwrap();
+        let seen = RefCell::new(Vec::new());
+
+        forward_received(
+            Ok(
+                Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any)))
+                    .add_path(old.clone())
+                    .add_path(new.clone()),
+            ),
+            &watched,
+            std::slice::from_ref(&watched.path),
+            &|event| {
+                seen.borrow_mut().push(event);
+            },
+        );
+
+        assert_eq!(
+            seen.into_inner(),
+            vec![WatchEvent::Gone(old), WatchEvent::File(new)]
+        );
     }
 
     #[test]

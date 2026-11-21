@@ -61,7 +61,8 @@ impl Work {
         let note = &self.settle_problem;
         let outcome = match self.job {
             Job::Start { locations } => {
-                let opened = open_existing(db_path, store, slot, note);
+                let opened =
+                    unconfirmed_key(open_existing(db_path, store, slot, note), db_path, store);
                 let damage = lock(slot)
                     .as_ref()
                     .and_then(|index| index.damage().unwrap_or_else(|err| Some(err.to_string())));
@@ -102,16 +103,6 @@ impl Work {
 
 pub(in crate::filing) fn lock(slot: &IndexSlot) -> MutexGuard<'_, Option<Index>> {
     slot.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// For the UI thread: a pipeline or a run may hold the index for minutes, so
-/// the UI never waits for it. `None` when the slot is busy.
-pub(in crate::filing) fn try_lock(slot: &IndexSlot) -> Option<MutexGuard<'_, Option<Index>>> {
-    match slot.try_lock() {
-        Ok(guard) => Some(guard),
-        Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
-        Err(TryLockError::WouldBlock) => None,
-    }
 }
 
 /// What the runner works through. Private to this module so that nothing else

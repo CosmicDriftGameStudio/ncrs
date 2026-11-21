@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{ErrorKind, Read as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rusqlite::{Connection, ErrorCode};
@@ -9,7 +10,7 @@ use zeroize::Zeroizing;
 use crate::error::IndexError;
 use crate::folder_pick::create_folder_pick_table;
 use crate::key::{IndexKey, RecoveryKey};
-use crate::key_store::{InMemoryKeyStore, KeyStore};
+use crate::key_store::KeyStore;
 use crate::kinds::KindCatalog;
 use crate::migrations::{run_migrations, MIGRATIONS};
 use crate::model::IndexStatistics;
@@ -25,9 +26,24 @@ const FULL_TEXT_TABLES: [&str; 5] = [
 
 const PLAINTEXT_HEADER: &[u8; 16] = b"SQLite format 3\0";
 
+static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
+
+fn next_instance() -> u64 {
+    NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Differs whenever the index was written to or replaced by another one; two
+/// equal stamps mean nothing was written in between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChangeStamp {
+    instance: u64,
+    changed_rows: u64,
+}
+
 #[derive(Debug)]
 pub struct Index {
     conn: Connection,
+    instance: u64,
     encrypted: bool,
     kinds: Arc<KindCatalog>,
 }
@@ -133,6 +149,15 @@ impl Index {
         swapped.map(|()| key.recovery_key())
     }
 
+    /// The recovery key of the key in the store, to show it again when the user
+    /// has not yet confirmed it. `None` when the store holds no key.
+    pub fn stored_recovery_key(store: &dyn KeyStore) -> Result<Option<RecoveryKey>, IndexError> {
+        store
+            .load_protected()?
+            .map(|stored| IndexKey::from_stored(&stored).map(|key| key.recovery_key()))
+            .transpose()
+    }
+
     pub fn is_encrypted(&self) -> bool {
         self.encrypted
     }
@@ -205,6 +230,7 @@ impl Index {
         Ok((
             Self {
                 conn,
+                instance: next_instance(),
                 encrypted: true,
                 kinds: Arc::default(),
             },
@@ -227,6 +253,7 @@ impl Index {
             .map_err(|err| discard_half_created(db_path, err))?;
         Ok(Self {
             conn,
+            instance: next_instance(),
             encrypted: false,
             kinds: Arc::default(),
         })
@@ -263,9 +290,17 @@ impl Index {
         create_folder_pick_table(&conn)?;
         Ok(Self {
             conn,
+            instance: next_instance(),
             encrypted,
             kinds: Arc::default(),
         })
+    }
+
+    pub fn change_stamp(&self) -> ChangeStamp {
+        ChangeStamp {
+            instance: self.instance,
+            changed_rows: self.conn.total_changes(),
+        }
     }
 
     /// The kinds this index knows; the built-in ones until the config is applied.
@@ -424,13 +459,19 @@ fn export_encrypted_copy(
     Ok(())
 }
 
+/// Only unlocks and checks the copy: opening it as an `Index` would migrate it
+/// and leave a `.encrypting.before-vN` backup that nothing ever cleans up.
 fn check_copy_opens(copy_path: &Path, key: &IndexKey) -> Result<(), IndexError> {
-    let holding_key = InMemoryKeyStore::with_entry(key.as_bytes().to_vec());
-    let copy = Index::open(copy_path, &holding_key)?;
-    if copy.is_encrypted() {
+    if starts_with_plaintext_header(copy_path)? {
+        return Err(IndexError::NotEncrypted);
+    }
+    let conn = Connection::open(copy_path)?;
+    unlock(&conn, key)?;
+    let verdict: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if verdict == "ok" {
         Ok(())
     } else {
-        Err(IndexError::NotEncrypted)
+        Err(crate::model::corrupt("encrypted copy", &verdict))
     }
 }
 

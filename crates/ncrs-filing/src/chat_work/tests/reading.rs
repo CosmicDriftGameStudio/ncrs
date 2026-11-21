@@ -274,3 +274,22 @@ fn a_finished_read_has_counted_every_file_found() {
         (5, 5, 5)
     );
 }
+
+#[test]
+fn a_set_stop_leaves_the_files_not_yet_started_out_of_the_reading() {
+    let setup = Setup::new();
+    for number in 0..5 {
+        setup.write(&format!("in/{number}.txt"), &format!("file {number}"));
+    }
+    let stop = std::sync::atomic::AtomicBool::new(true);
+
+    let read = crate::chat_work::reading::read_folder(
+        &setup.access,
+        &setup.dir.path().join("in"),
+        &ReadProgress::default(),
+        Some(&stop),
+    )
+    .unwrap();
+
+    assert!(read.files.is_empty());
+}

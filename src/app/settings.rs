@@ -199,6 +199,7 @@ impl App {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
             Ask::UndoRun(batch) => self.undo_run(batch),
+            Ask::ReadTextlessAgain => self.read_textless_again(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
                     module.refresh_ai_model();
@@ -206,6 +207,27 @@ impl App {
                 self.update_hermes_chat(HermesChatMessage::ModelReady)
             }
         }
+    }
+
+    /// Scans taken in before the OCR models were there hold no text; the
+    /// finder runs on a blocking thread, the pipeline queues what it finds.
+    fn read_textless_again(&self) -> Task<Message> {
+        let Some(finder) = self
+            .hermes
+            .filing
+            .as_ref()
+            .and_then(ncrs_filing::filing::FilingModule::process_again_finder)
+        else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || finder.without_text()),
+            |joined| {
+                Message::HermesFile(crate::messages::HermesFileMessage::TextlessFound(
+                    joined.unwrap_or_else(|err| Err(err.to_string())),
+                ))
+            },
+        )
     }
 
     pub(in crate::app) fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {

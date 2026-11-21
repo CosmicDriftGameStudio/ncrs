@@ -8,7 +8,7 @@
 
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -25,12 +25,14 @@ use llama_cpp_2::vocab::LlamaVocab;
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::grammar::reply_grammar;
-use crate::model_file::{remove_previous_models, verify_model_file, ModelPin};
+use crate::model_file::{
+    ensure_still_verified, remove_previous_models, verify_model_file, ModelPin,
+};
 use crate::prompt::{
     first_chars, user_message_prefix, user_message_suffix, MAX_SENT_TEXT_CHARS, SYSTEM_PROMPT,
 };
 use crate::status::Compute;
-use crate::user_input::{QUIET_BACKGROUND_MS, QUIET_WAITING_MS};
+use crate::user_input::Waiter;
 
 mod backends;
 mod chat_session;
@@ -91,9 +93,9 @@ pub struct LocalModel {
     /// Set when the app quits: the running job ends at the next batch or
     /// token instead of keeping the quit waiting for a whole document.
     stop: Arc<AtomicBool>,
-    /// How long after the last input of the window the running job waits
-    /// before it decodes; the worker sets it for each job.
-    quiet_for_ms: AtomicU64,
+    /// Whether the running job is one a person waits for; the worker sets it
+    /// for each job.
+    person_waiting: AtomicBool,
 }
 
 impl LocalModel {
@@ -111,6 +113,7 @@ impl LocalModel {
                 .or_else(|_gpu_refused| load_on_cpu(backend, &config.path))?,
             None => load_on_cpu(backend, &config.path)?,
         };
+        ensure_still_verified(&config.path)?;
         Ok(Self {
             model,
             name: pin.name.to_owned(),
@@ -118,7 +121,7 @@ impl LocalModel {
             context_tokens: config.context_tokens,
             compute,
             stop: config.stop,
-            quiet_for_ms: AtomicU64::new(QUIET_WAITING_MS),
+            person_waiting: AtomicBool::new(true),
         })
     }
 
@@ -273,17 +276,17 @@ fn load_on_cpu(
 impl LocalModel {
     /// Whether the jobs that follow are ones a person waits for.
     pub(super) fn set_person_waiting(&self, waiting: bool) {
-        let quiet_for_ms = if waiting {
-            QUIET_WAITING_MS
-        } else {
-            QUIET_BACKGROUND_MS
-        };
-        self.quiet_for_ms.store(quiet_for_ms, Ordering::Relaxed);
+        self.person_waiting.store(waiting, Ordering::Relaxed);
     }
 
     /// Waits while the window is in use, so it gets the GPU for its frames.
     fn yield_to_window(&self) -> Result<(), AiError> {
-        crate::user_input::wait_until_quiet(&self.stop, self.quiet_for_ms.load(Ordering::Relaxed));
+        let waiter = if self.person_waiting.load(Ordering::Relaxed) {
+            Waiter::Person
+        } else {
+            Waiter::Background
+        };
+        crate::user_input::wait_until_quiet(&self.stop, waiter);
         self.not_stopped()
     }
 

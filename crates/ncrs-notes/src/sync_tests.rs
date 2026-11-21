@@ -129,3 +129,83 @@ fn a_notes_folder_inside_the_sync_folder_is_refused() {
     let job = job(&inside, target.path(), NotesSyncDirection::OneWay);
     run(&job, SystemTime::now()).unwrap_err();
 }
+
+#[test]
+fn both_ways_does_not_bring_back_a_note_that_was_sealed_locally() {
+    let (local, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let job = job(local.path(), target.path(), NotesSyncDirection::BothWays);
+    write_at(&local.path().join("Name.md"), "secret", 300);
+    run(&job, SystemTime::now()).unwrap();
+    assert!(target.path().join("Name.md").exists());
+
+    // What sealing does locally: the plaintext goes, the .enc appears.
+    fs::remove_file(local.path().join("Name.md")).unwrap();
+    fs::write(local.path().join("Name.md.enc"), b"NCRSNOTE\x01 bytes").unwrap();
+    run(&job, SystemTime::now()).unwrap();
+    run(&job, SystemTime::now()).unwrap();
+
+    for side in [local.path(), target.path()] {
+        assert!(!side.join("Name.md").exists(), "plaintext left in {side:?}");
+        assert!(side.join("Name.md.enc").exists());
+    }
+}
+
+#[test]
+fn both_ways_keeps_a_remote_edit_of_a_note_deleted_locally() {
+    let (local, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let job = job(local.path(), target.path(), NotesSyncDirection::BothWays);
+    write_at(&local.path().join("a.md"), "base", 300);
+    run(&job, SystemTime::now()).unwrap();
+
+    fs::remove_file(local.path().join("a.md")).unwrap();
+    write_at(&target.path().join("a.md"), "edited elsewhere", 100);
+    run(&job, SystemTime::now()).unwrap();
+    assert_eq!(
+        fs::read_to_string(target.path().join("a.md")).unwrap(),
+        "edited elsewhere"
+    );
+    assert_eq!(
+        fs::read_to_string(local.path().join("a.md")).unwrap(),
+        "edited elsewhere"
+    );
+}
+
+#[test]
+fn one_way_removes_the_plaintext_of_a_note_sealed_locally() {
+    let (local, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let job = job(local.path(), target.path(), NotesSyncDirection::OneWay);
+    write_at(&local.path().join("Name.md"), "secret", 300);
+    run(&job, SystemTime::now()).unwrap();
+    assert!(target.path().join("Name.md").exists());
+
+    fs::remove_file(local.path().join("Name.md")).unwrap();
+    fs::write(local.path().join("Name.md.enc"), b"NCRSNOTE\x01 bytes").unwrap();
+    run(&job, SystemTime::now()).unwrap();
+
+    assert!(!target.path().join("Name.md").exists());
+    assert!(target.path().join("Name.md.enc").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn both_ways_keeps_remote_notes_below_a_local_folder_that_cannot_be_read() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (local, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let job = job(local.path(), target.path(), NotesSyncDirection::BothWays);
+    let folder = local.path().join("sub");
+    fs::create_dir(&folder).unwrap();
+    write_at(&folder.join("a.md"), "kept", 300);
+    run(&job, SystemTime::now()).unwrap();
+    assert!(target.path().join("sub/a.md").exists());
+
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o000)).unwrap();
+    let outcome = run(&job, SystemTime::now());
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
+    outcome.unwrap();
+
+    assert_eq!(
+        fs::read_to_string(target.path().join("sub/a.md")).unwrap(),
+        "kept"
+    );
+}

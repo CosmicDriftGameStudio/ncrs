@@ -7,7 +7,7 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_ai::ChatModel;
 use ncrs_core::INDEX_NOT_OPEN;
@@ -16,6 +16,7 @@ use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, RuleSpec
 use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
+use crate::index_slot::try_lock;
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFile};
 
@@ -27,6 +28,7 @@ mod pattern;
 mod picks;
 mod reading;
 mod runs;
+mod snapshots;
 mod trial;
 mod waiting;
 mod words;
@@ -47,6 +49,7 @@ pub use pattern::PatternLevel;
 pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
+pub use snapshots::Snapshots;
 pub use trial::{
     ModelScope, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE,
 };
@@ -177,6 +180,7 @@ pub struct ChatAccess {
     model: Option<Arc<dyn ChatModel>>,
     copy_roots: Vec<PathBuf>,
     index_work: crate::index_work::IndexWork,
+    snapshots: Snapshots,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -202,6 +206,7 @@ impl ChatAccess {
             model: None,
             copy_roots: Vec::new(),
             index_work: crate::index_work::IndexWork::default(),
+            snapshots: Snapshots::default(),
         }
     }
 
@@ -255,6 +260,12 @@ impl ChatAccess {
     #[must_use]
     pub fn with_rules(mut self, rules: Option<RulesAccess>) -> Self {
         self.rules = rules;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_snapshots(mut self, snapshots: Snapshots) -> Self {
+        self.snapshots = snapshots;
         self
     }
 
@@ -317,7 +328,7 @@ impl ChatAccess {
         let _running = self.index_work.begin();
         match work {
             ChatWork::Read { folder, progress } => {
-                ChatResult::Read(reading::read_folder(self, &folder, &progress).map(Arc::new))
+                ChatResult::Read(reading::read_folder(self, &folder, &progress, None).map(Arc::new))
             }
             ChatWork::Trial {
                 source,
@@ -395,9 +406,11 @@ impl ChatAccess {
             return Err(RuleSaveFailure::Refused(problem));
         }
         self.with_index_mut(|index| {
-            index
+            let created = index
                 .create_rule_from(&spec, RuleOrigin::Chat)
-                .map_err(|err| err.to_string())
+                .map_err(|err| err.to_string())?;
+            self.refresh_rules_snapshot(index);
+            Ok(created)
         })
         .map_err(RuleSaveFailure::Failed)?;
         Ok(label.to_owned())
@@ -434,9 +447,11 @@ impl ChatAccess {
             return Err(RuleSaveFailure::Refused(problem));
         }
         self.with_index_mut(|index| {
-            index
+            let saved = index
                 .save_rule_from(spec, RuleOrigin::Chat)
-                .map_err(|err| err.to_string())
+                .map_err(|err| err.to_string())?;
+            self.refresh_rules_snapshot(index);
+            Ok(saved)
         })
         .map_err(RuleSaveFailure::Failed)
     }
@@ -450,18 +465,46 @@ impl ChatAccess {
         work(index)
     }
 
-    /// For the UI thread: `Err` at once while a run holds the index.
+    /// For the UI thread: while a run holds the index the rules last read or
+    /// saved are returned; `Err` at once only when there are none yet.
     pub fn try_rules(&self) -> Result<Vec<Rule>, String> {
-        self.try_with_index(|index| index.rules().map_err(|err| err.to_string()))
+        match self.try_with_index(|index| index.rules().map_err(|err| err.to_string())) {
+            Ok(rules) => {
+                self.snapshots.remember_rules(&rules);
+                Ok(rules)
+            }
+            Err(err) if err == INDEX_BUSY => self.snapshots.rules().ok_or(err),
+            Err(err) => Err(err),
+        }
     }
 
-    /// For the UI thread: `Err` at once while a run holds the index.
+    /// Replaces what the UI shows while the index is busy with the rules the
+    /// index holds after a write; when they cannot be read, nothing is shown
+    /// rather than the rules from before the write.
+    fn refresh_rules_snapshot(&self, index: &Index) {
+        match index.rules() {
+            Ok(rules) => self.snapshots.remember_rules(&rules),
+            Err(_) => self.snapshots.forget(),
+        }
+    }
+
+    /// For the UI thread: while a run holds the index the kinds last read
+    /// are returned; `Err` at once only when there are none yet.
     pub fn try_kinds(&self) -> Result<Kinds, String> {
-        self.try_with_index(|index| Ok(self.kinds_of(index)))
+        match self.try_with_index(|index| Ok(self.kinds_of(index))) {
+            Ok(kinds) => {
+                self.snapshots.remember_kinds(&kinds);
+                Ok(kinds)
+            }
+            Err(err) if err == INDEX_BUSY => self.snapshots.kinds().ok_or(err),
+            Err(err) => Err(err),
+        }
     }
 
     pub fn kinds(&self) -> Result<Kinds, String> {
-        self.with_index(|index| Ok(self.kinds_of(index)))
+        let kinds = self.with_index(|index| Ok(self.kinds_of(index)))?;
+        self.snapshots.remember_kinds(&kinds);
+        Ok(kinds)
     }
 
     fn kinds_of(&self, index: &Index) -> Kinds {
@@ -472,11 +515,7 @@ impl ChatAccess {
         &self,
         work: impl FnOnce(&Index) -> Result<T, String>,
     ) -> Result<T, String> {
-        let guard = match self.slot.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(TryLockError::WouldBlock) => return Err(INDEX_BUSY.to_owned()),
-        };
+        let guard = try_lock(&self.slot).ok_or_else(|| INDEX_BUSY.to_owned())?;
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         work(index)
     }

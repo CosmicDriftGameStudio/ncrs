@@ -181,9 +181,12 @@ impl Field {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldOrigin {
     Unknown,
-    /// `None` when the rule has been deleted since, or the rules step found the
-    /// value without a rule.
+    /// `None` when the rule has been deleted since; the value is still the
+    /// rule's and is not replaced.
     Rule(Option<RuleId>),
+    /// The rules step read the value from the text of the letter, without a
+    /// rule.
+    Detected,
     Ai {
         confidence_percent: u8,
     },
@@ -197,17 +200,17 @@ pub enum FieldOrigin {
 impl FieldOrigin {
     /// A value the rules step guessed from the look of the letter, not one a
     /// person, a rule of theirs or the AI set. Such a value may be replaced.
+    /// `Unknown` and a deleted rule may hide a value somebody set, so they
+    /// are kept.
     pub fn is_heuristic(&self) -> bool {
-        matches!(
-            self,
-            Self::Unknown | Self::Rule(None) | Self::AddressBlock | Self::Heading
-        )
+        matches!(self, Self::Detected | Self::AddressBlock | Self::Heading)
     }
 
     pub(crate) fn kind_column(&self) -> Option<&'static str> {
         match self {
             Self::Unknown => None,
             Self::Rule(_) => Some("rule"),
+            Self::Detected => Some("detected"),
             Self::Ai { .. } => Some("ai"),
             Self::Manual => Some("manual"),
             Self::AddressBlock => Some("address"),
@@ -250,6 +253,7 @@ impl FieldOrigin {
             "manual" => Ok(Self::Manual),
             "address" => Ok(Self::AddressBlock),
             "heading" => Ok(Self::Heading),
+            "detected" => Ok(Self::Detected),
             other => Err(corrupt("document_field_origin.origin", other)),
         }
     }

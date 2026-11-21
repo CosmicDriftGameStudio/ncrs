@@ -22,7 +22,7 @@ pub enum Outcome {
     /// Same content as the document, recorded as another place for it.
     Copy(DocumentId),
     /// An inbox file whose content is already filed. It stays where it is and
-    /// nothing is recorded.
+    /// is not recorded as a copy; only its stamp is remembered.
     AlreadyFiled(DocumentId),
     Unchanged(DocumentId),
     ContentChanged(DocumentId),
@@ -106,7 +106,7 @@ pub fn prepare_take_in(
     if let Err(skip) = classify(location, path) {
         return Ok(without_hash(Outcome::Skipped(skip)));
     }
-    if index.is_excluded(path)? {
+    if index.is_excluded(path)? && !automatic_exclusion_lifted(index, path)? {
         return Ok(without_hash(Outcome::Skipped(Skip::Excluded)));
     }
     if has_symlink_ancestor(location, path)? {
@@ -132,6 +132,16 @@ pub fn prepare_take_in(
     if let Some(id) = unchanged_by_stamp(index, path, stamp)? {
         return Ok(without_hash(Outcome::Unchanged(id)));
     }
+    if location.mode == LocationMode::Inbox {
+        if let Some(id) = index.filed_document_for_inbox_path(path, stamp)? {
+            let still_filed = index.document(id)?.is_some_and(|document| {
+                document.status == DocumentStatus::Filed && document.missing_since.is_none()
+            });
+            if still_filed {
+                return Ok(without_hash(Outcome::AlreadyFiled(id)));
+            }
+        }
+    }
     if !tracker.observe(path, stamp.size, stamp.mtime, now) {
         return Ok(without_hash(Outcome::NotStableYet));
     }
@@ -150,6 +160,14 @@ pub fn finish_take_in(
     hash: ContentHash,
     now: SystemTime,
 ) -> Result<Taken, IntakeError> {
+    // The caller may have let go of the index while the file was hashed, and the
+    // user may have excluded the path meanwhile.
+    if index.is_excluded(path)? {
+        return Ok(Taken {
+            outcome: Outcome::Skipped(Skip::Excluded),
+            hashed: true,
+        });
+    }
     let stamp = pending.stamp;
     let outcome = file_with_hash(index, location, path, stamp, hash, now)?;
     Ok(Taken {
@@ -161,6 +179,22 @@ pub fn finish_take_in(
 /// A path whose size and mtime are the stored ones needs no hashing. A recorded
 /// copy only counts while its document's own file is still there: otherwise
 /// the copy has to become the document, which takes the hash.
+/// A file Hermes excluded by its own judgement is read again once a
+/// different file lies at the path.
+fn automatic_exclusion_lifted(index: &Index, path: &Path) -> Result<bool, IntakeError> {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Ok(false);
+    };
+    let Ok(mtime) = metadata.modified() else {
+        return Ok(false);
+    };
+    let stamp = FileStamp {
+        size: metadata.len(),
+        mtime,
+    };
+    Ok(index.lift_outdated_automatic_exclusion(path, stamp)?)
+}
+
 fn unchanged_by_stamp(
     index: &Index,
     path: &Path,
@@ -201,7 +235,13 @@ pub fn promote_first_copy(index: &Index, document: &Document) -> Result<bool, In
         if !metadata.is_file() || current != recorded {
             continue;
         }
+        let in_archive = index.duplicate_path_in_archive(&copy)?;
         index.promote_copy_to_document_path(document.id, &copy, current)?;
+        // An archive file is filed; a copy in an inbox leaves the status alone,
+        // as it does for a document that turns up there again.
+        if in_archive == Some(true) && document.status != DocumentStatus::Filed {
+            index.set_document_status(document.id, DocumentStatus::Filed)?;
+        }
         return Ok(true);
     }
     Ok(false)
@@ -278,19 +318,9 @@ pub fn open_without_following(path: &Path) -> io::Result<File> {
 pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     use nix::fcntl::{openat, OFlag};
     use nix::sys::stat::Mode;
-    use std::path::Component;
 
-    let Ok(relative) = path.strip_prefix(root) else {
-        return open_without_following(path);
-    };
-    let parts: Vec<&std::ffi::OsStr> = relative
-        .components()
-        .filter_map(|part| match part {
-            Component::Normal(name) => Some(name),
-            _ => None,
-        })
-        .collect();
-    if parts.is_empty() || parts.len() != relative.components().count() {
+    let parts = parts_below(root, path)?;
+    if parts.is_empty() {
         return open_without_following(path);
     }
     let mut current = std::os::fd::OwnedFd::from(File::open(root)?);
@@ -307,8 +337,25 @@ pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     Ok(File::from(current))
 }
 
+/// The names from `root` down to `path`, lexically: `..`, roots and anything
+/// outside `root` are refused.
+fn parts_below<'a>(root: &Path, path: &'a Path) -> io::Result<Vec<&'a std::ffi::OsStr>> {
+    use std::path::Component;
+
+    let not_below = || io::Error::new(io::ErrorKind::InvalidInput, "not below the location");
+    let relative = path.strip_prefix(root).map_err(|_outside| not_below())?;
+    relative
+        .components()
+        .map(|part| match part {
+            Component::Normal(name) => Ok(name),
+            _ => Err(not_below()),
+        })
+        .collect()
+}
+
 #[cfg(not(unix))]
-pub fn open_below(_root: &Path, path: &Path) -> io::Result<File> {
+pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
+    parts_below(root, path)?;
     open_without_following(path)
 }
 
@@ -427,15 +474,26 @@ fn file_with_known_hash(
         return Ok(Outcome::Moved(known.id));
     }
     if matches!(recorded_copy, Some((id, _)) if id == known.id) {
-        index.record_duplicate_path(known.id, path, stamp)?;
+        index.record_duplicate_path_in(
+            known.id,
+            path,
+            stamp,
+            location.mode == LocationMode::Archive,
+        )?;
         return Ok(Outcome::Unchanged(known.id));
     }
     // The status decides, not the source: a document filed from the inbox
     // keeps source Inbox.
     if location.mode == LocationMode::Inbox && known.status == DocumentStatus::Filed {
+        index.record_filed_inbox_path(known.id, path, stamp)?;
         return Ok(Outcome::AlreadyFiled(known.id));
     }
-    index.record_duplicate_path(known.id, path, stamp)?;
+    index.record_duplicate_path_in(
+        known.id,
+        path,
+        stamp,
+        location.mode == LocationMode::Archive,
+    )?;
     Ok(Outcome::Copy(known.id))
 }
 
@@ -533,5 +591,22 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), &folder).unwrap();
 
         pending.hash(&path).unwrap_err();
+    }
+
+    #[test]
+    fn a_path_that_leaves_the_location_is_not_opened() {
+        let location = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(location.path().join("a")).unwrap();
+        fs::write(outside.path().join("x"), b"secret").unwrap();
+        let name = outside.path().file_name().unwrap();
+
+        let climbing = location.path().join("a/../..").join(name).join("x");
+        let error = open_below(location.path(), &climbing).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+
+        let elsewhere = outside.path().join("x");
+        let elsewhere_error = open_below(location.path(), &elsewhere).unwrap_err();
+        assert_eq!(elsewhere_error.kind(), io::ErrorKind::InvalidInput);
     }
 }

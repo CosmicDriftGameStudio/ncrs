@@ -30,6 +30,7 @@ use super::list::is_plain_name;
 use super::session::{Pool, RemoteError, Session};
 use super::{is_deceptive, RemotePath, ServerId, Timeouts, CHUNK};
 use crate::archive::{restrict_to_owner, safe_components};
+use crate::origin_mark::mark_downloaded;
 use crate::transfer::{
     resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress, Reporting,
     SkipKind, Skipped, Tick,
@@ -240,6 +241,7 @@ fn fetch_folder<P: Progress>(
     done: &mut usize,
 ) -> io::Result<()> {
     std::fs::create_dir(local)?;
+    mark_downloaded(local, &source_url(link.server, remote))?;
     for (name, meta) in link.names_in(remote)? {
         progress.keep_going()?;
         ensure_safe(&name)?;
@@ -323,8 +325,33 @@ fn fetch_file<P: Progress>(
         // server's file type bits are not permissions.
         let _moded = output.set_permissions(std::fs::Permissions::from_mode(bits & 0o755));
     }
+    mark_downloaded(local, &source_url(link.server, remote))?;
     *done += 1;
     progress.advanced(*done, 0)
+}
+
+/// Where a download came from, for the mark on it: host, port and path, never
+/// the login. Anything outside plain URL characters is escaped, so a name from
+/// a server cannot add lines to the mark.
+fn source_url(server: &ServerId, path: &RemotePath) -> String {
+    use std::fmt::Write as _;
+    let host = if server.host.contains(':') {
+        format!("[{}]", server.host)
+    } else {
+        server.host.clone()
+    };
+    let mut url = format!("sftp://{host}");
+    if server.port != 22 {
+        let _ = write!(url, ":{}", server.port);
+    }
+    for byte in path.remote_str().bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            url.push(char::from(byte));
+        } else {
+            let _ = write!(url, "%{byte:02X}");
+        }
+    }
+    url
 }
 
 /// Copies the file at `source` into `slot` for the viewer and returns the path
@@ -500,9 +527,9 @@ impl<P: Progress> Upload<'_, '_, P> {
     ) -> io::Result<()> {
         let taken_by_folder = existing.is_some_and(|found| found.file_type().is_dir());
         match (is_dir, existing) {
-            (false, _) if taken_by_folder => Err(in_the_way("a folder")),
+            (false, _) if taken_by_folder => Err(in_the_way(InTheWay::Folder)),
             (false, _) => self.file(source, target, existing.is_some()),
-            (true, Some(_)) if !taken_by_folder => Err(in_the_way("a file")),
+            (true, Some(_)) if !taken_by_folder => Err(in_the_way(InTheWay::File)),
             (true, Some(_)) => self.folder(source, target),
             (true, None) => {
                 let hidden = target_dir.join(&format!(".ncrs-partial-{}", unique()));
@@ -572,11 +599,11 @@ impl<P: Progress> Upload<'_, '_, P> {
                 match there {
                     None => self.make_folder(&child)?,
                     Some(_) if is_folder => {}
-                    Some(_) => return Err(in_the_way("a file")),
+                    Some(_) => return Err(in_the_way(InTheWay::File)),
                 }
                 self.folder(&item.path(), &child)?;
             } else if is_folder {
-                return Err(in_the_way("a folder"));
+                return Err(in_the_way(InTheWay::Folder));
             } else {
                 self.file(&item.path(), &child, there.is_some())?;
             }
@@ -699,11 +726,17 @@ fn stamp_of(local: &Path) -> Metadata {
     stamp
 }
 
-fn in_the_way(what: &str) -> io::Error {
-    let kind = if what == "a folder" {
-        io::ErrorKind::IsADirectory
-    } else {
-        io::ErrorKind::NotADirectory
+/// What already holds the name on the server.
+#[derive(Clone, Copy)]
+enum InTheWay {
+    Folder,
+    File,
+}
+
+fn in_the_way(found: InTheWay) -> io::Error {
+    let (kind, what) = match found {
+        InTheWay::Folder => (io::ErrorKind::IsADirectory, "a folder"),
+        InTheWay::File => (io::ErrorKind::NotADirectory, "a file"),
     };
     io::Error::new(
         kind,

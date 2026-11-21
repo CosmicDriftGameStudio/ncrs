@@ -64,6 +64,7 @@ fn replace_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<M
 
 fn restart_in_background(hermes: &mut Hermes, filing: Filing, ctx: &Ctx<'_>) -> Task<Message> {
     hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);
+    hermes.paused_by_switch_off = false;
     let generation = hermes.filing_restart_generation;
     hermes.filing_config = filing.clone();
     hermes.filing_restart = Some((generation, filing));
@@ -172,11 +173,11 @@ pub fn apply_ai_change(
         let switched_off = !filing.hermes_on();
         hermes.filing_config = filing;
         if switched_off {
-            if let Some(runner) = hermes.live_pipeline() {
-                runner.pause();
-            }
-            hermes.refresh_filing_snapshot(ctx.now);
+            hermes.pause_for_switch_off();
+        } else {
+            hermes.resume_after_switch_on();
         }
+        hermes.refresh_filing_snapshot(ctx.now);
         return (SavedFilingApplies::AtNextStart, Task::none());
     }
     drop(hermes.reading_again.give_up());

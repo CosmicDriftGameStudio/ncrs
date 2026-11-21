@@ -5,6 +5,7 @@ mod backup;
 mod condition_store;
 mod documents;
 mod error;
+mod filed_inbox;
 mod folder_pick;
 mod hermes_column;
 mod hermes_counts;
@@ -35,7 +36,7 @@ pub use backup::{migration_backups, set_aside_path};
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};
-pub use index::Index;
+pub use index::{ChangeStamp, Index};
 pub use journal::{
     BatchInfo, BatchKind, JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
 };
@@ -59,4 +60,4 @@ pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;
 pub use rules::RuleSaved;
 pub use search_index::SearchIndex;
-pub use tags::TagTally;
+pub use tags::{TagGroup, TagTally};

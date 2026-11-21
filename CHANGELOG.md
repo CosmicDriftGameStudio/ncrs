@@ -99,6 +99,47 @@ All notable changes to this project are documented here. The format follows
 - The install scripts are attached to each release and listed in
   `SHA256SUMS`; `install.sh --uninstall` removes only the files its install
   wrote.
+- Locked notes no longer leave a readable copy in sync targets.
+- Two-way note sync no longer brings back a note deleted here, and leaves the
+  sync folder alone when the notes folder cannot be read.
+- Unpacking several archives carries on after one fails and says how many were
+  unpacked.
+- A rename that finishes late updates search hits, folder sizes and the other
+  panel.
+- Scripts and disk images (`.iso`, `.img`, `.vhd`, `.vhdx`, `.dmg`) opened
+  through a file type rule are treated like other runnable files.
+- Files downloaded from SFTP servers are marked as downloaded, like browser
+  downloads.
+- On Windows, moving folders that contain links which could not be copied no
+  longer fails at the end, and opening a drive root from Explorer works.
+- Hermes: stopping a chat stops reading the folder; an older plan no longer ends
+  a newer one; files given the same name in one folder are numbered, also when
+  the names differ only in case.
+- Hermes stays paused while it is switched off, and switching it on resumes only
+  the pause it set itself.
+- The local model answers promptly while the pointer moves.
+- A server that refuses a single document is paused for a minute, not an hour.
+- A file excluded while it is being read is no longer filed; Windows paths
+  ending in a dot or space, or naming a device, are kept exact.
+- Rules and review entries never reuse the number of a deleted one.
+- Tag exceptions are kept per tag group, so a sender and an own tag with the
+  same name no longer affect each other.
+- A value left by a deleted rule is no longer replaced when documents are read
+  again.
+- A file Hermes set aside as "not a document" is read again when a different
+  file takes its place.
+- Files deleted or moved out of a watched folder are updated in the index right
+  away; a mail body taken in before its mail is dropped when the mail arrives.
+- Inbox files that are already filed are not read again on every start.
+- Scanned PDFs with many large pages keep memory use bounded.
+- After an OCR model is downloaded, documents without text are read again.
+- The recovery key of a new encrypted index is shown again if ncrs closed before
+  it was confirmed.
+- Chat rules keep seeing your document kinds and existing rules while a filing
+  run is busy.
+- Folder rows in the Git view no longer show a fold marker.
+- On macOS, Pictures, Music and Movies get the privacy hint when access is
+  blocked.
 
 ### Changed
 

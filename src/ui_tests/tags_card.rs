@@ -43,7 +43,10 @@ fn board_page() -> TagsPage {
                 ("2021", 12),
             ]),
         },
-        exceptions: TagExceptions::from([("notice".to_owned(), false)]),
+        exceptions: TagExceptions::from([(
+            (crate::file_list_tags::TagGroup::Kind, "notice".to_owned()),
+            false,
+        )]),
     });
     page
 }
@@ -173,17 +176,26 @@ fn the_work_done_sets_the_exceptions_the_file_list_follows() {
     };
     let _ = app.update(Message::Tags(TagsMessage::Done {
         generation: generation.wrapping_add(1),
-        result: Ok(loaded(TagExceptions::from([("old".to_owned(), true)]))),
+        result: Ok(loaded(TagExceptions::from([(
+            (crate::file_list_tags::TagGroup::Own, "old".to_owned()),
+            true,
+        )]))),
     }));
     assert!(app.tag_exceptions_for_test().is_empty(), "a stale answer");
 
     let _ = app.update(Message::Tags(TagsMessage::Done {
         generation,
-        result: Ok(loaded(TagExceptions::from([("steuer".to_owned(), false)]))),
+        result: Ok(loaded(TagExceptions::from([(
+            (crate::file_list_tags::TagGroup::Own, "steuer".to_owned()),
+            false,
+        )]))),
     }));
     assert_eq!(
         app.tag_exceptions_for_test(),
-        &TagExceptions::from([("steuer".to_owned(), false)])
+        &TagExceptions::from([(
+            (crate::file_list_tags::TagGroup::Own, "steuer".to_owned()),
+            false
+        )])
     );
 }
 

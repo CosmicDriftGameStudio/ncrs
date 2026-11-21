@@ -1,11 +1,11 @@
+use std::path::PathBuf;
+
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::hermes_column::{is_excluded_sql, EXCLUDED_FOLDERS_CTE};
 use crate::index::Index;
 use crate::model::{DocumentId, DocumentSource, DocumentStatus, HermesCounts, StatusCounts};
-
-const WITHOUT_TEXT: &str = "(t.rowid IS NULL OR trim(t.body) = '')";
 
 impl Index {
     /// Whether text was ever stored for the document, an empty one included.
@@ -16,6 +16,21 @@ impl Index {
             |row| row.get(0),
         )?;
         Ok(found)
+    }
+
+    /// The paths of the documents that are present, not excluded and have no
+    /// text stored (or only an empty one), in path order.
+    pub fn documents_without_text(&self) -> Result<Vec<PathBuf>, IndexError> {
+        let excluded = is_excluded_sql("d.path");
+        let mut statement = self.connection().prepare(&format!(
+            "{EXCLUDED_FOLDERS_CTE} SELECT d.path FROM document d
+             WHERE d.has_text = 0 AND d.missing_since IS NULL AND NOT {excluded}
+             ORDER BY d.path"
+        ))?;
+        let paths = statement
+            .query_map([], |row| row.get::<_, String>(0).map(PathBuf::from))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(paths)
     }
 
     /// The version of the field detection that last read the document; 0 when
@@ -79,9 +94,8 @@ impl Index {
             &format!(
                 "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
                  JOIN document d ON d.id = r.document_id
-                 LEFT JOIN document_text t ON t.rowid = r.document_id
                  WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
-                   AND {WITHOUT_TEXT} AND NOT {excluded}"
+                   AND d.has_text = 0 AND NOT {excluded}"
             ),
             [],
         )?;
@@ -104,12 +118,8 @@ impl Index {
                 [],
             )?,
             archive_documents_with_text: self.count(
-                &format!(
-                    "SELECT COUNT(*) FROM document d
-                     LEFT JOIN document_text t ON t.rowid = d.id
-                     WHERE d.source = 'archive' AND d.missing_since IS NULL
-                       AND NOT {WITHOUT_TEXT}"
-                ),
+                "SELECT COUNT(*) FROM document
+                 WHERE source = 'archive' AND missing_since IS NULL AND has_text = 1",
                 [],
             )?,
         })
@@ -150,7 +160,6 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use super::*;
     use crate::model::ReviewReason;
@@ -159,7 +168,7 @@ mod tests {
 
     fn archive_document(seed: u8) -> NewDocument {
         NewDocument {
-            path: PathBuf::from(format!("archive/doc-{seed}.pdf")),
+            path: native(&format!("archive/doc-{seed}.pdf")),
             source: DocumentSource::Archive,
             ..new_document(seed)
         }
@@ -241,6 +250,63 @@ mod tests {
             index.fields_read_version(missing),
             Err(IndexError::DocumentNotFound(_))
         ));
+    }
+
+    #[test]
+    fn the_text_counts_follow_every_write_of_the_text() {
+        let (_dir, mut index) = plain_index();
+        let id = index.insert_document(&archive_document(1)).unwrap();
+        index.add_review(id, ReviewReason::NoMatchingRule).unwrap();
+        let counts = |current: &Index| {
+            let counts = current.hermes_counts().unwrap();
+            (
+                counts.archive_documents_with_text,
+                counts.open_reviews_without_text,
+            )
+        };
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "Rent").unwrap();
+        assert_eq!(counts(&index), (1, 0));
+        index.set_document_text(id, "  ").unwrap();
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "Rent again").unwrap();
+        assert_eq!(counts(&index), (1, 0));
+        index
+            .replace_document_content(
+                id,
+                &crate::ContentHash([9; 32]),
+                crate::FileStamp::from_columns(Some(5), Some(6))
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(counts(&index), (0, 1));
+        index.set_document_text(id, "New text").unwrap();
+        assert_eq!(counts(&index), (1, 0));
+    }
+
+    #[test]
+    fn the_documents_without_text_are_the_present_and_not_excluded_ones_with_no_or_empty_text() {
+        let (_dir, mut index) = plain_index();
+        let read = index.insert_document(&archive_document(1)).unwrap();
+        index.set_document_text(read, "Rent").unwrap();
+        index.insert_document(&archive_document(2)).unwrap();
+        let empty = index.insert_document(&archive_document(3)).unwrap();
+        index.set_document_text(empty, " ").unwrap();
+        let gone = index.insert_document(&archive_document(4)).unwrap();
+        index.mark_document_missing(gone).unwrap();
+        let excluded = archive_document(5);
+        index.insert_document(&excluded).unwrap();
+        index.exclude_path(&excluded.path).unwrap();
+        index.insert_document(&new_document(6)).unwrap();
+
+        let mut expected = vec![
+            archive_document(2).path,
+            archive_document(3).path,
+            new_document(6).path,
+        ];
+        expected.sort();
+        assert_eq!(index.documents_without_text().unwrap(), expected);
     }
 
     #[test]

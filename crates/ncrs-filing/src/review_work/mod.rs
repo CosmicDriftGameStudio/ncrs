@@ -16,9 +16,8 @@ use ncrs_index::{
     ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
-    condition_match_ranges, location_documents, location_of, location_structure, plan,
-    relative_to_location, render_pattern_in, stays_below, text_is_readable, NeighbourIndex,
-    OwnNames, Placement, PlanInput, Planning,
+    condition_match_ranges, location_of, plan, relative_to_location, render_pattern_in,
+    stays_below, text_is_readable, NeighbourIndex, Placement, PlanInput, Planning,
 };
 use ncrs_pipeline::OwnDetails;
 
@@ -29,6 +28,9 @@ use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Counting, Move, Source};
 
 pub use ncrs_index::{amount_digits, amount_text};
+
+mod neighbour_cache;
+pub use neighbour_cache::NeighbourCache;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -148,6 +150,7 @@ pub struct ReviewAccess {
     kind_language: KindLanguage,
     own: OwnDetails,
     index_work: crate::index_work::IndexWork,
+    neighbour_cache: NeighbourCache,
 }
 
 impl std::fmt::Debug for ReviewAccess {
@@ -166,6 +169,15 @@ impl ReviewAccess {
             kind_language: KindLanguage::default(),
             own: OwnDetails::default(),
             index_work: crate::index_work::IndexWork::default(),
+            neighbour_cache: NeighbourCache::default(),
+        }
+    }
+
+    /// Handles of one module share the neighbours they built.
+    pub fn with_neighbour_cache(self, neighbour_cache: NeighbourCache) -> Self {
+        Self {
+            neighbour_cache,
+            ..self
         }
     }
 
@@ -257,16 +269,14 @@ impl ReviewAccess {
         })
     }
 
-    fn neighbours(&self, index: &Index) -> Result<NeighbourIndex, String> {
-        let documents =
-            location_documents(index, &self.target_root).map_err(|err| err.to_string())?;
-        let structure = location_structure(&documents, index.kinds());
-        let own = OwnNames {
-            names: &self.own.names,
-            ibans: &self.own.ibans,
-            tax_ids: &self.own.tax_ids,
-        };
-        Ok(NeighbourIndex::new(&documents, &own, &structure))
+    #[cfg(test)]
+    fn neighbour_builds(&self) -> usize {
+        self.neighbour_cache.builds()
+    }
+
+    fn neighbours(&self, index: &Index) -> Result<Arc<NeighbourIndex>, String> {
+        self.neighbour_cache
+            .neighbours(index, &self.target_root, &self.own)
     }
 
     /// The open reviews of these files, in the order of `paths`.

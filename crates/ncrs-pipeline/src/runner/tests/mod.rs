@@ -750,6 +750,7 @@ fn dropping_a_runner_right_after_the_start_does_not_hang() {
 #[path = "runner_archive_tests.rs"]
 mod archive_fields;
 
+mod gone_tests;
 mod review_tests;
 use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
 mod inquiry_tests;
@@ -801,7 +802,10 @@ fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, Strin
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
         // Replaced in one rename: fs::write truncates first, and on Windows the runner can
         // fingerprint that empty in-between state.
-        let mut grown = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
+        // Beside the target, so the rename never crosses a volume.
+        let folder = path.parent().ok_or("the file has no folder")?;
+        let mut grown =
+            tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
         std::io::Write::write_all(&mut grown, b"a body that grew while the step was not ready")
             .map_err(|error| error.to_string())?;
         grown.persist(path).map_err(|error| error.to_string())?;

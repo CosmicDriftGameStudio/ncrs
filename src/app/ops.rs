@@ -205,6 +205,7 @@ impl App {
                 from,
                 renamed_to,
             } => self.end_rename(side, &from, renamed_to),
+            Ask::RenameApplied { from, to } => self.apply_rename(&from, &to),
             Ask::RestartSearch => self.restart_search(),
             Ask::ListTrash => self.list_trash(),
             Ask::CloseQuickOpenAndPalette => {
@@ -278,6 +279,26 @@ impl App {
             self.load(side, own_path, name),
             reload_other,
         ])
+    }
+
+    /// A rename the user has replaced by another finished: hit lists and sizes
+    /// move to the new path and a panel inside the renamed folder follows it.
+    fn apply_rename(&mut self, from: &Path, to: &Path) -> Task<Message> {
+        self.panels.rename_hits(from, to);
+        self.panels.folder_sizes.clear();
+        let tasks = [PanelSide::Left, PanelSide::Right].map(|side| {
+            let inside_renamed = self
+                .panel(side)
+                .path
+                .strip_prefix(from)
+                .ok()
+                .map(|rest| to.join(rest));
+            match inside_renamed {
+                Some(moved) => self.load(side, moved, None),
+                None => self.reload_keeping_cursor(side),
+            }
+        });
+        Task::batch(tasks)
     }
 
     pub(in crate::app) fn update_ops(&mut self, message: OpsMessage) -> Task<Message> {

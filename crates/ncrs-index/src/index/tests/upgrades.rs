@@ -156,9 +156,7 @@ fn a_version_6_database_gains_the_execution_journal_tables() {
 
 #[test]
 fn a_version_10_database_turns_its_rule_columns_into_conditions() {
-    use crate::model::{
-        Combinator, Condition, ConditionKind, DocumentId, FieldOrigin, RuleConditions, RuleId,
-    };
+    use crate::model::{Combinator, Condition, ConditionKind, FieldOrigin, RuleConditions, RuleId};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -209,7 +207,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
     assert_eq!(sender_rule.spec.tags.len(), 1);
     assert!(sender_rule.spec.tags.contains("services"));
     assert!(index.rule_evidence(RuleId::new(8)).unwrap().is_some());
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(crate::model::Field::Kind),
         FieldOrigin::Rule(Some(RuleId::new(8)))
@@ -226,9 +224,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
 
 #[test]
 fn a_version_11_database_gains_sender_aliases() {
-    use crate::model::{
-        Condition, ConditionKind, DocumentId, RuleConditions, RuleId, SenderAliasKind,
-    };
+    use crate::model::{Condition, ConditionKind, RuleConditions, RuleId, SenderAliasKind};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -251,7 +247,7 @@ fn a_version_11_database_gains_sender_aliases() {
     let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
     assert_eq!(user_version(&index), latest_version());
-    let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+    let document = index.document(crate::DocumentId::new(1)).unwrap().unwrap();
     assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
     let rule = index.rule(RuleId::new(4)).unwrap().unwrap();
     assert_eq!(
@@ -274,7 +270,7 @@ fn a_version_11_database_gains_sender_aliases() {
 
 #[test]
 fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
-    use crate::model::{DocumentId, Field, FieldOrigin, RuleId};
+    use crate::model::{Field, FieldOrigin, RuleId};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -307,7 +303,7 @@ fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
     let positions: Vec<_> = rules.iter().map(|rule| rule.position).collect();
     assert_eq!(positions, [2, 5, 7]);
     assert!(rules.iter().all(|rule| rule.spec.enabled));
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(Field::Kind),
         FieldOrigin::Rule(Some(RuleId::new(5)))
@@ -541,7 +537,9 @@ fn a_version_20_database_gains_an_empty_file_list_tag_table() {
 
     assert_eq!(user_version(&index), latest_version());
     assert!(index.file_list_tag_exceptions().unwrap().is_empty());
-    index.set_file_list_tag("steuer", Some(false)).unwrap();
+    index
+        .set_file_list_tag(crate::TagGroup::Own, "steuer", Some(false))
+        .unwrap();
     assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
     assert_eq!(
         index.tag_tally().unwrap().own,
@@ -663,12 +661,12 @@ fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_
     assert_eq!(
         open,
         [
-            (DocumentId::new(1), ReviewReason::NoMatchingRule),
+            (crate::DocumentId::new(1), ReviewReason::NoMatchingRule),
             (DocumentId::new(2), ReviewReason::NoMatchingRule)
         ]
     );
 
-    let origins = index.field_origins(DocumentId::new(1)).unwrap();
+    let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(Field::Sender),
         FieldOrigin::Rule(Some(RuleId::new(3)))
@@ -685,11 +683,9 @@ fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_
 
 #[test]
 fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
-    use crate::model::DocumentId;
-
     let (_dir, index) = migrated_from_19();
 
-    let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+    let document = index.document(crate::DocumentId::new(1)).unwrap().unwrap();
     assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
     assert_eq!(document.fields.number.as_deref(), Some("4711"));
     assert!(document.fields.tags.contains("services"));
@@ -708,13 +704,11 @@ fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
 
 #[test]
 fn a_version_19_database_keeps_the_text_search_and_the_cascade_of_its_documents() {
-    use crate::model::DocumentId;
-
     let (_dir, index) = migrated_from_19();
 
     assert_eq!(
         index.search_text("miete", 10).unwrap(),
-        [DocumentId::new(1)]
+        [crate::DocumentId::new(1)]
     );
     let by_path: i64 = index
         .conn

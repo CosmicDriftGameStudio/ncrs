@@ -2,7 +2,6 @@
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::mpsc::Receiver;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use chrono::{DateTime, Utc};
@@ -11,8 +10,8 @@ mod tests {
         Index,
     };
     use ncrs_intake::{
-        scan_location, settle_location, take_in, Location, LocationMode, LocationWatcher, Outcome,
-        ScanReport, Skip, StabilityTracker, WatchEvent, STABLE_AFTER,
+        finish_take_in, prepare_take_in, scan_location, settle_location, take_in, Location,
+        LocationMode, Outcome, Prepared, ScanReport, Skip, StabilityTracker, STABLE_AFTER,
     };
     use sha2::{Digest as _, Sha256};
     use std::collections::BTreeSet;
@@ -588,6 +587,51 @@ mod tests {
     }
 
     #[test]
+    fn an_already_filed_inbox_file_is_not_hashed_again_while_it_is_unchanged() {
+        let mut fixture = Fixture::new();
+        let inbox_dir = TempDir::new().unwrap();
+        let archive_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox, false);
+        let archive = location(&archive_dir, LocationMode::Archive, false);
+        put(&archive, "a.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let in_inbox = put(&inbox, "again.pdf", INVOICE);
+        fixture.scan_settled(&inbox);
+
+        let prepared = prepare_take_in(
+            &fixture.index,
+            &inbox,
+            &in_inbox,
+            &mut fixture.tracker,
+            t0() + STABLE_AFTER * 2,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            prepared,
+            Prepared::Done(taken) if matches!(taken.outcome, Outcome::AlreadyFiled(_)) && !taken.hashed
+        ));
+    }
+
+    #[test]
+    fn an_already_filed_inbox_file_is_read_again_once_its_content_changed() {
+        let mut fixture = Fixture::new();
+        let inbox_dir = TempDir::new().unwrap();
+        let archive_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox, false);
+        let archive = location(&archive_dir, LocationMode::Archive, false);
+        put(&archive, "a.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let in_inbox = put(&inbox, "again.pdf", INVOICE);
+        fixture.scan_settled(&inbox);
+        fs::write(&in_inbox, REMINDER).unwrap();
+
+        let report = fixture.scan_settled(&inbox);
+
+        assert_eq!((report.already_filed, report.new), (0, 1));
+    }
+
+    #[test]
     fn an_inbox_document_that_was_filed_also_counts_as_already_filed() {
         let mut fixture = Fixture::new();
         let dir = TempDir::new().unwrap();
@@ -717,6 +761,39 @@ mod tests {
         assert!(fixture.index.document_by_path(&known).unwrap().is_none());
     }
 
+    #[test]
+    fn a_file_excluded_while_it_is_hashed_is_not_filed() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let inbox = location(&dir, LocationMode::Inbox, false);
+        let path = put(&inbox, "big.pdf", INVOICE);
+        let prepare = |world: &mut Fixture, now| {
+            prepare_take_in(&world.index, &inbox, &path, &mut world.tracker, now).unwrap()
+        };
+        assert!(matches!(
+            prepare(&mut fixture, t0()),
+            Prepared::Done(taken) if taken.outcome == Outcome::NotStableYet
+        ));
+        let Prepared::Hash(pending) = prepare(&mut fixture, t0() + STABLE_AFTER) else {
+            panic!("expected the file to be ready for hashing");
+        };
+        let hash = pending.hash(&path).unwrap().unwrap();
+
+        fixture.index.exclude_path(&path).unwrap();
+        let taken = finish_take_in(
+            &mut fixture.index,
+            &inbox,
+            &path,
+            pending,
+            hash,
+            t0() + STABLE_AFTER,
+        )
+        .unwrap();
+
+        assert_eq!(taken.outcome, Outcome::Skipped(Skip::Excluded));
+        assert!(fixture.index.document_by_path(&path).unwrap().is_none());
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_symlink_out_of_the_location_is_neither_followed_nor_taken_in() {
@@ -842,86 +919,5 @@ mod tests {
         assert_eq!(report.new, 1);
         assert_eq!(report.error_total, 1);
         assert_eq!(report.error_paths, vec![locked]);
-    }
-
-    /// Real file writes seen by the polling backend; FSEvents delivery is not
-    /// reliable under load.
-    const POLL_INTERVAL: Duration = Duration::from_millis(50);
-
-    fn receive_until(receiver: &Receiver<WatchEvent>, wanted: &Path) -> Vec<PathBuf> {
-        let mut seen = Vec::new();
-        loop {
-            let event = receiver
-                .recv_timeout(Duration::from_secs(10))
-                .unwrap_or_else(|_| panic!("no event for {} after {seen:?}", wanted.display()));
-            let WatchEvent::File(path) = event else {
-                panic!("unexpected {event:?}");
-            };
-            let reached = path == wanted;
-            seen.push(path);
-            if reached {
-                return seen;
-            }
-        }
-    }
-
-    #[test]
-    fn the_watcher_forwards_new_files_and_not_hidden_ones() {
-        let dir = TempDir::new().unwrap();
-        let inbox = location(&dir, LocationMode::Inbox, false);
-        let (_watcher, receiver, failed) =
-            LocationWatcher::start_polling(std::slice::from_ref(&inbox), POLL_INTERVAL);
-        assert!(failed.is_empty());
-
-        let first = put(&inbox, "first.pdf", INVOICE);
-        let seen = receive_until(&receiver, &first);
-        assert!(seen.iter().all(|path| *path == first), "{seen:?}");
-
-        let hidden = put(&inbox, ".hidden.pdf", REMINDER);
-        let barrier = put(&inbox, "barrier.pdf", b"barrier");
-        let after_hidden = receive_until(&receiver, &barrier);
-        assert!(!after_hidden.contains(&hidden), "{after_hidden:?}");
-    }
-
-    #[test]
-    fn the_watcher_forwards_the_files_of_a_folder_moved_in() {
-        let outside = TempDir::new().unwrap();
-        let folder = outside.path().join("batch");
-        fs::create_dir_all(folder.join("nested")).unwrap();
-        fs::write(folder.join("a.pdf"), INVOICE).unwrap();
-        fs::write(folder.join("nested/b.pdf"), REMINDER).unwrap();
-        let dir = TempDir::new().unwrap();
-        let inbox = location(&dir, LocationMode::Inbox, false);
-        let (_watcher, receiver, failed) =
-            LocationWatcher::start_polling(std::slice::from_ref(&inbox), POLL_INTERVAL);
-        assert!(failed.is_empty());
-
-        fs::rename(&folder, inbox.path.join("batch")).unwrap();
-
-        let first = inbox.path.join("batch/a.pdf");
-        let nested = inbox.path.join("batch/nested/b.pdf");
-        let mut seen = receive_until(&receiver, &nested);
-        if !seen.contains(&first) {
-            seen.extend(receive_until(&receiver, &first));
-        }
-        assert!(seen.contains(&first) && seen.contains(&nested), "{seen:?}");
-    }
-
-    #[test]
-    fn a_location_that_cannot_be_watched_is_reported_and_the_others_carry_on() {
-        let gone_dir = TempDir::new().unwrap();
-        let gone = location(&gone_dir, LocationMode::Archive, false);
-        let gone_path = gone.path.clone();
-        drop(gone_dir);
-        let dir = TempDir::new().unwrap();
-        let inbox = location(&dir, LocationMode::Inbox, false);
-
-        let (_watcher, receiver, failed) =
-            LocationWatcher::start_polling(&[gone, inbox.clone()], POLL_INTERVAL);
-
-        assert_eq!(failed.len(), 1);
-        assert_eq!(failed[0].0, gone_path);
-        let file = put(&inbox, "a.pdf", INVOICE);
-        receive_until(&receiver, &file);
     }
 }

@@ -42,21 +42,51 @@ pub fn location_of<'a>(path: &Path, roots: &'a [PathBuf]) -> Option<&'a Path> {
 
 /// `canonicalize` returns `\\?\C:\...` or `\\?\UNC\server\...` on Windows, while
 /// panels and `current_exe` show `C:\...` and `\\server\...`; without this the
-/// same folder would count as two.
+/// same folder would count as two. The prefix stays where Win32 would read the
+/// plain form differently: a name ending in a dot or a space, a device name
+/// like `NUL`, a `/` in a name, or a path of `MAX_PATH` characters or more.
 pub fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
     let plain = path.to_str().and_then(|text| {
         let rest = text.strip_prefix(r"\\?\")?;
-        if let Some(share) = rest.strip_prefix(r"UNC\") {
-            return Some(PathBuf::from(format!(r"\\{share}")));
-        }
-        let mut chars = rest.chars();
-        let is_drive = chars
-            .next()
-            .is_some_and(|letter| letter.is_ascii_alphabetic())
-            && chars.next() == Some(':');
-        is_drive.then(|| PathBuf::from(rest))
+        let plain = if let Some(share) = rest.strip_prefix(r"UNC\") {
+            format!(r"\\{share}")
+        } else {
+            let mut chars = rest.chars();
+            let is_drive = chars
+                .next()
+                .is_some_and(|letter| letter.is_ascii_alphabetic())
+                && chars.next() == Some(':');
+            if !is_drive {
+                return None;
+            }
+            rest.to_owned()
+        };
+        is_same_when_plain(&plain).then(|| PathBuf::from(plain))
     });
     plain.unwrap_or(path)
+}
+
+const MAX_PLAIN_PATH_CHARS: usize = 260;
+
+fn is_same_when_plain(plain: &str) -> bool {
+    plain.chars().count() < MAX_PLAIN_PATH_CHARS
+        && !plain.contains('/')
+        && plain
+            .split('\\')
+            .all(|name| !name.ends_with(['.', ' ']) && !is_device_name(name))
+}
+
+/// Win32 reads `NUL`, `COM1`, `con.txt` and the like as devices whatever the
+/// extension.
+fn is_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or_default().trim_end();
+    let upper = stem.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            upper
+                .strip_prefix(prefix)
+                .is_some_and(|digit| matches!(digit.as_bytes(), [b'1'..=b'9']))
+        })
 }
 
 pub fn canonical_path(path: &Path) -> io::Result<PathBuf> {
@@ -108,6 +138,12 @@ mod verbatim_tests {
             (r"\\?\c:\a", r"c:\a"),
             (r"\\?\UNC\s\x", r"\\s\x"),
             (r"\\?\Volume{1}\x", r"\\?\Volume{1}\x"),
+            (r"\\?\C:\a.\x", r"\\?\C:\a.\x"),
+            (r"\\?\C:\a \x", r"\\?\C:\a \x"),
+            (r"\\?\C:\NUL\x", r"\\?\C:\NUL\x"),
+            (r"\\?\C:\com1.txt", r"\\?\C:\com1.txt"),
+            (r"\\?\UNC\s\aux", r"\\?\UNC\s\aux"),
+            (r"\\?\C:\a.b\COM10", r"C:\a.b\COM10"),
             (r"C:\a", r"C:\a"),
             ("/data", "/data"),
         ];

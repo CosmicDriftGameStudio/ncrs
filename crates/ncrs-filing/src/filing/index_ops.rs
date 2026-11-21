@@ -111,7 +111,11 @@ pub(in crate::filing) fn encrypt_index(
 ) -> EncryptReport {
     let mut held = lock(slot);
     drop(held.take());
-    match Index::encrypt_plain(db_path, store) {
+    let encrypted = match mark_unconfirmed(db_path) {
+        Ok(()) => Index::encrypt_plain(db_path, store).map_err(|err| err.to_string()),
+        Err(err) => Err(err.to_string()),
+    };
+    match encrypted {
         Ok(recovery_key) => EncryptReport {
             // The copies from before a migration are plain files, and so is
             // an index set aside earlier when it was not encrypted; an
@@ -125,8 +129,11 @@ pub(in crate::filing) fn encrypt_index(
             },
             opened: open_into(&mut held, db_path, store, note),
         },
-        Err(err) => EncryptReport {
-            result: Err(err.to_string()),
+        Err(reason) => EncryptReport {
+            result: {
+                drop(clear_unconfirmed(db_path));
+                Err(reason)
+            },
             opened: reopen_after_failure(&mut held, db_path, store, note),
         },
     }
@@ -251,7 +258,10 @@ pub(in crate::filing) fn start_over(
     };
     match removed {
         Ok(()) => StartOverReport {
-            result: Ok(()),
+            result: {
+                drop(clear_unconfirmed(db_path));
+                Ok(())
+            },
             key_entry_warning: store.delete().err().map(|err| err.to_string()),
             opened: open_into(&mut held, db_path, store, note),
         },
@@ -274,12 +284,16 @@ pub(in crate::filing) fn create_index(
         create_private_dir(parent).map_err(|err| err.to_string())?;
     }
     if encrypted {
-        let (index, recovery_key) =
-            Index::create_encrypted(db_path, store).map_err(|err| err.to_string())?;
+        mark_unconfirmed(db_path).map_err(|err| err.to_string())?;
+        let (index, recovery_key) = Index::create_encrypted(db_path, store).map_err(|err| {
+            drop(clear_unconfirmed(db_path));
+            err.to_string()
+        })?;
         put_index_noting(slot, index, note);
         Ok(Some(ShownRecoveryKey::new(recovery_key)))
     } else {
         let index = Index::create_plain(db_path).map_err(|err| err.to_string())?;
+        drop(clear_unconfirmed(db_path));
         put_index_noting(slot, index, note);
         Ok(None)
     }
@@ -293,6 +307,7 @@ pub(in crate::filing) fn apply_key(
     write_key: impl FnOnce(&Path, &dyn KeyStore) -> Result<(), IndexError>,
 ) -> Result<OpenOutcome, KeyError> {
     write_key(db_path, store).map_err(key_error)?;
+    drop(clear_unconfirmed(db_path));
     let index = Index::open(db_path, store).map_err(key_error)?;
     put_index_noting(slot, index, note);
     Ok(OpenOutcome::Opened)
@@ -316,4 +331,21 @@ fn create_private_dir(path: &Path) -> std::io::Result<()> {
         builder.mode(0o700)
     };
     builder.create(path)
+}
+
+/// An index whose recovery key the user never confirmed shows it again. Where
+/// the key cannot be read the index opens as usual: the marker stays, so the
+/// next start tries again.
+pub(in crate::filing) fn unconfirmed_key(
+    opened: OpenOutcome,
+    db_path: &Path,
+    store: &dyn KeyStore,
+) -> OpenOutcome {
+    if opened != OpenOutcome::Opened || !is_unconfirmed(db_path) {
+        return opened;
+    }
+    match Index::stored_recovery_key(store) {
+        Ok(Some(key)) => OpenOutcome::OpenedKeyUnconfirmed(ShownRecoveryKey::new(key)),
+        Ok(None) | Err(_) => opened,
+    }
 }

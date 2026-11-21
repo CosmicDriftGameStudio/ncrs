@@ -257,3 +257,33 @@ async fn the_other_panel_inside_a_renamed_folder_follows_it() {
         dir.path().join("pictures").join("2026")
     );
 }
+
+#[tokio::test]
+async fn the_other_panel_inside_a_folder_renamed_by_a_replaced_rename_follows_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("photos").join("2026")).unwrap();
+    let mut app = app_in(dir.path()).await;
+    app.panels.right.path = dir.path().join("photos").join("2026");
+    put_cursor_on(&mut app, "photos");
+    let _focus = app.update(Message::Panel(PanelMessage::RenameStart));
+    let stale_id = app.ops.rename_request_id.wrapping_sub(1);
+    let from = dir.path().join("photos");
+    let to = dir.path().join("pictures");
+    std::fs::rename(&from, &to).unwrap();
+
+    settle(
+        &mut app,
+        Message::Ops(OpsMessage::Renamed {
+            request_id: stale_id,
+            side: PanelSide::Left,
+            from,
+            result: Ok(to),
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        app.panels.right.path,
+        dir.path().join("pictures").join("2026")
+    );
+}

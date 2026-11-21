@@ -4,7 +4,8 @@
 //! nothing there. Both ways lets the newer file win; when both sides changed
 //! since the last sync the older one stays next to it as "Name (Conflict).md".
 //! Encrypted notes are copied as they are: they stay encrypted. Nothing is
-//! ever deleted, on either side.
+//! ever deleted, on either side, except what was sealed or removed here and
+//! is unchanged there.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -69,14 +70,38 @@ fn is_note_name(name: &str) -> bool {
     lower.ends_with(MARKDOWN_SUFFIX) || lower.ends_with(ENCRYPTED_SUFFIX)
 }
 
-fn listed(root: &Path) -> BTreeMap<PathBuf, Meta> {
-    let mut found = BTreeMap::new();
+/// The notes below a folder, and the folders that could not be read: a note
+/// missing from an unreadable folder is not a deleted note.
+#[derive(Default)]
+struct Listing {
+    files: BTreeMap<PathBuf, Meta>,
+    unreadable: Vec<PathBuf>,
+}
+
+impl Listing {
+    fn is_complete_for(&self, name: &Path) -> bool {
+        !self
+            .unreadable
+            .iter()
+            .any(|folder| name.starts_with(folder))
+    }
+
+    fn root_is_unreadable(&self) -> bool {
+        self.unreadable
+            .iter()
+            .any(|folder| folder.as_os_str().is_empty())
+    }
+}
+
+fn listed(root: &Path) -> Listing {
+    let mut found = Listing::default();
     walk(root, Path::new(""), 0, &mut found);
     found
 }
 
-fn walk(root: &Path, relative: &Path, depth: usize, found: &mut BTreeMap<PathBuf, Meta>) {
+fn walk(root: &Path, relative: &Path, depth: usize, found: &mut Listing) {
     let Ok(entries) = fs::read_dir(root.join(relative)) else {
+        found.unreadable.push(relative.to_owned());
         return;
     };
     for entry in entries.flatten() {
@@ -95,7 +120,7 @@ fn walk(root: &Path, relative: &Path, depth: usize, found: &mut BTreeMap<PathBuf
         } else if is_note_name(&name) {
             if let Some(meta) = entry.metadata().ok().filter(|meta| meta.is_file()) {
                 if let Ok(modified) = meta.modified() {
-                    found.insert(
+                    found.files.insert(
                         below,
                         Meta {
                             size: meta.len(),
@@ -250,7 +275,7 @@ fn finish(
     errors: &[String],
     now: SystemTime,
 ) -> Result<SyncReport, String> {
-    report.notes = listed(&job.local).len();
+    report.notes = listed(&job.local).files.len();
     report.finished = Some(now);
     match errors.first() {
         Some(first) if errors.len() > 1 => Err(format!("{first} (+{} more)", errors.len() - 1)),
@@ -259,13 +284,35 @@ fn finish(
     }
 }
 
+/// `Name.md` is sealed as `Name.md.enc`.
+fn sealed_counterpart(name: &Path) -> Option<PathBuf> {
+    let text = name.to_str()?;
+    if !text.to_lowercase().ends_with(MARKDOWN_SUFFIX) {
+        return None;
+    }
+    let stem = text.get(..text.len() - MARKDOWN_SUFFIX.len())?;
+    Some(PathBuf::from(format!("{stem}{ENCRYPTED_SUFFIX}")))
+}
+
 fn one_way(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
     let local = listed(&job.local);
     let remote = listed(&job.target);
     let mut report = SyncReport::default();
     let mut errors = Vec::new();
-    for (name, mine) in &local {
+    for name in remote.files.keys() {
+        let sealed_here = sealed_counterpart(name).is_some_and(|sealed| {
+            local.files.contains_key(&sealed) && !local.files.contains_key(name)
+        });
+        if sealed_here {
+            let path = job.target.join(name);
+            if let Err(err) = fs::remove_file(&path) {
+                errors.push(format!("{}: {err}", path.display()));
+            }
+        }
+    }
+    for (name, mine) in &local.files {
         let current = remote
+            .files
             .get(name)
             .is_some_and(|theirs| same_file(*mine, *theirs));
         if current {
@@ -283,24 +330,47 @@ fn both_ways(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
     let manifest_file = manifest_path(&job.local, &job.target);
     let known = read_manifest(&manifest_file);
     let local = listed(&job.local);
+    if local.root_is_unreadable() {
+        return Err(format!("{} could not be read", job.local.display()));
+    }
     let remote = listed(&job.target);
     let mut report = SyncReport::default();
     let mut errors = Vec::new();
-    let mut names: Vec<&PathBuf> = local.keys().chain(remote.keys()).collect();
+    let mut names: Vec<&PathBuf> = local.files.keys().chain(remote.files.keys()).collect();
     names.sort();
     names.dedup();
     for name in names {
-        let step = match (local.get(name).copied(), remote.get(name).copied()) {
+        if !local.is_complete_for(name) || !remote.is_complete_for(name) {
+            continue;
+        }
+        let step = match (
+            local.files.get(name).copied(),
+            remote.files.get(name).copied(),
+        ) {
             (Some(mine), None) => {
                 copy_file(&job.local.join(name), &job.target.join(name), mine.modified)
                     .map(|()| report.copied += 1)
             }
-            (None, Some(theirs)) => copy_file(
-                &job.target.join(name),
-                &job.local.join(name),
-                theirs.modified,
-            )
-            .map(|()| report.copied += 1),
+            (None, Some(theirs)) => {
+                let deleted_here = known
+                    .get(name)
+                    .is_some_and(|rec| rec.remote == key_of(theirs));
+                if deleted_here {
+                    // Removed or sealed here since the last sync and untouched
+                    // there: carry the deletion over instead of restoring the
+                    // old (possibly plaintext) copy. A newer edit there does
+                    // not match the record and comes back as before.
+                    let path = job.target.join(name);
+                    fs::remove_file(&path).map_err(|err| format!("{}: {err}", path.display()))
+                } else {
+                    copy_file(
+                        &job.target.join(name),
+                        &job.local.join(name),
+                        theirs.modified,
+                    )
+                    .map(|()| report.copied += 1)
+                }
+            }
             (Some(mine), Some(theirs)) if same_file(mine, theirs) => Ok(()),
             (Some(mine), Some(theirs)) => {
                 let record = known.get(name);
@@ -330,9 +400,10 @@ fn both_ways(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
     let after_local = listed(&job.local);
     let after_remote = listed(&job.target);
     let matched: Manifest = after_local
+        .files
         .iter()
         .filter_map(|(name, mine)| {
-            let theirs = after_remote.get(name)?;
+            let theirs = after_remote.files.get(name)?;
             same_file(*mine, *theirs).then(|| {
                 (
                     name.clone(),

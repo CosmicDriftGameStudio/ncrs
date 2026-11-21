@@ -149,9 +149,9 @@ pub fn plan_live(
                 .map_err(|err| err.to_string())
         })
         .map_err(PlanFailure::Other)?;
-    let source_reading = read_folder(access, source, &run.progress).map_err(read_failed)?;
+    let source_reading = read_folder(access, source, &run.progress, None).map_err(read_failed)?;
     let target_reading =
-        read_folder(access, target, &ReadProgress::default()).map_err(read_failed)?;
+        read_folder(access, target, &ReadProgress::default(), None).map_err(read_failed)?;
     let mut last: Option<LivePlan> = None;
     let asked = ask_until_done(
         access,
@@ -171,14 +171,23 @@ pub fn plan_live(
                     }
                 }
             }
-            run.publish(live.clone());
+            // `done` goes out only after the tags are written, so nothing
+            // that acts on a finished plan races with `mark_files` below.
+            run.publish(LivePlan {
+                done: false,
+                ..live.clone()
+            });
             last = Some(live);
         },
     );
     // Files the model did not answer for are still looking, and `mark_files`
     // leaves those alone, so a failed model tags nothing it did not decide.
     if let Some(planned) = last {
-        mark_files(access, &planned, tags)?;
+        let marked = mark_files(access, &planned, tags);
+        if planned.done {
+            run.publish(planned);
+        }
+        marked?;
     }
     asked
 }
@@ -358,7 +367,7 @@ fn file_name_of(path: &Path) -> String {
 
 /// The plan with the user's decisions on top; a changed file is `by_user`.
 pub fn apply_overrides(plan: &LivePlan, overrides: &BTreeMap<PathBuf, Override>) -> LivePlan {
-    let files = plan
+    let mut files: Vec<LiveFile> = plan
         .files
         .iter()
         .map(|file| {
@@ -391,9 +400,29 @@ pub fn apply_overrides(plan: &LivePlan, overrides: &BTreeMap<PathBuf, Override>)
             }
         })
         .collect();
+    number_colliding_overrides(&mut files, overrides);
     LivePlan {
         files,
         ..plan.clone()
+    }
+}
+
+/// Two files may not end up at the same place because of what the user typed
+/// or picked: the later one gets the next free number.
+fn number_colliding_overrides(files: &mut [LiveFile], overrides: &BTreeMap<PathBuf, Override>) {
+    let mut taken: BTreeSet<PathBuf> = files
+        .iter()
+        .filter(|file| !overrides.contains_key(&file.from))
+        .filter_map(|file| match &file.state {
+            LiveState::Filed { folder, name, .. } => Some(folder.join(name)),
+            _ => None,
+        })
+        .collect();
+    for file in files.iter_mut().filter(|file| file.by_user) {
+        if let LiveState::Filed { folder, name, .. } = &mut file.state {
+            let free = numbered_name(&folder.join(&*name), &mut taken);
+            *name = file_name_of(&free);
+        }
     }
 }
 

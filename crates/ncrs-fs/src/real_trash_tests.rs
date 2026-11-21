@@ -219,9 +219,108 @@ pub fn on_the_real_trash(test_name: &str, scenario: impl FnOnce(&Scene)) {
     }
 }
 
+const RUN_FOLDER_PREFIX: &str = "ncrs-real-trash-";
+
+/// Whether some folder of `path` is the unique folder of a test run.
+#[cfg_attr(
+    target_os = "linux",
+    allow(
+        dead_code,
+        reason = "Linux trashes into a private folder, nothing to sweep"
+    )
+)]
+fn has_test_prefix(path: &Path) -> bool {
+    path.components().any(|part| {
+        part.as_os_str()
+            .to_string_lossy()
+            .starts_with(RUN_FOLDER_PREFIX)
+    })
+}
+
+/// A run younger than this may belong to a test process running beside this
+/// one (another worktree, nextest), so the sweep leaves it alone.
+const ORPHAN_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Whether something last touched at `touched` is old enough to be the
+/// leftover of a killed run. A time in the future counts as fresh.
+#[cfg_attr(
+    target_os = "linux",
+    allow(
+        dead_code,
+        reason = "Linux trashes into a private folder, nothing to sweep"
+    )
+)]
+fn is_orphaned(touched: std::time::SystemTime, now: std::time::SystemTime) -> bool {
+    now.duration_since(touched)
+        .is_ok_and(|age| age >= ORPHAN_AGE)
+}
+
+/// A hard kill skips the cleanup guard and leaves the items of that run in the
+/// user's own trash. The first test of a process removes the old ones before it
+/// makes its own folder; `Once` holds the other tests back until then. Only
+/// runs older than `ORPHAN_AGE` are swept, so a live run of a parallel process
+/// stays.
+#[cfg(not(target_os = "linux"))]
+static SWEEP: std::sync::Once = std::sync::Once::new();
+
+/// Windows: the items of the Recycle Bin whose original path has a run folder.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn sweep_leftovers() {
+    let items = match trash::os_limited::list() {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!("sweep: the trash cannot be listed: {err}");
+            return;
+        }
+    };
+    let stale: Vec<_> = items
+        .into_iter()
+        .filter(|item| has_test_prefix(&item.original_path()))
+        .filter(|item| {
+            u64::try_from(item.time_deleted).is_ok_and(|seconds| {
+                let deleted = std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds);
+                is_orphaned(deleted, std::time::SystemTime::now())
+            })
+        })
+        .collect();
+    if let Err(err) = trash::os_limited::purge_all(stale) {
+        eprintln!("sweep: the trash cannot be emptied of old test items: {err}");
+    }
+}
+
+/// macOS: `~/.Trash` may be unreadable for the app, and its items keep their
+/// own names. The journal inside each old run folder in the temp folder knows
+/// where its items went, so the cleanup of that run is replayed.
+#[cfg(target_os = "macos")]
+fn sweep_leftovers() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let folder = entry.path();
+        if !has_test_prefix(Path::new(&entry.file_name())) || !folder.is_dir() {
+            continue;
+        }
+        let touched = entry.metadata().and_then(|meta| meta.modified());
+        if !touched.is_ok_and(|at| is_orphaned(at, std::time::SystemTime::now())) {
+            continue;
+        }
+        let cleanup = TrashCleanup {
+            trash: system_trash(Some(folder.join("journal.toml"))),
+            marker: entry.file_name(),
+        };
+        cleanup.purge();
+        if let Err(err) = std::fs::remove_dir_all(&folder) {
+            eprintln!("sweep: {} stays: {err}", folder.display());
+        }
+    }
+}
+
 fn new_root() -> tempfile::TempDir {
+    #[cfg(not(target_os = "linux"))]
+    SWEEP.call_once(sweep_leftovers);
     tempfile::Builder::new()
-        .prefix("ncrs-real-trash-")
+        .prefix(RUN_FOLDER_PREFIX)
         .tempdir()
         .unwrap()
 }
@@ -261,6 +360,16 @@ impl fmt::Debug for Scene {
 mod tests {
     use super::*;
     use crate::RestoreError;
+
+    #[test]
+    fn only_runs_older_than_an_hour_are_orphans() {
+        use std::time::{Duration, SystemTime};
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        assert!(is_orphaned(now - Duration::from_secs(2 * 3600), now));
+        assert!(is_orphaned(now - ORPHAN_AGE, now));
+        assert!(!is_orphaned(now - Duration::from_secs(60), now));
+        assert!(!is_orphaned(now + Duration::from_secs(60), now));
+    }
 
     impl Scene {
         fn listed(&self, relative: &str) -> TrashedItem {
@@ -302,6 +411,20 @@ mod tests {
         fn journal_text(&self) -> String {
             std::fs::read_to_string(&self.journal).unwrap_or_default()
         }
+    }
+
+    #[test]
+    fn only_paths_below_a_test_run_folder_count_as_leftovers() {
+        let left = Path::new("/tmp/ncrs-real-trash-Ab12/work/docs/a.txt");
+        assert!(has_test_prefix(left));
+        assert!(has_test_prefix(Path::new("ncrs-real-trash-")));
+        assert!(!has_test_prefix(Path::new(
+            "/tmp/my-ncrs-real-trash-1/a.txt"
+        )));
+        assert!(!has_test_prefix(Path::new(
+            "/home/me/ncrs-real-trash/a.txt"
+        )));
+        assert!(!has_test_prefix(Path::new("/home/me/Documents/ncrs.txt")));
     }
 
     #[test]

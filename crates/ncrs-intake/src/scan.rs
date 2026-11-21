@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::Utc;
-use ncrs_index::Index;
+use ncrs_index::{DocumentId, Index};
 use walkdir::WalkDir;
 
 use crate::classify::{classify, is_hidden_name, Skip};
@@ -182,15 +182,24 @@ fn remove_vanished_copies(
     report: &mut ScanReport,
 ) -> Result<(), IntakeError> {
     for copy in index.duplicate_paths_under(&location.path)? {
-        match fs::symlink_metadata(&copy) {
-            Ok(_) => {}
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                if index.remove_duplicate_path(&copy)? {
-                    report.removed_copies += 1;
-                }
+        settle_vanished_copy(index, &copy, report)?;
+    }
+    Ok(())
+}
+
+fn settle_vanished_copy(
+    index: &Index,
+    copy: &Path,
+    report: &mut ScanReport,
+) -> Result<(), IntakeError> {
+    match fs::symlink_metadata(copy) {
+        Ok(_) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            if index.remove_duplicate_path(copy)? {
+                report.removed_copies += 1;
             }
-            Err(_unreadable) => report.count_error(&copy),
         }
+        Err(_unreadable) => report.count_error(copy),
     }
     Ok(())
 }
@@ -201,47 +210,104 @@ fn settle_vanished_documents(
     report: &mut ScanReport,
 ) -> Result<(), IntakeError> {
     let documents = index.documents_under(&location.path)?;
-    // A drive that is not mounted can leave its folder behind empty: every
-    // document would be marked missing and purged after the retention time.
-    let every_file_gone = !documents.is_empty()
-        && fs::read_dir(&location.path).is_ok_and(|mut entries| entries.next().is_none())
-        && documents
-            .iter()
-            .all(|(_, path)| matches!(path_exists(path), Ok(false)));
-    if every_file_gone {
-        return Err(IntakeError::Io {
-            path: location.path.clone(),
-            source: io::Error::other(
-                "the folder is empty but the index holds documents of it; it may be a drive that is not mounted",
-            ),
-        });
+    if looks_unmounted(location, &documents) {
+        return Err(unmounted_error(location));
     }
     for (id, path) in documents {
-        match path_exists(&path) {
-            // Mail texts read before they were left out of the index.
-            Ok(true) if classify(location, &path) == Err(Skip::MailBody) => {
-                index.delete_document(id)?;
-            }
-            Ok(true) => {}
-            Ok(false) => {
-                let Some(document) = index.document(id)? else {
-                    continue;
-                };
-                match promote_first_copy(index, &document) {
-                    Ok(true) => report.promoted_copies += 1,
-                    Ok(false) => {
-                        index.mark_document_missing(id)?;
-                        report.missing += 1;
-                    }
-                    Err(_unreadable) => report.count_error(&path),
-                }
-            }
-            Err(_unreadable) => report.count_error(&path),
-        }
+        settle_vanished_document(index, location, id, &path, report)?;
     }
     let cutoff = Utc::now().timestamp() - MISSING_DOCUMENTS_KEPT_DAYS * 24 * 60 * 60;
     index.purge_missing_beneath(&location.path, cutoff)?;
     Ok(())
+}
+
+fn settle_vanished_document(
+    index: &Index,
+    location: &Location,
+    id: DocumentId,
+    path: &Path,
+    report: &mut ScanReport,
+) -> Result<(), IntakeError> {
+    match path_exists(path) {
+        // Mail texts read before they were left out of the index.
+        Ok(true) if classify(location, path) == Err(Skip::MailBody) => {
+            index.delete_document(id)?;
+        }
+        Ok(true) => {}
+        Ok(false) => {
+            let Some(document) = index.document(id)? else {
+                return Ok(());
+            };
+            match promote_first_copy(index, &document) {
+                Ok(true) => report.promoted_copies += 1,
+                Ok(false) => {
+                    index.mark_document_missing(id)?;
+                    report.missing += 1;
+                }
+                Err(_unreadable) => report.count_error(path),
+            }
+        }
+        Err(_unreadable) => report.count_error(path),
+    }
+    Ok(())
+}
+
+/// A drive that is not mounted can leave its folder behind empty: every
+/// document would be marked missing and purged after the retention time.
+fn looks_unmounted(location: &Location, documents: &[(DocumentId, PathBuf)]) -> bool {
+    !documents.is_empty()
+        && fs::read_dir(&location.path).is_ok_and(|mut entries| entries.next().is_none())
+        && documents
+            .iter()
+            .all(|(_, path)| matches!(path_exists(path), Ok(false)))
+}
+
+fn unmounted_error(location: &Location) -> IntakeError {
+    IntakeError::Io {
+        path: location.path.clone(),
+        source: io::Error::other(
+            "the folder is empty but the index holds documents of it; it may be a drive that is not mounted",
+        ),
+    }
+}
+
+/// Settles what the index holds at `gone`, a file or a folder the watcher saw
+/// deleted or moved out: copies and documents whose file is gone, like the
+/// scan does for the whole location. A path that exists again, or that the
+/// index no longer knows (the app's own filing repointed it), changes nothing.
+/// Fills only the `removed_copies`, `promoted_copies`, `missing` and error
+/// fields of the report.
+pub fn settle_gone_path(
+    index: &Index,
+    location: &Location,
+    gone: &Path,
+) -> Result<ScanReport, IntakeError> {
+    fs::metadata(&location.path).map_err(IntakeError::io(&location.path))?;
+    let mut report = ScanReport::default();
+    // The app's own move is under way: the file left before the index was
+    // repointed, and the repoint follows.
+    if index.has_pending_source_under(gone)? {
+        return Ok(report);
+    }
+    if fs::read_dir(&location.path).is_ok_and(|mut entries| entries.next().is_none())
+        && looks_unmounted(location, &index.documents_under(&location.path)?)
+    {
+        return Err(unmounted_error(location));
+    }
+    // The subtree queries list what lies below a folder, not the path itself.
+    settle_vanished_copy(index, gone, &mut report)?;
+    for copy in index.duplicate_paths_under(gone)? {
+        settle_vanished_copy(index, &copy, &mut report)?;
+    }
+    if let Some(document) = index.document_by_path(gone)? {
+        if document.missing_since.is_none() {
+            settle_vanished_document(index, location, document.id, gone, &mut report)?;
+        }
+    }
+    for (id, path) in index.documents_under(gone)? {
+        settle_vanished_document(index, location, id, &path, &mut report)?;
+    }
+    Ok(report)
 }
 
 /// How long the text and fields of a document whose file is gone stay in the

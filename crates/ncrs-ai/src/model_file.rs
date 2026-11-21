@@ -135,6 +135,25 @@ pub fn verify_model_file(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
     Ok(())
 }
 
+/// Call after the runtime loaded `path`, which it opens by path itself: fails
+/// when the file there is no longer the one `verify_model_file` hashed, so a
+/// file swapped in between is never trusted. The caller drops what it loaded.
+#[cfg(any(test, feature = "llama"))]
+pub fn ensure_still_verified(path: &Path) -> Result<(), AiError> {
+    let changed = AiError::Model("the model file changed while it was checked");
+    let metadata = fs::symlink_metadata(path).map_err(|_unreadable| changed.clone())?;
+    let verified = verified_files()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(path)
+        .copied();
+    if metadata.is_file() && verified == Some(FileIdentity::of(&metadata)) {
+        Ok(())
+    } else {
+        Err(changed)
+    }
+}
+
 /// Hashes the file behind `path` and checks that the handle it read is the
 /// file `identity` was taken from: a link or a file put in its place between
 /// the check of the path and this open is not hashed as if it were the model.
@@ -295,6 +314,50 @@ mod tests {
 
         assert_eq!(
             hash_matches(&checked, &pin_of(b"model bytes"), &identity),
+            Err(AiError::Model(
+                "the model file changed while it was checked"
+            ))
+        );
+    }
+
+    #[test]
+    fn a_file_swapped_in_after_the_check_is_caught_by_the_recheck() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, b"model bytes");
+        let pin = pin_of(b"model bytes");
+        assert_eq!(verify_model_file(&path, &pin), Ok(()));
+        assert_eq!(ensure_still_verified(&path), Ok(()));
+
+        let other = dir.path().join("other.gguf");
+        fs::write(&other, b"model bytes").unwrap();
+        // Written within the same clock tick as the original, and Windows gives
+        // a file put under a just deleted name the old creation time: a real
+        // replacement comes later and has a time of its own.
+        let original_time = fs::metadata(&path).unwrap().modified().unwrap();
+        File::options()
+            .write(true)
+            .open(&other)
+            .unwrap()
+            .set_modified(original_time + std::time::Duration::from_secs(2))
+            .unwrap();
+        fs::remove_file(&path).unwrap();
+        fs::rename(&other, &path).unwrap();
+
+        assert_eq!(
+            ensure_still_verified(&path),
+            Err(AiError::Model(
+                "the model file changed while it was checked"
+            ))
+        );
+    }
+
+    #[test]
+    fn a_file_never_verified_fails_the_recheck() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, b"model bytes");
+
+        assert_eq!(
+            ensure_still_verified(&path),
             Err(AiError::Model(
                 "the model file changed while it was checked"
             ))

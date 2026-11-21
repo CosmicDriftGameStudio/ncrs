@@ -8,7 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{tag_name, DocumentStatus, ReviewReason, StatusCounts};
+use crate::model::{tag_name, DocumentStatus, FileStamp, ReviewReason, StatusCounts};
 
 /// The stored state of one file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +139,58 @@ impl Index {
         self.forget_documents_at(&key)?;
         transaction.commit()?;
         Ok(())
+    }
+
+    /// Like [`Self::exclude_path`], for a judgement of Hermes itself: the
+    /// exclusion remembers the stamp of the file it was made for and ends when
+    /// a different file lies at the path ([`Self::lift_outdated_automatic_exclusion`]).
+    pub fn exclude_path_automatically(&self, path: &Path) -> Result<(), IndexError> {
+        let key = stored(path);
+        let stamp = self
+            .document_by_path(&key)?
+            .and_then(|document| document.stamp);
+        let transaction = self.connection().unchecked_transaction()?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO excluded_path (path, auto_size, auto_mtime) VALUES (?1, ?2, ?3)",
+            params![
+                utf8(&key)?,
+                stamp.map(FileStamp::size_column),
+                stamp.map(FileStamp::mtime_nanos)
+            ],
+        )?;
+        self.forget_documents_at(&key)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Removes the automatic exclusion of exactly this path when the file there
+    /// is not the one it was made for. True when it was removed.
+    pub fn lift_outdated_automatic_exclusion(
+        &self,
+        path: &Path,
+        current: FileStamp,
+    ) -> Result<bool, IndexError> {
+        let key = stored(path);
+        let stored_stamp = self
+            .connection()
+            .query_row(
+                "SELECT auto_size, auto_mtime FROM excluded_path WHERE path = ?1",
+                [utf8(&key)?],
+                |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+            )
+            .optional()?;
+        let Some((size, mtime)) = stored_stamp else {
+            return Ok(false);
+        };
+        let Some(recorded) = FileStamp::from_columns(size, mtime)? else {
+            return Ok(false);
+        };
+        if recorded == current {
+            return Ok(false);
+        }
+        self.connection()
+            .execute("DELETE FROM excluded_path WHERE path = ?1", [utf8(&key)?])?;
+        Ok(true)
     }
 
     /// Removes the row of exactly this path. A path that is excluded only

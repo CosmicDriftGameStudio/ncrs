@@ -60,6 +60,7 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 /// Why settling the interrupted runs of the last opened index failed, if it did.
 type SettleNote = Arc<Mutex<Option<String>>>;
 
+use crate::index_slot::try_lock;
 #[cfg(feature = "local-ai")]
 pub use ai::shared_local_model;
 pub use ai::AiStatus;
@@ -67,7 +68,7 @@ pub use ai::{chat_model, http_ai_provider};
 use ai::{wire_ai, AiWiring};
 use index_ops::{
     apply_key, create_index, encrypt_index, open_existing, settle_held, start_over,
-    INDEX_NOT_REOPENED,
+    unconfirmed_key, INDEX_NOT_REOPENED,
 };
 pub use locations::lies_within;
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
@@ -76,6 +77,7 @@ pub use readers::{
     ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader, IndexFigures,
     IndexFiguresReader, NoteLinkFinder, TextSource,
 };
+use recovery_marker::{clear_unconfirmed, is_unconfirmed, mark_unconfirmed};
 pub use secrets::{SecretText, ShownRecoveryKey};
 use state::{next_generation, own_details};
 pub use state::{HeldReason, KeyError, KeyProblem, Phase, ProtectionNote};
@@ -83,7 +85,7 @@ use text_chain::shipped_text_chain;
 pub use text_chain::{ai_models_dir, ocr_models_dir};
 use update::random_group;
 pub use work::Work;
-use work::{lock, try_lock, Job};
+use work::{lock, Job};
 
 mod access;
 mod ai;
@@ -95,6 +97,7 @@ mod locations;
 mod messages;
 mod pipeline;
 mod readers;
+mod recovery_marker;
 mod secrets;
 mod start;
 mod state;
@@ -167,6 +170,11 @@ pub struct FilingModule {
     settle_problem: SettleNote,
     /// The chat, the review list and the filing tab count their work here.
     index_work: crate::index_work::IndexWork,
+    /// The rules and kinds the UI shows while a run holds the index; every
+    /// write through a handle of this module drops them.
+    snapshots: crate::chat_work::Snapshots,
+    /// What the review list and the quick fix built from the archive.
+    neighbour_cache: crate::review_work::NeighbourCache,
     /// The plain file was confirmed and what a crash left is being settled;
     /// the module is ready when that is done.
     settling: bool,

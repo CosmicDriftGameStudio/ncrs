@@ -251,6 +251,12 @@ const EXECUTABLE_EXTENSIONS: &[&str] = &[
     "rpm",
     "flatpakref",
     "snap",
+    // Disk images the system mounts on open; their content appears as a drive
+    "iso",
+    "img",
+    "vhd",
+    "vhdx",
+    "dmg",
 ];
 
 /// Whether the system opener might run `path` instead of showing it: an
@@ -726,11 +732,13 @@ mod tests {
             "s.themepack",
             "t.deskthemepack",
             "u.rdp",
+            "v.iso",
+            "w.IMG",
+            "x.vhd",
+            "y.vhdx",
+            "z.dmg",
         ] {
             assert!(could_execute(Path::new(name)), "{name}");
-        }
-        for name in ["a.iso", "b.img", "c.vhd", "d.dmg"] {
-            assert!(!could_execute(Path::new(name)), "{name}");
         }
     }
 

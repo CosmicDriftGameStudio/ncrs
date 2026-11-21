@@ -8,6 +8,7 @@ pub mod column_reading;
 pub mod execute;
 pub mod filing;
 pub mod filing_work;
+mod index_slot;
 pub mod index_work;
 pub mod query_work;
 pub mod review_work;

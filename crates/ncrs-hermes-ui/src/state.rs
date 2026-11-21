@@ -64,6 +64,10 @@ pub struct Hermes {
     /// generation and the filing config it starts with.
     pub filing_restart: Option<(u64, Filing)>,
     pub filing_restart_generation: u64,
+    /// The runner was paused because the Hermes switch went off while the
+    /// module could not be rebuilt; switching on resumes it. A pause the user
+    /// set stays.
+    pub paused_by_switch_off: bool,
     /// Where the index lives; `None` without a data directory.
     pub index_path: Option<PathBuf>,
     /// Opens the key of the index; the module cannot start without it.

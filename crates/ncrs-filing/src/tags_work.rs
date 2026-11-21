@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, RuleSpec, TagTally};
+use ncrs_index::{Index, IndexError, RuleSpec, TagGroup, TagTally};
 
 use ncrs_config::file_list_tags::TagExceptions;
 use ncrs_core::INDEX_NOT_OPEN;
@@ -56,12 +56,21 @@ impl TagsAccess {
     }
 
     /// `None` makes the tag follow its group again.
-    pub fn set_shown(&self, tag: &str, shown: Option<bool>) -> Result<TagsLoaded, TagsFailure> {
-        self.with_index(|index| index.set_file_list_tag(tag, shown))
+    pub fn set_shown(
+        &self,
+        group: TagGroup,
+        tag: &str,
+        shown: Option<bool>,
+    ) -> Result<TagsLoaded, TagsFailure> {
+        self.with_index(|index| index.set_file_list_tag(group, tag, shown))
     }
 
-    pub fn clear_exceptions(&self, tags: &[String]) -> Result<TagsLoaded, TagsFailure> {
-        self.with_index(|index| index.clear_file_list_tags(tags))
+    pub fn clear_exceptions(
+        &self,
+        group: TagGroup,
+        tags: &[String],
+    ) -> Result<TagsLoaded, TagsFailure> {
+        self.with_index(|index| index.clear_file_list_tags(group, tags))
     }
 
     pub fn rename(&self, old_name: &str, new_name: &str) -> Result<TagsLoaded, TagsFailure> {

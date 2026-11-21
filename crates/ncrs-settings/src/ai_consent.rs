@@ -239,10 +239,7 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join("/");
                 let source = fs::read_to_string(file).unwrap();
-                let code = source
-                    .split("#[cfg(test)]")
-                    .next()
-                    .unwrap_or_default()
+                let code = before_inline_test_module(&source)
                     .lines()
                     .filter(|line| !line.trim_start().starts_with("//"))
                     .collect::<Vec<_>>()
@@ -252,6 +249,16 @@ mod tests {
             .collect();
         sources.sort();
         sources
+    }
+
+    /// The code before the inline test module, whatever the line ending.
+    fn before_inline_test_module(source: &str) -> &str {
+        let marker = "#[cfg(test)]";
+        ["\r\n", "\n"]
+            .iter()
+            .find_map(|end| source.find(&format!("{marker}{end}mod tests {{")))
+            .and_then(|at| source.get(..at))
+            .unwrap_or(source)
     }
 
     fn files_where(found: impl Fn(&str) -> bool) -> Vec<String> {

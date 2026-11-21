@@ -607,3 +607,51 @@ async fn an_upload_reports_the_links_it_left_out() {
     assert_eq!(skipped.len(), 1);
     assert_eq!(skipped[0].kind, SkipKind::Link);
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_downloaded_executable_and_its_folder_carry_the_origin_mark() {
+    use rustix::fs::{lgetxattr, lsetxattr, XattrFlags};
+    use std::os::unix::fs::PermissionsExt as _;
+    const NAME: &str = "com.apple.quarantine";
+    let probe = tempfile::NamedTempFile::new().unwrap();
+    if lsetxattr(probe.path(), NAME, b"probe", XattrFlags::empty()).is_err() {
+        return;
+    }
+    let fixture = Fixture::connected().await;
+    let folder = fixture.server.local("/home/tester/tools");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("run.sh"), "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(
+        folder.join("run.sh"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let out = out_dir(&fixture);
+
+    pull(&fixture, "/home/tester/tools", &out).await.unwrap();
+
+    let mark_of = |path: &Path| {
+        let mut value = [0; 64];
+        let got = lgetxattr(path, NAME, &mut value[..]).unwrap();
+        value.get(..got).unwrap().to_vec()
+    };
+    let file = out.join("tools/run.sh");
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    assert!(mark_of(&file).starts_with(b"0081;"));
+    assert!(mark_of(&out.join("tools")).starts_with(b"0081;"));
+}
+
+#[test]
+fn the_source_of_a_download_has_no_login_and_no_line_breaks() {
+    let server = ServerId::new("alice", "Example.org", 2222);
+    let path = RemotePath::new(server.clone(), "/home/a b\r\nZoneId=1");
+
+    assert_eq!(
+        source_url(&server, &path),
+        "sftp://example.org:2222/home/a%20b%0D%0AZoneId%3D1"
+    );
+}

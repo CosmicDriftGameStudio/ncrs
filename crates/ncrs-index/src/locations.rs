@@ -242,6 +242,7 @@ impl Index {
             ],
         )?;
         tx.execute("DELETE FROM document_text WHERE rowid = ?1", [id.get()])?;
+        tx.execute("UPDATE document SET has_text = 0 WHERE id = ?1", [id.get()])?;
         tx.commit()?;
         Ok(())
     }
@@ -255,26 +256,64 @@ impl Index {
         path: &Path,
         stamp: FileStamp,
     ) -> Result<(), IndexError> {
+        self.record_duplicate(id, path, stamp, None)
+    }
+
+    /// `record_duplicate_path` that also remembers whether the copy lies in an
+    /// archive location, for the status a promoted copy gives its document.
+    pub fn record_duplicate_path_in(
+        &self,
+        id: DocumentId,
+        path: &Path,
+        stamp: FileStamp,
+        in_archive: bool,
+    ) -> Result<(), IndexError> {
+        self.record_duplicate(id, path, stamp, Some(in_archive))
+    }
+
+    fn record_duplicate(
+        &self,
+        id: DocumentId,
+        path: &Path,
+        stamp: FileStamp,
+        in_archive: Option<bool>,
+    ) -> Result<(), IndexError> {
         let path_text = utf8(path)?;
         require_document(self.connection(), id)?;
         self.connection().execute(
-            "INSERT INTO duplicate_path (document_id, path, seen_at, file_size, file_mtime)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO duplicate_path (document_id, path, seen_at, file_size, file_mtime, in_archive)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT (path) DO UPDATE SET
                  seen_at = CASE WHEN document_id = excluded.document_id
                      THEN seen_at ELSE excluded.seen_at END,
                  document_id = excluded.document_id,
                  file_size = excluded.file_size,
-                 file_mtime = excluded.file_mtime",
+                 file_mtime = excluded.file_mtime,
+                 in_archive = coalesce(excluded.in_archive, in_archive)",
             params![
                 id.get(),
                 path_text,
                 Utc::now().timestamp(),
                 stamp.size_column(),
-                stamp.mtime_nanos()
+                stamp.mtime_nanos(),
+                in_archive
             ],
         )?;
         Ok(())
+    }
+
+    /// Whether the recorded copy lies in an archive location; `None` when the
+    /// path is no recorded copy or its place was not recorded.
+    pub fn duplicate_path_in_archive(&self, path: &Path) -> Result<Option<bool>, IndexError> {
+        let flag: Option<Option<bool>> = self
+            .connection()
+            .query_row(
+                "SELECT in_archive FROM duplicate_path WHERE path = ?1",
+                [utf8(path)?],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(flag.flatten())
     }
 
     pub fn document_by_duplicate_path(

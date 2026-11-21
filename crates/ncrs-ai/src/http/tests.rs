@@ -844,3 +844,21 @@ fn a_chat_held_back_only_for_the_archive_does_not_say_documents_wait() {
     assert!(is_refused_for_consent(model.understand(&a_turn())));
     assert_eq!(model.last_failure(), None);
 }
+
+#[test]
+fn one_refused_document_from_a_new_server_pauses_it_briefly_and_a_repeat_for_an_hour() {
+    let own = local_provider(1, None);
+    let pause_left = |provider: &OpenAiCompatible| {
+        let health = provider.health.lock().unwrap();
+        health
+            .paused_until
+            .map(|until| until.saturating_duration_since(Instant::now()))
+            .unwrap()
+    };
+
+    own.account(Some(&AiError::Status(400)));
+    assert!(pause_left(&own) <= FIRST_TRANSIENT_PAUSE);
+
+    own.account(Some(&AiError::Status(400)));
+    assert!(pause_left(&own) > FIRST_TRANSIENT_PAUSE);
+}

@@ -89,7 +89,7 @@ fn a_new_document_gets_the_sender_of_its_letterhead_and_offers_no_alias() {
             .field_origins(document.id)
             .unwrap()
             .of(ncrs_index::Field::Sender),
-        ncrs_index::FieldOrigin::Rule(None)
+        ncrs_index::FieldOrigin::Detected
     );
     assert!(index.sender_aliases().unwrap().is_empty());
 }

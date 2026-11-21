@@ -13,8 +13,8 @@ use ncrs_intake::{
     FIELDS_READ_VERSION,
 };
 use ncrs_intake::{
-    finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
-    PendingHash, Prepared,
+    finish_take_in, prepare_take_in, settle_gone_path, settle_location, IntakeError, Location,
+    LocationMode, Outcome, PendingHash, Prepared,
 };
 use ncrs_intake::{
     is_image_file, open_below, relative_to_location, text_is_readable, ChainReading,
@@ -235,6 +235,15 @@ impl Step for IntakeStep {
         .map(|report| report.error_paths)
         .map_err(|err| err.to_string())
     }
+
+    fn path_gone(&self, location: &Location, path: &Path) -> Result<Vec<PathBuf>, String> {
+        with_index_value(self.index.as_ref(), |index| {
+            settle_gone_path(index, location, path)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map(|report| report.error_paths)
+        .map_err(|err| err.to_string())
+    }
 }
 
 /// Reads the text of the file and stores it in the index. A file without text
@@ -358,7 +367,7 @@ impl RulesStep {
                 index.set_document_fields(id, &filled, |field| match field {
                     Field::Recipient => FieldOrigin::AddressBlock,
                     Field::Kind => FieldOrigin::Heading,
-                    _ => FieldOrigin::Rule(None),
+                    _ => FieldOrigin::Detected,
                 })?;
             }
             index.set_fields_read_version(id, FIELDS_READ_VERSION)
@@ -434,13 +443,13 @@ impl Step for RulesStep {
             if *found != document.fields {
                 let sender_was_detected = detected.sender.is_some();
                 index.set_document_fields(id, found, |field| match field {
-                    Field::Sender if sender_was_detected => FieldOrigin::Rule(None),
+                    Field::Sender if sender_was_detected => FieldOrigin::Detected,
                     Field::Recipient if found.recipient == detected.recipient => {
                         FieldOrigin::AddressBlock
                     }
                     Field::Kind if found.kind == detected.kind => FieldOrigin::Heading,
                     Field::Date if found.date.is_some() && found.date == detected.date => {
-                        FieldOrigin::Rule(None)
+                        FieldOrigin::Detected
                     }
                     _ => rule_origin.clone(),
                 })?;
@@ -506,7 +515,7 @@ impl Step for ReviewStep {
             let still_an_inquiry =
                 matches!(status, Some(DocumentStatus::New | DocumentStatus::InReview));
             if item.not_a_document && still_an_inquiry {
-                index.exclude_path(&item.path)?;
+                index.exclude_path_automatically(&item.path)?;
             }
             Ok::<_, IndexError>(())
         })

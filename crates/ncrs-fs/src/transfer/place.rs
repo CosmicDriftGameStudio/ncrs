@@ -37,6 +37,7 @@ pub(in crate::transfer) fn place<S: Source, P: Progress>(
         progress,
         done: 0,
         total: 0,
+        links_left_behind: false,
     };
     run.entry(source, target)?;
     // A renamed folder counts as one item inside a merge, so the bar is filled
@@ -54,6 +55,8 @@ struct Run<'a, S, P> {
     done: usize,
     /// 0 while unknown: a plain rename never needs to count the tree.
     total: usize,
+    /// A link that could not be created stays in the source of a move.
+    links_left_behind: bool,
 }
 
 impl<S: Source, P: Progress> Run<'_, S, P> {
@@ -100,7 +103,12 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
         }
 
         self.ensure_total(source)?;
-        let staged = self.claim_partial(source, &source_meta, target)?;
+        let Some(staged) = self.claim_partial(source, &source_meta, target)? else {
+            // A link that could not be created was reported as skipped and
+            // stays where it is.
+            self.links_left_behind = true;
+            return Ok(());
+        };
         let mut verified = Vec::new();
         let finished = self
             .descend(source, &staged, &source_meta)
@@ -123,6 +131,9 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
             return Err(e);
         }
         if self.effect.removes_source() {
+            self.links_left_behind |= verified
+                .iter()
+                .any(|item| matches!(item.kind, SeenKind::Dir { kept_links: true }));
             remove_verified(&verified)?;
         }
         Ok(())
@@ -141,7 +152,11 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
         if self.effect.removes_source() {
             // Not `remove_dir_all`: the folder is empty because everything went
             // out of it, and one that is not must stay.
-            std::fs::remove_dir(source)?;
+            match std::fs::remove_dir(source) {
+                Err(e)
+                    if e.kind() == io::ErrorKind::DirectoryNotEmpty && self.links_left_behind => {}
+                other => other?,
+            }
         }
         Ok(())
     }
@@ -159,7 +174,7 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
         source: &Path,
         meta: &std::fs::Metadata,
         target: &Path,
-    ) -> io::Result<PathBuf> {
+    ) -> io::Result<Option<PathBuf>> {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         loop {
@@ -170,7 +185,10 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
                 std::process::id()
             ));
             match create_entry(source, meta, &candidate, self.progress) {
-                Ok(()) => return Ok(candidate),
+                // `create_entry` also says Ok for a link it had to skip.
+                Ok(()) => {
+                    return Ok(lstat(&candidate)?.map(|_| candidate));
+                }
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(e),
             }
@@ -232,7 +250,11 @@ struct Seen {
 }
 
 enum SeenKind {
-    Dir,
+    /// `kept_links`: a link left out of the copy stays in this folder, so it is not
+    /// empty after the move.
+    Dir {
+        kept_links: bool,
+    },
     Link,
     File,
 }
@@ -286,16 +308,29 @@ fn verify_copy(source: &Path, copy: &Path, seen: &mut Vec<Seen>) -> io::Result<(
                 && std::fs::symlink_metadata(source.join(name))
                     .is_ok_and(|meta| meta.file_type().is_symlink())
         };
-        let listed: Vec<_> = names(source)?
-            .into_iter()
+        let source_names = names(source)?;
+        let listed: Vec<_> = source_names
+            .iter()
             .filter(|name| !left_out(name))
+            .cloned()
             .collect();
         if listed != copied {
             return Err(differs());
         }
-        seen.push(Seen::of(source, SeenKind::Dir)?);
+        let own_links_left = listed.len() != source_names.len();
+        let at = seen.len();
+        seen.push(Seen::of(source, SeenKind::Dir { kept_links: false })?);
         for name in listed {
             verify_copy(&source.join(&name), &copy.join(&name), seen)?;
+        }
+        let below_kept = seen
+            .iter()
+            .skip(at + 1)
+            .any(|item| matches!(item.kind, SeenKind::Dir { kept_links: true }));
+        if let Some(dir) = seen.get_mut(at) {
+            dir.kind = SeenKind::Dir {
+                kept_links: own_links_left || below_kept,
+            };
         }
         Ok(())
     } else if from.file_type().is_symlink() {
@@ -369,7 +404,7 @@ fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
         let same = now.st_dev == then.st_dev
             && now.st_ino == then.st_ino
             && match item.kind {
-                SeenKind::Dir => kind.is_dir(),
+                SeenKind::Dir { .. } => kind.is_dir(),
                 SeenKind::Link => kind.is_symlink(),
                 SeenKind::File => {
                     kind.is_file()
@@ -381,7 +416,7 @@ fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
         if !same {
             return Ok(false);
         }
-        let flags = if matches!(item.kind, SeenKind::Dir) {
+        let flags = if matches!(item.kind, SeenKind::Dir { .. }) {
             AtFlags::REMOVEDIR
         } else {
             AtFlags::empty()
@@ -449,11 +484,13 @@ fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
     match (&item.kind, std::fs::symlink_metadata(&item.path)) {
         (_, Err(e)) if e.kind() == io::ErrorKind::NotFound => Ok(true),
         (_, Err(e)) => Err(e),
-        (SeenKind::Dir, Ok(meta)) if meta.is_dir() => match std::fs::remove_dir(&item.path) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == io::ErrorKind::DirectoryNotEmpty => Ok(false),
-            Err(e) => Err(e),
-        },
+        (SeenKind::Dir { kept_links }, Ok(meta)) if meta.is_dir() => {
+            match std::fs::remove_dir(&item.path) {
+                Ok(()) => Ok(true),
+                Err(e) if e.kind() == io::ErrorKind::DirectoryNotEmpty => Ok(*kept_links),
+                Err(e) => Err(e),
+            }
+        }
         (SeenKind::Link, Ok(meta)) if meta.file_type().is_symlink() => {
             std::fs::remove_file(&item.path).map(|()| true)
         }

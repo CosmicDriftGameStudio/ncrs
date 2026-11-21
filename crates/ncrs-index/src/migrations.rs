@@ -34,6 +34,13 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/026_document_origin.sql"),
     include_str!("migrations/027_document_ids_not_reused.sql"),
     include_str!("migrations/028_plain_windows_paths.sql"),
+    include_str!("migrations/029_rule_and_review_ids_not_reused.sql"),
+    include_str!("migrations/030_file_list_tag_per_group.sql"),
+    include_str!("migrations/031_document_has_text.sql"),
+    include_str!("migrations/032_field_origin_detected.sql"),
+    include_str!("migrations/033_excluded_path_automatic.sql"),
+    include_str!("migrations/034_filed_inbox_path.sql"),
+    include_str!("migrations/035_duplicate_path_in_archive.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of
