@@ -171,7 +171,7 @@ impl Index {
         current: FileStamp,
     ) -> Result<bool, IndexError> {
         let key = stored(path);
-        let recorded = self
+        let stored_stamp = self
             .connection()
             .query_row(
                 "SELECT auto_size, auto_mtime FROM excluded_path WHERE path = ?1",
@@ -179,7 +179,7 @@ impl Index {
                 |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
             )
             .optional()?;
-        let Some((size, mtime)) = recorded else {
+        let Some((size, mtime)) = stored_stamp else {
             return Ok(false);
         };
         let Some(recorded) = FileStamp::from_columns(size, mtime)? else {

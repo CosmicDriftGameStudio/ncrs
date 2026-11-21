@@ -170,6 +170,9 @@ pub struct FilingModule {
     settle_problem: SettleNote,
     /// The chat, the review list and the filing tab count their work here.
     index_work: crate::index_work::IndexWork,
+    /// The rules and kinds the UI shows while a run holds the index; every
+    /// write through a handle of this module drops them.
+    snapshots: crate::chat_work::Snapshots,
     /// What the review list and the quick fix built from the archive.
     neighbour_cache: crate::review_work::NeighbourCache,
     /// The plain file was confirmed and what a crash left is being settled;

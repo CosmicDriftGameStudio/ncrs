@@ -237,10 +237,29 @@ fn has_test_prefix(path: &Path) -> bool {
     })
 }
 
+/// A run younger than this may belong to a test process running beside this
+/// one (another worktree, nextest), so the sweep leaves it alone.
+const ORPHAN_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Whether something last touched at `touched` is old enough to be the
+/// leftover of a killed run. A time in the future counts as fresh.
+#[cfg_attr(
+    target_os = "linux",
+    allow(
+        dead_code,
+        reason = "Linux trashes into a private folder, nothing to sweep"
+    )
+)]
+fn is_orphaned(touched: std::time::SystemTime, now: std::time::SystemTime) -> bool {
+    now.duration_since(touched)
+        .is_ok_and(|age| age >= ORPHAN_AGE)
+}
+
 /// A hard kill skips the cleanup guard and leaves the items of that run in the
-/// user's own trash. The first test of a process removes them before it makes
-/// its own folder; `Once` holds the other tests back until then, so no live run
-/// of this process is swept.
+/// user's own trash. The first test of a process removes the old ones before it
+/// makes its own folder; `Once` holds the other tests back until then. Only
+/// runs older than `ORPHAN_AGE` are swept, so a live run of a parallel process
+/// stays.
 #[cfg(not(target_os = "linux"))]
 static SWEEP: std::sync::Once = std::sync::Once::new();
 
@@ -257,6 +276,12 @@ fn sweep_leftovers() {
     let stale: Vec<_> = items
         .into_iter()
         .filter(|item| has_test_prefix(&item.original_path()))
+        .filter(|item| {
+            u64::try_from(item.time_deleted).is_ok_and(|seconds| {
+                let deleted = std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds);
+                is_orphaned(deleted, std::time::SystemTime::now())
+            })
+        })
         .collect();
     if let Err(err) = trash::os_limited::purge_all(stale) {
         eprintln!("sweep: the trash cannot be emptied of old test items: {err}");
@@ -274,6 +299,10 @@ fn sweep_leftovers() {
     for entry in entries.flatten() {
         let folder = entry.path();
         if !has_test_prefix(Path::new(&entry.file_name())) || !folder.is_dir() {
+            continue;
+        }
+        let touched = entry.metadata().and_then(|meta| meta.modified());
+        if !touched.is_ok_and(|touched| is_orphaned(touched, std::time::SystemTime::now())) {
             continue;
         }
         let cleanup = TrashCleanup {
@@ -331,6 +360,16 @@ impl fmt::Debug for Scene {
 mod tests {
     use super::*;
     use crate::RestoreError;
+
+    #[test]
+    fn only_runs_older_than_an_hour_are_orphans() {
+        use std::time::{Duration, SystemTime};
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        assert!(is_orphaned(now - Duration::from_secs(2 * 3600), now));
+        assert!(is_orphaned(now - ORPHAN_AGE, now));
+        assert!(!is_orphaned(now - Duration::from_secs(60), now));
+        assert!(!is_orphaned(now + Duration::from_secs(60), now));
+    }
 
     impl Scene {
         fn listed(&self, relative: &str) -> TrashedItem {

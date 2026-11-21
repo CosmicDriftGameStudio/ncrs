@@ -24,8 +24,8 @@ fn a_version_29_database_keeps_its_file_list_exceptions_in_every_group() {
     let exceptions = index.file_list_tag_exceptions().unwrap();
     assert_eq!(exceptions.len(), 2 * crate::TagGroup::ALL.len());
     for group in crate::TagGroup::ALL {
-        assert_eq!(exceptions[&(group, "telekom".to_owned())], false);
-        assert_eq!(exceptions[&(group, "steuer".to_owned())], true);
+        assert!(!exceptions[&(group, "telekom".to_owned())]);
+        assert!(exceptions[&(group, "steuer".to_owned())]);
     }
     index
         .set_file_list_tag(crate::TagGroup::Sender, "telekom", None)
