@@ -277,6 +277,13 @@ mod abort {
     }
 
     fn with_ctx<R>(step: impl FnOnce(&FlowCtx<'_>) -> R) -> R {
+        with_model_ctx(None, step)
+    }
+
+    pub(super) fn with_model_ctx<R>(
+        model: Option<Arc<dyn ncrs_ai::ChatModel>>,
+        step: impl FnOnce(&FlowCtx<'_>) -> R,
+    ) -> R {
         let trash = ncrs_fs::system_trash(None);
         let sandbox = ncrs_fs::SandboxAccess::inactive();
         let remote = pool();
@@ -300,7 +307,7 @@ mod abort {
             permanent_delete_key: None,
             restore_last_key: None,
             index: None,
-            model: None,
+            model,
         })
     }
 
@@ -455,4 +462,146 @@ fn a_model_without_the_agreement_for_folders_is_not_asked_and_the_dialog_says_so
     let failing =
         ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::Unsupported)]);
     assert_eq!(proposal_for(&failing, &names), Proposal::Pattern(None));
+}
+
+mod hermes {
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action as RuntimeAction};
+    use ncrs_ai::{AiError, ChatModel, LocalModelStatus, ScriptedChatModel};
+    use ncrs_core::PanelSide;
+
+    use super::abort::with_model_ctx;
+    use super::*;
+    use crate::batch_rename::flow::{open_batch_rename, update_batch_rename, BatchRenameRequest};
+    use crate::batch_rename::state::{BatchRenameMessage, Proposal};
+    use crate::message::OpsMessage;
+    use crate::state::Ops;
+
+    const SPEC: &str =
+        r#"{"intent":"change_structure","area":"*","name":["year","sender"],"separator":"-"}"#;
+
+    fn file(name: &str) -> ncrs_core::FileEntry {
+        ncrs_core::FileEntry {
+            name: name.into(),
+            path: PathBuf::from("/x").join(name),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size: None,
+            details: Default::default(),
+        }
+    }
+
+    fn request() -> BatchRenameRequest {
+        BatchRenameRequest {
+            side: PanelSide::Left,
+            folder: PathBuf::from("/x"),
+            entries: vec![file("a.pdf"), file("b.pdf")],
+            folder_names: vec!["a.pdf".to_owned(), "b.pdf".to_owned()],
+        }
+    }
+
+    /// Opens the dialog and returns every message its tasks send.
+    async fn open_with(
+        ops: &mut Ops,
+        model: Option<Arc<dyn ChatModel>>,
+    ) -> Vec<BatchRenameMessage> {
+        let (opening, _) = with_model_ctx(model, |ctx| open_batch_rename(ops, request(), ctx));
+        let mut stream = task::into_stream(opening).expect("the dialog starts tasks");
+        let mut sent = Vec::new();
+        while let Some(action) = stream.next().await {
+            if let RuntimeAction::Output(OpsMessage::BatchRename(message)) = action {
+                sent.push(message);
+            }
+        }
+        sent
+    }
+
+    fn proposals(sent: &[BatchRenameMessage]) -> Vec<&Proposal> {
+        sent.iter()
+            .filter_map(|message| match message {
+                BatchRenameMessage::Proposed { proposal, .. } => Some(proposal),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn opening_asks_the_model_once_with_the_folder_names_and_offers_its_pattern() {
+        let model = Arc::new(ScriptedChatModel::new(
+            LocalModelStatus::NotDownloaded,
+            [Ok(SPEC)],
+        ));
+        let mut ops = Ops::default();
+
+        let sent = open_with(&mut ops, Some(model.clone())).await;
+
+        let turns = model.turns();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].question.as_ref().unwrap().options,
+            ["a.pdf", "b.pdf"]
+        );
+        let expected = Proposal::Pattern(Some("{year}-{sender}{extension}".to_owned()));
+        assert_eq!(proposals(&sent), [&expected]);
+
+        for message in sent {
+            let _ = with_model_ctx(None, |ctx| update_batch_rename(&mut ops, message, ctx));
+        }
+        let dialog = ops.batch_rename.as_ref().unwrap();
+        assert_eq!(
+            dialog.suggestion.as_deref(),
+            Some("{year}-{sender}{extension}")
+        );
+        assert_eq!(dialog.pattern, "{name}{extension}");
+
+        let _ = with_model_ctx(None, |ctx| {
+            update_batch_rename(&mut ops, BatchRenameMessage::UseHermes, ctx)
+        });
+        assert_eq!(
+            ops.batch_rename.as_ref().unwrap().pattern,
+            "{year}-{sender}{extension}"
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_model_nothing_is_asked() {
+        let mut ops = Ops::default();
+
+        let sent = open_with(&mut ops, None).await;
+
+        assert!(proposals(&sent).is_empty());
+        assert_eq!(ops.batch_rename.as_ref().unwrap().suggestion, None);
+        let _ = with_model_ctx(None, |ctx| {
+            update_batch_rename(&mut ops, BatchRenameMessage::UseHermes, ctx)
+        });
+        assert_eq!(
+            ops.batch_rename.as_ref().unwrap().pattern,
+            "{name}{extension}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_model_refused_for_folders_leaves_no_suggestion_and_says_so() {
+        let model = Arc::new(ScriptedChatModel::new(
+            LocalModelStatus::NotDownloaded,
+            [Err(AiError::ConsentRequired(ncrs_ai::OutgoingPreview {
+                endpoint: "https://ai.example.com".to_owned(),
+                model: "m".to_owned(),
+                body: String::new(),
+            }))],
+        ));
+        let mut ops = Ops::default();
+
+        let sent = open_with(&mut ops, Some(model)).await;
+        for message in sent {
+            let _ = with_model_ctx(None, |ctx| update_batch_rename(&mut ops, message, ctx));
+        }
+
+        let dialog = ops.batch_rename.as_ref().unwrap();
+        assert!(dialog.consent_missing);
+        assert_eq!(dialog.suggestion, None);
+    }
 }

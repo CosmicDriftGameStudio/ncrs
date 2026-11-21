@@ -94,15 +94,7 @@ pub fn start_extract_here(
         JobKind::Extract,
         first,
         write,
-        move |progress| {
-            let mut report = fs::archive::WriteReport::default();
-            for archive in &archives {
-                let done = fs::archive::extract_here(archive, progress)?;
-                report.entries += done.written;
-                report.placed = Some(done.placed);
-            }
-            Ok(report)
-        },
+        move |progress| extract_all_here(&archives, progress),
         ctx,
     )
 }
@@ -248,6 +240,12 @@ pub fn archive_written(
             if matches!(write.what, ArchiveWriteKind::CopyIn) {
                 ops.transfer_completed = true;
             }
+            if let Some((kind, text)) = report.first_failure.clone() {
+                let failure = RowFailure::Io { kind, text };
+                asked.push(Action::ShowError(write_failure_text(
+                    ctx.lang, &write, failure,
+                )));
+            }
             Some(written_text(ctx.lang, &write, &report))
         }
         Err(failure) => {
@@ -271,14 +269,18 @@ fn written_text(lang: Language, write: &ArchiveWrite, report: &fs::archive::Writ
         }
         ArchiveWriteKind::CopyIn => lang.text(Msg::StatusArchiveCopiedIn).to_owned(),
         ArchiveWriteKind::Delete => lang.text(Msg::StatusArchiveDeleted).to_owned(),
-        ArchiveWriteKind::ExtractHere { archives: 1 } => fill_template(
-            lang.text(Msg::StatusExtracted),
-            &[("{name}", &placed_name(report.placed.as_deref()))],
-        ),
-        ArchiveWriteKind::ExtractHere { archives } => fill_template(
-            lang.text(Msg::StatusExtractedMany),
-            &[("{count}", &archives.to_string())],
-        ),
+        ArchiveWriteKind::ExtractHere { archives } => {
+            match archives.saturating_sub(report.failed) {
+                1 => fill_template(
+                    lang.text(Msg::StatusExtracted),
+                    &[("{name}", &placed_name(report.placed.as_deref()))],
+                ),
+                unpacked => fill_template(
+                    lang.text(Msg::StatusExtractedMany),
+                    &[("{count}", &unpacked.to_string())],
+                ),
+            }
+        }
     };
     for (count, template) in [
         (report.skipped, Msg::StatusArchiveSkipped),
@@ -353,4 +355,65 @@ fn end_archive_write(
     });
     asked.push(Action::RestartSearch);
     actions(asked)
+}
+
+/// Unpacks each archive next to itself. One that fails does not stop the
+/// others; the failure is the result only when none could be unpacked.
+fn extract_all_here(
+    archives: &[PathBuf],
+    progress: &mut impl fs::transfer::Progress,
+) -> std::io::Result<fs::archive::WriteReport> {
+    let mut report = fs::archive::WriteReport::default();
+    for archive in archives {
+        match fs::archive::extract_here(archive, progress) {
+            Ok(done) => {
+                report.entries += done.written;
+                report.placed = Some(done.placed);
+            }
+            Err(failure) => {
+                report.failed += 1;
+                report
+                    .first_failure
+                    .get_or_insert_with(|| (failure.kind(), failure.to_string()));
+                if report.failed == archives.len() {
+                    return Err(failure);
+                }
+            }
+        }
+    }
+    Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use fs::archive::fixtures::{write_archive, Item};
+
+    use super::*;
+
+    #[test]
+    fn a_broken_archive_does_not_stop_the_ones_after_it() {
+        let root = tempfile::tempdir().unwrap();
+        let broken = root.path().join("a.zip");
+        std::fs::write(&broken, "not an archive").unwrap();
+        let good = root.path().join("b.zip");
+        write_archive(&good, &[Item::File("b.txt", b"12")]);
+
+        let report = extract_all_here(&[broken, good], &mut fs::transfer::Counting).unwrap();
+
+        assert_eq!(report.failed, 1);
+        assert!(report.first_failure.is_some());
+        assert_eq!(report.entries, 1);
+        assert!(report.placed.is_some());
+        assert_eq!(report.placed, Some(root.path().join("b.txt")));
+        assert!(root.path().join("b.txt").is_file());
+    }
+
+    #[test]
+    fn when_every_archive_fails_the_failure_is_the_result() {
+        let root = tempfile::tempdir().unwrap();
+        let broken = root.path().join("a.zip");
+        std::fs::write(&broken, "not an archive").unwrap();
+
+        assert!(extract_all_here(&[broken], &mut fs::transfer::Counting).is_err());
+    }
 }
