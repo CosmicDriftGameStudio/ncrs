@@ -322,8 +322,19 @@ fn assert_v1_6_0_content(index: &mut Index) {
         ])
     );
 
-    let judged = Path::new("inbox/logo.png");
-    let private = Path::new("inbox/private");
+    // The fixture was written on a machine that spells paths with `/`; an index
+    // of this machine keeps them with its own separator.
+    index
+        .conn
+        .execute(
+            "UPDATE excluded_path SET path = replace(path, '/', ?1)",
+            [std::path::MAIN_SEPARATOR_STR],
+        )
+        .unwrap();
+    let judged_path = crate::test_support::native("inbox/logo.png");
+    let judged = judged_path.as_path();
+    let private_path = crate::test_support::native("inbox/private");
+    let private = private_path.as_path();
     assert!(index.is_excluded(judged).unwrap() && index.is_excluded(private).unwrap());
     assert!(!index
         .lift_outdated_automatic_exclusion(private, stamp(1, 1))

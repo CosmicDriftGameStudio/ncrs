@@ -330,6 +330,16 @@ mod tests {
 
         let other = dir.path().join("other.gguf");
         fs::write(&other, b"model bytes").unwrap();
+        // Written within the same clock tick as the original, and Windows gives
+        // a file put under a just deleted name the old creation time: a real
+        // replacement comes later and has a time of its own.
+        let original_time = fs::metadata(&path).unwrap().modified().unwrap();
+        File::options()
+            .write(true)
+            .open(&other)
+            .unwrap()
+            .set_modified(original_time + std::time::Duration::from_secs(2))
+            .unwrap();
         fs::remove_file(&path).unwrap();
         fs::rename(&other, &path).unwrap();
 
