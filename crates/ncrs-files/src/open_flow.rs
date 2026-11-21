@@ -230,7 +230,10 @@ mod tests {
 
     impl Launcher for Recorder {
         fn launch(&self, command: &OpenCommand) -> Result<(), String> {
-            self.0.lock().unwrap().push(command.clone());
+            self.0
+                .lock()
+                .map_err(|poisoned| poisoned.to_string())?
+                .push(command.clone());
             Ok(())
         }
     }

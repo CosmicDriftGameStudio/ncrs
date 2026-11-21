@@ -563,7 +563,7 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
 
         let elsewhere = outside.path().join("x");
-        let error = open_below(location.path(), &elsewhere).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        let elsewhere_error = open_below(location.path(), &elsewhere).unwrap_err();
+        assert_eq!(elsewhere_error.kind(), io::ErrorKind::InvalidInput);
     }
 }

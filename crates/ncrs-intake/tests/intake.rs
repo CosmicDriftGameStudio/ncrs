@@ -724,8 +724,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let inbox = location(&dir, LocationMode::Inbox, false);
         let path = put(&inbox, "big.pdf", INVOICE);
-        let prepare = |fixture: &mut Fixture, now| {
-            prepare_take_in(&fixture.index, &inbox, &path, &mut fixture.tracker, now).unwrap()
+        let prepare = |world: &mut Fixture, now| {
+            prepare_take_in(&world.index, &inbox, &path, &mut world.tracker, now).unwrap()
         };
         assert!(matches!(
             prepare(&mut fixture, t0()),
