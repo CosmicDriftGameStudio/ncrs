@@ -1,15 +1,13 @@
 //! The right side: what the commit says and the files it changed.
 
 use iced::widget::{column, container, row, Column, Space};
-use iced::{Element, Length, Padding};
+use iced::{Element, Length};
 use ncrs_git::ChangeKind;
 use ncrs_i18n::Msg;
-use ncrs_ui_kit::git_rows::{change_row, ChangeRow};
 use ncrs_ui_kit::kit::segmented;
-use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::theme::{font_size, spacing};
-use ncrs_ui_kit::tree_list::TREE_INDENT;
+use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
 
 use super::commits::moment;
 use super::DETAIL_ID;
@@ -76,25 +74,36 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     );
     let count = ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang);
     let files = state.detail_rows().into_iter().map(|entry| match entry {
-        DetailRow::Folder { depth, name } => container(page_line(
-            format!("{name}/"),
-            font_size::BODY,
-            palette.dim_text,
-        ))
-        .padding(Padding {
-            left: spacing::CELL_PADDING_X + TREE_INDENT * depth as f32,
-            ..Padding::ZERO
-        })
-        .into(),
+        DetailRow::Folder { depth, name } => tree_row(
+            TreeRow {
+                depth,
+                open: Some(true),
+                label: name,
+                chosen: false,
+                dim: true,
+                lead: None,
+                trail: Vec::new(),
+                on_press: Message::FolderPressed,
+            },
+            palette,
+        ),
         DetailRow::File { depth, name, index } => match detail.files.get(index) {
-            Some(file) => change_row(
-                ChangeRow {
+            Some(file) => tree_row(
+                TreeRow {
                     depth,
-                    label: label_of(&name, file.kind),
-                    added: file.added,
-                    removed: file.removed,
-                    no_counts: file.binary,
+                    open: None,
+                    label: name,
                     chosen: state.area == Area::Detail && state.file_cursor == index,
+                    dim: false,
+                    lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
+                    trail: if file.binary {
+                        Vec::new()
+                    } else {
+                        vec![
+                            (format!("+{}", file.added), palette.success),
+                            (format!("\u{2212}{}", file.removed), palette.error),
+                        ]
+                    },
                     on_press: Message::FilePressed(index),
                 },
                 palette,
@@ -115,17 +124,16 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             .align_y(iced::alignment::Vertical::Center)
         )
         .padding([0.0, spacing::M]),
-        page_scroll(DETAIL_ID, list.into()),
+        tree_scroll(DETAIL_ID, list.into()),
     ]
     .into()
 }
 
-fn label_of(name: &str, kind: ChangeKind) -> String {
-    let mark = match kind {
+fn kind_letter(kind: ChangeKind) -> &'static str {
+    match kind {
         ChangeKind::Added => "A",
         ChangeKind::Modified => "M",
         ChangeKind::Deleted => "D",
         ChangeKind::Renamed => "R",
-    };
-    format!("{mark}  {name}")
+    }
 }

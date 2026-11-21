@@ -151,6 +151,10 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.commit_cursor = row;
             quiet(ensure_detail(state))
         }
+        Message::FolderPressed => {
+            state.area = Area::Detail;
+            quiet(Task::none())
+        }
         Message::FilePressed(index) => {
             state.area = Area::Detail;
             state.file_cursor = index;

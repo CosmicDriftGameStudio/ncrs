@@ -19,6 +19,8 @@ pub enum Message {
     SidebarPressed(usize),
     CommitPressed(usize),
     FilePressed(usize),
+    /// A folder row of the file tree: the pane gets the focus.
+    FolderPressed,
     ToggleSection(Section),
     LoadMore,
     SetTreeMode(bool),

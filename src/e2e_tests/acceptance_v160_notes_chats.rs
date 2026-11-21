@@ -155,7 +155,7 @@ fn notes_sync_encryption_lock_and_recovery_key() {
         120.0,
         size::TITLE_BAR
             + ncrs_notes::view::SIDEBAR_ROWS_TOP
-            + (row as f32 + 0.5) * size::SIDEBAR_ITEM,
+            + (row as f32 + 0.5) * size::ROW,
     ));
     session.send(Message::Notes(ncrs_notes::Message::OpenMenu(RowKey::Note(
         plain.clone(),
