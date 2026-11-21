@@ -295,12 +295,26 @@ fn both_ways(job: &SyncJob, now: SystemTime) -> Result<SyncReport, String> {
                 copy_file(&job.local.join(name), &job.target.join(name), mine.modified)
                     .map(|()| report.copied += 1)
             }
-            (None, Some(theirs)) => copy_file(
-                &job.target.join(name),
-                &job.local.join(name),
-                theirs.modified,
-            )
-            .map(|()| report.copied += 1),
+            (None, Some(theirs)) => {
+                let deleted_here = known
+                    .get(name)
+                    .is_some_and(|rec| rec.remote == key_of(theirs));
+                if deleted_here {
+                    // Removed or sealed here since the last sync and untouched
+                    // there: carry the deletion over instead of restoring the
+                    // old (possibly plaintext) copy. A newer edit there does
+                    // not match the record and comes back as before.
+                    let path = job.target.join(name);
+                    fs::remove_file(&path).map_err(|err| format!("{}: {err}", path.display()))
+                } else {
+                    copy_file(
+                        &job.target.join(name),
+                        &job.local.join(name),
+                        theirs.modified,
+                    )
+                    .map(|()| report.copied += 1)
+                }
+            }
             (Some(mine), Some(theirs)) if same_file(mine, theirs) => Ok(()),
             (Some(mine), Some(theirs)) => {
                 let record = known.get(name);
