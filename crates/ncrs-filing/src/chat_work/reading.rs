@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use ncrs_index::{ContentHash, Document, DocumentFields, FileStamp, Kinds, SenderAliases};
@@ -245,10 +245,17 @@ fn walk_sorted(folder: &Path, progress: &ReadProgress) -> Result<Vec<Walked>, Re
     Ok(walked)
 }
 
+fn is_stopped(stop: Option<&AtomicBool>) -> bool {
+    stop.is_some_and(|flag| flag.load(Ordering::Relaxed))
+}
+
+/// A set `stop` skips the hashing and reading of the files not yet started, so
+/// the reading then lacks them and must not be used after stopping.
 pub fn read_folder(
     access: &ChatAccess,
     folder: &Path,
     progress: &ReadProgress,
+    stop: Option<&AtomicBool>,
 ) -> Result<FolderReading, ReadError> {
     let walked = walk_sorted(folder, progress)?;
     progress.total.store(walked.len(), Ordering::Relaxed);
@@ -265,6 +272,9 @@ pub fn read_folder(
         .filter(|position| known.get(*position).is_some_and(Option::is_none))
         .collect();
     let changed_hashes = in_parallel(&changed, access.load, |position| {
+        if is_stopped(stop) {
+            return None;
+        }
         let hash = walked
             .get(*position)
             .and_then(|file| hash_path(&folder.join(&file.relative)).ok());
@@ -300,6 +310,9 @@ pub fn read_folder(
     };
     let aliases = SenderAliases::default();
     let extracted = in_parallel(&unknown, access.load, |(position, _)| {
+        if is_stopped(stop) {
+            return None;
+        }
         let read = walked
             .get(*position)
             .map(|file| access.text_chain.extract(&folder.join(&file.relative)));

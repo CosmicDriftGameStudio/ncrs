@@ -29,11 +29,16 @@ pub fn remember_folder_picks(
 ) -> Result<(), String> {
     left.store(LEFT_UNKNOWN, Ordering::Relaxed);
     let progress = ReadProgress::default();
-    let source = read_folder(access, source_path, &progress).map_err(|err| format!("{err:?}"))?;
+    let source = read_folder(access, source_path, &progress, Some(stop))
+        .map_err(|err| format!("{err:?}"))?;
     if stop.load(Ordering::Relaxed) {
         return Ok(());
     }
-    let target = read_folder(access, target_path, &progress).map_err(|err| format!("{err:?}"))?;
+    let target = read_folder(access, target_path, &progress, Some(stop))
+        .map_err(|err| format!("{err:?}"))?;
+    if stop.load(Ordering::Relaxed) {
+        return Ok(());
+    }
     remember_from_readings(access, &source, &target, model, Some(stop), left)
 }
 

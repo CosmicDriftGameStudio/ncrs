@@ -7,7 +7,7 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_ai::ChatModel;
 use ncrs_core::INDEX_NOT_OPEN;
@@ -16,6 +16,7 @@ use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, RuleSpec
 use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
+use crate::index_slot::try_lock;
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFile};
 
@@ -317,7 +318,7 @@ impl ChatAccess {
         let _running = self.index_work.begin();
         match work {
             ChatWork::Read { folder, progress } => {
-                ChatResult::Read(reading::read_folder(self, &folder, &progress).map(Arc::new))
+                ChatResult::Read(reading::read_folder(self, &folder, &progress, None).map(Arc::new))
             }
             ChatWork::Trial {
                 source,
@@ -472,11 +473,7 @@ impl ChatAccess {
         &self,
         work: impl FnOnce(&Index) -> Result<T, String>,
     ) -> Result<T, String> {
-        let guard = match self.slot.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(TryLockError::WouldBlock) => return Err(INDEX_BUSY.to_owned()),
-        };
+        let guard = try_lock(&self.slot).ok_or_else(|| INDEX_BUSY.to_owned())?;
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         work(index)
     }
