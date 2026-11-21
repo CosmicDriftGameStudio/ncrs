@@ -8,7 +8,7 @@ use notify::event::{MetadataKind, ModifyKind, RenameMode};
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
-use crate::classify::classify;
+use crate::classify::{classify, is_eml_file, is_mail_body};
 use crate::error::IntakeError;
 use crate::location::Location;
 
@@ -259,6 +259,25 @@ fn forward_files(
     for file in files {
         if classify(location, &file).is_ok() {
             forward(WatchEvent::File(file));
+        } else if file.file_name().is_some_and(is_eml_file) {
+            forward_mail_bodies_beside(&file, forward);
+        }
+    }
+}
+
+/// A `body.txt` taken in before its `.eml` arrived is no document of its own.
+/// Reported as gone, the settling of the index drops it by the same rule the
+/// scan applies to a mail text that lies beside an `.eml`.
+fn forward_mail_bodies_beside(mail: &Path, forward: &impl Fn(WatchEvent)) {
+    let Some(folder) = mail.parent() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        if is_mail_body(&entry.file_name(), true) {
+            forward(WatchEvent::Gone(entry.path()));
         }
     }
 }
@@ -386,6 +405,30 @@ mod tests {
         ] {
             assert!(forwarded_for_file(kind, "a.pdf").is_empty(), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn a_mail_arriving_after_its_body_text_reports_the_body_text_as_gone() {
+        use notify::event::CreateKind;
+
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        let body = watched.path.join("Body.TXT");
+        let mail = watched.path.join("mail.eml");
+        fs::write(&body, b"text").unwrap();
+        fs::write(&mail, b"mail").unwrap();
+        let seen = RefCell::new(Vec::new());
+
+        forward_received(
+            Ok(Event::new(EventKind::Create(CreateKind::File)).add_path(mail)),
+            &watched,
+            std::slice::from_ref(&watched.path),
+            &|event| {
+                seen.borrow_mut().push(event);
+            },
+        );
+
+        assert_eq!(seen.into_inner(), vec![WatchEvent::Gone(body)]);
     }
 
     #[test]
