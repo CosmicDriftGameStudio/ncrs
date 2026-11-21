@@ -418,6 +418,7 @@ fn serve_until_idle(
             return Served::NeedsLargerContext(Box::new(job));
         }
         shared.prepare_for(&job);
+        model.set_person_waiting(matches!(job, Job::Chat(_) | Job::Rule(_)));
         match job {
             Job::Extract(extract) => {
                 let threads = *locked(&shared.threads);

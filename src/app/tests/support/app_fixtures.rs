@@ -39,6 +39,7 @@ impl App {
             palette: ThemePreset::Cosmic.palette(),
             job_error: None,
             job_error_press: None,
+            quitting: false,
             notice: None,
             notice_generation: 0,
             job_done: 0,

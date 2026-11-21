@@ -4525,6 +4525,12 @@
       "de": "Hermes startet neu …"
     },
     {
+      "key": "status.hermes_preparing_folder",
+      "context": "Status bar text while Hermes prepares, in the background, the target folder suggestions for one of the read folders. {name} is the read folder's name, {done} the number of the folder being worked on, {total} how many read folders there are.",
+      "en": "Hermes is preparing folder suggestions for {name} ({done}/{total})",
+      "de": "Hermes bereitet Zielordner-Vorschläge für {name} vor ({done}/{total})"
+    },
+    {
       "key": "status.reading_again",
       "context": "Status bar text while Hermes reads one file again. Takes the file name.",
       "en": "Reading {name} again …",

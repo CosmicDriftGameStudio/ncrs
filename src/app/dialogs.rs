@@ -392,7 +392,7 @@ impl App {
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
-        if self.notes_hold_quit() || self.protection_holds_quit() {
+        if self.quitting || self.notes_hold_quit() || self.protection_holds_quit() {
             return Task::none();
         }
         ncrs_hermes_ui::closing(&self.hermes);
@@ -411,7 +411,22 @@ impl App {
         }
         self.remote.close_all();
         #[cfg(feature = "local-ai")]
-        ncrs_ai::LazyLocalModel::shutdown_all();
+        {
+            // Freeing the model on the GPU takes seconds and must finish before
+            // the process ends, so the window goes away first.
+            self.quitting = true;
+            return iced::window::latest()
+                .and_then(|id| iced::window::set_mode(id, iced::window::Mode::Hidden))
+                .chain(Task::perform(
+                    async {
+                        // A failed join only means the model was gone already.
+                        let _ = tokio::task::spawn_blocking(ncrs_ai::LazyLocalModel::shutdown_all)
+                            .await;
+                    },
+                    |()| Message::QuitReady,
+                ));
+        }
+        #[cfg(not(feature = "local-ai"))]
         iced::exit()
     }
 

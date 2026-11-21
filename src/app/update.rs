@@ -495,6 +495,8 @@ impl App {
                 self.dialog_focus = ncrs_ops::quit_dialog::CANCEL_FOCUS;
                 Task::none()
             }
+            #[cfg(feature = "local-ai")]
+            Message::QuitReady => iced::exit(),
             Message::Quit => {
                 self.ops.quit_confirmed = false;
                 self.quit_after_settings_page()

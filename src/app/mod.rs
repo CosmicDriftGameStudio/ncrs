@@ -295,6 +295,9 @@ pub struct App {
     /// What a press on `job_error` sends. Only read while `job_error` is set, and
     /// every `Some` error goes through a setter that replaces it.
     job_error_press: Option<Message>,
+    /// The app is on its way out: the window is hidden while the local model is
+    /// freed. A second quit does nothing.
+    quitting: bool,
     /// A neutral confirmation, such as "Path copied". Goes the way of `job_error`.
     notice: Option<String>,
     /// Counts the notices shown, so a timer can tell if it is still the latest.

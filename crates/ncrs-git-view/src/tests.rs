@@ -156,6 +156,19 @@ fn tab_walks_through_the_areas_and_back() {
 }
 
 #[test]
+fn left_and_right_move_between_the_areas_without_wrapping() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    send(&mut state, Message::Right);
+    assert_eq!(state.area, Area::Detail);
+    send(&mut state, Message::Right);
+    assert_eq!(state.area, Area::Detail);
+    send(&mut state, Message::Left);
+    assert_eq!(state.area, Area::Commits);
+    send(&mut state, Message::Left);
+    assert_eq!(state.area, Area::Sidebar);
+}
+
+#[test]
 fn an_answer_of_an_older_read_is_dropped() {
     let mut state = opened(&["aaaaaaa"], 0);
     let (stale, _) = state.loads.detail.begin();

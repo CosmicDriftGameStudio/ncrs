@@ -262,6 +262,9 @@ pub enum Message {
     /// The window got the focus back: what changed on disk meanwhile shows up.
     WindowFocused,
     Quit,
+    /// The local model is freed after a quit: the process may end now.
+    #[cfg(feature = "local-ai")]
+    QuitReady,
 }
 
 pub use ncrs_config::SettingsFeature;

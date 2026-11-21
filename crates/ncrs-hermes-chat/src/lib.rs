@@ -46,6 +46,7 @@ pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, LevelsCard,
     NewLayout, Part, ProposalCard, State, Step,
 };
+pub use picks::picks_line;
 pub use texts::problem_text;
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

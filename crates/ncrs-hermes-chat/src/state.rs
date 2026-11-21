@@ -528,6 +528,10 @@ pub struct State {
     pub picks_running: bool,
     /// Set to end the running job: the AI went off. A new job gets a new flag.
     pub picks_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The read folders the running job works through, in order.
+    pub picks_sources: Vec<PathBuf>,
+    /// How many of `picks_sources` the running job has finished.
+    pub picks_done: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// The pipeline sequence the last job was started for.
     pub picks_settled_at: Option<usize>,
     /// The index was replaced while a turn ran: the chat starts over once it is idle.
@@ -572,6 +576,8 @@ impl Default for State {
             fresh_resolve: false,
             picks_running: false,
             picks_stop: std::sync::Arc::default(),
+            picks_sources: Vec::new(),
+            picks_done: std::sync::Arc::default(),
             picks_settled_at: None,
             restart_when_idle: false,
             picks_job: None,

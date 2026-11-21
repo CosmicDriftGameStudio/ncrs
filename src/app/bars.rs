@@ -126,10 +126,18 @@ impl App {
     }
 
     pub(in crate::app) fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
+        let on_press = Message::FilingStatus(FilingStatusMessage::Open);
+        if let Some(text) = ncrs_hermes_chat::picks_line(&self.hermes_chat, self.lang) {
+            return Some(statusbar::FilingBadge {
+                text,
+                failing: false,
+                on_press,
+            });
+        }
         ncrs_hermes_ui::filing_badge(&self.hermes, self.lang).map(|badge| statusbar::FilingBadge {
             text: badge.text,
             failing: badge.failing,
-            on_press: Message::FilingStatus(FilingStatusMessage::Open),
+            on_press,
         })
     }
 
