@@ -41,7 +41,7 @@ pub use ctx::{Availability, Ctx};
 pub use in_tab::{filed_in_tab, FiledInTab};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
-pub use picks::picks_line;
+pub use picks::{picks_line, picks_running, stop_picks};
 pub use rule_flow::{RuleAnswer, RuleAsk};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, LevelsCard,

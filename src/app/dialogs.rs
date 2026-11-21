@@ -410,8 +410,11 @@ impl App {
             copies.close();
         }
         self.remote.close_all();
+        ncrs_hermes_chat::stop_picks(&self.hermes_chat);
         // Freeing the model on the GPU takes seconds and must finish before
-        // the process ends, so the window goes away first.
+        // the process ends, and the runtime waits for the running blocking
+        // tasks at its end (the picks job, stopped above), so the window goes
+        // away first.
         #[cfg(feature = "local-ai")]
         let ending = {
             self.quitting = true;

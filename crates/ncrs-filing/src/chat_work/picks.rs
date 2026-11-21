@@ -1,7 +1,7 @@
 //! The model's folder picks for a whole read folder, made ahead of the chat.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use ncrs_ai::{AiError, ChatModel};
 
@@ -10,21 +10,31 @@ use super::{
     PlanFailure, ReadProgress, TrialPlan,
 };
 
+/// What `left` of [`remember_folder_picks`] holds before the first round has
+/// counted the files that still wait for the model.
+pub const LEFT_UNKNOWN: usize = usize::MAX;
+
 /// Has the model pick a folder below `target` for every document of `source`
 /// and stores the picks in the index, so a trial later finds them. Ends when
 /// nothing is left to ask; a round that left as many files as the one before
-/// is an error (the model failed or was closed).
+/// is an error (the model failed or was closed). `left` gets the number of
+/// files still waiting for the model after every round.
 pub fn remember_folder_picks(
     access: &ChatAccess,
     source_path: &Path,
     target_path: &Path,
     model: &dyn ChatModel,
     stop: &AtomicBool,
+    left: &AtomicUsize,
 ) -> Result<(), String> {
+    left.store(LEFT_UNKNOWN, Ordering::Relaxed);
     let progress = ReadProgress::default();
     let source = read_folder(access, source_path, &progress).map_err(|err| format!("{err:?}"))?;
+    if stop.load(Ordering::Relaxed) {
+        return Ok(());
+    }
     let target = read_folder(access, target_path, &progress).map_err(|err| format!("{err:?}"))?;
-    remember_from_readings(access, &source, &target, model, Some(stop))
+    remember_from_readings(access, &source, &target, model, Some(stop), left)
 }
 
 pub(in crate::chat_work) fn remember_from_readings(
@@ -33,6 +43,7 @@ pub(in crate::chat_work) fn remember_from_readings(
     target: &FolderReading,
     model: &dyn ChatModel,
     stop: Option<&AtomicBool>,
+    left: &AtomicUsize,
 ) -> Result<(), String> {
     ask_until_done(
         access,
@@ -41,7 +52,7 @@ pub(in crate::chat_work) fn remember_from_readings(
         model,
         &ModelScope::LastPage,
         stop,
-        &mut |_| {},
+        &mut |plan| left.store(plan.model_left.len(), Ordering::Relaxed),
     )
     .map_err(|failure| failure.to_string())
 }

@@ -44,7 +44,7 @@ pub use live::{
     LiveState, LiveTags, Override, Tally,
 };
 pub use pattern::PatternLevel;
-pub use picks::remember_folder_picks;
+pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{

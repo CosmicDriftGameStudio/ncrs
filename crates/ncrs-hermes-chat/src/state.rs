@@ -532,6 +532,8 @@ pub struct State {
     pub picks_sources: Vec<PathBuf>,
     /// How many of `picks_sources` the running job has finished.
     pub picks_done: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Files of the current read folder still waiting for the model.
+    pub picks_left: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// The pipeline sequence the last job was started for.
     pub picks_settled_at: Option<usize>,
     /// The index was replaced while a turn ran: the chat starts over once it is idle.
@@ -578,6 +580,7 @@ impl Default for State {
             picks_stop: std::sync::Arc::default(),
             picks_sources: Vec::new(),
             picks_done: std::sync::Arc::default(),
+            picks_left: std::sync::Arc::default(),
             picks_settled_at: None,
             restart_when_idle: false,
             picks_job: None,
