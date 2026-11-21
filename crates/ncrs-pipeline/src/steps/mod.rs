@@ -506,7 +506,7 @@ impl Step for ReviewStep {
             let still_an_inquiry =
                 matches!(status, Some(DocumentStatus::New | DocumentStatus::InReview));
             if item.not_a_document && still_an_inquiry {
-                index.exclude_path(&item.path)?;
+                index.exclude_path_automatically(&item.path)?;
             }
             Ok::<_, IndexError>(())
         })
