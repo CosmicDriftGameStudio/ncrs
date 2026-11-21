@@ -16,6 +16,7 @@ mod image_text;
 mod location;
 mod ocr;
 mod office;
+mod page_budget;
 mod page_trim;
 mod pdf_text;
 mod placement;

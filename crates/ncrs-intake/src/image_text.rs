@@ -8,6 +8,7 @@ use std::path::Path;
 use image::imageops::{self, FilterType};
 use image::{DynamicImage, ImageDecoder as _, ImageReader, Limits};
 
+use crate::page_budget::{PageBudget, MAX_SCAN_TOTAL_BYTES};
 use crate::page_trim::trim_to_content;
 use crate::pdf_text::{MAX_SCAN_PAGES, MAX_SCAN_SIDE_PIXELS};
 use crate::text::{Extracted, PageImage, TextError, TextSource};
@@ -60,6 +61,8 @@ fn decode_pages(bytes: &[u8]) -> Vec<PageImage> {
     let Some(first) = decode_page(bytes) else {
         return Vec::new();
     };
+    let mut budget = PageBudget::new(MAX_SCAN_TOTAL_BYTES);
+    budget.spend(&first);
     let mut pages = vec![first];
     if !is_tiff(bytes) {
         return pages;
@@ -71,11 +74,13 @@ fn decode_pages(bytes: &[u8]) -> Vec<PageImage> {
     };
     let mut decoder = plain_decoder.with_limits(limits);
     for page in 1..MAX_SCAN_PAGES {
-        if !decoder.more_images() || decoder.seek_to_image(page).is_err() {
+        if !budget.has_room() || !decoder.more_images() || decoder.seek_to_image(page).is_err() {
             break;
         }
         if let Some(picture) = later_tiff_page(&mut decoder) {
-            pages.push(grey_page(picture));
+            let grey = grey_page(picture);
+            budget.spend(&grey);
+            pages.push(grey);
         }
     }
     pages
