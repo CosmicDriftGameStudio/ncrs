@@ -289,7 +289,7 @@ pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     use std::path::Component;
 
     let Ok(relative) = path.strip_prefix(root) else {
-        return open_without_following(path);
+        return Err(not_below_the_location());
     };
     let parts: Vec<&std::ffi::OsStr> = relative
         .components()
@@ -298,7 +298,10 @@ pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
             _ => None,
         })
         .collect();
-    if parts.is_empty() || parts.len() != relative.components().count() {
+    if parts.len() != relative.components().count() {
+        return Err(not_below_the_location());
+    }
+    if parts.is_empty() {
         return open_without_following(path);
     }
     let mut current = std::os::fd::OwnedFd::from(File::open(root)?);
@@ -313,6 +316,11 @@ pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
         current = openat(&current, *name, flags, Mode::empty()).map_err(io::Error::from)?;
     }
     Ok(File::from(current))
+}
+
+#[cfg(unix)]
+fn not_below_the_location() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, "not below the location")
 }
 
 #[cfg(not(unix))]
@@ -541,5 +549,23 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), &folder).unwrap();
 
         pending.hash(&path).unwrap_err();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_leaves_the_location_is_not_opened() {
+        let location = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(location.path().join("a")).unwrap();
+        fs::write(outside.path().join("x"), b"secret").unwrap();
+        let name = outside.path().file_name().unwrap();
+
+        let climbing = location.path().join("a/../..").join(name).join("x");
+        let error = open_below(location.path(), &climbing).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+
+        let elsewhere = outside.path().join("x");
+        let error = open_below(location.path(), &elsewhere).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 }

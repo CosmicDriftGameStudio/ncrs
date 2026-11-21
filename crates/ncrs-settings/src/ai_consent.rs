@@ -239,10 +239,7 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join("/");
                 let source = fs::read_to_string(file).unwrap();
-                let code = source
-                    .split("#[cfg(test)]")
-                    .next()
-                    .unwrap_or_default()
+                let code = before_inline_test_module(&source)
                     .lines()
                     .filter(|line| !line.trim_start().starts_with("//"))
                     .collect::<Vec<_>>()
@@ -252,6 +249,44 @@ mod tests {
             .collect();
         sources.sort();
         sources
+    }
+
+    /// Cuts at the first `#[cfg(test)]` that opens an inline `mod name {`; one
+    /// before `mod tests;` or a single item leaves the rest of the file in.
+    fn before_inline_test_module(source: &str) -> &str {
+        let mut starts = Vec::new();
+        let mut offset = 0;
+        for line in source.split_inclusive('\n') {
+            starts.push((offset, line.trim()));
+            offset += line.len();
+        }
+        let opens_module = |after: usize| {
+            starts
+                .iter()
+                .skip(after + 1)
+                .map(|(_, line)| *line)
+                .find(|line| !line.is_empty())
+                .is_some_and(|line| {
+                    let line = line.strip_prefix("pub ").unwrap_or(line);
+                    line.starts_with("mod ") && line.ends_with('{')
+                })
+        };
+        starts
+            .iter()
+            .enumerate()
+            .find(|(at, (_, line))| *line == "#[cfg(test)]" && opens_module(*at))
+            .and_then(|(_, (start, _))| source.get(..*start))
+            .unwrap_or(source)
+    }
+
+    #[test]
+    fn only_an_inline_test_module_ends_the_code_of_a_file() {
+        let outline = "#[cfg(test)]\nmod tests;\nfn run() { provider.extract(); }\n";
+        assert_eq!(before_inline_test_module(outline), outline);
+        let single = "#[cfg(test)]\nuse x;\nfn run() { provider.extract(); }\n";
+        assert_eq!(before_inline_test_module(single), single);
+        let inline = "fn run() {}\n#[cfg(test)]\n\nmod tests {\n    provider.extract();\n}\n";
+        assert_eq!(before_inline_test_module(inline), "fn run() {}\n");
     }
 
     fn files_where(found: impl Fn(&str) -> bool) -> Vec<String> {

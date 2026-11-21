@@ -599,13 +599,18 @@ fn a_remote_server_from_before_the_dialog_is_granted_nothing_whether_or_not_the_
 }
 
 #[test]
-fn a_server_on_this_machine_is_kept_with_nothing_set_and_needs_no_consent_to_be_used() {
+fn a_server_on_this_machine_is_kept_as_written_with_no_consent_recorded() {
     let local = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"http://localhost:11434/v1\"\n";
-    let AiSetting::Http { endpoint, .. } = ai_setting(local) else {
+    let AiSetting::Http {
+        endpoint,
+        consented_origins,
+        ..
+    } = ai_setting(local)
+    else {
         panic!("not the http provider");
     };
-    // The one place that checks the consent lets this machine through.
-    assert!(ncrs_ai::endpoint_is_local(&endpoint).unwrap());
+    assert_eq!(endpoint, "http://localhost:11434/v1");
+    assert_eq!(consented_origins, ConsentedOrigins::default());
 }
 
 #[test]

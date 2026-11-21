@@ -147,9 +147,18 @@ const EPERM: i32 = 1;
 /// systems also answer `EPERM`, and for those Full Disk Access changes nothing.
 fn is_privacy_protected(path: &Path, home: &Path) -> bool {
     path.starts_with("/Volumes")
-        || ["Desktop", "Documents", "Downloads", "Library", ".Trash"]
-            .iter()
-            .any(|folder| path.starts_with(home.join(folder)))
+        || [
+            "Desktop",
+            "Documents",
+            "Downloads",
+            "Library",
+            "Movies",
+            "Music",
+            "Pictures",
+            ".Trash",
+        ]
+        .iter()
+        .any(|folder| path.starts_with(home.join(folder)))
 }
 
 fn read_error(err: &io::Error, path: &Path) -> ReadError {
@@ -419,7 +428,14 @@ mod tests {
     #[test]
     fn the_places_macos_protects_include_the_trash() {
         let home = Path::new("/Users/a");
-        for path in ["/Users/a/.Trash", "/Users/a/.Trash/x", "/Users/a/Library/y"] {
+        for path in [
+            "/Users/a/.Trash",
+            "/Users/a/.Trash/x",
+            "/Users/a/Library/y",
+            "/Users/a/Pictures/Photos Library.photoslibrary",
+            "/Users/a/Music/Music",
+            "/Users/a/Movies/TV",
+        ] {
             assert!(is_privacy_protected(Path::new(path), home), "{path}");
         }
         assert!(!is_privacy_protected(Path::new("/Users/b/.Trash"), home));
