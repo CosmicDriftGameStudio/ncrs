@@ -25,7 +25,9 @@ use llama_cpp_2::vocab::LlamaVocab;
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::grammar::reply_grammar;
-use crate::model_file::{remove_previous_models, verify_model_file, ModelPin};
+use crate::model_file::{
+    ensure_still_verified, remove_previous_models, verify_model_file, ModelPin,
+};
 use crate::prompt::{
     first_chars, user_message_prefix, user_message_suffix, MAX_SENT_TEXT_CHARS, SYSTEM_PROMPT,
 };
@@ -111,6 +113,7 @@ impl LocalModel {
                 .or_else(|_gpu_refused| load_on_cpu(backend, &config.path))?,
             None => load_on_cpu(backend, &config.path)?,
         };
+        ensure_still_verified(&config.path)?;
         Ok(Self {
             model,
             name: pin.name.to_owned(),
