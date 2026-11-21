@@ -106,7 +106,7 @@ pub fn prepare_take_in(
     if let Err(skip) = classify(location, path) {
         return Ok(without_hash(Outcome::Skipped(skip)));
     }
-    if index.is_excluded(path)? {
+    if index.is_excluded(path)? && !automatic_exclusion_lifted(index, path)? {
         return Ok(without_hash(Outcome::Skipped(Skip::Excluded)));
     }
     if has_symlink_ancestor(location, path)? {
@@ -169,6 +169,22 @@ pub fn finish_take_in(
 /// A path whose size and mtime are the stored ones needs no hashing. A recorded
 /// copy only counts while its document's own file is still there: otherwise
 /// the copy has to become the document, which takes the hash.
+/// A file Hermes excluded by its own judgement is read again once a
+/// different file lies at the path.
+fn automatic_exclusion_lifted(index: &Index, path: &Path) -> Result<bool, IntakeError> {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Ok(false);
+    };
+    let Ok(mtime) = metadata.modified() else {
+        return Ok(false);
+    };
+    let stamp = FileStamp {
+        size: metadata.len(),
+        mtime,
+    };
+    Ok(index.lift_outdated_automatic_exclusion(path, stamp)?)
+}
+
 fn unchanged_by_stamp(
     index: &Index,
     path: &Path,

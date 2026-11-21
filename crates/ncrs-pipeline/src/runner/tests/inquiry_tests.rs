@@ -159,6 +159,51 @@ fn a_picture_whose_text_recognition_found_nothing_is_excluded() {
 }
 
 #[test]
+fn a_file_replaced_after_an_automatic_exclusion_is_read_again() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = picture_location(&inbox_dir);
+    let scan_file = put(&inbox, "Scan.png", b"empty");
+    let fixture = IndexFixture::new();
+    scan(&fixture, &inbox, picture_chain(NothingFound), None);
+    assert!(fixture
+        .index
+        .lock()
+        .unwrap()
+        .is_excluded(&scan_file)
+        .unwrap());
+
+    put(&inbox, "Scan.png", b"now a real letter, longer than before");
+    scan(&fixture, &inbox, text_chain(INVOICE_TEXT), None);
+
+    assert!(!fixture
+        .index
+        .lock()
+        .unwrap()
+        .is_excluded(&scan_file)
+        .unwrap());
+    assert_eq!(open_inquiries(&fixture), 1);
+}
+
+#[test]
+fn an_unchanged_file_stays_excluded_after_an_automatic_exclusion() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = picture_location(&inbox_dir);
+    let scan_file = put(&inbox, "Scan.png", b"empty");
+    let fixture = IndexFixture::new();
+    scan(&fixture, &inbox, picture_chain(NothingFound), None);
+
+    scan(&fixture, &inbox, text_chain(INVOICE_TEXT), None);
+
+    assert!(fixture
+        .index
+        .lock()
+        .unwrap()
+        .is_excluded(&scan_file)
+        .unwrap());
+    assert_eq!(open_inquiries(&fixture), 0);
+}
+
+#[test]
 fn a_picture_is_not_excluded_while_the_recognition_engine_is_unavailable() {
     let inbox_dir = TempDir::new().unwrap();
     let models_dir = TempDir::new().unwrap();
