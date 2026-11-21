@@ -47,9 +47,19 @@ pub(in crate::index::tests) fn copy_of_the_v1_5_1_index() -> (TempDir, PathBuf, 
     copy_of_fixture(FIXTURE_V1_5_1)
 }
 
+pub(in crate::index::tests) const FIXTURE_V1_6_0: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/index-v1.6.0.db"
+);
+
+pub(in crate::index::tests) fn copy_of_the_v1_6_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+    copy_of_fixture(FIXTURE_V1_6_0)
+}
+
 pub(in crate::index::tests) const FIXTURE_V0_6_0_VERSION: u32 = 9;
 pub(in crate::index::tests) const FIXTURE_V1_2_0_VERSION: u32 = 25;
 pub(in crate::index::tests) const FIXTURE_V1_5_1_VERSION: u32 = 26;
+pub(in crate::index::tests) const FIXTURE_V1_6_0_VERSION: u32 = 28;
 
 pub(in crate::index::tests) fn latest_version() -> u32 {
     u32::try_from(MIGRATIONS.len()).unwrap()
@@ -664,6 +674,32 @@ fn an_index_written_by_release_1_5_1_opens_with_all_its_content_and_applies_none
 #[test]
 fn a_later_step_migrates_the_release_1_5_1_index_and_keeps_its_content() {
     let (_dir, path, store) = copy_of_the_v1_5_1_index();
+    let steps = migrations_and(&[PROBE_COLUMN]);
+
+    let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+
+    assert_eq!(user_version(&index), probe_version());
+    assert!(has_column(&index, "document", "probe"));
+    assert_v1_2_0_content(&index);
+}
+
+#[test]
+fn an_index_written_by_release_1_6_0_opens_with_all_its_content_and_applies_none_of_its_steps_again(
+) {
+    let (_dir, path, store) = copy_of_the_v1_6_0_index();
+    let applied = usize::try_from(FIXTURE_V1_6_0_VERSION).unwrap();
+    let mut steps = vec!["this is not sql"; applied];
+    steps.extend_from_slice(&MIGRATIONS[applied..]);
+
+    let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+
+    assert_eq!(user_version(&index), latest_version());
+    assert_v1_2_0_content(&index);
+}
+
+#[test]
+fn a_later_step_migrates_the_release_1_6_0_index_and_keeps_its_content() {
+    let (_dir, path, store) = copy_of_the_v1_6_0_index();
     let steps = migrations_and(&[PROBE_COLUMN]);
 
     let index = Index::open_with_migrations(&path, &store, &steps).unwrap();

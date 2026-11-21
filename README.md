@@ -241,7 +241,19 @@ The same window in German, switched with F9.
   panel and, for a file in a place Hermes indexes, follows it when it is moved. A note is written
   while you type.
   On a wide window the editor sits left and the rendered note right; on a narrow one "View" and
-  "Edit" switch
+  "Edit" switch. Notes can be encrypted (AES-256-GCM, the key in the system credential store, a
+  recovery key for another computer); `Cmd`+`L` (`Ctrl`+`L`) or a click on the lock locks and
+  unlocks, and Touch ID on macOS or Windows Hello on Windows confirms before the key is read.
+  `Cmd`+`F` searches, `F7` makes a folder, `F4` edits, `←`/`→` fold folders. A sync folder is set
+  under Settings › Notes
+- Git: inside a repository the panel shows a status column per file (M, A, ?, D), a ⎇ mark on
+  folders that are repositories, and the branch, ahead/behind and changed count in the status
+  line. `Shift`+`Cmd`+`G` (`Shift`+`Ctrl`+`G` on Linux and Windows) opens a Git tab for the
+  repository of the active panel, as many as you like: history graph, branches, tags and
+  worktrees, commit details with +/− per file, side-by-side and unified diff, and a filter by
+  message, author or SHA. Read-only
+- Open in ncrs from other apps: folders and files handed over by the Finder ("Open With"), the
+  Explorer or the Linux file manager service open in the active panel, with the cursor on the file
 - A favourites bar with the favourite folders that fit, the rest behind », `Cmd`+`1` to `9` (`Ctrl` on Linux and Windows)
 - `Enter` and a double click open a file with the system's own program, like the Finder; a file
   that could run asks first. On macOS an app starts directly, and "Show package contents" enters it
@@ -273,6 +285,9 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Insert` / `Space` | Tag / untag the row, move down one      |
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
+| `+` / `-`          | Tag / untag the rows that match a pattern |
+| `Cmd`+`G` / `Ctrl`+`G` | Go to path: the active panel opens the folder, or puts the cursor on the file |
+| `Shift`+`Cmd`+`G` / `Shift`+`Ctrl`+`G` | Open a Git tab for the repository of the active panel |
 | `Ctrl`+`*`         | Clear all tags                          |
 | `Cmd`+`Z` / `Ctrl`+`Z` | Put back what the last `F8` moved to the trash |
 | `Cmd`+`C` / `Ctrl`+`C` | Copy the tagged files (else the cursor row) to the clipboard as files, for the Finder, Explorer or another app |
@@ -834,6 +849,13 @@ there, and the chat reports the run with its undo.
 
 ![Settings › Hermes](docs/screenshots/filing.png)
 
+**Chats.** Hermes keeps its chats on disk and lists them by Today, Yesterday and
+Earlier; an earlier chat opens and continues where it stopped, marked chats can be
+deleted, and Settings › Hermes can remove chats after 30 or 90 days. While Hermes
+prepares folder suggestions, the status bar names the folder and counts down the
+files still left. The window stays responsive while the built-in model works: the
+model waits while you type or move the mouse.
+
 **On/off.** One switch for all of Hermes: "Hermes" (On | Off) at the top of
 Settings › AI. While it is off, a dim "Hermes off" chip in the title bar opens
 that page. A file without the key has it on. Off, no read folder is watched and no
@@ -1058,6 +1080,10 @@ ncrs shows your master key once, the same key ncrs later asks for as the
 recovery key. You need it if the credential store loses the
 key, for example on a new machine or after a reinstall. Without it the index
 cannot be read again.
+
+**Encrypted when you choose it:** notes you lock (AES-256-GCM, `.md.enc` files in
+the notes folder). Their key is kept in the same credential store, with its own
+recovery key.
 
 **Not encrypted:**
 
