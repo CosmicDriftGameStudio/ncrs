@@ -589,6 +589,51 @@ mod tests {
     }
 
     #[test]
+    fn an_already_filed_inbox_file_is_not_hashed_again_while_it_is_unchanged() {
+        let mut fixture = Fixture::new();
+        let inbox_dir = TempDir::new().unwrap();
+        let archive_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox, false);
+        let archive = location(&archive_dir, LocationMode::Archive, false);
+        put(&archive, "a.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let in_inbox = put(&inbox, "again.pdf", INVOICE);
+        fixture.scan_settled(&inbox);
+
+        let prepared = prepare_take_in(
+            &mut fixture.index,
+            &inbox,
+            &in_inbox,
+            &mut fixture.tracker,
+            t0() + STABLE_AFTER * 2,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            prepared,
+            Prepared::Done(taken) if matches!(taken.outcome, Outcome::AlreadyFiled(_)) && !taken.hashed
+        ));
+    }
+
+    #[test]
+    fn an_already_filed_inbox_file_is_read_again_once_its_content_changed() {
+        let mut fixture = Fixture::new();
+        let inbox_dir = TempDir::new().unwrap();
+        let archive_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox, false);
+        let archive = location(&archive_dir, LocationMode::Archive, false);
+        put(&archive, "a.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let in_inbox = put(&inbox, "again.pdf", INVOICE);
+        fixture.scan_settled(&inbox);
+        fs::write(&in_inbox, REMINDER).unwrap();
+
+        let report = fixture.scan_settled(&inbox);
+
+        assert_eq!((report.already_filed, report.new), (0, 1));
+    }
+
+    #[test]
     fn an_inbox_document_that_was_filed_also_counts_as_already_filed() {
         let mut fixture = Fixture::new();
         let dir = TempDir::new().unwrap();

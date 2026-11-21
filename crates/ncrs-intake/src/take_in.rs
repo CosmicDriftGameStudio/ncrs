@@ -22,7 +22,7 @@ pub enum Outcome {
     /// Same content as the document, recorded as another place for it.
     Copy(DocumentId),
     /// An inbox file whose content is already filed. It stays where it is and
-    /// nothing is recorded.
+    /// is not recorded as a copy; only its stamp is remembered.
     AlreadyFiled(DocumentId),
     Unchanged(DocumentId),
     ContentChanged(DocumentId),
@@ -131,6 +131,16 @@ pub fn prepare_take_in(
     };
     if let Some(id) = unchanged_by_stamp(index, path, stamp)? {
         return Ok(without_hash(Outcome::Unchanged(id)));
+    }
+    if location.mode == LocationMode::Inbox {
+        if let Some(id) = index.filed_document_for_inbox_path(path, stamp)? {
+            let still_filed = index.document(id)?.is_some_and(|document| {
+                document.status == DocumentStatus::Filed && document.missing_since.is_none()
+            });
+            if still_filed {
+                return Ok(without_hash(Outcome::AlreadyFiled(id)));
+            }
+        }
     }
     if !tracker.observe(path, stamp.size, stamp.mtime, now) {
         return Ok(without_hash(Outcome::NotStableYet));
@@ -464,6 +474,7 @@ fn file_with_known_hash(
     // The status decides, not the source: a document filed from the inbox
     // keeps source Inbox.
     if location.mode == LocationMode::Inbox && known.status == DocumentStatus::Filed {
+        index.record_filed_inbox_path(known.id, path, stamp)?;
         return Ok(Outcome::AlreadyFiled(known.id));
     }
     index.record_duplicate_path(known.id, path, stamp)?;
