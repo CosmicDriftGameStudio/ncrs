@@ -379,3 +379,24 @@ fn the_ui_gets_no_answer_instead_of_waiting_while_a_run_holds_the_index() {
     assert_eq!(setup.access.try_kinds().err(), None);
     assert_eq!(setup.access.try_rules().unwrap().len(), 0);
 }
+
+#[test]
+fn the_ui_gets_the_last_known_kinds_while_a_run_holds_the_index() {
+    let setup = Setup::new();
+    let known = setup.access.try_kinds().unwrap();
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let slot = Arc::clone(&setup.access.slot);
+    let holder = std::thread::spawn(move || {
+        let _guard = slot.lock().unwrap();
+        locked_tx.send(()).unwrap();
+        let _ = release_rx.recv();
+    });
+    locked_rx.recv().unwrap();
+
+    let busy = setup.access.try_kinds();
+
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert_eq!(busy, Ok(known));
+}
