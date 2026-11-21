@@ -149,7 +149,12 @@ fn escape_stops_an_unpacking_and_no_viewer_starts() {
 
 fn walk(dir: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+    // The unpacking renames its staging folder while this looks; a folder that
+    // is gone by the time it is read has nothing left to find.
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             found.extend(walk(&path));
