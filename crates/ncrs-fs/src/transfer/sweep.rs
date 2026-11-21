@@ -101,6 +101,28 @@ pub fn let_time_pass_for_sweep(by: Duration) {
     CLOCK_SKEW.with(|skew| skew.set(by));
 }
 
+/// Whether nothing in `path` was touched within `age`. A staged folder keeps
+/// its own times while a copy runs deep inside it, so everything below counts.
+fn untouched_for(path: &Path, meta: &std::fs::Metadata, now: SystemTime, age: Duration) -> bool {
+    let old_enough = last_touched(meta)
+        .and_then(|touched| now.duration_since(touched).ok())
+        .is_some_and(|passed| passed >= age);
+    if !old_enough {
+        return false;
+    }
+    if !meta.is_dir() {
+        return true;
+    }
+    let Ok(children) = std::fs::read_dir(path) else {
+        return true;
+    };
+    children.filter_map(Result::ok).all(|child| {
+        std::fs::symlink_metadata(child.path()).map_or(true, |child_meta| {
+            untouched_for(&child.path(), &child_meta, now, age)
+        })
+    })
+}
+
 fn sweep_older_than(dir: &Path, age: Duration) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -114,10 +136,7 @@ fn sweep_older_than(dir: &Path, age: Duration) {
         let Ok(meta) = std::fs::symlink_metadata(&path) else {
             continue;
         };
-        let old_enough = last_touched(&meta)
-            .and_then(|touched| now.duration_since(touched).ok())
-            .is_some_and(|passed| passed >= age);
-        if !old_enough {
+        if !untouched_for(&path, &meta, now, age) {
             continue;
         }
         let _best_effort = if meta.is_dir() {
@@ -200,6 +219,22 @@ mod tests {
         sweep_older_than(dir.path(), STALE_AFTER);
 
         assert!(!live.exists(), "and a day later it is a leftover");
+    }
+
+    #[test]
+    fn a_staged_folder_with_a_fresh_file_deep_inside_is_not_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let live = dir.path().join(".ncrs-partial-Ab3dE9");
+        let deep = live.join("a").join("b");
+        std::fs::create_dir_all(&deep).unwrap();
+        let file = deep.join("big.bin");
+        std::fs::write(&file, "x").unwrap();
+        let_three_days_pass();
+        date(&file, SystemTime::now() + THREE_DAYS);
+
+        sweep_older_than(dir.path(), STALE_AFTER);
+
+        assert!(live.exists(), "a copy is still writing below the root");
     }
 
     #[test]

@@ -241,7 +241,9 @@ fi
     printf '%s\n' "$LIB_NAME"
     if [ -d "$backends_src" ]; then
         printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0
-        (cd "$BIN_DIR" && find backends -type f)
+        # From the archive, not from the folder: files of other programs that
+        # were already in backends/ are not ours to remove.
+        (cd "$backends_src" && find . -type f) | sed 's|^\./|backends/|'
     fi
 } > "$BIN_DIR/$MANIFEST_NAME"
 

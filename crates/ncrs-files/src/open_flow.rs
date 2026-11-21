@@ -51,16 +51,22 @@ pub fn open_external(
             archive,
         }],
         OpenPlan::Launch { path, line } => {
-            if kind == OpenKind::View {
-                if let Some(with) = ctx.programs.open_with_for(&path) {
-                    return open_by_type(with, path, line, ctx);
-                }
-            }
             let executable = if from_panel {
                 is_executable_row(panels, &path)
             } else {
                 ncrs_fs::could_execute(&path)
             };
+            if kind == OpenKind::View {
+                // A file that could run never goes to the system opener
+                // unasked, whatever a rule says.
+                let rule = ctx
+                    .programs
+                    .open_with_for(&path)
+                    .filter(|with| !(executable && matches!(with, OpenWith::System)));
+                if let Some(with) = rule {
+                    return open_by_type(with, path, line, ctx);
+                }
+            }
             launch_external(kind, path, line, CopyOf::Nothing, executable, ctx)
         }
     }
@@ -207,4 +213,82 @@ fn shown_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use ncrs_core::PanelSide;
+    use ncrs_fs::{OpenRule, ProgramLine};
+
+    use super::*;
+    use crate::panel::PanelState;
+
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<OpenCommand>>);
+
+    impl Launcher for Recorder {
+        fn launch(&self, command: &OpenCommand) -> Result<(), String> {
+            self.0.lock().unwrap().push(command.clone());
+            Ok(())
+        }
+    }
+
+    fn programs_with_system_rule(extension: &str) -> OpenPrograms {
+        OpenPrograms {
+            edit: Some(ProgramLine::new("my-editor", &[])),
+            by_type: Some(vec![OpenRule {
+                extensions: vec![extension.to_owned()],
+                with: OpenWith::System,
+            }]),
+            ..OpenPrograms::default()
+        }
+    }
+
+    fn view(path: &Path, programs: &OpenPrograms) -> Vec<OpenCommand> {
+        let launcher = Recorder::default();
+        let ctx = OpenCtx {
+            lang: Language::English,
+            programs,
+            launcher: &launcher,
+            view_key: None,
+            edit_key: None,
+        };
+        let panels = Panels::new(
+            PanelState::new(PathBuf::from("/d")),
+            PanelState::new(PathBuf::from("/e")),
+            PanelSide::Left,
+        );
+        open_external(
+            &panels,
+            OpenKind::View,
+            OpenSource::Search(Some((path.to_path_buf(), None))),
+            &ctx,
+        );
+        launcher.0.into_inner().unwrap()
+    }
+
+    #[test]
+    fn a_system_rule_does_not_hand_a_runnable_file_to_the_system_opener() {
+        let folder = tempfile::tempdir().unwrap();
+        let script = folder.path().join("run.sh");
+        std::fs::write(&script, "echo hi").unwrap();
+
+        let started = view(&script, &programs_with_system_rule("sh"));
+
+        assert_eq!(started.len(), 1);
+        assert_eq!(started[0].program, "my-editor");
+    }
+
+    #[test]
+    fn a_system_rule_still_opens_a_plain_file_with_the_system_opener() {
+        let folder = tempfile::tempdir().unwrap();
+        let note = folder.path().join("note.txt");
+        std::fs::write(&note, "hi").unwrap();
+
+        let started = view(&note, &programs_with_system_rule("txt"));
+
+        assert_eq!(started, vec![ncrs_fs::system_open_command(&note)]);
+    }
 }

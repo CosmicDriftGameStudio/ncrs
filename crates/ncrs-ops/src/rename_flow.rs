@@ -126,7 +126,7 @@ pub fn start_rename(
 }
 
 /// The rename has finished. A late answer, for a rename the user has since
-/// replaced by another, still reloads the panels after a success and shows a
+/// replaced by another, still follows the new path after a success and shows a
 /// failure, but leaves the input of the newer rename alone.
 pub fn rename_done(
     ops: &Ops,
@@ -155,7 +155,10 @@ pub fn rename_done(
         ])
     };
     match result {
-        Ok(_) if late => actions(vec![Action::ReloadPanels]),
+        Ok(to) if late => actions(vec![Action::RenameApplied {
+            from: from.to_path_buf(),
+            to,
+        }]),
         Ok(to) => actions(vec![Action::RenameEnded {
             side,
             from: from.to_path_buf(),

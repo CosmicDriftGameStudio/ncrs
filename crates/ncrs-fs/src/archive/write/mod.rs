@@ -41,6 +41,10 @@ pub struct WriteReport {
     pub kept_existing: usize,
     /// What an unpack made new, the last one when it unpacked several.
     pub placed: Option<PathBuf>,
+    /// Archives of a batch that could not be unpacked while the others were.
+    pub failed: usize,
+    /// Why the first of those failed, as kind and text.
+    pub first_failure: Option<(std::io::ErrorKind, String)>,
 }
 
 /// A new archive at `archive` holding `sources`, each under its own name.

@@ -58,7 +58,7 @@ impl App {
                 Task::none()
             }
             Ask::OpenSystemInstead { path, notice } => {
-                self.open_with_system(&path);
+                self.launch_external(fs::OpenKind::View, path, None, CopyOf::Nothing, false);
                 self.show_notice(notice)
             }
             Ask::Error(reason) => {

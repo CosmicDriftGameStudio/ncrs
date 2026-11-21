@@ -500,9 +500,9 @@ impl<P: Progress> Upload<'_, '_, P> {
     ) -> io::Result<()> {
         let taken_by_folder = existing.is_some_and(|found| found.file_type().is_dir());
         match (is_dir, existing) {
-            (false, _) if taken_by_folder => Err(in_the_way("a folder")),
+            (false, _) if taken_by_folder => Err(in_the_way(InTheWay::Folder)),
             (false, _) => self.file(source, target, existing.is_some()),
-            (true, Some(_)) if !taken_by_folder => Err(in_the_way("a file")),
+            (true, Some(_)) if !taken_by_folder => Err(in_the_way(InTheWay::File)),
             (true, Some(_)) => self.folder(source, target),
             (true, None) => {
                 let hidden = target_dir.join(&format!(".ncrs-partial-{}", unique()));
@@ -572,11 +572,11 @@ impl<P: Progress> Upload<'_, '_, P> {
                 match there {
                     None => self.make_folder(&child)?,
                     Some(_) if is_folder => {}
-                    Some(_) => return Err(in_the_way("a file")),
+                    Some(_) => return Err(in_the_way(InTheWay::File)),
                 }
                 self.folder(&item.path(), &child)?;
             } else if is_folder {
-                return Err(in_the_way("a folder"));
+                return Err(in_the_way(InTheWay::Folder));
             } else {
                 self.file(&item.path(), &child, there.is_some())?;
             }
@@ -699,11 +699,17 @@ fn stamp_of(local: &Path) -> Metadata {
     stamp
 }
 
-fn in_the_way(what: &str) -> io::Error {
-    let kind = if what == "a folder" {
-        io::ErrorKind::IsADirectory
-    } else {
-        io::ErrorKind::NotADirectory
+/// What already holds the name on the server.
+#[derive(Clone, Copy)]
+enum InTheWay {
+    Folder,
+    File,
+}
+
+fn in_the_way(found: InTheWay) -> io::Error {
+    let (kind, what) = match found {
+        InTheWay::Folder => (io::ErrorKind::IsADirectory, "a folder"),
+        InTheWay::File => (io::ErrorKind::NotADirectory, "a file"),
     };
     io::Error::new(
         kind,
