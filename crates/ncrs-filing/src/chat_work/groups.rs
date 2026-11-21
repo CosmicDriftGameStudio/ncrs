@@ -221,7 +221,10 @@ pub fn numbered_name(wanted: &Path, taken: &mut BTreeSet<PathBuf>) -> PathBuf {
     let folder = wanted.parent().unwrap_or_else(|| Path::new(""));
     let mut names: HashSet<String> = taken
         .iter()
-        .filter(|path| path.parent().unwrap_or_else(|| Path::new("")) == folder)
+        .filter(|path| {
+            let parent = path.parent().unwrap_or_else(|| Path::new(""));
+            parent.to_string_lossy().to_lowercase() == folder.to_string_lossy().to_lowercase()
+        })
         .filter_map(|path| path.file_name())
         .map(|name| name.to_string_lossy().to_lowercase())
         .collect();
