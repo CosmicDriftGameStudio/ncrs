@@ -150,6 +150,14 @@ pub fn finish_take_in(
     hash: ContentHash,
     now: SystemTime,
 ) -> Result<Taken, IntakeError> {
+    // The caller may have let go of the index while the file was hashed, and the
+    // user may have excluded the path meanwhile.
+    if index.is_excluded(path)? {
+        return Ok(Taken {
+            outcome: Outcome::Skipped(Skip::Excluded),
+            hashed: true,
+        });
+    }
     let stamp = pending.stamp;
     let outcome = file_with_hash(index, location, path, stamp, hash, now)?;
     Ok(Taken {

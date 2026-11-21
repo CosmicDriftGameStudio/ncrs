@@ -11,8 +11,9 @@ mod tests {
         Index,
     };
     use ncrs_intake::{
-        scan_location, settle_location, take_in, Location, LocationMode, LocationWatcher, Outcome,
-        ScanReport, Skip, StabilityTracker, WatchEvent, STABLE_AFTER,
+        finish_take_in, prepare_take_in, scan_location, settle_location, take_in, Location,
+        LocationMode, LocationWatcher, Outcome, Prepared, ScanReport, Skip, StabilityTracker,
+        WatchEvent, STABLE_AFTER,
     };
     use sha2::{Digest as _, Sha256};
     use std::collections::BTreeSet;
@@ -715,6 +716,39 @@ mod tests {
         assert!(fixture.index.document_by_path(&secret).unwrap().is_none());
         assert!(fixture.index.document(known_id).unwrap().is_none());
         assert!(fixture.index.document_by_path(&known).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_file_excluded_while_it_is_hashed_is_not_filed() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let inbox = location(&dir, LocationMode::Inbox, false);
+        let path = put(&inbox, "big.pdf", INVOICE);
+        let prepare = |fixture: &mut Fixture, now| {
+            prepare_take_in(&fixture.index, &inbox, &path, &mut fixture.tracker, now).unwrap()
+        };
+        assert!(matches!(
+            prepare(&mut fixture, t0()),
+            Prepared::Done(taken) if taken.outcome == Outcome::NotStableYet
+        ));
+        let Prepared::Hash(pending) = prepare(&mut fixture, t0() + STABLE_AFTER) else {
+            panic!("expected the file to be ready for hashing");
+        };
+        let hash = pending.hash(&path).unwrap().unwrap();
+
+        fixture.index.exclude_path(&path).unwrap();
+        let taken = finish_take_in(
+            &mut fixture.index,
+            &inbox,
+            &path,
+            pending,
+            hash,
+            t0() + STABLE_AFTER,
+        )
+        .unwrap();
+
+        assert_eq!(taken.outcome, Outcome::Skipped(Skip::Excluded));
+        assert!(fixture.index.document_by_path(&path).unwrap().is_none());
     }
 
     #[cfg(unix)]

@@ -60,7 +60,8 @@ pub fn relative_to_root<'path>(location: &Location, path: &'path Path) -> Option
         .then_some(relative)
 }
 
-/// Decides from the name alone whether a file in the location is taken in.
+/// Decides from the name, plus a look at the folder for a `body.txt`, whether a
+/// file in the location is taken in.
 pub fn classify(location: &Location, path: &Path) -> Result<(), Skip> {
     let relative = relative_to_root(location, path).ok_or(Skip::OutsideLocation)?;
     let hidden = relative
@@ -80,7 +81,11 @@ pub fn classify(location: &Location, path: &Path) -> Result<(), Skip> {
     {
         return Err(Skip::Temporary);
     }
-    if name == "body.txt" && path.parent().is_some_and(folder_has_eml) {
+    // The folder is read only for a file that is named like a mail body.
+    let named_like_mail_body = path
+        .file_name()
+        .is_some_and(|file_name| is_mail_body(file_name, true));
+    if named_like_mail_body && path.parent().is_some_and(folder_has_eml) {
         return Err(Skip::MailBody);
     }
     let extension = lowercase_extension(path);
