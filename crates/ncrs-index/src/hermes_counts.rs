@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
@@ -14,6 +16,21 @@ impl Index {
             |row| row.get(0),
         )?;
         Ok(found)
+    }
+
+    /// The paths of the documents that are present, not excluded and have no
+    /// text stored (or only an empty one), in path order.
+    pub fn documents_without_text(&self) -> Result<Vec<PathBuf>, IndexError> {
+        let excluded = is_excluded_sql("d.path");
+        let mut statement = self.connection().prepare(&format!(
+            "{EXCLUDED_FOLDERS_CTE} SELECT d.path FROM document d
+             WHERE d.has_text = 0 AND d.missing_since IS NULL AND NOT {excluded}
+             ORDER BY d.path"
+        ))?;
+        let paths = statement
+            .query_map([], |row| row.get::<_, String>(0).map(PathBuf::from))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(paths)
     }
 
     /// The version of the field detection that last read the document; 0 when
@@ -267,6 +284,30 @@ mod tests {
         assert_eq!(counts(&index), (0, 1));
         index.set_document_text(id, "New text").unwrap();
         assert_eq!(counts(&index), (1, 0));
+    }
+
+    #[test]
+    fn the_documents_without_text_are_the_present_and_not_excluded_ones_with_no_or_empty_text() {
+        let (_dir, mut index) = plain_index();
+        let read = index.insert_document(&archive_document(1)).unwrap();
+        index.set_document_text(read, "Rent").unwrap();
+        index.insert_document(&archive_document(2)).unwrap();
+        let empty = index.insert_document(&archive_document(3)).unwrap();
+        index.set_document_text(empty, " ").unwrap();
+        let gone = index.insert_document(&archive_document(4)).unwrap();
+        index.mark_document_missing(gone).unwrap();
+        let excluded = archive_document(5);
+        index.insert_document(&excluded).unwrap();
+        index.exclude_path(&excluded.path).unwrap();
+        index.insert_document(&new_document(6)).unwrap();
+
+        let mut expected = vec![
+            archive_document(2).path,
+            archive_document(3).path,
+            new_document(6).path,
+        ];
+        expected.sort();
+        assert_eq!(index.documents_without_text().unwrap(), expected);
     }
 
     #[test]
