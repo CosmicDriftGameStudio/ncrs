@@ -3,12 +3,19 @@
 // stage (stage.html, one render(t) function), captured frame by frame into ffmpeg.
 // Outputs in target/trailer/out/: ncrs-trailer.mp4, web/en.mp4, web/en.jpg, social.mp4, appstore.mp4.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { AI_NOTICE, CAST, CREDITS, END_SAY, story, WALL, WALL_SAY, WALL_STAMPS, type Camera, type Stamp } from "./story";
 
 type Step = { file: string; seconds: number; key?: string };
 type Scene = { id: string; title: string; subtitle: string; steps: Step[] };
+type StageApi = {
+  setup(cut: Item[]): number;
+  render(time: number, options?: { bare?: boolean; wide?: boolean }): Promise<void>;
+  sceneEnd(id: string): number;
+};
 type Item =
   | { type: "title" | "ident"; dur: number }
   | { type: "credits"; dur: number; cast: string[][]; entries: string[][]; notice: string }
@@ -32,6 +39,9 @@ const POSTER_SCENE = "panels";
 const VOICE_DELAY = 0.15;
 const VOICE_TAIL = 0.35;
 const DUCKED_MUSIC = 0.35;
+const TTS_MODEL = "google/gemini-3.8-flash-tts";
+const TTS_VOICE = "Kore";
+const TTS_INSTRUCTIONS = "Female Hollywood action movie trailer voice-over: confident, intense, fast, high energy, hard emphasis on key words, no slow pauses.";
 const WEB_COMMENT = `${AI_NOTICE} (Google Gemini TTS, Google Lyria)`;
 
 const root = resolve(import.meta.dir, "../..");
@@ -46,22 +56,46 @@ mkdirSync(voiceWork, { recursive: true });
 const hasMusic = existsSync(music);
 mkdirSync(join(out, "web"), { recursive: true });
 
-const scenes: Scene[] = JSON.parse(readFileSync(join(work, "timeline.json"), "utf8"));
-/** Voice-over as 24 kHz mono PCM, cached in scripts/trailer/voice/ (only a missing file calls the API). Returns seconds. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+const isStep = (value: unknown): value is Step =>
+  isRecord(value) && typeof value.file === "string" && typeof value.seconds === "number" && (value.key === undefined || typeof value.key === "string");
+const isScene = (value: unknown): value is Scene =>
+  isRecord(value) &&
+  typeof value.id === "string" &&
+  typeof value.title === "string" &&
+  typeof value.subtitle === "string" &&
+  Array.isArray(value.steps) &&
+  value.steps.length > 0 &&
+  value.steps.every(isStep);
+function parseTimeline(raw: unknown): Scene[] {
+  if (!Array.isArray(raw) || !raw.every(isScene)) throw new Error("target/trailer/timeline.json does not match the scene list (re-run trailer_frames)");
+  return raw;
+}
+function probeSeconds(file: string): number {
+  const run = Bun.spawnSync(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
+  const duration = Number.parseFloat(run.stdout.toString());
+  if (run.exitCode !== 0 || Number.isNaN(duration)) throw new Error(`ffprobe could not read the length of ${file}`);
+  return duration;
+}
+
+const scenes = parseTimeline(JSON.parse(readFileSync(join(work, "timeline.json"), "utf8")));
+const musicSeconds = hasMusic ? probeSeconds(music) : 0;
+/** Voice-over as 24 kHz mono PCM, cached in scripts/trailer/voice/ by scene, text and voice settings (only a missing file calls the API). Returns seconds. */
 async function speak(id: string, text: string): Promise<number> {
-  const pcm = join(voiceCache, `${id}.pcm`);
+  const settingsHash = createHash("sha256").update(JSON.stringify([text, TTS_MODEL, TTS_VOICE, TTS_INSTRUCTIONS])).digest("hex").slice(0, 8);
+  const pcm = join(voiceCache, `${id}-${settingsHash}.pcm`);
   if (!existsSync(pcm)) {
     const key = process.env.OPENROUTER_API_KEY;
-    if (!key) throw new Error(`voice/${id}.pcm is missing and OPENROUTER_API_KEY is not set`);
+    if (!key) throw new Error(`voice/${id}-${settingsHash}.pcm is missing and OPENROUTER_API_KEY is not set`);
     const res = await fetch("https://openrouter.ai/api/v1/audio/speech", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3.8-flash-tts",
+        model: TTS_MODEL,
         input: text,
-        voice: "Kore",
+        voice: TTS_VOICE,
         response_format: "pcm",
-        instructions: "Female Hollywood action movie trailer voice-over: confident, intense, fast, high energy, hard emphasis on key words, no slow pauses.",
+        instructions: TTS_INSTRUCTIONS,
       }),
     });
     if (!res.ok) throw new Error(`tts ${id}: ${res.status} ${await res.text()}`);
@@ -151,7 +185,7 @@ function writeCaptions(items: Item[], target: string) {
   for (const item of items) {
     if (spoken(item)) {
       let done = 0;
-      for (const sentence of item.say.match(/[^.!?]+[.!?]+/g) ?? [item.say]) {
+      for (const sentence of (item.say.match(/[^.!?]+(?:[.!?]+|$)/g) ?? []).filter((part) => part.trim() !== "")) {
         const from = at + VOICE_DELAY + (done / item.say.length) * item.voice;
         done += sentence.length;
         cues.push(`${stamp(from)} --> ${stamp(at + VOICE_DELAY + (done / item.say.length) * item.voice)}\n${sentence.trim()}`);
@@ -169,15 +203,15 @@ function ffmpeg(args: string[]) {
 
 writeFileSync(
   join(work, "stage.html"),
-  readFileSync(join(import.meta.dir, "stage.html"), "utf8").replaceAll("__ROOT__", `file://${root}`),
+  readFileSync(join(import.meta.dir, "stage.html"), "utf8").replaceAll("__ROOT__", pathToFileURL(root).href),
 );
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-await page.goto(`file://${work}/stage.html`);
+await page.goto(pathToFileURL(join(work, "stage.html")).href);
 await page.evaluate(() => document.fonts.ready);
 
 async function capture(items: Item[], target: string) {
-  const total: number = await page.evaluate((cut) => (globalThis as any).setup(cut), items);
+  const total: number = await page.evaluate((cut) => (globalThis as unknown as StageApi).setup(cut), items);
   const encoder = Bun.spawn(
     ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-framerate", `${FPS}`, "-c:v", "mjpeg", "-i", "-",
       "-vf", "scale=in_range=pc:out_range=tv,format=yuv420p", "-c:v", "libx264", "-crf", "18", target],
@@ -185,11 +219,12 @@ async function capture(items: Item[], target: string) {
   );
   const frames = Math.ceil(total * FPS);
   for (let frame = 0; frame < frames; frame++) {
-    await page.evaluate((time) => (globalThis as any).render(time), Math.min(frame / FPS, total - 1e-3));
+    await page.evaluate((time) => (globalThis as unknown as StageApi).render(time), Math.min(frame / FPS, total - 1e-3));
     encoder.stdin.write(await page.screenshot({ type: "jpeg", quality: 92 }));
   }
   encoder.stdin.end();
-  await encoder.exited;
+  const exitCode = await encoder.exited;
+  if (exitCode !== 0) throw new Error(`ffmpeg encode ${target} failed (${exitCode})`);
   return total;
 }
 
@@ -201,6 +236,9 @@ function finish(silent: string, target: string, length: number, items: Item[], v
   const lead = items[0].type === "ident" ? items[0].dur : 0;
   const duck = (voice?.windows ?? []).map(([from, to]) => `volume=${DUCKED_MUSIC}:enable='between(t,${from.toFixed(3)},${to.toFixed(3)})'`).join(",");
   const musicStart = Math.max(0, lead - 0.4);
+  if (hasMusic && musicStart + musicSeconds < length) {
+    throw new Error(`music.mp3 is ${musicSeconds.toFixed(1)} s, the cut needs ${(length - musicStart).toFixed(1)} s of music`);
+  }
   const musicChain = `adelay=${Math.round(musicStart * 1000)}:all=1,afade=t=in:st=${musicStart.toFixed(3)}:d=0.8,afade=t=out:st=${(length - 1.5).toFixed(3)}:d=1.5${duck ? "," + duck : ""},apad`;
   const inputs = ["-i", silent];
   const lastInput = () => inputs.filter((x) => x === "-i").length - 1;
@@ -219,6 +257,10 @@ function finish(silent: string, target: string, length: number, items: Item[], v
     inputs.push("-ss", IDENT_MUSIC_FROM_S.toString(), "-t", lead.toFixed(3), "-i", identMusic);
     filters.push(`[${lastInput()}:a]afade=t=in:d=0.3,afade=t=out:st=${(lead - IDENT_MUSIC_FADE).toFixed(3)}:d=${IDENT_MUSIC_FADE}[id]`);
     mixed.push("[id]");
+  }
+  if (mixed.length === 0) {
+    ffmpeg(["-i", silent, ...video, "-t", length.toFixed(3), "-movflags", "+faststart", ...extra, target]);
+    return;
   }
   filters.push(`${mixed.join("")}amix=inputs=${mixed.length}:duration=longest:normalize=0[a]`);
   ffmpeg([...inputs, "-filter_complex", filters.join(";"), "-map", "0:v", "-map", "[a]", ...video, "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "192k", "-t", length.toFixed(3), "-movflags", "+faststart", ...extra, target]);
@@ -268,9 +310,9 @@ const appStoreLength = await capture(appStore, join(work, "appstore.silent.mp4")
 finish(join(work, "appstore.silent.mp4"), join(out, "appstore.mp4"), appStoreLength, appStore, voiceTrack(appStore, join(voiceWork, "appstore.wav")), ["-c:v", "copy"], ["-b:a", "256k"]);
 
 // poster: the whole window at the end of the panels scene, no title, no cap
-await page.evaluate((cut) => (globalThis as any).setup(cut), hero);
-const posterAt: number = await page.evaluate((id) => (globalThis as any).sceneEnd(id) - 0.05, POSTER_SCENE);
-await page.evaluate(([time]) => (globalThis as any).render(time, { bare: true, wide: true }), [posterAt]);
+await page.evaluate((cut) => (globalThis as unknown as StageApi).setup(cut), hero);
+const posterAt: number = await page.evaluate((id) => (globalThis as unknown as StageApi).sceneEnd(id) - 0.05, POSTER_SCENE);
+await page.evaluate(([time]) => (globalThis as unknown as StageApi).render(time, { bare: true, wide: true }), [posterAt]);
 await page.screenshot({ path: join(out, "web/en.jpg"), type: "jpeg", quality: 92 });
 await browser.close();
 

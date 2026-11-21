@@ -85,6 +85,16 @@ impl App {
         self
     }
 
+    /// The own-server dialog is waiting for the answer of "Test connection",
+    /// without a request going out.
+    #[cfg(feature = "media-tools")]
+    pub fn asking_ai_server(mut self) -> Self {
+        if let Some(state) = self.settings.page.as_mut() {
+            state.ai_check = ncrs_settings::settings::AiCheck::Asking;
+        }
+        self
+    }
+
     /// The page of Hermes the open settings tab shows, if any.
     pub fn open_hermes_page(&self) -> Option<HermesPage> {
         self.settings.page.as_ref().and(self.hermes.open_page())
