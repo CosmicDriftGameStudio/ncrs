@@ -350,3 +350,34 @@ async fn a_refused_recovery_prompt_shows_the_reason_and_no_key() {
         other => panic!("expected the reason, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn the_lock_key_locks_an_open_vault_and_starts_the_unlock_of_a_locked_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state_with_note(dir.path(), "secret plan");
+    unlock(&mut state, Instant::now());
+
+    let _ = update(&mut state, Message::ToggleLock, &CTX);
+    assert!(!state.vault.is_unlocked());
+    assert!(!state.unlocking);
+
+    let _ = update(&mut state, Message::ToggleLock, &CTX);
+    assert!(state.unlocking);
+}
+
+#[tokio::test]
+async fn enter_on_the_lock_page_starts_the_unlock() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = state_with_note(dir.path(), "secret plan");
+    unlock(&mut state, Instant::now());
+    let plain = dir.path().join("a.md");
+    seal_note(&mut state, &plain);
+    let sealed = RowKey::Note(dir.path().join("a.md.enc"));
+    let _ = update(&mut state, Message::Pressed(sealed), &CTX);
+    let _ = update(&mut state, Message::Lock, &CTX);
+    assert!(state.shown_is_locked());
+    assert!(!state.unlocking);
+
+    let _ = update(&mut state, Message::Enter, &CTX);
+    assert!(state.unlocking);
+}

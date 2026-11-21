@@ -151,6 +151,10 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.commit_cursor = row;
             quiet(ensure_detail(state))
         }
+        Message::FolderPressed => {
+            state.area = Area::Detail;
+            quiet(Task::none())
+        }
         Message::FilePressed(index) => {
             state.area = Area::Detail;
             state.file_cursor = index;
@@ -180,12 +184,18 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Up => quiet(move_cursor(state, -1)),
         Message::Down => quiet(move_cursor(state, 1)),
+        // On a section header the arrows fold it first; otherwise they move
+        // between the areas, without wrapping around.
         Message::Left => {
-            collapse_at_cursor(state, true);
+            if !collapse_at_cursor(state, true) && state.area != Area::Sidebar {
+                state.area = state.area.previous();
+            }
             quiet(Task::none())
         }
         Message::Right => {
-            collapse_at_cursor(state, false);
+            if !collapse_at_cursor(state, false) && state.area != Area::Detail {
+                state.area = state.area.next();
+            }
             quiet(Task::none())
         }
         Message::Enter => enter(state),
@@ -271,17 +281,20 @@ fn toggle_section(state: &mut State, section: Section) {
         .min(state.sidebar_items().len().saturating_sub(1));
 }
 
-fn collapse_at_cursor(state: &mut State, collapse: bool) {
+/// Folds or unfolds the section header under the cursor; whether it did.
+fn collapse_at_cursor(state: &mut State, collapse: bool) -> bool {
     if state.area != Area::Sidebar {
-        return;
+        return false;
     }
     let item = state.sidebar_items().get(state.sidebar_cursor).copied();
-    if let Some(SidebarItem::Header(section)) = item {
-        if state.collapsed.contains(&section) == collapse {
-            return;
-        }
-        toggle_section(state, section);
+    let Some(SidebarItem::Header(section)) = item else {
+        return false;
+    };
+    if state.collapsed.contains(&section) == collapse {
+        return false;
     }
+    toggle_section(state, section);
+    true
 }
 
 fn activate_sidebar(state: &mut State, index: usize) -> Outcome {

@@ -69,6 +69,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
             | Message::SaveDue(_)
             | Message::Up
             | Message::Down
+            | Message::Left
+            | Message::Right
             | Message::Tick(_)
     );
     // The clock and the answers of the tasks are not input.
@@ -121,6 +123,18 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
             step(state, 1);
             nothing
         }
+        Message::Left => {
+            fold_left(state);
+            nothing
+        }
+        Message::Right => {
+            unfold_right(state);
+            nothing
+        }
+        Message::ToggleLock if state.vault.is_unlocked() => {
+            secure::handle(state, Message::Lock, ctx)
+        }
+        Message::ToggleLock => secure::handle(state, Message::Unlock, ctx),
         Message::Escape => escape(state, ctx),
         Message::Close => close(state),
         Message::Tick(_)
@@ -543,7 +557,52 @@ fn enter(state: &mut State, ctx: &Ctx) -> Task<Message> {
             set_mode(state, Mode::Edit, ctx)
         }
         Some(key) => pressed(state, key),
+        None if state.shown_is_locked() => secure::unlock(state, false, ctx),
         None => Task::none(),
+    }
+}
+
+/// ←: a folder that is open folds; anything else goes to the folder it is in.
+fn fold_left(state: &mut State) {
+    if state.searching() {
+        return;
+    }
+    match state.cursor.clone() {
+        Some(RowKey::Folder(folder)) if state.expanded.remove(&folder) => {}
+        Some(RowKey::Folder(folder)) => {
+            if let Some(parent) = folder.parent() {
+                go_to_folder(state, parent.to_owned());
+            }
+        }
+        Some(RowKey::Note(path)) => {
+            if let Some(folder) = state.note(&path).map(|note| note.folder.clone()) {
+                go_to_folder(state, folder);
+            }
+        }
+        Some(RowKey::Files) => state.files_open = false,
+        None => {}
+    }
+}
+
+/// →: a folder that is closed unfolds.
+fn unfold_right(state: &mut State) {
+    if state.searching() {
+        return;
+    }
+    match state.cursor.clone() {
+        Some(RowKey::Folder(folder)) => {
+            state.expanded.insert(folder);
+        }
+        Some(RowKey::Files) => state.files_open = true,
+        Some(RowKey::Note(_)) | None => {}
+    }
+}
+
+/// Puts the cursor on the row of `folder` when the tree shows one.
+fn go_to_folder(state: &mut State, folder: PathBuf) {
+    let key = RowKey::Folder(folder);
+    if state.rows().iter().any(|row| row.key == key) {
+        state.cursor = Some(key);
     }
 }
 

@@ -8,7 +8,7 @@
 
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -30,6 +30,7 @@ use crate::prompt::{
     first_chars, user_message_prefix, user_message_suffix, MAX_SENT_TEXT_CHARS, SYSTEM_PROMPT,
 };
 use crate::status::Compute;
+use crate::user_input::{QUIET_BACKGROUND_MS, QUIET_WAITING_MS};
 
 mod backends;
 mod chat_session;
@@ -90,6 +91,9 @@ pub struct LocalModel {
     /// Set when the app quits: the running job ends at the next batch or
     /// token instead of keeping the quit waiting for a whole document.
     stop: Arc<AtomicBool>,
+    /// How long after the last input of the window the running job waits
+    /// before it decodes; the worker sets it for each job.
+    quiet_for_ms: AtomicU64,
 }
 
 impl LocalModel {
@@ -114,6 +118,7 @@ impl LocalModel {
             context_tokens: config.context_tokens,
             compute,
             stop: config.stop,
+            quiet_for_ms: AtomicU64::new(QUIET_WAITING_MS),
         })
     }
 
@@ -212,11 +217,16 @@ impl LocalModel {
             batch
                 .add(token, position, &[0], true)
                 .map_err(|_full| AiError::Model("the model could not continue"))?;
+            self.yield_to_window()?;
             context.decode(batch).map_err(decoding_failed)?;
         }
         Ok(String::from_utf8_lossy(&vocab.detokenize(&reply, false, false)).into_owned())
     }
 }
+
+/// The most tokens one decode call takes of a prompt, so the window can get a
+/// frame in between.
+const MAX_PROMPT_CHUNK: usize = 64;
 
 fn decoding_failed(_err: impl std::error::Error) -> AiError {
     AiError::Model("the model could not read the document")
@@ -261,6 +271,22 @@ fn load_on_cpu(
 }
 
 impl LocalModel {
+    /// Whether the jobs that follow are ones a person waits for.
+    pub(super) fn set_person_waiting(&self, waiting: bool) {
+        let quiet_for_ms = if waiting {
+            QUIET_WAITING_MS
+        } else {
+            QUIET_BACKGROUND_MS
+        };
+        self.quiet_for_ms.store(quiet_for_ms, Ordering::Relaxed);
+    }
+
+    /// Waits while the window is in use, so it gets the GPU for its frames.
+    fn yield_to_window(&self) -> Result<(), AiError> {
+        crate::user_input::wait_until_quiet(&self.stop, self.quiet_for_ms.load(Ordering::Relaxed));
+        self.not_stopped()
+    }
+
     fn not_stopped(&self) -> Result<(), AiError> {
         if self.stop.load(Ordering::Relaxed) {
             return Err(AiError::Model("the model is closed"));
@@ -276,11 +302,12 @@ impl LocalModel {
         batch: &mut LlamaBatch<'_>,
         tokens: &[LlamaToken],
         first_position: usize,
-        batch_len: usize,
+        max_batch_len: usize,
     ) -> Result<(), AiError> {
         let last = tokens.len().saturating_sub(1);
+        let batch_len = max_batch_len.min(MAX_PROMPT_CHUNK);
         for (chunk_number, chunk) in tokens.chunks(batch_len).enumerate() {
-            self.not_stopped()?;
+            self.yield_to_window()?;
             batch.clear();
             for (offset, token) in chunk.iter().enumerate() {
                 let index = chunk_number * batch_len + offset;

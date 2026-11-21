@@ -531,6 +531,7 @@ impl App {
             palette: Palette::default(),
             job_error: None,
             job_error_press: None,
+            quitting: false,
             notice: None,
             notice_generation: 0,
             job_done: 0,
@@ -554,7 +555,7 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(notes_root),
             filing_view: ncrs_filing_view::State::default(),
-            git_view: ncrs_git_view::State::default(),
+            git_tabs: git_tabs::GitTabs::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),

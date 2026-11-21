@@ -14,7 +14,10 @@ use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
-use ncrs_ui_kit::tree_list::{result_row, tree_row_with_lock, ResultRow, TreeRow, TREE_INDENT};
+use ncrs_ui_kit::tree_list::{
+    result_row, tree_row_with_lock, tree_scroll, ResultRow, TreeRow, LIST_INSET, ROW_OVERHEAD,
+    TREE_INDENT,
+};
 use ncrs_user_verify::Check;
 
 use crate::crypt::is_encrypted_path;
@@ -28,7 +31,7 @@ use crate::tree::RowKey;
 /// Where the first row of the sidebar tree starts below the notes tab: the
 /// search field, the buttons, the rule and the padding of the list. Measured
 /// from the drawn page, as the layout is made of widgets, not of numbers.
-pub const SIDEBAR_ROWS_TOP: f32 = 84.0;
+pub const SIDEBAR_ROWS_TOP: f32 = 72.0;
 
 /// The ids of the fields, for the focus tasks.
 pub const SEARCH_ID: &str = "notes-search";
@@ -146,7 +149,7 @@ fn sidebar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     column![
         container(column![search, buttons].spacing(spacing::XS)).padding(spacing::M),
         theme::horizontal_rule(palette.border_inactive),
-        page_scroll(TREE_ID, list),
+        tree_scroll(TREE_ID, list),
     ]
     .height(Length::Fill)
     .into()
@@ -197,9 +200,16 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 label,
                 chosen: state.cursor.as_ref() == Some(&entry.key),
                 dim: entry.key == RowKey::Files,
+                lead: None,
+                trail: Vec::new(),
                 on_press: Message::Pressed(entry.key),
             },
             locked,
+            locked.then_some(if state.vault.is_unlocked() {
+                Message::Lock
+            } else {
+                Message::Unlock
+            }),
             ctx.palette,
         );
         Element::from(mouse_area(row).on_right_press(Message::OpenMenu(key)))
@@ -218,15 +228,10 @@ fn path_below_home(file: &Path, home: &Path) -> String {
     }
 }
 
-/// What a tree row takes besides its label: open mark, gap and padding.
-const ROW_OVERHEAD: f32 = 26.0;
-/// The width the tree list loses to the margin around its rows.
-const LIST_INSET: f32 = 48.0;
-
 /// The path cut in the middle to fit the row, so the file name stays visible
 /// where the row is too narrow.
 fn path_fitted_to_row(path: &str, depth: usize) -> String {
-    let room = SIDEBAR_WIDTH - LIST_INSET - ROW_OVERHEAD - TREE_INDENT * depth as f32;
+    let room = SIDEBAR_WIDTH - 2.0 * LIST_INSET - ROW_OVERHEAD - TREE_INDENT * depth as f32;
     format::fit_middle(path, room, font_size::BODY)
 }
 

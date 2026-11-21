@@ -8,7 +8,7 @@ use iced::{alignment, Border, Color, Element, Length, Padding};
 use crate::git_mark::MODIFIED_ORANGE;
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
-use crate::tree_list::TREE_INDENT;
+use crate::tree_list::{LABEL_LEAD, TREE_INDENT};
 
 pub const AUTHOR_WIDTH: f32 = 130.0;
 pub const DATE_WIDTH: f32 = 130.0;
@@ -432,7 +432,7 @@ pub fn worktree_row<'a, M: Clone + 'a>(
     .align_y(alignment::Vertical::Center);
     let content = container(column![first, small(worktree.detail, dim)].spacing(2.0))
         .padding(Padding {
-            left: spacing::CELL_PADDING_X + TREE_INDENT * worktree.depth as f32,
+            left: spacing::CELL_PADDING_X + LABEL_LEAD + TREE_INDENT * worktree.depth as f32,
             right: spacing::CELL_PADDING_X,
             ..Padding::ZERO
         })

@@ -1,4 +1,5 @@
 use super::trial::*;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex as StdMutex;
 
 use ncrs_ai::{
@@ -156,7 +157,15 @@ fn remembering_asks_from_the_end_in_pages_and_the_chats_trial_finds_every_pick()
     let model = RecordingModel::default();
     let source = source_of(25);
 
-    remember_from_readings(&setup.access, &source, &target_reading(), &model, None).unwrap();
+    remember_from_readings(
+        &setup.access,
+        &source,
+        &target_reading(),
+        &model,
+        None,
+        &AtomicUsize::new(0),
+    )
+    .unwrap();
 
     assert_eq!(
         model.calls(),
@@ -171,7 +180,15 @@ fn remembering_asks_from_the_end_in_pages_and_the_chats_trial_finds_every_pick()
     assert!(chat.model_left.is_empty());
     assert_eq!(chat.unsure, 25);
 
-    remember_from_readings(&setup.access, &source, &target_reading(), &model, None).unwrap();
+    remember_from_readings(
+        &setup.access,
+        &source,
+        &target_reading(),
+        &model,
+        None,
+        &AtomicUsize::new(0),
+    )
+    .unwrap();
     assert_eq!(model.calls().len(), 3);
 }
 
@@ -189,6 +206,7 @@ fn a_failing_model_ends_the_remembering_with_an_error() {
         &target_reading(),
         &model,
         None,
+        &AtomicUsize::new(0),
     );
 
     assert!(result.is_err());

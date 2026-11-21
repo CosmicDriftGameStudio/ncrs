@@ -295,6 +295,12 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::SavedQueries,
             Binding::with_modifiers(Character("a".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
+        // The Git view of the repository the panel is in, G for Git;
+        // Cmd+Shift+G, Ctrl+Shift+G elsewhere.
+        (
+            A::GitView,
+            Binding::with_modifiers(Character("g".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.
         (

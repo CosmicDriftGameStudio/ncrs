@@ -801,6 +801,9 @@ mod acceptance_v160_git;
 mod acceptance_v160_notes_chats;
 
 #[cfg(test)]
+mod acceptance_v161_tabs;
+
+#[cfg(test)]
 mod favourites;
 
 #[cfg(test)]

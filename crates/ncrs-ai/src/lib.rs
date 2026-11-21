@@ -21,6 +21,7 @@ mod status;
 #[cfg(any(test, feature = "testing"))]
 mod testing;
 mod usage_log;
+mod user_input;
 
 pub use api_key::{api_key_account, load_api_key, store_api_key, KeyLookup, KeychainKey};
 pub use chat::{
@@ -64,3 +65,4 @@ pub use usage_log::{
     usage_summaries, DayUsage, ModelUsage, Totals, Usage, UsageRecord, UsageSummary, CHART_MODELS,
     USAGE_LOG_FILE,
 };
+pub use user_input::note_user_input;

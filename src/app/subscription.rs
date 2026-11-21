@@ -146,6 +146,14 @@ impl App {
             } else {
                 Subscription::none()
             },
+            // The status bar names the folder and the files left of the picks
+            // job, which only the clock redraws.
+            if ncrs_hermes_chat::picks_running(&self.hermes_chat) {
+                iced::time::every(std::time::Duration::from_secs(1))
+                    .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))
+            } else {
+                Subscription::none()
+            },
             // The bar of a running model download reads a counter the download
             // thread fills; nothing else wakes the view.
             if self.settings.ai_model_download_runs() {
@@ -162,9 +170,19 @@ impl App {
             },
             // Mouse, focus and modifier events of every status: widgets capture
             // the clicks and the pointer moves the menu has to know about.
-            event::listen_with(|event, status, _window| Some((event, status)))
-                .with(Arc::clone(&self.input))
-                .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
+            event::listen_with(|event, status, _window| {
+                // Window events such as redraws are not input; counting them
+                // would hold the model back for as long as anything animates.
+                if matches!(
+                    event,
+                    iced::Event::Mouse(_) | iced::Event::Keyboard(_) | iced::Event::Touch(_)
+                ) {
+                    ncrs_ai::note_user_input();
+                }
+                Some((event, status))
+            })
+            .with(Arc::clone(&self.input))
+            .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
             window::events().filter_map(|(_id, event)| match event {
                 window::Event::Focused => Some(Message::WindowFocused),

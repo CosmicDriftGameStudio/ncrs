@@ -6,15 +6,24 @@ use std::sync::LazyLock;
 use iced::widget::svg::{self, Svg};
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, text};
-use iced::{alignment, Element, Length, Padding, Theme};
+use iced::{alignment, Color, Element, Length, Padding, Theme};
 
+use crate::page_scroll::page_scroll_padded;
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 
 /// Horizontal room one level of the tree takes.
-pub const TREE_INDENT: f32 = 16.0;
+pub const TREE_INDENT: f32 = 10.0;
 /// Room of the fold mark, so labels line up with and without one.
-const MARK_WIDTH: f32 = 14.0;
+const MARK_WIDTH: f32 = 10.0;
+/// Room of the status letter before a label that has one.
+const LEAD_WIDTH: f32 = 14.0;
+/// What a row takes before its label: the fold mark and the gap after it.
+pub const LABEL_LEAD: f32 = MARK_WIDTH + spacing::XS;
+/// What a tree row takes besides its label: left padding, mark and gap.
+pub const ROW_OVERHEAD: f32 = spacing::CELL_PADDING_X + LABEL_LEAD;
+/// The margin around the rows of a tree list; every tree sits in it alike.
+pub const LIST_INSET: f32 = spacing::XS;
 const HIT_GAP: f32 = 2.0;
 
 pub const MARK_OPEN: &str = "\u{25be}";
@@ -31,11 +40,21 @@ pub struct TreeRow<M> {
     pub chosen: bool,
     /// Drawn in the dim ink, like a group that is made up.
     pub dim: bool,
+    /// A short fixed column before the label, such as the status letter of a
+    /// changed file; it takes the ink of the cursor when the row is chosen.
+    pub lead: Option<(String, Color)>,
+    /// Small texts at the right end, such as line counts.
+    pub trail: Vec<(String, Color)>,
     pub on_press: M,
 }
 
+/// `content` in a scrollable that fills the room, set in by [`LIST_INSET`].
+pub fn tree_scroll<'a, M: 'a>(id: &'static str, content: Element<'a, M>) -> Element<'a, M> {
+    page_scroll_padded(id, content, Padding::from(LIST_INSET))
+}
+
 pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Element<'a, M> {
-    tree_row_with_lock(row_of, false, palette)
+    tree_row_with_lock(row_of, false, None, palette)
 }
 
 /// The size of the lock after the label of a locked row.
@@ -56,10 +75,12 @@ fn lock_mark<'a, M: 'a>(color: iced::Color) -> Element<'a, M> {
 }
 
 /// [`tree_row`], with a green lock after the label when `locked` is set (an
-/// encrypted note or folder).
+/// encrypted note or folder). With `on_lock` a press on the lock sends it
+/// instead of pressing the row.
 pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     row_of: TreeRow<M>,
     locked: bool,
+    on_lock: Option<M>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let ink = if row_of.chosen {
@@ -74,21 +95,51 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
         Some(false) => MARK_CLOSED,
         None => "",
     };
-    let mut line = row![
-        container(text(mark).size(font_size::BODY).color(ink)).width(MARK_WIDTH),
+    let cursor_ink = |color: Color| {
+        if row_of.chosen {
+            palette.cursor_text
+        } else {
+            color
+        }
+    };
+    let mut line = row![container(text(mark).size(font_size::BODY).color(ink)).width(MARK_WIDTH)]
+        .spacing(spacing::XS)
+        .width(Length::Fill)
+        .align_y(alignment::Vertical::Center);
+    if let Some((letter, color)) = row_of.lead {
+        line = line.push(
+            container(text(letter).size(font_size::BODY).color(cursor_ink(color)))
+                .width(LEAD_WIDTH),
+        );
+    }
+    line = line.push(
         text(row_of.label)
             .size(font_size::BODY)
             .color(ink)
             .wrapping(Wrapping::None),
-    ]
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center);
+    );
     if locked {
-        line = line.push(lock_mark(palette.success));
+        let lock = lock_mark(palette.success);
+        line = line.push(match on_lock {
+            Some(message) => Element::from(
+                button(lock)
+                    .on_press(message)
+                    .padding(0.0)
+                    .style(|_, _| button::Style::default()),
+            ),
+            None => lock,
+        });
+    }
+    if !row_of.trail.is_empty() {
+        line = line.push(container("").width(Length::Fill));
+        for (shown, color) in row_of.trail {
+            line = line.push(text(shown).size(font_size::SMALL).color(cursor_ink(color)));
+        }
     }
     let content = container(line)
         .padding(Padding {
             left: spacing::CELL_PADDING_X + TREE_INDENT * row_of.depth as f32,
+            right: spacing::CELL_PADDING_X,
             ..Padding::ZERO
         })
         .clip(true)
@@ -96,7 +147,7 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     button(content)
         .on_press(row_of.on_press)
         .width(Length::Fill)
-        .height(size::SIDEBAR_ITEM)
+        .height(size::ROW)
         .padding(0.0)
         .style(theme::menu_item(palette, row_of.chosen))
         .into()

@@ -908,3 +908,61 @@ fn link(document: Option<i64>, file: &Path) -> ncrs_core::NoteLink {
         file: file.to_owned(),
     }
 }
+
+#[test]
+fn keys_lock_search_new_folder_and_edit() {
+    let chord =
+        |character: &str| notes_key(&Key::Character(character.into()), Modifiers::COMMAND, false);
+    assert_eq!(chord("l"), Some(Message::ToggleLock));
+    assert_eq!(chord("f"), Some(Message::FocusSearch));
+    for editing in [false, true] {
+        let lock = notes_key(&Key::Character("l".into()), Modifiers::COMMAND, editing);
+        assert_eq!(lock, Some(Message::ToggleLock), "editing {editing}");
+        let folder = notes_key(&Key::Named(Named::F7), Modifiers::empty(), editing);
+        assert_eq!(folder, Some(Message::NewFolder), "editing {editing}");
+    }
+    assert_eq!(
+        notes_key(&Key::Named(Named::F4), Modifiers::empty(), false),
+        Some(Message::SetMode(Mode::Edit))
+    );
+    assert_eq!(
+        notes_key(&Key::Named(Named::F4), Modifiers::empty(), true),
+        None
+    );
+    for modifiers in [Modifiers::empty(), Modifiers::SHIFT] {
+        let slash = Key::Character("/".into());
+        assert_eq!(
+            notes_key(&slash, modifiers, false),
+            Some(Message::FocusSearch)
+        );
+        assert_eq!(notes_key(&slash, modifiers, true), None);
+    }
+}
+
+#[test]
+fn left_and_right_fold_the_folder_and_left_climbs_out_of_it() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Trips/Italy.md", "Rome");
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let folder = RowKey::Folder(PathBuf::from("Trips"));
+    let note = RowKey::Note(dir.path().join("Trips/Italy.md"));
+    let rows = |shown: &State| {
+        shown
+            .rows()
+            .into_iter()
+            .map(|row| row.key)
+            .collect::<Vec<_>>()
+    };
+    state.cursor = Some(folder.clone());
+
+    let _ = update(&mut state, Message::Right, &CTX);
+    assert_eq!(rows(&state), [folder.clone(), note.clone()]);
+    let _ = update(&mut state, Message::Left, &CTX);
+    assert_eq!(rows(&state), std::slice::from_ref(&folder));
+
+    let _ = update(&mut state, Message::Right, &CTX);
+    state.cursor = Some(note);
+    let _ = update(&mut state, Message::Left, &CTX);
+    assert_eq!(state.cursor, Some(folder));
+}

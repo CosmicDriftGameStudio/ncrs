@@ -392,12 +392,12 @@ impl App {
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
-        if self.notes_hold_quit() || self.protection_holds_quit() {
+        if self.quitting || self.notes_hold_quit() || self.protection_holds_quit() {
             return Task::none();
         }
         ncrs_hermes_ui::closing(&self.hermes);
         ncrs_filing_view::stop(&self.filing_view);
-        self.git_view.stop();
+        self.git_tabs.stop();
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,
@@ -410,9 +410,28 @@ impl App {
             copies.close();
         }
         self.remote.close_all();
+        ncrs_hermes_chat::stop_picks(&self.hermes_chat);
+        // Freeing the model on the GPU takes seconds and must finish before
+        // the process ends, and the runtime waits for the running blocking
+        // tasks at its end (the picks job, stopped above), so the window goes
+        // away first.
         #[cfg(feature = "local-ai")]
-        ncrs_ai::LazyLocalModel::shutdown_all();
-        iced::exit()
+        let ending = {
+            self.quitting = true;
+            iced::window::latest()
+                .and_then(|id| iced::window::set_mode(id, iced::window::Mode::Hidden))
+                .chain(Task::perform(
+                    async {
+                        // A failed join only means the model was gone already.
+                        let _ = tokio::task::spawn_blocking(ncrs_ai::LazyLocalModel::shutdown_all)
+                            .await;
+                    },
+                    |()| Message::QuitReady,
+                ))
+        };
+        #[cfg(not(feature = "local-ai"))]
+        let ending = iced::exit();
+        ending
     }
 
     /// A click on the "access blocked" error: the Full Disk Access page of

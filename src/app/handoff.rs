@@ -36,7 +36,7 @@ impl App {
 
     /// Whether the poll runs at all.
     pub(in crate::app) fn takes_handoffs(&self) -> bool {
-        self.state_path.is_some()
+        self.state_path.is_some() && !self.quitting
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as

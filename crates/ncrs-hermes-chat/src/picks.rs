@@ -3,12 +3,13 @@
 //! count at once.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use iced::Task;
 use ncrs_ai::ChatModel;
-use ncrs_filing::chat_work::{remember_folder_picks, ChatAccess};
+use ncrs_filing::chat_work::{remember_folder_picks, ChatAccess, LEFT_UNKNOWN};
+use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
@@ -23,6 +24,10 @@ pub struct PicksJob {
     target: PathBuf,
     sources: Vec<PathBuf>,
     stop: Arc<AtomicBool>,
+    /// Sources finished so far; the status bar reads it.
+    done: Arc<AtomicUsize>,
+    /// Files of the current source still waiting for the model.
+    left: Arc<AtomicUsize>,
 }
 
 /// Starts a job for `sequence` of the pipeline unless one runs, this
@@ -47,13 +52,60 @@ pub fn begin(state: &mut State, ctx: &Ctx, sequence: usize) -> Option<PicksJob> 
     state.picks_running = true;
     state.picks_settled_at = Some(sequence);
     state.picks_stop = Arc::default();
+    state.picks_done = Arc::default();
+    state.picks_left = Arc::new(AtomicUsize::new(LEFT_UNKNOWN));
+    state.picks_sources.clone_from(&sources);
     Some(PicksJob {
         access: (**access).clone(),
         model: Arc::clone(model),
         target,
         sources,
         stop: Arc::clone(&state.picks_stop),
+        done: Arc::clone(&state.picks_done),
+        left: Arc::clone(&state.picks_left),
     })
+}
+
+/// What the background job is doing, for the status bar: the folder being
+/// prepared and how many of the read folders are through.
+pub fn picks_line(state: &State, lang: Language) -> Option<String> {
+    if !state.picks_running {
+        return None;
+    }
+    let total = state.picks_sources.len();
+    let done = state
+        .picks_done
+        .load(Ordering::Relaxed)
+        .min(total.saturating_sub(1));
+    let source = state.picks_sources.get(done)?;
+    let name = source
+        .file_name()
+        .unwrap_or(source.as_os_str())
+        .to_string_lossy();
+    let left = state.picks_left.load(Ordering::Relaxed);
+    let (msg, left_text) = if left == LEFT_UNKNOWN {
+        (Msg::StatusHermesPreparingFolder, String::new())
+    } else {
+        (Msg::StatusHermesPreparingFolderLeft, left.to_string())
+    };
+    Some(fill_template(
+        lang.text(msg),
+        &[
+            ("{name}", &name),
+            ("{left}", &left_text),
+            ("{done}", &(done + 1).to_string()),
+            ("{total}", &total.to_string()),
+        ],
+    ))
+}
+
+/// Ends the running job after the file it works on; nothing new starts.
+pub fn stop_picks(state: &State) {
+    state.picks_stop.store(true, Ordering::Relaxed);
+}
+
+pub fn picks_running(state: &State) -> bool {
+    state.picks_running
 }
 
 pub fn launch(state: &mut State) -> Task<Message> {
@@ -75,7 +127,9 @@ pub fn launch(state: &mut State) -> Task<Message> {
                         &job.target,
                         job.model.as_ref(),
                         &job.stop,
+                        &job.left,
                     );
+                    job.done.fetch_add(1, Ordering::Relaxed);
                 }
             })
             .await;
@@ -150,6 +204,36 @@ mod tests {
         assert!(begin(&mut state, &ctx, 5).is_none());
         assert!(begin(&mut state, &ctx, 6).is_some());
         assert_eq!(state.picks_settled_at, Some(6));
+    }
+
+    #[test]
+    fn the_status_line_names_the_folder_and_counts_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ctx = ctx(dir.path(), true);
+        ctx.sources = vec![dir.path().join("inbox"), dir.path().join("scans")];
+        let mut state = State::default();
+        assert_eq!(picks_line(&state, Language::English), None);
+
+        assert!(begin(&mut state, &ctx, 1).is_some());
+        assert_eq!(
+            picks_line(&state, Language::English).as_deref(),
+            Some("Hermes is preparing folder suggestions for inbox (1/2)")
+        );
+        state.picks_done.store(1, Ordering::Relaxed);
+        assert_eq!(
+            picks_line(&state, Language::German).as_deref(),
+            Some("Hermes bereitet Zielordner-Vorschläge für scans vor (2/2)")
+        );
+        state.picks_left.store(7, Ordering::Relaxed);
+        assert_eq!(
+            picks_line(&state, Language::German).as_deref(),
+            Some("Hermes bereitet Zielordner-Vorschläge für scans vor, noch 7 Dateien (2/2)")
+        );
+        assert!(!state.picks_stop.load(Ordering::Relaxed));
+        stop_picks(&state);
+        assert!(state.picks_stop.load(Ordering::Relaxed));
+        state.picks_running = false;
+        assert_eq!(picks_line(&state, Language::English), None);
     }
 
     #[test]

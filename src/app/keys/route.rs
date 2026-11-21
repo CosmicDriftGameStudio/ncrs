@@ -469,6 +469,16 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
+            | Message::GitView(
+                _,
+                ncrs_git_view::Message::Up
+                    | ncrs_git_view::Message::Down
+                    | ncrs_git_view::Message::NextFile
+                    | ncrs_git_view::Message::PreviousFile
+                    | ncrs_git_view::Message::NextHunk
+                    | ncrs_git_view::Message::PreviousHunk,
+            )
+            | Message::Notes(ncrs_notes::Message::Up | ncrs_notes::Message::Down)
             | Message::Search(
                 SearchMessage::ToggleTag
                     | SearchMessage::TagMove(_)

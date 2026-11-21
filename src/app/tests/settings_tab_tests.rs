@@ -337,6 +337,11 @@ async fn ends_the_app(app: &mut App, message: Message) -> bool {
     let mut exits = false;
     while let Some(action) = stream.next().await {
         exits |= matches!(action, Action::Exit);
+        // With the local model the exit comes as `QuitReady` once it is freed.
+        #[cfg(feature = "local-ai")]
+        {
+            exits |= matches!(action, Action::Output(Message::QuitReady));
+        }
     }
     exits
 }

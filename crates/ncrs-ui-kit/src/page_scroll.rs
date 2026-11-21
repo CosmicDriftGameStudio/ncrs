@@ -5,7 +5,7 @@ use iced::advanced::widget::operation::scrollable;
 use iced::advanced::widget::Id;
 use iced::widget::scrollable::{AbsoluteOffset, Direction, RelativeOffset, Scrollbar};
 use iced::widget::{container, scrollable as scrollable_widget};
-use iced::{Element, Length, Task};
+use iced::{Element, Length, Padding, Task};
 
 use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use crate::theme::spacing;
@@ -13,7 +13,16 @@ use crate::theme::spacing;
 /// `content` in a vertical scrollable of `id` that fills the room, set in from
 /// the window edge by `PAGE_PADDING`.
 pub fn page_scroll<'a, M: 'a>(id: &'static str, content: Element<'a, M>) -> Element<'a, M> {
-    scrollable_widget(container(content).padding([spacing::XL, spacing::XXL]))
+    page_scroll_padded(id, content, Padding::from([spacing::XL, spacing::XXL]))
+}
+
+/// [`page_scroll`] with another margin around the content.
+pub fn page_scroll_padded<'a, M: 'a>(
+    id: &'static str,
+    content: Element<'a, M>,
+    padding: Padding,
+) -> Element<'a, M> {
+    scrollable_widget(container(content).padding(padding))
         .direction(Direction::Vertical(
             Scrollbar::new()
                 .width(SCROLLBAR_WIDTH)

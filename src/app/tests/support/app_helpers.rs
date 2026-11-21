@@ -864,9 +864,14 @@ fn is_check_answer(message: &Message) -> bool {
 }
 
 impl App {
-    /// The Git tab's state, for the acceptance run that reads the shown commit.
+    /// The shown Git tab's state, for the acceptance run that reads the shown commit.
     pub fn git_view_for_test(&self) -> &ncrs_git_view::State {
-        &self.git_view
+        let shown = self.shown_git_tab().expect("a Git tab is shown");
+        self.git_tabs.get(shown).expect("the shown Git tab is open")
+    }
+
+    pub fn git_tab_ids_for_test(&self) -> Vec<crate::messages::GitTabId> {
+        self.git_tabs.ids()
     }
 
     /// Whether a menu of the favourites bar is up.

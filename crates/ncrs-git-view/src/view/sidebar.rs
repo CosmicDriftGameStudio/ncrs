@@ -5,8 +5,7 @@ use iced::Element;
 use ncrs_git::WorktreeInfo;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::git_rows::{worktree_row, WorktreeRow};
-use ncrs_ui_kit::page_scroll::page_scroll;
-use ncrs_ui_kit::tree_list::{tree_row, TreeRow};
+use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
 
 use super::SIDEBAR_ID;
 use crate::ctx::ViewCtx;
@@ -50,12 +49,14 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     label,
                     chosen,
                     dim: false,
+                    lead: None,
+                    trail: Vec::new(),
                     on_press: Message::SidebarPressed(index),
                 },
                 ctx.palette,
             )
         });
-    page_scroll(SIDEBAR_ID, column(rows).into())
+    tree_scroll(SIDEBAR_ID, column(rows).into())
 }
 
 fn section_title(section: Section) -> Msg {
