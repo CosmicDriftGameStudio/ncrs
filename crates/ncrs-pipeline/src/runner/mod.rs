@@ -15,7 +15,9 @@ use crate::clock::Clock;
 use crate::load::Load;
 use crate::step::{Item, Step, StepOutcome};
 
+mod gone;
 mod snapshot;
+use gone::GoneQueue;
 use snapshot::ChangeLog;
 pub use snapshot::{
     Busy, ChangeOutcome, ChangedPath, ErrorEntry, RunnerState, Settings, Snapshot, StepSnapshot,
@@ -108,6 +110,10 @@ struct Batch {
 enum Job {
     Start,
     Scan(Location),
+    Gone {
+        path: PathBuf,
+        location: Location,
+    },
     Item {
         item: Item,
         step: usize,
@@ -137,6 +143,7 @@ struct State {
     /// report arriving while the file runs is matched too.
     taken: HashMap<PathBuf, Fingerprint>,
     deferred: Vec<Deferred>,
+    gone: GoneQueue,
     next_rescan: Option<Instant>,
     batches: HashMap<u64, Batch>,
     next_batch: u64,
@@ -282,6 +289,7 @@ impl State {
     }
 
     fn promote_due(&mut self, now: Instant) {
+        self.gone.promote_due(now);
         let mut index = 0;
         while let Some(waiting) = self.deferred.get(index) {
             if waiting.due > now {
@@ -327,6 +335,9 @@ impl State {
                 .retain(|path, _| !path.starts_with(&location.path));
             return Some(Job::Scan(location));
         }
+        if let Some((path, location)) = self.gone.pop_ready() {
+            return Some(Job::Gone { path, location });
+        }
         let next = self.first_step.pop_front()?;
         self.waiting_first.remove(&next.item.path);
         if let Some(fingerprint) = next.fingerprint {
@@ -345,6 +356,7 @@ impl State {
             .iter()
             .map(|entry| entry.due)
             .chain(rescan)
+            .chain(self.gone.earliest_due())
             .min()
     }
 
@@ -354,6 +366,7 @@ impl State {
             || !self.first_step.is_empty()
             || !self.continuations.is_empty()
             || !self.deferred.is_empty()
+            || !self.gone.is_empty()
     }
 }
 
@@ -601,6 +614,7 @@ impl Shared {
         let (file, task) = match job {
             Job::Start => (PathBuf::new(), Task::Watch),
             Job::Scan(location) => (location.path.clone(), Task::Scan),
+            Job::Gone { path, .. } => (path.clone(), Task::Scan),
             Job::Item {
                 item,
                 step,
@@ -651,6 +665,7 @@ impl Shared {
                     return;
                 };
                 let fingerprint = Fingerprint::of(&path);
+                self.update(|state| state.gone.forget(&path));
                 if fingerprint.is_none() {
                     // Deleted or moved away: nothing left to tell a repeat from.
                     self.update(|state| state.taken.remove(&path));
@@ -663,6 +678,29 @@ impl Shared {
                         && state.watcher.is_some()
                         && !state.is_repeated_report(&path, fingerprint)
                         && state.queue_arrival(location, &path, fingerprint)
+                });
+                if queued {
+                    self.work_ready.notify_one();
+                }
+            }
+            WatchEvent::Gone(path) => {
+                let Some(location) = self
+                    .locations
+                    .iter()
+                    .find(|location| path.starts_with(&location.path))
+                else {
+                    return;
+                };
+                let due = Instant::now().checked_add(self.settings.gone_settle_after);
+                let queued = self.update(|state| {
+                    state.taken.remove(&path);
+                    if state.stopping {
+                        return false;
+                    }
+                    state
+                        .gone
+                        .add(path, location, due.unwrap_or_else(Instant::now));
+                    true
                 });
                 if queued {
                     self.work_ready.notify_one();
@@ -907,6 +945,7 @@ fn worker_main(shared: &Arc<Shared>, id: usize, epoch: u64) {
         match job {
             Job::Start => run_start(shared),
             Job::Scan(location) => shared.run_scan(id, &location),
+            Job::Gone { path, location } => shared.run_gone(&path, &location),
             Job::Item { item, step, batch } => shared.run_item(id, item, step, batch),
         }
         shared.finish_job(id);

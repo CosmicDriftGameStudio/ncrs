@@ -750,6 +750,7 @@ fn dropping_a_runner_right_after_the_start_does_not_hang() {
 #[path = "runner_archive_tests.rs"]
 mod archive_fields;
 
+mod gone_tests;
 mod review_tests;
 use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
 mod inquiry_tests;

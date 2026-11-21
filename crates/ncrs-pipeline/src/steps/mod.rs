@@ -13,8 +13,8 @@ use ncrs_intake::{
     FIELDS_READ_VERSION,
 };
 use ncrs_intake::{
-    finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
-    PendingHash, Prepared,
+    finish_take_in, prepare_take_in, settle_gone_path, settle_location, IntakeError, Location,
+    LocationMode, Outcome, PendingHash, Prepared,
 };
 use ncrs_intake::{
     is_image_file, open_below, relative_to_location, text_is_readable, ChainReading,
@@ -230,6 +230,15 @@ impl Step for IntakeStep {
     fn after_scan(&self, location: &Location) -> Result<Vec<PathBuf>, String> {
         with_index_value(self.index.as_ref(), |index| {
             settle_location(index, location)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map(|report| report.error_paths)
+        .map_err(|err| err.to_string())
+    }
+
+    fn path_gone(&self, location: &Location, path: &Path) -> Result<Vec<PathBuf>, String> {
+        with_index_value(self.index.as_ref(), |index| {
+            settle_gone_path(index, location, path)
         })
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map(|report| report.error_paths)

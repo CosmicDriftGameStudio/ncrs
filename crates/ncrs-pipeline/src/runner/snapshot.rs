@@ -15,6 +15,7 @@ pub const MAX_ERRORS: usize = 50;
 pub const MAX_CHANGED_PATHS: usize = 512;
 
 const DEFAULT_RESCAN_EVERY: Duration = Duration::from_secs(10 * 60);
+const DEFAULT_GONE_SETTLE_AFTER: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -25,6 +26,10 @@ pub struct Settings {
     /// How often every location is scanned again, to catch what the watcher
     /// missed. `None` switches it off.
     pub rescan_every: Option<Duration>,
+    /// How long a path reported as gone waits before the index is settled for
+    /// it: the app's own filing renames a file first and repoints the document
+    /// right after.
+    pub gone_settle_after: Duration,
 }
 
 impl Settings {
@@ -34,6 +39,7 @@ impl Settings {
             logical_cores,
             retry_after: STABLE_AFTER,
             rescan_every: Some(DEFAULT_RESCAN_EVERY),
+            gone_settle_after: DEFAULT_GONE_SETTLE_AFTER,
         }
     }
 }
