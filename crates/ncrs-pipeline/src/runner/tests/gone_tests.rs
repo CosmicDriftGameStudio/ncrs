@@ -186,3 +186,22 @@ fn a_path_that_comes_back_before_it_is_settled_stays_a_document() {
 
     assert!(runner.shared.update(|state| state.gone.is_empty()));
 }
+
+#[test]
+fn a_body_text_taken_in_before_its_mail_arrived_is_dropped_when_the_mail_does() {
+    let (_dir, archive, fixture, runner) = started_archive(&[("mail/body.txt", b"Dear Anna")]);
+    let body = archive.path.join("mail/body.txt");
+    let id = document_at(&fixture, &body);
+
+    put(
+        &archive,
+        "mail/mail.eml",
+        b"From: a@example.org\r\n\r\nDear Anna",
+    );
+    runner.shared.on_watch_event(WatchEvent::Gone(body.clone()));
+    runner.wait_for("the body text settled", is_idle);
+
+    let index = fixture.index.lock().unwrap();
+    assert!(index.document(id).unwrap().is_none());
+    assert!(body.exists());
+}
