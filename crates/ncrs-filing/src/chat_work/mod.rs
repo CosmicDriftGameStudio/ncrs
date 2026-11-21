@@ -178,6 +178,7 @@ pub struct ChatAccess {
     model: Option<Arc<dyn ChatModel>>,
     copy_roots: Vec<PathBuf>,
     index_work: crate::index_work::IndexWork,
+    last_kinds: Arc<Mutex<Option<Kinds>>>,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -203,6 +204,7 @@ impl ChatAccess {
             model: None,
             copy_roots: Vec::new(),
             index_work: crate::index_work::IndexWork::default(),
+            last_kinds: Arc::default(),
         }
     }
 
@@ -456,13 +458,35 @@ impl ChatAccess {
         self.try_with_index(|index| index.rules().map_err(|err| err.to_string()))
     }
 
-    /// For the UI thread: `Err` at once while a run holds the index.
+    /// For the UI thread: while a run holds the index the kinds last read
+    /// are returned; `Err` at once only when there are none yet.
     pub fn try_kinds(&self) -> Result<Kinds, String> {
-        self.try_with_index(|index| Ok(self.kinds_of(index)))
+        match self.try_with_index(|index| Ok(self.kinds_of(index))) {
+            Ok(kinds) => {
+                self.remember_kinds(&kinds);
+                Ok(kinds)
+            }
+            Err(err) if err == INDEX_BUSY => self
+                .last_kinds
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+                .ok_or(err),
+            Err(err) => Err(err),
+        }
     }
 
     pub fn kinds(&self) -> Result<Kinds, String> {
-        self.with_index(|index| Ok(self.kinds_of(index)))
+        let kinds = self.with_index(|index| Ok(self.kinds_of(index)))?;
+        self.remember_kinds(&kinds);
+        Ok(kinds)
+    }
+
+    fn remember_kinds(&self, kinds: &Kinds) {
+        *self
+            .last_kinds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(kinds.clone());
     }
 
     fn kinds_of(&self, index: &Index) -> Kinds {
