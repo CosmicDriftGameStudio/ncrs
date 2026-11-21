@@ -977,3 +977,38 @@ fn a_version_29_database_keeps_its_file_list_exceptions_in_every_group() {
         2 * crate::TagGroup::ALL.len() - 1
     );
 }
+
+#[test]
+fn a_version_30_database_marks_the_documents_that_have_a_text() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..30]).unwrap();
+    assert_eq!(user_version(&old), 30);
+    old.conn
+        .execute_batch(
+            "INSERT INTO document (id, hash, path, source, received_at, status, file_size, file_mtime)
+                 VALUES (1, randomblob(32), 'a.pdf', 'archive', 1700000000, 'new', 1, 1),
+                        (2, randomblob(32), 'b.pdf', 'archive', 1700000000, 'new', 1, 1),
+                        (3, randomblob(32), 'c.pdf', 'archive', 1700000000, 'new', 1, 1);
+             INSERT INTO document_text (rowid, body) VALUES (1, 'Rechnung'), (2, '   ');",
+        )
+        .unwrap();
+    drop(old);
+
+    let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+    assert_eq!(user_version(&index), latest_version());
+    let marks: Vec<i64> = index
+        .conn
+        .prepare("SELECT has_text FROM document ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(marks, [1, 0, 0]);
+    assert_eq!(
+        index.hermes_counts().unwrap().archive_documents_with_text,
+        1
+    );
+}

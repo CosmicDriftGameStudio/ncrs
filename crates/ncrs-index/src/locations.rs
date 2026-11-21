@@ -242,6 +242,7 @@ impl Index {
             ],
         )?;
         tx.execute("DELETE FROM document_text WHERE rowid = ?1", [id.get()])?;
+        tx.execute("UPDATE document SET has_text = 0 WHERE id = ?1", [id.get()])?;
         tx.commit()?;
         Ok(())
     }
