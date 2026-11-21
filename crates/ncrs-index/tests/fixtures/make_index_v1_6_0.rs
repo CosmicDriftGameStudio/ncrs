@@ -11,20 +11,22 @@
 //! ```
 //!
 //! The key is the fixed test key bytes 0x00..0x1f, which the tests put in an
-//! `InMemoryKeyStore`. Every table and column the steps 010 to 028 add holds a
-//! value that is not its default. Step 027 (AUTOINCREMENT) shows as a document
-//! that was inserted and deleted again; step 028 (plain Windows paths) has
-//! nothing to hold, a 1.6.0 index never contains the verbatim form.
+//! `InMemoryKeyStore`. Every table and column the steps 010 to 035 add holds a
+//! value that is not its default. Steps 027 and 029 (AUTOINCREMENT) show as a
+//! document, a rule and a review entry that were inserted and deleted again;
+//! step 028 (plain Windows paths) has nothing to hold, a 1.6.0 index never
+//! contains the verbatim form.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::{NaiveDate, TimeZone as _, Utc};
 use ncrs_index::{
     Amount, BatchKind, Condition, ConditionKind, ContentHash, Currency, DocumentFields,
-    DocumentSource, DocumentStatus, Field, FieldOrigin, InMemoryKeyStore, Index, NewDocument,
-    QuerySpec, ReviewReason, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec, SenderAliasKind,
-    SourceRoot, Transfer,
+    DocumentSource, DocumentStatus, Field, FieldOrigin, FileStamp, InMemoryKeyStore, Index,
+    NewDocument, QuerySpec, ReviewReason, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec,
+    SenderAliasKind, SourceRoot, TagGroup, Transfer,
 };
 
 fn tags(names: &[&str]) -> BTreeSet<String> {
@@ -38,6 +40,13 @@ fn document(seed: u8, path: &str, source: DocumentSource, day: u32) -> NewDocume
         source,
         received_at: Utc.with_ymd_and_hms(2026, 1, day, 9, 30, 0).unwrap(),
         stamp: None,
+    }
+}
+
+fn stamp(size: u64, seconds: u64) -> FileStamp {
+    FileStamp {
+        size,
+        mtime: UNIX_EPOCH + Duration::from_secs(seconds),
     }
 }
 
@@ -167,6 +176,17 @@ fn main() {
         )
         .unwrap();
 
+    // Step 029 keeps the highest rule id ever given out: a rule deleted after
+    // the last one leaves a high-water mark above the ids that remain.
+    let removed_rule = index
+        .create_rule(&rule(
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, "Spam")]),
+            None,
+            "{year}/",
+        ))
+        .unwrap();
+    assert!(index.delete_rule(removed_rule).unwrap());
+
     // Documents: every field origin variant, the recipient, own and automatic tags.
     let invoice = index
         .insert_document(&document(
@@ -273,7 +293,72 @@ fn main() {
     let deleted = index
         .insert_document(&document(4, "inbox/scan-4.pdf", DocumentSource::Inbox, 18))
         .unwrap();
+    // Step 029 does the same for review entries: the deleted document takes
+    // its entry with it.
+    index
+        .add_review(deleted, ReviewReason::NoMatchingRule)
+        .unwrap();
     index.delete_document(deleted).unwrap();
+
+    // Step 031: one document has a text, this one has none.
+    let blank = index
+        .insert_document(&document(5, "inbox/scan-5.pdf", DocumentSource::Inbox, 19))
+        .unwrap();
+    index
+        .set_document_fields(
+            blank,
+            &DocumentFields {
+                number: Some("17".to_owned()),
+                ..DocumentFields::default()
+            },
+            // Step 032: the value the rules step read itself.
+            |_| FieldOrigin::Detected,
+        )
+        .unwrap();
+
+    // Step 033: an exclusion Hermes made itself remembers the stamp of the
+    // file it judged, one the user made does not.
+    let mut not_a_document = document(6, "inbox/logo.png", DocumentSource::Inbox, 20);
+    not_a_document.stamp = Some(stamp(2048, 1_700_000_000));
+    index.insert_document(&not_a_document).unwrap();
+    index
+        .exclude_path_automatically(Path::new("inbox/logo.png"))
+        .unwrap();
+    index.exclude_path(Path::new("inbox/private")).unwrap();
+
+    // Step 034: an inbox file whose content is already filed.
+    index
+        .record_filed_inbox_path(
+            invoice,
+            Path::new("inbox/invoice-4711.pdf"),
+            stamp(4096, 1_700_000_100),
+        )
+        .unwrap();
+
+    // Step 035: copies in an archive, in an inbox and of unknown place.
+    index
+        .record_duplicate_path_in(
+            invoice,
+            Path::new("archive/copies/invoice-4711.pdf"),
+            stamp(4096, 1_700_000_200),
+            true,
+        )
+        .unwrap();
+    index
+        .record_duplicate_path_in(
+            invoice,
+            Path::new("inbox/invoice-4711-copy.pdf"),
+            stamp(4096, 1_700_000_300),
+            false,
+        )
+        .unwrap();
+    index
+        .record_duplicate_path(
+            invoice,
+            Path::new("elsewhere/invoice-4711.pdf"),
+            stamp(4096, 1_700_000_400),
+        )
+        .unwrap();
 
     index
         .save_query(
@@ -325,8 +410,17 @@ fn main() {
         .offer_sender_alias("Company B", SenderAliasKind::TaxId, "12/345/67890")
         .unwrap());
 
-    index.set_file_list_tag("services", Some(true)).unwrap();
-    index.set_file_list_tag("project-x", Some(false)).unwrap();
+    // Step 030: exceptions per group, one name in two groups with opposite
+    // values.
+    index
+        .set_file_list_tag(TagGroup::Own, "services", Some(true))
+        .unwrap();
+    index
+        .set_file_list_tag(TagGroup::Own, "project-x", Some(false))
+        .unwrap();
+    index
+        .set_file_list_tag(TagGroup::Sender, "services", Some(false))
+        .unwrap();
 
     // Named runs the chat started: one copies between two folders, one trashes.
     let copy_run = index
