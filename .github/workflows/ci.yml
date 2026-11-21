@@ -588,6 +588,16 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           exe=target/${{ matrix.target }}/release/ncrs
           if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
+          # The package puts the llama.cpp libraries next to the binary; before
+          # packaging they are still in the build folder.
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-gnu)
+              llama=$(scripts/llama-runtime-dir.sh ${{ matrix.target }} --features gpu-with-fallback)
+              export LD_LIBRARY_PATH="$llama/lib" ;;
+            x86_64-pc-windows-msvc)
+              llama=$(scripts/llama-runtime-dir.sh ${{ matrix.target }} --features gpu-with-fallback)
+              PATH="$(cygpath -u "$llama/bin"):$PATH" ;;
+          esac
           said=$("$exe" --version)
           echo "$said"
           case "$said" in
