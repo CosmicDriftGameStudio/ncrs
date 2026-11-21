@@ -218,6 +218,8 @@ struct Health {
     /// A reply was parsed at least once.
     answered: bool,
     transient_streak: u32,
+    /// Document-level refusals in a row from a server that never answered.
+    refusal_streak: u32,
     /// No document is sent before this time.
     paused_until: Option<Instant>,
     /// The key of the last request. A pause is lifted when the key differs:
@@ -287,10 +289,26 @@ impl OpenAiCompatible {
             None => {
                 health.answered = true;
                 health.transient_streak = 0;
+                health.refusal_streak = 0;
                 health.paused_until = None;
             }
             Some(FailureScope::Provider) => {
-                health.paused_until = Some(Instant::now() + PROVIDER_PAUSE);
+                // One document refusal from a server that never answered may be
+                // the document alone (too long, odd content): a short pause, the
+                // hour only when it repeats or the error is the setting's.
+                let unproven_refusal =
+                    error.is_some_and(|failed| failed.scope() == FailureScope::Document);
+                let pause = if unproven_refusal {
+                    health.refusal_streak = health.refusal_streak.saturating_add(1);
+                    if health.refusal_streak < 2 {
+                        FIRST_TRANSIENT_PAUSE
+                    } else {
+                        PROVIDER_PAUSE
+                    }
+                } else {
+                    PROVIDER_PAUSE
+                };
+                health.paused_until = Some(Instant::now() + pause);
             }
             Some(FailureScope::Transient) => {
                 health.transient_streak = health.transient_streak.saturating_add(1);
