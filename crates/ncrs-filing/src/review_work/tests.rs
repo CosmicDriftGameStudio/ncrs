@@ -686,3 +686,36 @@ fn everything_one_accept_files_goes_into_one_batch_that_one_undo_takes_back() {
     });
     assert!(setup.inbox.join("one.pdf").exists() && setup.inbox.join("two.pdf").exists());
 }
+
+#[test]
+fn the_neighbours_are_built_once_while_the_index_is_not_written_to() {
+    let setup = Setup::new();
+    setup.neighbours_in("Insurance/2024", "Company A");
+    setup.in_review("new.pdf");
+    let access = setup.access();
+
+    let first_load = access.load().unwrap();
+    let second_load = access.load().unwrap();
+    let paths: Vec<PathBuf> = first_load.iter().map(|item| item.path.clone()).collect();
+    let for_paths = access.items_for(&paths).unwrap();
+
+    assert_eq!(first_load, second_load);
+    assert_eq!(first_load, for_paths);
+    assert_eq!(access.neighbour_builds(), 1);
+}
+
+#[test]
+fn a_write_to_the_index_makes_the_neighbours_build_again() {
+    let setup = Setup::new();
+    setup.neighbours_in("Insurance/2024", "Company A");
+    let before = setup.unplaced();
+    let access = setup.access();
+    access.load().unwrap();
+    assert_eq!(access.neighbour_builds(), 1);
+
+    setup.neighbours_in("Other/2024", "Company A");
+    let after = access.load().unwrap().remove(0);
+
+    assert_eq!(access.neighbour_builds(), 2);
+    assert_ne!(before.placement, after.placement);
+}

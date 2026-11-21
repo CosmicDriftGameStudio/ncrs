@@ -36,7 +36,7 @@ pub use backup::{migration_backups, set_aside_path};
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};
-pub use index::Index;
+pub use index::{ChangeStamp, Index};
 pub use journal::{
     BatchInfo, BatchKind, JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
 };
