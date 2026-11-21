@@ -37,6 +37,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/029_rule_and_review_ids_not_reused.sql"),
     include_str!("migrations/030_file_list_tag_per_group.sql"),
     include_str!("migrations/031_document_has_text.sql"),
+    include_str!("migrations/032_field_origin_detected.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of

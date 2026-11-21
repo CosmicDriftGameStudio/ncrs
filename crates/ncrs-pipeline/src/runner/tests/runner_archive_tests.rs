@@ -9,6 +9,7 @@ use ncrs_index::{DocumentFields, DocumentId, Field, FieldOrigin};
 use ncrs_intake::test_archive::{test_archive, TestArchive, TestFile};
 use ncrs_intake::FIELDS_READ_VERSION;
 
+use super::rule_tests::invoice_rule;
 use super::*;
 
 /// The content of the file as text when it is UTF-8, as the PDF source would
@@ -246,10 +247,7 @@ fn a_sender_set_by_hand_stays_and_the_empty_date_is_filled() {
 
 #[test]
 fn a_guessed_date_is_read_again_and_a_date_set_by_hand_stays() {
-    for (origin, replaced) in [
-        (FieldOrigin::Rule(None), true),
-        (FieldOrigin::Manual, false),
-    ] {
+    for (origin, replaced) in [(FieldOrigin::Detected, true), (FieldOrigin::Manual, false)] {
         let root = TempDir::new().unwrap();
         let (location, letter) = archive_with_one_letter(&root);
         let fixture = IndexFixture::new();
@@ -305,8 +303,39 @@ fn an_inbox_letter_gets_its_letter_date_and_still_goes_to_review() {
     assert_eq!(document.fields.date, letter.date);
     assert_eq!(
         index.field_origins(id).unwrap().of(Field::Date),
-        FieldOrigin::Rule(None)
+        FieldOrigin::Detected
     );
     assert_eq!(document.status, DocumentStatus::InReview);
     assert_eq!(index.open_reviews().unwrap().len(), 1);
+}
+
+#[test]
+fn a_value_of_a_deleted_rule_stays_when_the_archive_is_read_again() {
+    let root = TempDir::new().unwrap();
+    let (location, letter) = archive_with_one_letter(&root);
+    let fixture = IndexFixture::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    scan_with_files(&fixture, &location, &calls);
+    let id = only_document(&fixture, &location);
+    {
+        let mut index = fixture.index.lock().unwrap();
+        let rule = index
+            .create_rule(&invoice_rule("{number}.pdf", true))
+            .unwrap();
+        let mut fields = index.document(id).unwrap().unwrap().fields;
+        fields.date = NaiveDate::from_ymd_opt(1978, 1, 2);
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Rule(Some(rule)))
+            .unwrap();
+        index.delete_rule(rule).unwrap();
+        index.set_fields_read_version(id, 1).unwrap();
+    }
+    assert_ne!(letter.date, NaiveDate::from_ymd_opt(1978, 1, 2));
+
+    scan_with_files(&fixture, &location, &calls);
+
+    let index = fixture.index.lock().unwrap();
+    let document = index.document(id).unwrap().unwrap();
+    assert_eq!(document.fields.date, NaiveDate::from_ymd_opt(1978, 1, 2));
+    assert_eq!(index.fields_read_version(id).unwrap(), FIELDS_READ_VERSION);
 }
