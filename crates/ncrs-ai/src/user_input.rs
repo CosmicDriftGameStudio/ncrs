@@ -21,6 +21,10 @@ pub const QUIET_BACKGROUND_MS: u64 = 5_000;
 // good; one chunk per 30 s is slow but moves on. Make it adaptive if it shows.
 #[cfg(any(test, feature = "llama"))]
 pub const MAX_WAIT_MS: u64 = 30_000;
+/// The same cap for a job a person waits for: every decoded token waits, so a
+/// long cap would stretch an answer by minutes while the pointer moves.
+#[cfg(any(test, feature = "llama"))]
+pub const MAX_WAIT_WAITING_MS: u64 = 100;
 #[cfg(feature = "llama")]
 const POLL: Duration = Duration::from_millis(20);
 
@@ -47,7 +51,12 @@ fn should_yield(last_input_ms: u64, now_ms: u64, quiet_for_ms: u64) -> bool {
 /// Keep waiting: the window is not quiet yet and the wait is under the cap.
 #[cfg(any(test, feature = "llama"))]
 fn keep_waiting(last_input_ms: u64, now_ms: u64, quiet_for_ms: u64, waited_ms: u64) -> bool {
-    waited_ms < MAX_WAIT_MS && should_yield(last_input_ms, now_ms, quiet_for_ms)
+    let cap_ms = if quiet_for_ms == QUIET_WAITING_MS {
+        MAX_WAIT_WAITING_MS
+    } else {
+        MAX_WAIT_MS
+    };
+    waited_ms < cap_ms && should_yield(last_input_ms, now_ms, quiet_for_ms)
 }
 
 /// Blocks while the last input is less than `quiet_for_ms` ago, at most
@@ -81,6 +90,22 @@ mod tests {
         }
         assert!(!should_yield(1_000, 2_000, QUIET_WAITING_MS));
         assert!(should_yield(1_000, 2_000, QUIET_BACKGROUND_MS));
+    }
+
+    #[test]
+    fn a_job_a_person_waits_for_never_waits_long_for_one_token() {
+        assert!(keep_waiting(
+            1_000,
+            1_010,
+            QUIET_WAITING_MS,
+            MAX_WAIT_WAITING_MS - 1
+        ));
+        assert!(!keep_waiting(
+            1_000,
+            1_010,
+            QUIET_WAITING_MS,
+            MAX_WAIT_WAITING_MS
+        ));
     }
 
     #[test]
