@@ -586,7 +586,7 @@ jobs:
         shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          exe=target/${{ matrix.target }}/release/ncrs
+          exe=${CARGO_TARGET_DIR:-target}/${{ matrix.target }}/release/ncrs
           if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
           # The package puts the llama.cpp libraries next to the binary; before
           # packaging they are still in the build folder.
