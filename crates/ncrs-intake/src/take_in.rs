@@ -286,21 +286,8 @@ pub fn open_without_following(path: &Path) -> io::Result<File> {
 pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     use nix::fcntl::{openat, OFlag};
     use nix::sys::stat::Mode;
-    use std::path::Component;
 
-    let Ok(relative) = path.strip_prefix(root) else {
-        return Err(not_below_the_location());
-    };
-    let parts: Vec<&std::ffi::OsStr> = relative
-        .components()
-        .filter_map(|part| match part {
-            Component::Normal(name) => Some(name),
-            _ => None,
-        })
-        .collect();
-    if parts.len() != relative.components().count() {
-        return Err(not_below_the_location());
-    }
+    let parts = parts_below(root, path)?;
     if parts.is_empty() {
         return open_without_following(path);
     }
@@ -318,13 +305,25 @@ pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     Ok(File::from(current))
 }
 
-#[cfg(unix)]
-fn not_below_the_location() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidInput, "not below the location")
+/// The names from `root` down to `path`, lexically: `..`, roots and anything
+/// outside `root` are refused.
+fn parts_below<'a>(root: &Path, path: &'a Path) -> io::Result<Vec<&'a std::ffi::OsStr>> {
+    use std::path::Component;
+
+    let not_below = || io::Error::new(io::ErrorKind::InvalidInput, "not below the location");
+    let relative = path.strip_prefix(root).map_err(|_outside| not_below())?;
+    relative
+        .components()
+        .map(|part| match part {
+            Component::Normal(name) => Ok(name),
+            _ => Err(not_below()),
+        })
+        .collect()
 }
 
 #[cfg(not(unix))]
-pub fn open_below(_root: &Path, path: &Path) -> io::Result<File> {
+pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
+    parts_below(root, path)?;
     open_without_following(path)
 }
 
@@ -551,7 +550,6 @@ mod tests {
         pending.hash(&path).unwrap_err();
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_path_that_leaves_the_location_is_not_opened() {
         let location = tempfile::tempdir().unwrap();

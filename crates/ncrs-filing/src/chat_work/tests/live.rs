@@ -511,7 +511,7 @@ fn two_files_typed_to_the_same_name_in_one_folder_do_not_collide() {
         ),
         (
             PathBuf::from("d.pdf"),
-            Override::Name("a renamed.pdf".to_owned()),
+            Override::Name("Same.PDF".to_owned()),
         ),
     ]);
 
@@ -527,7 +527,7 @@ fn two_files_typed_to_the_same_name_in_one_folder_do_not_collide() {
     );
     assert_eq!(
         state_of(&changed, "d.pdf"),
-        filed("Alfa", "a renamed.pdf", false)
+        filed("Alfa", "Same (3).PDF", false)
     );
 }
 
