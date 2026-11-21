@@ -22,6 +22,7 @@ mod model_scope;
 mod picks;
 mod reading;
 mod recent_runs;
+mod rules_snapshot;
 mod runs;
 mod trial;
 
