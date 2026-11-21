@@ -219,9 +219,79 @@ pub fn on_the_real_trash(test_name: &str, scenario: impl FnOnce(&Scene)) {
     }
 }
 
+const RUN_FOLDER_PREFIX: &str = "ncrs-real-trash-";
+
+/// Whether some folder of `path` is the unique folder of a test run.
+#[cfg_attr(
+    target_os = "linux",
+    allow(
+        dead_code,
+        reason = "Linux trashes into a private folder, nothing to sweep"
+    )
+)]
+fn has_test_prefix(path: &Path) -> bool {
+    path.components().any(|part| {
+        part.as_os_str()
+            .to_string_lossy()
+            .starts_with(RUN_FOLDER_PREFIX)
+    })
+}
+
+/// A hard kill skips the cleanup guard and leaves the items of that run in the
+/// user's own trash. The first test of a process removes them before it makes
+/// its own folder; `Once` holds the other tests back until then, so no live run
+/// of this process is swept.
+#[cfg(not(target_os = "linux"))]
+static SWEEP: std::sync::Once = std::sync::Once::new();
+
+/// Windows: the items of the Recycle Bin whose original path has a run folder.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn sweep_leftovers() {
+    let items = match trash::os_limited::list() {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!("sweep: the trash cannot be listed: {err}");
+            return;
+        }
+    };
+    let stale: Vec<_> = items
+        .into_iter()
+        .filter(|item| has_test_prefix(&item.original_path()))
+        .collect();
+    if let Err(err) = trash::os_limited::purge_all(stale) {
+        eprintln!("sweep: the trash cannot be emptied of old test items: {err}");
+    }
+}
+
+/// macOS: `~/.Trash` may be unreadable for the app, and its items keep their
+/// own names. The journal inside each old run folder in the temp folder knows
+/// where its items went, so the cleanup of that run is replayed.
+#[cfg(target_os = "macos")]
+fn sweep_leftovers() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let folder = entry.path();
+        if !has_test_prefix(Path::new(&entry.file_name())) || !folder.is_dir() {
+            continue;
+        }
+        let cleanup = TrashCleanup {
+            trash: system_trash(Some(folder.join("journal.toml"))),
+            marker: entry.file_name(),
+        };
+        cleanup.purge();
+        if let Err(err) = std::fs::remove_dir_all(&folder) {
+            eprintln!("sweep: {} stays: {err}", folder.display());
+        }
+    }
+}
+
 fn new_root() -> tempfile::TempDir {
+    #[cfg(not(target_os = "linux"))]
+    SWEEP.call_once(sweep_leftovers);
     tempfile::Builder::new()
-        .prefix("ncrs-real-trash-")
+        .prefix(RUN_FOLDER_PREFIX)
         .tempdir()
         .unwrap()
 }
@@ -302,6 +372,20 @@ mod tests {
         fn journal_text(&self) -> String {
             std::fs::read_to_string(&self.journal).unwrap_or_default()
         }
+    }
+
+    #[test]
+    fn only_paths_below_a_test_run_folder_count_as_leftovers() {
+        let left = Path::new("/tmp/ncrs-real-trash-Ab12/work/docs/a.txt");
+        assert!(has_test_prefix(left));
+        assert!(has_test_prefix(Path::new("ncrs-real-trash-")));
+        assert!(!has_test_prefix(Path::new(
+            "/tmp/my-ncrs-real-trash-1/a.txt"
+        )));
+        assert!(!has_test_prefix(Path::new(
+            "/home/me/ncrs-real-trash/a.txt"
+        )));
+        assert!(!has_test_prefix(Path::new("/home/me/Documents/ncrs.txt")));
     }
 
     #[test]
