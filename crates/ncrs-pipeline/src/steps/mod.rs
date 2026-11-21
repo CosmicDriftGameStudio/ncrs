@@ -358,7 +358,7 @@ impl RulesStep {
                 index.set_document_fields(id, &filled, |field| match field {
                     Field::Recipient => FieldOrigin::AddressBlock,
                     Field::Kind => FieldOrigin::Heading,
-                    _ => FieldOrigin::Rule(None),
+                    _ => FieldOrigin::Detected,
                 })?;
             }
             index.set_fields_read_version(id, FIELDS_READ_VERSION)
@@ -434,13 +434,13 @@ impl Step for RulesStep {
             if *found != document.fields {
                 let sender_was_detected = detected.sender.is_some();
                 index.set_document_fields(id, found, |field| match field {
-                    Field::Sender if sender_was_detected => FieldOrigin::Rule(None),
+                    Field::Sender if sender_was_detected => FieldOrigin::Detected,
                     Field::Recipient if found.recipient == detected.recipient => {
                         FieldOrigin::AddressBlock
                     }
                     Field::Kind if found.kind == detected.kind => FieldOrigin::Heading,
                     Field::Date if found.date.is_some() && found.date == detected.date => {
-                        FieldOrigin::Rule(None)
+                        FieldOrigin::Detected
                     }
                     _ => rule_origin.clone(),
                 })?;
