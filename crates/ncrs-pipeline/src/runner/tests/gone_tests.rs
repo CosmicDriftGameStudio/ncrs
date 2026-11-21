@@ -11,11 +11,17 @@ fn gone_settings() -> Settings {
     }
 }
 
+/// `name` is written with `/`; the scanned path has the separator of the system.
+fn in_archive(archive: &Location, name: &str) -> PathBuf {
+    name.split('/')
+        .fold(archive.path.clone(), |path, part| path.join(part))
+}
+
 fn started_archive(files: &[(&str, &[u8])]) -> (TempDir, Location, IndexFixture, Runner) {
     let dir = TempDir::new().unwrap();
     let archive = location(&dir, LocationMode::Archive);
     for (name, bytes) in files {
-        let path = archive.path.join(name);
+        let path = in_archive(&archive, name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
     }
@@ -66,8 +72,8 @@ fn a_removed_folder_marks_every_document_below_it_missing() {
         ("old/deep/b.pdf", REMINDER),
     ]);
     let below = [
-        document_at(&fixture, &archive.path.join("old/a.pdf")),
-        document_at(&fixture, &archive.path.join("old/deep/b.pdf")),
+        document_at(&fixture, &in_archive(&archive, "old/a.pdf")),
+        document_at(&fixture, &in_archive(&archive, "old/deep/b.pdf")),
     ];
     let kept = document_at(&fixture, &archive.path.join("keep.pdf"));
 
@@ -190,7 +196,7 @@ fn a_path_that_comes_back_before_it_is_settled_stays_a_document() {
 #[test]
 fn a_body_text_taken_in_before_its_mail_arrived_is_dropped_when_the_mail_does() {
     let (_dir, archive, fixture, runner) = started_archive(&[("mail/body.txt", b"Dear Anna")]);
-    let body = archive.path.join("mail/body.txt");
+    let body = in_archive(&archive, "mail/body.txt");
     let id = document_at(&fixture, &body);
 
     put(

@@ -160,7 +160,6 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use super::*;
     use crate::model::ReviewReason;
@@ -169,7 +168,7 @@ mod tests {
 
     fn archive_document(seed: u8) -> NewDocument {
         NewDocument {
-            path: PathBuf::from(format!("archive/doc-{seed}.pdf")),
+            path: native(&format!("archive/doc-{seed}.pdf")),
             source: DocumentSource::Archive,
             ..new_document(seed)
         }
