@@ -19,7 +19,7 @@ All notable changes to this project are documented here. The format follows
   and a filter by message, author or SHA. The arrow keys repeat while held;
   `←`/`→` move between the areas.
 - Encrypted notes: AES-256-GCM, the key in the system credential store and a
-  recovery key for another computer. `Cmd`+`L` or a click on the lock locks
+  recovery key for another computer. `Cmd`+`L` (`Ctrl`+`L`) or a click on the lock locks
   and unlocks; Touch ID on macOS and Windows Hello on Windows confirm before
   the key is read. A sync folder for notes under Settings › Notes.
 - Notes by keyboard: `Cmd`+`F` searches, `F7` makes a folder, `F4` edits,
