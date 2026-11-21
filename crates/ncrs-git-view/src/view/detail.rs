@@ -77,7 +77,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         DetailRow::Folder { depth, name } => tree_row(
             TreeRow {
                 depth,
-                open: Some(true),
+                open: None,
                 label: name,
                 chosen: false,
                 dim: true,

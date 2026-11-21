@@ -431,11 +431,20 @@ impl FileKeyStore {
         }
         let written = self
             .create_synced(&next, key)
-            .and_then(|()| std::fs::rename(&next, &self.path));
+            .and_then(|()| std::fs::rename(&next, &self.path))
+            .map(|()| self.sync_parent_directory());
         if written.is_err() {
             drop(std::fs::remove_file(&next));
         }
         written
+    }
+
+    /// A directory cannot be synced everywhere; the rename has happened either way.
+    fn sync_parent_directory(&self) {
+        if let Some(parent) = self.path.parent() {
+            let _not_supported_everywhere =
+                std::fs::File::open(parent).and_then(|dir| dir.sync_all());
+        }
     }
 
     fn create_synced(&self, next: &Path, key: &[u8]) -> std::io::Result<()> {

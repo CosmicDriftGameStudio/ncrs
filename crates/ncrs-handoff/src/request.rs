@@ -47,6 +47,11 @@ impl Request {
 /// The path a command line argument names: a `file://` URI is decoded (the
 /// Linux launchers pass `%U`), a relative path is taken from `cwd`.
 pub fn path_from_argument(argument: &OsStr, cwd: &Path) -> PathBuf {
+    #[cfg(windows)]
+    let repaired = argument.to_str().and_then(drive_root_with_swallowed_slash);
+    #[cfg(not(windows))]
+    let repaired: Option<String> = None;
+    let argument = repaired.as_deref().map_or(argument, OsStr::new);
     let path = argument
         .to_str()
         .and_then(path_from_file_uri)
@@ -56,6 +61,21 @@ pub fn path_from_argument(argument: &OsStr, cwd: &Path) -> PathBuf {
     } else {
         cwd.join(path)
     }
+}
+
+/// The Explorer menu registers `"%V"` quoted, so the root of a drive arrives as
+/// `"C:\"` on the command line, whose last backslash escapes the closing quote
+/// and leaves `C:"`.
+#[cfg(any(windows, test))]
+fn drive_root_with_swallowed_slash(argument: &str) -> Option<String> {
+    let drive = argument.strip_suffix('"')?;
+    let mut letters = drive.chars();
+    let is_drive = letters
+        .next()
+        .is_some_and(|letter| letter.is_ascii_alphabetic())
+        && letters.next() == Some(':')
+        && letters.next().is_none();
+    is_drive.then(|| format!("{drive}\\"))
 }
 
 /// The requests for the URIs of a D-Bus call; what is no local `file://` URI
@@ -169,6 +189,16 @@ mod tests {
             path_from_file_uri("file:///tmp/100%/a%zz"),
             Some(PathBuf::from("/tmp/100%/a%zz"))
         );
+    }
+
+    #[test]
+    fn a_drive_root_whose_backslash_swallowed_the_closing_quote_is_restored() {
+        assert_eq!(
+            drive_root_with_swallowed_slash("C:\""),
+            Some("C:\\".to_owned())
+        );
+        assert_eq!(drive_root_with_swallowed_slash("C:\\"), None);
+        assert_eq!(drive_root_with_swallowed_slash("a\"b"), None);
     }
 
     #[test]
