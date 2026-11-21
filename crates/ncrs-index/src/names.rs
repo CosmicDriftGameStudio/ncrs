@@ -77,7 +77,7 @@ pub fn optional_name_id(
 /// Brings the keys of rows written before names were composed to the key of
 /// today. A row whose composed key already belongs to another row is merged
 /// into that one: what pointed at it points at the other, and what would then
-/// exist twice stays with the old row, which then stays too.
+/// exist twice is dropped, being a duplicate of what the other row has.
 pub fn fold_name_keys(conn: &mut Connection) -> Result<(), IndexError> {
     let tx = conn.transaction()?;
     for table in [NameTable::Sender, NameTable::Kind, NameTable::Tag] {
@@ -118,7 +118,6 @@ pub fn fold_name_keys(conn: &mut Connection) -> Result<(), IndexError> {
                 )?;
                 continue;
             };
-            let mut left_over = false;
             for (referencing, column) in &references {
                 tx.execute(
                     &format!(
@@ -126,16 +125,12 @@ pub fn fold_name_keys(conn: &mut Connection) -> Result<(), IndexError> {
                     ),
                     params![keeper, old],
                 )?;
-                let remaining: i64 = tx.query_row(
-                    &format!("SELECT COUNT(*) FROM {referencing} WHERE {column} = ?1"),
+                tx.execute(
+                    &format!("DELETE FROM {referencing} WHERE {column} = ?1"),
                     [old],
-                    |row| row.get(0),
                 )?;
-                left_over |= remaining > 0;
             }
-            if !left_over {
-                tx.execute(&format!("DELETE FROM {table_name} WHERE id = ?1"), [old])?;
-            }
+            tx.execute(&format!("DELETE FROM {table_name} WHERE id = ?1"), [old])?;
         }
     }
     tx.commit()?;
@@ -230,6 +225,32 @@ mod tests {
             .query_row("SELECT sender_id FROM sender_alias", [], |row| row.get(0))
             .unwrap();
         assert_eq!((senders, owner, alias_owner), (1, 1, 1));
+    }
+
+    #[test]
+    fn a_reference_that_would_exist_twice_is_dropped_with_the_old_row() {
+        let mut conn = schema();
+        conn.execute_batch(&format!(
+            "CREATE TABLE document_tag (
+                 document_id INTEGER NOT NULL,
+                 tag_id INTEGER NOT NULL REFERENCES tag (id),
+                 PRIMARY KEY (document_id, tag_id));
+             INSERT INTO tag VALUES (1, '{NFC}', '{}');
+             INSERT INTO tag VALUES (2, '{NFD}', '{}');
+             INSERT INTO document_tag VALUES (10, 1);
+             INSERT INTO document_tag VALUES (10, 2);",
+            NFC.to_lowercase(),
+            NFD.to_lowercase(),
+        ))
+        .unwrap();
+        fold_name_keys(&mut conn).unwrap();
+        let tags: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tag", [], |row| row.get(0))
+            .unwrap();
+        let tagged: i64 = conn
+            .query_row("SELECT COUNT(*) FROM document_tag", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!((tags, tagged), (1, 1));
     }
 
     #[test]
