@@ -26,22 +26,22 @@ fn a_new_index_shows_its_key_again_after_a_quit_until_the_user_confirmed_it() {
     assert_eq!(fs::metadata(marker_of(&db)).unwrap().len(), 0);
 
     drop(module);
-    let mut module = started(&db, shared(&store));
+    let mut reopened = started(&db, shared(&store));
 
-    assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
-    assert_eq!(module.recovery_key_text().unwrap(), first_key);
+    assert!(matches!(reopened.phase(), Phase::ShowRecoveryKey { .. }));
+    assert_eq!(reopened.recovery_key_text().unwrap(), first_key);
     assert_eq!(
-        module.start_pipeline().err(),
+        reopened.start_pipeline().err(),
         Some(HeldReason::WaitingForUser)
     );
 
-    confirm_shown_key(&mut module);
-    assert!(matches!(module.phase(), Phase::Ready));
+    confirm_shown_key(&mut reopened);
+    assert!(matches!(reopened.phase(), Phase::Ready));
     assert!(!marker_of(&db).exists());
 
-    drop(module);
-    let module = started(&db, shared(&store));
-    assert!(matches!(module.phase(), Phase::Ready));
+    drop(reopened);
+    let third = started(&db, shared(&store));
+    assert!(matches!(third.phase(), Phase::Ready));
 }
 
 #[test]
@@ -55,11 +55,11 @@ fn an_index_encrypted_in_place_shows_its_key_again_after_a_quit() {
     let first_key = module.recovery_key_text().unwrap();
 
     drop(module);
-    let mut module = started(&db, shared(&store));
+    let mut reopened = started(&db, shared(&store));
 
-    assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
-    assert_eq!(module.recovery_key_text().unwrap(), first_key);
-    confirm_shown_key(&mut module);
+    assert!(matches!(reopened.phase(), Phase::ShowRecoveryKey { .. }));
+    assert_eq!(reopened.recovery_key_text().unwrap(), first_key);
+    confirm_shown_key(&mut reopened);
     assert!(!marker_of(&db).exists());
 }
 

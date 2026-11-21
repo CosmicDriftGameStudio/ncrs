@@ -599,7 +599,7 @@ mod tests {
         fixture.scan_settled(&inbox);
 
         let prepared = prepare_take_in(
-            &mut fixture.index,
+            &fixture.index,
             &inbox,
             &in_inbox,
             &mut fixture.tracker,

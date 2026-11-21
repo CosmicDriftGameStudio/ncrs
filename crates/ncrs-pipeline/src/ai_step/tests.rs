@@ -933,20 +933,19 @@ fn a_sure_ai_value_does_not_replace_a_value_of_a_deleted_rule() {
     let steps = fixture.steps(&provider);
     let document = fixture.add_document(1);
     set_status(&fixture, document, DocumentStatus::Filed);
-    {
-        let mut index = fixture.index.lock().unwrap();
-        let rule = index
-            .create_rule(&invoice_rule("{number}.pdf", true))
-            .unwrap();
-        let by_rule = DocumentFields {
-            sender: Some("Company A".to_owned()),
-            ..DocumentFields::default()
-        };
-        index
-            .set_document_fields(document, &by_rule, |_| FieldOrigin::Rule(Some(rule)))
-            .unwrap();
-        index.delete_rule(rule).unwrap();
-    }
+    let mut index = fixture.index.lock().unwrap();
+    let rule = index
+        .create_rule(&invoice_rule("{number}.pdf", true))
+        .unwrap();
+    let by_rule = DocumentFields {
+        sender: Some("Company A".to_owned()),
+        ..DocumentFields::default()
+    };
+    index
+        .set_document_fields(document, &by_rule, |_| FieldOrigin::Rule(Some(rule)))
+        .unwrap();
+    index.delete_rule(rule).unwrap();
+    drop(index);
     let mut item = fixture.item(document, INVOICE_TEXT);
 
     run(&steps, AI, &mut item);

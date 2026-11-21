@@ -302,7 +302,7 @@ fn sweep_leftovers() {
             continue;
         }
         let touched = entry.metadata().and_then(|meta| meta.modified());
-        if !touched.is_ok_and(|touched| is_orphaned(touched, std::time::SystemTime::now())) {
+        if !touched.is_ok_and(|at| is_orphaned(at, std::time::SystemTime::now())) {
             continue;
         }
         let cleanup = TrashCleanup {

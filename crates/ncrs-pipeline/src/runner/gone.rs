@@ -11,7 +11,7 @@ use super::{Shared, Task, PANIC_MESSAGE};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[derive(Debug, Default)]
-pub(super) struct GoneQueue {
+pub struct GoneQueue {
     /// A path reported again keeps its first due time, so a burst of events
     /// for one path does not push the settling back.
     waiting: HashMap<PathBuf, (Instant, Location)>,
