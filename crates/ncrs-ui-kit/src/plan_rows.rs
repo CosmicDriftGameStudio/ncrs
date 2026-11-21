@@ -3,7 +3,7 @@
 //! pane they stand in.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text};
+use iced::widget::{column, container, mouse_area, row, scrollable, text};
 use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::format;
@@ -11,11 +11,7 @@ use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use crate::kit::{list_row, Columns};
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
-
-/// Horizontal room one level of the tree takes; the same as in the tree rows.
-const INDENT: f32 = 16.0;
-/// The room a fold mark takes in the tree rows, so labels line up.
-const MARK_WIDTH: f32 = 14.0;
+use crate::tree_list::{tree_row, TreeRow, LABEL_LEAD, TREE_INDENT};
 
 /// A file of the read folder.
 #[derive(Debug)]
@@ -84,50 +80,31 @@ pub struct NewFileRow<M> {
 }
 
 pub fn new_file_row<'a, M: Clone + 'a>(file: NewFileRow<M>, palette: &Palette) -> Element<'a, M> {
-    let (ink, old_ink) = if file.chosen {
-        (palette.cursor_text, palette.cursor_text)
-    } else {
-        (palette.text, palette.dim_text)
-    };
-    let line = row![
-        container("").width(MARK_WIDTH),
-        text(format!("+ {}", file.new_name))
-            .size(font_size::BODY)
-            .color(ink)
-            .wrapping(Wrapping::None),
-    ]
-    .push(file.old_name.map(|old| {
-        text(format!("\u{2190} {old}"))
-            .size(font_size::BODY)
-            .color(old_ink)
-            .wrapping(Wrapping::None)
-    }))
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center);
-    let content = container(line)
-        .padding(Padding {
-            left: spacing::CELL_PADDING_X + INDENT * file.depth as f32,
-            ..Padding::ZERO
-        })
-        .clip(true)
-        .center_y(Length::Fill);
-    mouse_area(
-        button(content)
-            .on_press(file.on_press)
-            .width(Length::Fill)
-            .height(size::SIDEBAR_ITEM)
-            .padding(0.0)
-            .style(theme::menu_item(palette, file.chosen)),
-    )
-    .on_double_click(file.on_double_press)
-    .into()
+    let row = tree_row(
+        TreeRow {
+            depth: file.depth,
+            open: None,
+            label: file.new_name,
+            chosen: file.chosen,
+            dim: false,
+            lead: Some(("+".to_owned(), palette.text)),
+            trail: file
+                .old_name
+                .map(|old| (format!("\u{2190} {old}"), palette.dim_text))
+                .into_iter()
+                .collect(),
+            on_press: file.on_press,
+        },
+        palette,
+    );
+    mouse_area(row).on_double_click(file.on_double_press).into()
 }
 
 /// `field` in the place of a row of a tree at `depth`, to type a name in.
 pub fn editing_row<'a, M: Clone + 'a>(depth: usize, field: Element<'a, M>) -> Element<'a, M> {
     container(field)
         .padding(Padding {
-            left: spacing::CELL_PADDING_X + MARK_WIDTH + INDENT * depth as f32,
+            left: spacing::CELL_PADDING_X + LABEL_LEAD + TREE_INDENT * depth as f32,
             right: spacing::CELL_PADDING_X,
             ..Padding::ZERO
         })
