@@ -235,7 +235,13 @@ pub fn promote_first_copy(index: &Index, document: &Document) -> Result<bool, In
         if !metadata.is_file() || current != recorded {
             continue;
         }
+        let in_archive = index.duplicate_path_in_archive(&copy)?;
         index.promote_copy_to_document_path(document.id, &copy, current)?;
+        // An archive file is filed; a copy in an inbox leaves the status alone,
+        // as it does for a document that turns up there again.
+        if in_archive == Some(true) && document.status != DocumentStatus::Filed {
+            index.set_document_status(document.id, DocumentStatus::Filed)?;
+        }
         return Ok(true);
     }
     Ok(false)
@@ -468,7 +474,12 @@ fn file_with_known_hash(
         return Ok(Outcome::Moved(known.id));
     }
     if matches!(recorded_copy, Some((id, _)) if id == known.id) {
-        index.record_duplicate_path(known.id, path, stamp)?;
+        index.record_duplicate_path_in(
+            known.id,
+            path,
+            stamp,
+            location.mode == LocationMode::Archive,
+        )?;
         return Ok(Outcome::Unchanged(known.id));
     }
     // The status decides, not the source: a document filed from the inbox
@@ -477,7 +488,12 @@ fn file_with_known_hash(
         index.record_filed_inbox_path(known.id, path, stamp)?;
         return Ok(Outcome::AlreadyFiled(known.id));
     }
-    index.record_duplicate_path(known.id, path, stamp)?;
+    index.record_duplicate_path_in(
+        known.id,
+        path,
+        stamp,
+        location.mode == LocationMode::Archive,
+    )?;
     Ok(Outcome::Copy(known.id))
 }
 

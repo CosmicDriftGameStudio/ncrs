@@ -40,6 +40,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/032_field_origin_detected.sql"),
     include_str!("migrations/033_excluded_path_automatic.sql"),
     include_str!("migrations/034_filed_inbox_path.sql"),
+    include_str!("migrations/035_duplicate_path_in_archive.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of
