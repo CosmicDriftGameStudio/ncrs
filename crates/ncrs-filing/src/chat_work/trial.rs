@@ -601,14 +601,14 @@ fn apply_stored_picks(
     remaining
 }
 
-/// Makes the file unsure with the model's `folder` first, then what the
-/// neighbours offered.
 /// The folder lists spell folders with `/`; a plain root would otherwise get mixed
 /// separators on Windows.
 fn folder_path(folder: &str) -> PathBuf {
     folder.split('/').collect()
 }
 
+/// Makes the file unsure with the model's `folder` first, then what the
+/// neighbours offered.
 fn offer_model_folder(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],

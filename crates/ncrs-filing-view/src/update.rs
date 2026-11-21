@@ -50,6 +50,7 @@ pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> 
         state.session = Some(session);
         return Task::none();
     };
+    let id = session.id;
     state.session = Some(session);
     let tags = tags(ctx.lang);
     let lang = ctx.lang;
@@ -62,7 +63,7 @@ pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> 
             .await
             .unwrap_or_else(|err| Err(err.to_string()))
         },
-        Message::PlanFinished,
+        move |result| Message::PlanFinished(id, result),
     )
 }
 
@@ -99,7 +100,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
             session.take_snapshot();
             task = read_existing(session);
         }
-        Message::PlanFinished(result) => {
+        Message::PlanFinished(id, _) if id != session.id => {}
+        Message::PlanFinished(_, result) => {
             session.take_snapshot();
             task = read_existing(session);
             if let Err(reason) = &result {

@@ -499,6 +499,39 @@ fn overrides_move_rename_or_keep_a_file_and_mark_it_as_the_users() {
 }
 
 #[test]
+fn two_files_typed_to_the_same_name_in_one_folder_do_not_collide() {
+    let overrides = BTreeMap::from([
+        (
+            PathBuf::from("a.pdf"),
+            Override::Name("same.pdf".to_owned()),
+        ),
+        (
+            PathBuf::from("c.pdf"),
+            Override::Name("same.pdf".to_owned()),
+        ),
+        (
+            PathBuf::from("d.pdf"),
+            Override::Name("a renamed.pdf".to_owned()),
+        ),
+    ]);
+
+    let changed = apply_overrides(&plan_to_override(), &overrides);
+
+    assert_eq!(
+        state_of(&changed, "a.pdf"),
+        filed("Alfa", "same.pdf", false)
+    );
+    assert_eq!(
+        state_of(&changed, "c.pdf"),
+        filed("Alfa", "same (2).pdf", false)
+    );
+    assert_eq!(
+        state_of(&changed, "d.pdf"),
+        filed("Alfa", "a renamed.pdf", false)
+    );
+}
+
+#[test]
 fn the_run_holds_only_the_filed_files_with_their_overridden_names_and_folders() {
     let overrides = BTreeMap::from([
         (

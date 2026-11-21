@@ -127,6 +127,22 @@ fn an_empty_name_or_one_with_a_separator_keeps_the_field_open() {
 }
 
 #[test]
+fn the_end_of_an_older_planning_does_not_finish_the_new_session() {
+    let mut state = simple(false);
+    let older = session(&state).id;
+    state.session = Some(Session::new(
+        PathBuf::from("/inbox"),
+        PathBuf::from(TARGET),
+        Arc::new(LiveRun::default()),
+    ));
+    send(&mut state, Message::PlanFinished(older, Ok(())));
+    assert!(crate::is_running(&state));
+    let current = session(&state).id;
+    send(&mut state, Message::PlanFinished(current, Ok(())));
+    assert!(!crate::is_running(&state));
+}
+
+#[test]
 fn a_file_that_is_not_filed_cannot_be_renamed() {
     let mut state = simple(true);
     send(&mut state, Message::Select(PathBuf::from("b.pdf")));

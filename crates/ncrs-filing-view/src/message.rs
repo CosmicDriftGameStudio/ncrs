@@ -20,7 +20,8 @@ pub struct FiledReport {
 pub enum Message {
     /// Take the plan the reading thread has published.
     Tick,
-    PlanFinished(Result<(), String>),
+    /// The planning of the session with this id has returned.
+    PlanFinished(u64, Result<(), String>),
     /// A file, by its path relative to the source.
     Select(PathBuf),
     SelectNext,

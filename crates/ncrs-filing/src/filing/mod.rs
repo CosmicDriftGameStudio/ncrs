@@ -60,6 +60,7 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 /// Why settling the interrupted runs of the last opened index failed, if it did.
 type SettleNote = Arc<Mutex<Option<String>>>;
 
+use crate::index_slot::try_lock;
 #[cfg(feature = "local-ai")]
 pub use ai::shared_local_model;
 pub use ai::AiStatus;
@@ -83,7 +84,7 @@ use text_chain::shipped_text_chain;
 pub use text_chain::{ai_models_dir, ocr_models_dir};
 use update::random_group;
 pub use work::Work;
-use work::{lock, try_lock, Job};
+use work::{lock, Job};
 
 mod access;
 mod ai;
