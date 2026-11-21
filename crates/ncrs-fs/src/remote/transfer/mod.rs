@@ -30,6 +30,7 @@ use super::list::is_plain_name;
 use super::session::{Pool, RemoteError, Session};
 use super::{is_deceptive, RemotePath, ServerId, Timeouts, CHUNK};
 use crate::archive::{restrict_to_owner, safe_components};
+use crate::origin_mark::mark_downloaded;
 use crate::transfer::{
     resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress, Reporting,
     SkipKind, Skipped, Tick,
@@ -240,6 +241,7 @@ fn fetch_folder<P: Progress>(
     done: &mut usize,
 ) -> io::Result<()> {
     std::fs::create_dir(local)?;
+    mark_downloaded(local, &source_url(link.server, remote))?;
     for (name, meta) in link.names_in(remote)? {
         progress.keep_going()?;
         ensure_safe(&name)?;
@@ -323,8 +325,33 @@ fn fetch_file<P: Progress>(
         // server's file type bits are not permissions.
         let _moded = output.set_permissions(std::fs::Permissions::from_mode(bits & 0o755));
     }
+    mark_downloaded(local, &source_url(link.server, remote))?;
     *done += 1;
     progress.advanced(*done, 0)
+}
+
+/// Where a download came from, for the mark on it: host, port and path, never
+/// the login. Anything outside plain URL characters is escaped, so a name from
+/// a server cannot add lines to the mark.
+fn source_url(server: &ServerId, path: &RemotePath) -> String {
+    use std::fmt::Write as _;
+    let host = if server.host.contains(':') {
+        format!("[{}]", server.host)
+    } else {
+        server.host.clone()
+    };
+    let mut url = format!("sftp://{host}");
+    if server.port != 22 {
+        let _ = write!(url, ":{}", server.port);
+    }
+    for byte in path.remote_str().bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            url.push(char::from(byte));
+        } else {
+            let _ = write!(url, "%{byte:02X}");
+        }
+    }
+    url
 }
 
 /// Copies the file at `source` into `slot` for the viewer and returns the path
