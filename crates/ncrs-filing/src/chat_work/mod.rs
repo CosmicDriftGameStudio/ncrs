@@ -28,6 +28,7 @@ mod pattern;
 mod picks;
 mod reading;
 mod runs;
+mod snapshots;
 mod trial;
 mod waiting;
 mod words;
@@ -48,6 +49,7 @@ pub use pattern::PatternLevel;
 pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
+pub(crate) use snapshots::Snapshots;
 pub use trial::{
     ModelScope, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE,
 };
@@ -178,8 +180,7 @@ pub struct ChatAccess {
     model: Option<Arc<dyn ChatModel>>,
     copy_roots: Vec<PathBuf>,
     index_work: crate::index_work::IndexWork,
-    last_kinds: Arc<Mutex<Option<Kinds>>>,
-    last_rules: Arc<Mutex<Option<Vec<Rule>>>>,
+    snapshots: Snapshots,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -205,8 +206,7 @@ impl ChatAccess {
             model: None,
             copy_roots: Vec::new(),
             index_work: crate::index_work::IndexWork::default(),
-            last_kinds: Arc::default(),
-            last_rules: Arc::default(),
+            snapshots: Snapshots::default(),
         }
     }
 
@@ -260,6 +260,12 @@ impl ChatAccess {
     #[must_use]
     pub fn with_rules(mut self, rules: Option<RulesAccess>) -> Self {
         self.rules = rules;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_snapshots(mut self, snapshots: Snapshots) -> Self {
+        self.snapshots = snapshots;
         self
     }
 
@@ -403,9 +409,7 @@ impl ChatAccess {
             let created = index
                 .create_rule_from(&spec, RuleOrigin::Chat)
                 .map_err(|err| err.to_string())?;
-            if let Ok(rules) = index.rules() {
-                self.remember_rules(&rules);
-            }
+            self.refresh_rules_snapshot(index);
             Ok(created)
         })
         .map_err(RuleSaveFailure::Failed)?;
@@ -446,9 +450,7 @@ impl ChatAccess {
             let saved = index
                 .save_rule_from(spec, RuleOrigin::Chat)
                 .map_err(|err| err.to_string())?;
-            if let Ok(rules) = index.rules() {
-                self.remember_rules(&rules);
-            }
+            self.refresh_rules_snapshot(index);
             Ok(saved)
         })
         .map_err(RuleSaveFailure::Failed)
@@ -468,24 +470,22 @@ impl ChatAccess {
     pub fn try_rules(&self) -> Result<Vec<Rule>, String> {
         match self.try_with_index(|index| index.rules().map_err(|err| err.to_string())) {
             Ok(rules) => {
-                self.remember_rules(&rules);
+                self.snapshots.remember_rules(&rules);
                 Ok(rules)
             }
-            Err(err) if err == INDEX_BUSY => self
-                .last_rules
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone()
-                .ok_or(err),
+            Err(err) if err == INDEX_BUSY => self.snapshots.rules().ok_or(err),
             Err(err) => Err(err),
         }
     }
 
-    fn remember_rules(&self, rules: &[Rule]) {
-        *self
-            .last_rules
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(rules.to_vec());
+    /// Replaces what the UI shows while the index is busy with the rules the
+    /// index holds after a write; when they cannot be read, nothing is shown
+    /// rather than the rules from before the write.
+    fn refresh_rules_snapshot(&self, index: &Index) {
+        match index.rules() {
+            Ok(rules) => self.snapshots.remember_rules(&rules),
+            Err(_) => self.snapshots.forget(),
+        }
     }
 
     /// For the UI thread: while a run holds the index the kinds last read
@@ -493,30 +493,18 @@ impl ChatAccess {
     pub fn try_kinds(&self) -> Result<Kinds, String> {
         match self.try_with_index(|index| Ok(self.kinds_of(index))) {
             Ok(kinds) => {
-                self.remember_kinds(&kinds);
+                self.snapshots.remember_kinds(&kinds);
                 Ok(kinds)
             }
-            Err(err) if err == INDEX_BUSY => self
-                .last_kinds
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone()
-                .ok_or(err),
+            Err(err) if err == INDEX_BUSY => self.snapshots.kinds().ok_or(err),
             Err(err) => Err(err),
         }
     }
 
     pub fn kinds(&self) -> Result<Kinds, String> {
         let kinds = self.with_index(|index| Ok(self.kinds_of(index)))?;
-        self.remember_kinds(&kinds);
+        self.snapshots.remember_kinds(&kinds);
         Ok(kinds)
-    }
-
-    fn remember_kinds(&self, kinds: &Kinds) {
-        *self
-            .last_kinds
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(kinds.clone());
     }
 
     fn kinds_of(&self, index: &Index) -> Kinds {

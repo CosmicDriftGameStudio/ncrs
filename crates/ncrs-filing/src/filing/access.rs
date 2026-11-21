@@ -43,6 +43,7 @@ impl FilingModule {
                 .with_load(self.load)
                 .with_review(self.review_access())
                 .with_rules(self.rules_access())
+                .with_snapshots(self.snapshots.clone())
                 .with_copy_roots(self.copy_roots())
                 .with_index_work(self.index_work.clone()),
         )
@@ -52,6 +53,7 @@ impl FilingModule {
     /// them from now on, a pipeline already running keeps the ones it started with.
     pub fn set_kinds(&mut self, kinds: Arc<KindCatalog>) {
         self.kinds = kinds;
+        self.snapshots.forget();
         self.give_kinds_to_index();
     }
 
@@ -72,6 +74,7 @@ impl FilingModule {
     /// keeps the one it started with.
     pub fn set_kind_language(&mut self, kind_language: KindLanguage) {
         self.own.kind_language = kind_language;
+        self.snapshots.forget();
     }
 
     /// The handle of the filing job: only when the module is `Ready` and the
@@ -124,6 +127,7 @@ impl FilingModule {
             )
             .with_target(self.target_root())
             .with_kind_language(self.own.kind_language)
+            .with_snapshots(self.snapshots.clone())
         })
     }
 

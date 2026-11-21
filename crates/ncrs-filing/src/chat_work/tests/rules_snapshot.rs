@@ -83,3 +83,21 @@ fn rules_read_while_the_index_was_free_are_what_the_ui_gets_while_it_is_busy() {
 
     assert_eq!(busy.map(|rules| names(&rules).len()), Ok(known.len()));
 }
+
+#[test]
+fn a_rule_deleted_on_the_rules_page_is_not_shown_from_the_snapshot_while_the_index_is_busy() {
+    let setup = Setup::new();
+    setup
+        .access
+        .save_rule(&named_rule("Acme invoices"))
+        .unwrap();
+    let shown = setup.access.try_rules().unwrap();
+    let page = crate::rules_work::RulesAccess::new(Arc::clone(&setup.access.slot), Vec::new())
+        .with_snapshots(setup.access.snapshots.clone());
+
+    page.apply(crate::rules_work::RuleChange::Delete { id: shown[0].id })
+        .unwrap();
+    let busy = while_a_run_holds_the_index(&setup, ChatAccess::try_rules);
+
+    assert!(busy.is_err(), "{busy:?}");
+}

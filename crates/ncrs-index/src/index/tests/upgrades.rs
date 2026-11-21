@@ -156,9 +156,7 @@ fn a_version_6_database_gains_the_execution_journal_tables() {
 
 #[test]
 fn a_version_10_database_turns_its_rule_columns_into_conditions() {
-    use crate::model::{
-        Combinator, Condition, ConditionKind, DocumentId, FieldOrigin, RuleConditions, RuleId,
-    };
+    use crate::model::{Combinator, Condition, ConditionKind, FieldOrigin, RuleConditions, RuleId};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -226,9 +224,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
 
 #[test]
 fn a_version_11_database_gains_sender_aliases() {
-    use crate::model::{
-        Condition, ConditionKind, DocumentId, RuleConditions, RuleId, SenderAliasKind,
-    };
+    use crate::model::{Condition, ConditionKind, RuleConditions, RuleId, SenderAliasKind};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -274,7 +270,7 @@ fn a_version_11_database_gains_sender_aliases() {
 
 #[test]
 fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
-    use crate::model::{DocumentId, Field, FieldOrigin, RuleId};
+    use crate::model::{Field, FieldOrigin, RuleId};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -687,8 +683,6 @@ fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_
 
 #[test]
 fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
-    use crate::model::DocumentId;
-
     let (_dir, index) = migrated_from_19();
 
     let document = index.document(crate::DocumentId::new(1)).unwrap().unwrap();
@@ -710,8 +704,6 @@ fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
 
 #[test]
 fn a_version_19_database_keeps_the_text_search_and_the_cascade_of_its_documents() {
-    use crate::model::DocumentId;
-
     let (_dir, index) = migrated_from_19();
 
     assert_eq!(

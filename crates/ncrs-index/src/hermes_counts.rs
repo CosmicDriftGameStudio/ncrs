@@ -258,8 +258,8 @@ mod tests {
         let (_dir, mut index) = plain_index();
         let id = index.insert_document(&archive_document(1)).unwrap();
         index.add_review(id, ReviewReason::NoMatchingRule).unwrap();
-        let counts = |index: &Index| {
-            let counts = index.hermes_counts().unwrap();
+        let counts = |current: &Index| {
+            let counts = current.hermes_counts().unwrap();
             (
                 counts.archive_documents_with_text,
                 counts.open_reviews_without_text,

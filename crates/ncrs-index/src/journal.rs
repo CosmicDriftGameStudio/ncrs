@@ -466,6 +466,15 @@ impl Index {
         found.as_deref().map(BatchKind::parse).transpose()
     }
 
+    /// Whether a `pending` item takes `path`, or a file below it, as its
+    /// source: a move that has started and has not repointed the index yet.
+    pub fn has_pending_source_under(&self, path: &Path) -> Result<bool, IndexError> {
+        Ok(self
+            .pending_journal_items()?
+            .iter()
+            .any(|(_, item)| item.from.starts_with(path)))
+    }
+
     /// Items an interrupted run left `pending`, by batch and position.
     pub fn pending_journal_items(&self) -> Result<Vec<(BatchId, JournalItem)>, IndexError> {
         let mut statement = self.connection().prepare(

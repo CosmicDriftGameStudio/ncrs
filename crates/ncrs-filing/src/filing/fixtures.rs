@@ -32,6 +32,7 @@ impl FilingModule {
             own: OwnDetails::default(),
             settle_problem: SettleNote::default(),
             index_work: crate::index_work::IndexWork::default(),
+            snapshots: crate::chat_work::Snapshots::default(),
             neighbour_cache: Default::default(),
             settling: false,
         }

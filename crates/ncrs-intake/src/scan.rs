@@ -284,6 +284,11 @@ pub fn settle_gone_path(
 ) -> Result<ScanReport, IntakeError> {
     fs::metadata(&location.path).map_err(IntakeError::io(&location.path))?;
     let mut report = ScanReport::default();
+    // The app's own move is under way: the file left before the index was
+    // repointed, and the repoint follows.
+    if index.has_pending_source_under(gone)? {
+        return Ok(report);
+    }
     if fs::read_dir(&location.path).is_ok_and(|mut entries| entries.next().is_none())
         && looks_unmounted(location, &index.documents_under(&location.path)?)
     {

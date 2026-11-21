@@ -14,6 +14,7 @@ use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
 use ncrs_core::INDEX_NOT_OPEN;
 
+use crate::chat_work::Snapshots;
 use crate::filing_work::target_of;
 
 /// What to write to the index.
@@ -171,6 +172,7 @@ pub struct RulesAccess {
     /// documents in. Without one no archive document is moved.
     target: Option<PathBuf>,
     kind_language: KindLanguage,
+    snapshots: Snapshots,
 }
 
 impl std::fmt::Debug for RulesAccess {
@@ -186,7 +188,15 @@ impl RulesAccess {
             locations,
             target: None,
             kind_language: KindLanguage::default(),
+            snapshots: Snapshots::default(),
         }
+    }
+
+    /// Writes through this handle drop what the chat handles sharing these
+    /// snapshots would still show while the index is busy.
+    #[must_use]
+    pub(crate) fn with_snapshots(self, snapshots: Snapshots) -> Self {
+        Self { snapshots, ..self }
     }
 
     pub fn with_target(self, target: Option<PathBuf>) -> Self {
@@ -343,25 +353,29 @@ impl RulesAccess {
     }
 
     pub fn apply(&self, change: RuleChange) -> Result<(), String> {
-        self.with_index(|index| match change {
+        let applied = self.with_index(|index| match change {
             RuleChange::SetEnabled { id, enabled } => {
                 index.set_rule_enabled(id, enabled).map(|_| ())
             }
             RuleChange::Move { id, to_index } => index.move_rule(id, to_index),
             RuleChange::Delete { id } => index.delete_rule(id).map(|_| ()),
-        })
+        });
+        self.snapshots.forget();
+        applied
     }
 
     /// Index refusals, such as a regex that does not compile, come back as
     /// the text of the error. The rule that was made or changed comes back.
     pub fn save(&self, save: RuleSave) -> Result<RuleId, String> {
-        let saved = self.with_index(|index| match save {
+        let written = self.with_index(|index| match save {
             RuleSave::Create { spec, origin } => index.create_rule_from(&spec, origin).map(Some),
             RuleSave::Update(id, spec) => index.update_rule(id, &spec).map(|()| Some(id)),
             RuleSave::ConfirmSuggestion(id, spec) => index
                 .confirm_suggested_rule(id, &spec)
                 .map(|done| done.then_some(id)),
-        })?;
+        });
+        self.snapshots.forget();
+        let saved = written?;
         saved.ok_or_else(|| NO_SUCH_SUGGESTION.to_owned())
     }
 
