@@ -141,7 +141,7 @@ impl App {
             Some(CommandPaletteAction::RunGit(place)) => {
                 let sent = self.shown_git_tab().zip(ncrs_git_view::message_of_command(place));
                 match sent {
-                    Some((id, message)) => task.chain(self.update_git_tab(id, message)),
+                    Some((id, git_message)) => task.chain(self.update_git_tab(id, git_message)),
                     None => task,
                 }
             }
