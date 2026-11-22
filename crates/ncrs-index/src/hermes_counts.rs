@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn inbox_files_repeating_a_filed_document_count_as_open_reviews() {
-        let (_dir, mut index) = plain_index();
+        let (_dir, index) = plain_index();
         let keeper = index.insert_document(&archive_document(1)).unwrap();
         let stamp = crate::FileStamp::from_columns(Some(5), Some(6))
             .unwrap()

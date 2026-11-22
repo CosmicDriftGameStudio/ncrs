@@ -130,6 +130,7 @@ mod tests {
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: Default::default(),
         };
         let locations = [
             location("Downloads", LocationMode::Inbox, false),
