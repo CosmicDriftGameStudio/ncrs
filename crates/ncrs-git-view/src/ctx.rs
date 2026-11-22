@@ -1,5 +1,6 @@
 //! What the Git tab takes from the app: data it reads, never state it changes.
 
+use iced::Size;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::format::DateFormat;
 use ncrs_ui_kit::palette::Palette;
@@ -16,4 +17,6 @@ pub struct ViewCtx<'a> {
     pub lang: Language,
     pub palette: &'a Palette,
     pub date_format: DateFormat,
+    /// The window: the tab fills it.
+    pub window: Size,
 }

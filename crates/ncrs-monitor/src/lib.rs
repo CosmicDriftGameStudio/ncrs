@@ -25,6 +25,7 @@ pub use drives::DriveProbe;
 pub use keys::{monitor_key, KeyFacts, MonitorKey};
 pub use layout::visible_rows;
 pub use message::MonitorMessage;
+pub use sampler::Depth;
 pub use snapshot::{
     CpuInfo, DriveRow, HostInfo, LoadInfo, NetworkRow, SensorRow, Snapshot, TaskCounts, TaskRow,
     TaskStatus, Usage,

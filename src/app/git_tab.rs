@@ -24,6 +24,7 @@ impl App {
             lang: self.lang,
             palette: &self.palette,
             date_format: self.columns.date_format,
+            window: self.window_size,
         };
         let content: Element<'_, Message> = match self
             .shown_git_tab()

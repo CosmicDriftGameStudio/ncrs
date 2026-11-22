@@ -53,6 +53,8 @@ pub struct CommitRow<'a, M> {
     pub author: String,
     pub date: String,
     pub sha: String,
+    /// The SHA column is left out where the message needs the room.
+    pub show_sha: bool,
     pub chosen: bool,
     /// A merge commit is drawn in the dim ink.
     pub dimmed: bool,
@@ -69,6 +71,7 @@ impl<M> std::fmt::Debug for CommitRow<'_, M> {
 pub fn commit_header<'a, M: 'a>(
     graph_width: f32,
     labels: [&str; 4],
+    show_sha: bool,
     palette: &Palette,
 ) -> Element<'a, M> {
     let [message, author, date, sha] = labels;
@@ -87,8 +90,8 @@ pub fn commit_header<'a, M: 'a>(
             cell(message, Length::Fill),
             cell(author, Length::Fixed(AUTHOR_WIDTH)),
             cell(date, Length::Fixed(DATE_WIDTH)),
-            cell(sha, Length::Fixed(SHA_WIDTH)),
         ]
+        .extend(show_sha.then(|| Element::from(cell(sha, Length::Fixed(SHA_WIDTH)))))
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center),
     )
@@ -142,8 +145,12 @@ pub fn commit_row<'a, M: Clone + 'a>(
         container(message).width(Length::Fill).clip(true),
         cell(commit.author, dim, Length::Fixed(AUTHOR_WIDTH)),
         cell(commit.date, dim, Length::Fixed(DATE_WIDTH)),
-        cell(commit.sha, dim, Length::Fixed(SHA_WIDTH)),
     ]
+    .extend(
+        commit
+            .show_sha
+            .then(|| Element::from(cell(commit.sha, dim, Length::Fixed(SHA_WIDTH)))),
+    )
     .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
     button(

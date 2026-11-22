@@ -15,6 +15,8 @@ mod hermes_protocol;
 // The generators of the README, store and trailer pictures: they assert
 // nothing, so the normal test build leaves them out.
 #[cfg(all(test, feature = "media-tools"))]
+mod screenshot_scenes;
+#[cfg(all(test, feature = "media-tools"))]
 mod screenshot_tests;
 #[cfg(test)]
 mod shot_file;
