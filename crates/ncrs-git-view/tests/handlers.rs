@@ -222,7 +222,11 @@ async fn an_unmerged_branch_is_deleted_after_the_second_question() {
     sh(dir.path(), &["checkout", "-q", "main"]);
     let mut state = opened(dir.path()).await;
     let topic = local_index(&state, "topic");
-    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::LocalBranch(topic)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::Delete)).await;
     assert!(matches!(
         state.actions.dialog,
@@ -266,7 +270,10 @@ async fn a_pull_on_diverged_branches_asks_and_rebases() {
     assert_eq!(state.actions.notice, Some(Notice::NeedsPullStrategy));
     send(&mut state, Message::PullWith(PullStrategy::Rebase)).await;
     assert_eq!(state.actions.notice, None);
-    assert_eq!(sh(dir.path(), &["rev-list", "--merges", "--count", "HEAD"]), "0");
+    assert_eq!(
+        sh(dir.path(), &["rev-list", "--merges", "--count", "HEAD"]),
+        "0"
+    );
     assert_eq!(sh(dir.path(), &["rev-list", "--count", "HEAD"]), "3");
 }
 
@@ -286,10 +293,17 @@ async fn a_merge_with_conflicts_is_resolved_block_by_block_and_continued() {
 
     let mut state = opened(dir.path()).await;
     let feature = local_index(&state, "feature");
-    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(feature))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::LocalBranch(feature)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::MergeInto)).await;
     let merge = state.actions.merge.as_ref().unwrap();
-    assert_eq!((merge.from.as_str(), merge.into.as_str()), ("feature", "main"));
+    assert_eq!(
+        (merge.from.as_str(), merge.into.as_str()),
+        ("feature", "main")
+    );
     assert_eq!(merge.conflicts.len(), 1);
     assert_eq!(merge.conflicts[0].places, 2);
     assert!(merge
@@ -321,14 +335,22 @@ async fn renaming_a_branch_asks_for_the_name_and_the_backend_checks_it() {
     sh(dir.path(), &["branch", "topic"]);
     let mut state = opened(dir.path()).await;
     let topic = local_index(&state, "topic");
-    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::LocalBranch(topic)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::Rename)).await;
     let Some(Dialog::Rename(rename)) = &state.actions.dialog else {
         panic!("no rename dialog: {:?}", state.actions.dialog);
     };
     assert_eq!(rename.name, "topic");
 
-    send(&mut state, Message::RenameNameChanged("bad..name".to_owned())).await;
+    send(
+        &mut state,
+        Message::RenameNameChanged("bad..name".to_owned()),
+    )
+    .await;
     send(&mut state, Message::ConfirmDialog).await;
     assert_eq!(
         state.actions.notice,
@@ -338,7 +360,11 @@ async fn renaming_a_branch_asks_for_the_name_and_the_backend_checks_it() {
     );
     assert!(sh(dir.path(), &["branch", "--list", "topic"]).contains("topic"));
 
-    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::LocalBranch(topic)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::Rename)).await;
     send(&mut state, Message::RenameNameChanged("better".to_owned())).await;
     send(&mut state, Message::Enter).await;
@@ -380,7 +406,11 @@ async fn dropping_a_stash_and_deleting_on_the_remote_ask_and_cannot_be_undone() 
         .iter()
         .position(|name| name == "origin/topic")
         .unwrap();
-    send(&mut state, Message::OpenMenu(MenuTarget::RemoteBranch(remote))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::RemoteBranch(remote)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::DeleteOnRemote)).await;
     assert_eq!(
         state.actions.dialog,
@@ -431,7 +461,11 @@ async fn opening_a_conflict_in_the_editor_asks_the_app() {
     commit_file(dir.path(), "c.txt", &lines("M1", "M10"), "main side");
     let mut state = opened(dir.path()).await;
     let feature = local_index(&state, "feature");
-    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(feature))).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::LocalBranch(feature)),
+    )
+    .await;
     send(&mut state, Message::MenuPressed(MenuAction::MergeInto)).await;
     let (_, asked) = update(
         &mut state,
@@ -440,7 +474,9 @@ async fn opening_a_conflict_in_the_editor_asks_the_app() {
     );
     assert_eq!(
         asked,
-        Some(ncrs_git_view::Action::OpenInEditor(dir.path().join("c.txt")))
+        Some(ncrs_git_view::Action::OpenInEditor(
+            dir.path().join("c.txt")
+        ))
     );
 }
 

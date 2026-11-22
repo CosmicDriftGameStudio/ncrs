@@ -1,8 +1,6 @@
 //! What happens in the Git tab.
 
-use ncrs_git::{
-    ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefsOverview,
-};
+use ncrs_git::{ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefsOverview};
 
 use ncrs_ui_kit::git_rows::CommitColumn;
 

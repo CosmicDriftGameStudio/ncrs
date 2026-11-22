@@ -13231,6 +13231,30 @@
       "de": "Löse jede Datei, dann fortsetzen. Abbrechen stellt alles wie vor dem Merge wieder her."
     },
     {
+      "key": "git_view.rebase_banner",
+      "context": "Git tab: banner while a rebase is stopped by conflicts. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased, {count} the number of files still in conflict.",
+      "en": "Rebase of {into} onto {from}: {count} conflicts",
+      "de": "Rebase von {into} auf {from}: {count} Konflikte"
+    },
+    {
+      "key": "git_view.rebase_banner_one",
+      "context": "Git tab: banner while a rebase is stopped by exactly one conflict. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased.",
+      "en": "Rebase of {into} onto {from}: 1 conflict",
+      "de": "Rebase von {into} auf {from}: 1 Konflikt"
+    },
+    {
+      "key": "git_view.rebase_banner_done",
+      "context": "Git tab: banner of a rebase whose conflicts are all resolved. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased.",
+      "en": "Rebase of {into} onto {from}: all conflicts resolved",
+      "de": "Rebase von {into} auf {from}: alle Konflikte gelöst"
+    },
+    {
+      "key": "git_view.rebase_hint",
+      "context": "Git tab: second line of the rebase banner, says what to do.",
+      "en": "Resolve every file, then continue. Abort puts everything back as it was before the rebase.",
+      "de": "Löse jede Datei, dann fortsetzen. Abbrechen stellt alles wie vor dem Rebase wieder her."
+    },
+    {
       "key": "git_view.merge_abort",
       "context": "Git tab: button of the merge banner that cancels the merge. Short.",
       "en": "Abort",

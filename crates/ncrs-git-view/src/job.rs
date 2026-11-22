@@ -16,31 +16,65 @@ pub enum Job {
     StageAll,
     Unstage(Vec<String>),
     UnstageAll,
-    StageHunk { path: String, hunk: DiffHunk },
-    UnstageHunk { path: String, hunk: DiffHunk },
-    DiscardHunk { path: String, hunk: DiffHunk },
+    StageHunk {
+        path: String,
+        hunk: DiffHunk,
+    },
+    UnstageHunk {
+        path: String,
+        hunk: DiffHunk,
+    },
+    DiscardHunk {
+        path: String,
+        hunk: DiffHunk,
+    },
     DiscardFile(String),
     DiscardAll,
-    Commit { message: CommitMessage, amend: bool },
+    Commit {
+        message: CommitMessage,
+        amend: bool,
+    },
     Fetch,
     Pull(Option<PullStrategy>),
     Push,
     PushBranch(String),
-    StashPush { message: String },
+    StashPush {
+        message: String,
+    },
     StashApply(String),
     StashPop(String),
     Undo(UndoRecord),
-    CreateBranch { name: String, from: String, checkout: bool },
+    CreateBranch {
+        name: String,
+        from: String,
+        checkout: bool,
+    },
     Checkout(String),
     CheckoutRemote(String),
-    DeleteBranch { name: String, force: bool },
-    RenameBranch { from: String, to: String },
-    DeleteOnRemote { remote: String, branch: String },
+    DeleteBranch {
+        name: String,
+        force: bool,
+    },
+    RenameBranch {
+        from: String,
+        to: String,
+    },
+    DeleteOnRemote {
+        remote: String,
+        branch: String,
+    },
     StashDrop(String),
     Merge(String),
     Rebase(String),
-    ResolveBlock { path: String, block: usize, choice: ConflictChoice },
-    ResolveFile { path: String, choice: ConflictChoice },
+    ResolveBlock {
+        path: String,
+        block: usize,
+        choice: ConflictChoice,
+    },
+    ResolveFile {
+        path: String,
+        choice: ConflictChoice,
+    },
     MarkResolved(String),
     ResetFile(String),
     AbortIntegration,
@@ -128,14 +162,18 @@ impl Job {
             Self::DiscardFile(path) => git
                 .discard_file(path)
                 .map(|record| Done::Undoable(Some(record))),
-            Self::DiscardAll => git
-                .discard_all()
-                .map(|record| Done::Undoable(Some(record))),
-            Self::Commit { message, amend: true } => {
+            Self::DiscardAll => git.discard_all().map(|record| Done::Undoable(Some(record))),
+            Self::Commit {
+                message,
+                amend: true,
+            } => {
                 let changed = (!message.title.trim().is_empty()).then_some(message);
                 git.amend(changed).map(|()| Done::Plain)
             }
-            Self::Commit { message, amend: false } => git.commit(message).map(Done::Undoable),
+            Self::Commit {
+                message,
+                amend: false,
+            } => git.commit(message).map(Done::Undoable),
             Self::Fetch => git.fetch(None).map(|()| Done::Plain),
             Self::Pull(strategy) => git.pull(*strategy).map(|_| Done::Plain),
             Self::Push => git.push().map(|()| Done::Plain),

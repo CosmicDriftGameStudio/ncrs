@@ -25,6 +25,7 @@ use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::{Area, State};
+pub use overlay::{NAME_ID, RENAME_ID};
 
 /// The ids of the fields and scroll areas, for the focus and scroll tasks.
 pub const FILTER_ID: &str = "git-filter";
@@ -104,7 +105,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         );
     }
     if let Some(merge) = &state.actions.merge {
-        top = top.push(merge::banner_view(merge, ctx));
+        top = top.push(merge::banner_view(merge, state.actions.rebasing, ctx));
     }
     if let Some(notice) = &state.actions.notice {
         top = top.push(overlay::notice_banner(notice, ctx));

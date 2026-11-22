@@ -28,8 +28,8 @@ use crate::state::State;
 use crate::update::menu_target_of;
 
 const MENU_WIDTH: f32 = 300.0;
-const NAME_ID: &str = "git-new-branch-name";
-const RENAME_ID: &str = "git-rename-branch-name";
+pub const NAME_ID: &str = "git-new-branch-name";
+pub const RENAME_ID: &str = "git-rename-branch-name";
 
 fn row(label: String, shortcut: Shortcut, message: Message, enabled: bool) -> MenuRow<Message> {
     MenuRow::Entry(PopupEntry {
@@ -307,18 +307,25 @@ fn dialog_frame<'a>(
 ) -> Element<'a, Message> {
     let palette = ctx.palette;
     let lang = ctx.lang;
-    Frame::new(title, content, DialogSize::Medium, ctx.window, lang, palette)
-        .buttons(vec![
-            button(
-                lang.text(Msg::GitViewDialogCancel),
-                Some(Message::CloseDialog),
-                Tone::Secondary,
-                palette,
-            ),
-            enter_button(confirm, confirm_message, tone, palette),
-        ])
-        .on_close(Message::CloseDialog)
-        .into_element()
+    Frame::new(
+        title,
+        content,
+        DialogSize::Medium,
+        ctx.window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        button(
+            lang.text(Msg::GitViewDialogCancel),
+            Some(Message::CloseDialog),
+            Tone::Secondary,
+            palette,
+        ),
+        enter_button(confirm, confirm_message, tone, palette),
+    ])
+    .on_close(Message::CloseDialog)
+    .into_element()
 }
 
 fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, Message> {

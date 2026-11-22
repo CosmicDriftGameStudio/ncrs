@@ -469,15 +469,13 @@ pub(in crate::app) fn git_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if let Some(message) =
-        ncrs_git_view::git_view_key(
-            key,
-            key_modifiers,
-            prompt.git_filter,
-            prompt.git_diff,
-            prompt.git_dialog,
-        )
-    {
+    if let Some(message) = ncrs_git_view::git_view_key(
+        key,
+        key_modifiers,
+        prompt.git_filter,
+        prompt.git_diff,
+        prompt.git_dialog,
+    ) {
         return Some(Message::GitView(git, message));
     }
     bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)

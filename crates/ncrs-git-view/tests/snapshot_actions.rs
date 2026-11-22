@@ -597,6 +597,15 @@ mod ui_tests {
     }
 
     #[test]
+    fn rebase_conflicts_picture() {
+        let mut state = repository();
+        state.actions.sync = Some(sync());
+        state.actions.merge = Some(merge());
+        state.actions.rebasing = true;
+        picture(&state, "tests/snapshots/git-rebase-conflicts-cosmic");
+    }
+
+    #[test]
     fn conflict_menu_picture() {
         let mut state = repository();
         state.actions.merge = Some(merge());

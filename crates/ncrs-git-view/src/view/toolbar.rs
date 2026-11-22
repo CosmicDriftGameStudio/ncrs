@@ -38,7 +38,8 @@ pub fn view<'a>(
             idle
         }
     };
-    let press = |operation: Operation, message: Message| (busy != Some(operation)).then_some(message);
+    let press =
+        |operation: Operation, message: Message| (busy != Some(operation)).then_some(message);
     let mut bar = row![
         icon_button(
             Icon::Download,

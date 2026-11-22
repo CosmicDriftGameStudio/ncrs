@@ -6,11 +6,9 @@
     reason = "this module takes a group of messages out of the big match in `update`; the rest never arrives here"
 )]
 
-use iced::widget::text_editor;
+use iced::widget::{operation, text_editor};
 use iced::Task;
-use ncrs_git::{
-    ActionError, ChangedFile, CommitMessage, ConflictChoice, DiffHunk, UndoSummary,
-};
+use ncrs_git::{ActionError, ChangedFile, CommitMessage, ConflictChoice, DiffHunk, UndoSummary};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
@@ -25,6 +23,7 @@ use crate::message::Message;
 use crate::snapshot::{self, IntegrationSnapshot, Snapshot};
 use crate::state::State;
 use crate::update::{ensure_detail, failed, menu_target_of, quiet, Outcome};
+use crate::view::{NAME_ID, RENAME_ID};
 
 pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
     match message {
@@ -164,6 +163,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             }
         }
         Message::ConflictPressed(index, action) => {
+            state.actions.menu = None;
             select_conflict(state, index);
             conflict_action(state, action)
         }
@@ -311,22 +311,20 @@ fn current_branch(state: &State) -> String {
 
 /// The row a menu action is about: the open menu's, else the one under the cursor.
 fn menu_subject(state: &State) -> Option<MenuTarget> {
-    state
-        .actions
-        .menu
-        .map(|open| open.target)
-        .or_else(|| {
-            state
-                .sidebar_items()
-                .get(state.sidebar_cursor)
-                .and_then(|item| menu_target_of(*item))
-        })
+    state.actions.menu.map(|open| open.target).or_else(|| {
+        state
+            .sidebar_items()
+            .get(state.sidebar_cursor)
+            .and_then(|item| menu_target_of(*item))
+    })
 }
 
 fn branch_of(state: &State, target: MenuTarget) -> Option<String> {
     let overview = state.overview.as_ref()?;
     match target {
-        MenuTarget::LocalBranch(index) => overview.local.get(index).map(|branch| branch.name.clone()),
+        MenuTarget::LocalBranch(index) => {
+            overview.local.get(index).map(|branch| branch.name.clone())
+        }
         MenuTarget::RemoteBranch(index) => overview.remote.get(index).cloned(),
         MenuTarget::Stash(_) | MenuTarget::Conflict(_) => None,
     }
@@ -345,7 +343,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
             checkout: true,
             problem: None,
         });
-        return quiet(Task::none());
+        return quiet(operation::focus(NAME_ID));
     }
     let Some(chosen) = target else {
         return quiet(Task::none());
@@ -374,8 +372,8 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                 })
             })
         }
-        (MenuAction::StashDrop, MenuTarget::Stash(index)) => stash.clone().map(|sha| {
-            Question::DropStash {
+        (MenuAction::StashDrop, MenuTarget::Stash(index)) => {
+            stash.clone().map(|sha| Question::DropStash {
                 sha,
                 message: state
                     .actions
@@ -383,8 +381,8 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                     .get(index)
                     .map(|entry| entry.message.clone())
                     .unwrap_or_default(),
-            }
-        }),
+            })
+        }
         _ => None,
     };
     if question.is_some() {
@@ -396,6 +394,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                 name: from.clone(),
                 from,
             }));
+            return quiet(operation::focus(RENAME_ID).chain(operation::select_all(RENAME_ID)));
         }
         return quiet(Task::none());
     }
@@ -584,12 +583,8 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
     let conflicts: Vec<Conflict> = actions
         .seen_conflicts
         .iter()
-        .map(|path| {
-            match integration
-                .conflicts
-                .iter()
-                .find(|open| &open.path == path)
-            {
+        .map(
+            |path| match integration.conflicts.iter().find(|open| &open.path == path) {
                 Some(open) => Conflict {
                     path: path.clone(),
                     places: open.places,
@@ -602,8 +597,8 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
                     edited: false,
                     resolved: true,
                 },
-            }
-        })
+            },
+        )
         .collect();
     let before = actions.merge.as_ref().map_or(0, |merge| merge.selected);
     let shown = integration
@@ -649,9 +644,8 @@ pub fn refresh_sync(state: &mut State, ctx: &Ctx) {
 
 /// What the undo takes back, for the tooltip.
 fn undo_text(lang: Language, summary: &UndoSummary) -> String {
-    let counted = |msg: Msg, files: usize| {
-        fill_template(lang.text(msg), &[("{count}", &files.to_string())])
-    };
+    let counted =
+        |msg: Msg, files: usize| fill_template(lang.text(msg), &[("{count}", &files.to_string())]);
     match summary {
         UndoSummary::Stage { files: 0 } => lang.text(Msg::GitViewUndoStagedAll).to_owned(),
         UndoSummary::Stage { files: 1 } => lang.text(Msg::GitViewUndoStagedOne).to_owned(),

@@ -133,8 +133,7 @@ fn the_git_actions_are_not_listed_over_the_panels_or_without_write_actions() {
     open_palette(&mut panels);
     assert!(git_entries(&panels).is_empty());
 
-    let mut read_only =
-        app_showing_git(false);
+    let mut read_only = app_showing_git(false);
     open_palette(&mut read_only);
     assert!(git_entries(&read_only).is_empty());
 }

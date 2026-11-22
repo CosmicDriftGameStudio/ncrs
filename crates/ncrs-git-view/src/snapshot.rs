@@ -112,7 +112,10 @@ fn integration_of(
             path: file.path.clone(),
             places: u32::try_from(file.blocks.len()).unwrap_or(u32::MAX),
             edited: file.blocks.is_empty()
-                && matches!(file.kind, ConflictKind::BothModified | ConflictKind::BothAdded)
+                && matches!(
+                    file.kind,
+                    ConflictKind::BothModified | ConflictKind::BothAdded
+                )
                 && read_text(git.root(), &file.path).is_some(),
         })
         .collect();

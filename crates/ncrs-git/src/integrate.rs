@@ -197,8 +197,10 @@ impl Git {
             return self.rewrite_conflicts(path, None, choice);
         }
         let (ours, theirs) = sides_with_file(conflict.kind);
-        if matches!(choice, ConflictChoice::Both | ConflictChoice::TheirsThenOurs)
-            && ours
+        if matches!(
+            choice,
+            ConflictChoice::Both | ConflictChoice::TheirsThenOurs
+        ) && ours
             && theirs
         {
             return Err(other(format!("{path} has no text blocks to combine")));

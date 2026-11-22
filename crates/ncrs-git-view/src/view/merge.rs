@@ -16,20 +16,44 @@ use crate::message::Message;
 
 const PREVIEW_ID: &str = "git-conflict-diff";
 
-pub fn banner_view<'a>(merge: &'a MergeInProgress, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+fn rebase_or(rebasing: bool, merge: Msg, rebase: Msg) -> Msg {
+    if rebasing {
+        rebase
+    } else {
+        merge
+    }
+}
+
+pub fn banner_view<'a>(
+    merge: &'a MergeInProgress,
+    rebasing: bool,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
     let lang = ctx.lang;
     let open = merge.open_count();
     let headline = match open {
         0 => fill_template(
-            lang.text(Msg::GitViewMergeBannerDone),
+            lang.text(rebase_or(
+                rebasing,
+                Msg::GitViewMergeBannerDone,
+                Msg::GitViewRebaseBannerDone,
+            )),
             &[("{from}", &merge.from), ("{into}", &merge.into)],
         ),
         1 => fill_template(
-            lang.text(Msg::GitViewMergeBannerOne),
+            lang.text(rebase_or(
+                rebasing,
+                Msg::GitViewMergeBannerOne,
+                Msg::GitViewRebaseBannerOne,
+            )),
             &[("{from}", &merge.from), ("{into}", &merge.into)],
         ),
         count => fill_template(
-            lang.text(Msg::GitViewMergeBanner),
+            lang.text(rebase_or(
+                rebasing,
+                Msg::GitViewMergeBanner,
+                Msg::GitViewRebaseBanner,
+            )),
             &[
                 ("{from}", &merge.from),
                 ("{into}", &merge.into),
@@ -40,7 +64,14 @@ pub fn banner_view<'a>(merge: &'a MergeInProgress, ctx: ViewCtx<'a>) -> Element<
     banner(
         BannerTone::Attention,
         headline,
-        Some(lang.text(Msg::GitViewMergeHint).to_owned()),
+        Some(
+            lang.text(rebase_or(
+                rebasing,
+                Msg::GitViewMergeHint,
+                Msg::GitViewRebaseHint,
+            ))
+            .to_owned(),
+        ),
         None,
         vec![
             button(

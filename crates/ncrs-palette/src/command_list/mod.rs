@@ -202,14 +202,18 @@ impl CommandPalette {
 
     /// Adds the commands of the Git tab, in a group of their own.
     pub fn with_git_commands(mut self, commands: Vec<GitCommandEntry>) -> Self {
-        self.entries
-            .extend(commands.into_iter().enumerate().map(|(place, command)| Entry {
-                target: Target::Git(place),
-                group: PaletteGroup::Git,
-                label: command.label,
-                theme_name: None,
-                shortcut: command.shortcut,
-            }));
+        self.entries.extend(
+            commands
+                .into_iter()
+                .enumerate()
+                .map(|(place, command)| Entry {
+                    target: Target::Git(place),
+                    group: PaletteGroup::Git,
+                    label: command.label,
+                    theme_name: None,
+                    shortcut: command.shortcut,
+                }),
+        );
         self.rank();
         self
     }

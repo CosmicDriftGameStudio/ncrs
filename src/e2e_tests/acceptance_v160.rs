@@ -42,11 +42,21 @@ pub(in crate::e2e_tests) fn shoot_with(
     name: &str,
     touch: impl FnOnce(&mut Simulator<'_, Message>),
 ) {
+    shoot_into(SHOT_DIR, app, name, touch);
+}
+
+/// [`shoot_with`] into the folder `dir`.
+pub(in crate::e2e_tests) fn shoot_into(
+    dir: &str,
+    app: &App,
+    name: &str,
+    touch: impl FnOnce(&mut Simulator<'_, Message>),
+) {
     if !shooting() {
         return;
     }
-    std::fs::create_dir_all(SHOT_DIR).unwrap();
-    let shot = PathBuf::from(SHOT_DIR);
+    std::fs::create_dir_all(dir).unwrap();
+    let shot = PathBuf::from(dir);
     drop(std::fs::remove_file(
         shot.join(format!("{name}-tiny-skia.png")),
     ));

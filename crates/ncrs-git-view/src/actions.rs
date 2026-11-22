@@ -189,7 +189,10 @@ impl MergeInProgress {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
     /// The remote has commits the local branch lacks.
-    PushRejected { branch: String, behind: u32 },
+    PushRejected {
+        branch: String,
+        behind: u32,
+    },
     /// The remote did not let us in.
     AuthFailed {
         remote: String,
@@ -198,18 +201,30 @@ pub enum Notice {
         details_open: bool,
     },
     /// The remote could not be reached.
-    NetworkFailed { output: String, details_open: bool },
+    NetworkFailed {
+        output: String,
+        details_open: bool,
+    },
     /// A branch with commits no other branch has; deleting it needs a second go.
-    BranchNotMerged { branch: String },
+    BranchNotMerged {
+        branch: String,
+    },
     /// A pull on diverged branches: merge or rebase, the user decides.
     NeedsPullStrategy,
     NothingToCommit,
     CommitTitleMissing,
-    UnresolvedConflicts { count: usize },
+    UnresolvedConflicts {
+        count: usize,
+    },
     UndoNotSafe,
-    InvalidName { name: String },
+    InvalidName {
+        name: String,
+    },
     /// Anything else git reported.
-    Other { output: String, details_open: bool },
+    Other {
+        output: String,
+        details_open: bool,
+    },
 }
 
 /// What a button of the toolbar is busy with; further presses wait for it.
