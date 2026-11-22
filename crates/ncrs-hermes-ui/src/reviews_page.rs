@@ -558,10 +558,9 @@ mod tests {
     #[test]
     fn a_typed_sender_files_the_document_with_that_sender() {
         let items = items_of(ReviewReason::LowConfidence(Field::Sender), 1);
-        let page = page_of(items.clone());
+        let mut page = page_of(items.clone());
         let document = items[0].document_id;
         assert_eq!(page.input_of(Question::Sender, &items[0]), "Company A");
-        let mut page = page;
         page.type_into(document, "  Agency B ".to_owned());
         let typed = page.typed_for(Question::Sender, document).unwrap();
         assert_eq!(typed.fields.sender.as_deref(), Some("Agency B"));

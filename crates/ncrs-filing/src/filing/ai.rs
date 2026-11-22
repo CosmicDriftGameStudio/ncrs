@@ -28,15 +28,24 @@ pub enum AiStatus {
     Off,
     NotDownloaded,
     // Only the local model reports these; the build without it never does.
-    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "local-ai"),
+        allow(dead_code, reason = "only the local model reports this")
+    )]
     NotLoadedYet,
-    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "local-ai"),
+        allow(dead_code, reason = "only the local model reports this")
+    )]
     Loaded {
         name: String,
         memory_bytes: u64,
         compute: ncrs_ai::Compute,
     },
-    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "local-ai"),
+        allow(dead_code, reason = "only the local model reports this")
+    )]
     Failed(&'static str),
     Http {
         origin: String,

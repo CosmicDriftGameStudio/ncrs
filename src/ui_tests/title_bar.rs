@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use ncrs_pipeline::{RunnerState, Snapshot};
 
 use super::*;
-use crate::messages::{FilingStatusMessage, PanelSide};
+use crate::messages::{FilingStatusMessage, HermesPage, PanelSide};
 use crate::ui::titlebar::{HERMES_CHIP_ID, LEFT_TAB_ID, RIGHT_TAB_ID};
 
 fn taken_at() -> SystemTime {
@@ -56,7 +56,7 @@ fn a_click_on_the_inactive_tab_makes_its_panel_active() {
 }
 
 #[test]
-fn a_click_on_the_hermes_chip_opens_the_inspection_page() {
+fn a_click_on_the_hermes_chip_opens_the_activity_page() {
     let mut app = with_hermes().with_starting_hermes_for_test();
     let messages = messages_after_click(&app, HERMES_CHIP_ID);
     assert_eq!(
@@ -66,7 +66,7 @@ fn a_click_on_the_hermes_chip_opens_the_inspection_page() {
     for message in messages {
         drop(app.update(message));
     }
-    assert!(app.inspection_page_is_open_for_test());
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
 }
 
 #[test]

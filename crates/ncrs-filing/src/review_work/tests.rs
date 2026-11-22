@@ -762,16 +762,16 @@ fn comparing_tells_equal_content_from_different_content() {
     let setup = Setup::new();
     let same = taken(&setup, INCOMING);
     let relative = PathBuf::from("Company A/Invoice");
-    let found = same
+    let equal = same
         .access
         .compare_targets(&[(same.item.path.clone(), relative.clone())]);
-    assert_eq!(found[0].map(|found| found.same_content), Some(true));
+    assert_eq!(equal[0].map(|target| target.same_content), Some(true));
 
     fs::write(&same.target, "something else entirely").unwrap();
-    let found = same
+    let different = same
         .access
         .compare_targets(&[(same.item.path.clone(), relative)]);
-    assert_eq!(found[0].map(|found| found.same_content), Some(false));
+    assert_eq!(different[0].map(|target| target.same_content), Some(false));
 }
 
 #[test]
@@ -779,7 +779,9 @@ fn a_duplicate_goes_to_the_trash_and_the_target_stays() {
     let setup = Setup::new();
     let found = taken(&setup, INCOMING);
 
-    let summary = found.access.delete_duplicates(&[found.item.clone()]);
+    let summary = found
+        .access
+        .delete_duplicates(std::slice::from_ref(&found.item));
 
     assert_eq!((summary.trashed, summary.failed), (1, 0));
     assert!(!found.item.path.exists());
@@ -796,10 +798,15 @@ fn a_file_that_differs_is_not_taken_for_a_duplicate() {
     let setup = Setup::new();
     let found = taken(&setup, "another content");
 
-    let summary = found.access.delete_duplicates(&[found.item.clone()]);
+    let summary = found
+        .access
+        .delete_duplicates(std::slice::from_ref(&found.item));
 
     assert_eq!((summary.trashed, summary.failed), (0, 1));
-    assert_eq!(summary.first_failure.as_deref(), Some(answers::NOT_A_DUPLICATE));
+    assert_eq!(
+        summary.first_failure.as_deref(),
+        Some(answers::NOT_A_DUPLICATE)
+    );
     assert!(found.item.path.exists());
     assert_eq!(found.access.load().unwrap().len(), 1);
 }
@@ -809,7 +816,7 @@ fn overwriting_puts_the_old_file_in_the_trash_and_files_the_new_one() {
     let setup = Setup::new();
     let found = taken(&setup, "the old file");
 
-    let summary = found.access.overwrite(&[found.item.clone()]);
+    let summary = found.access.overwrite(std::slice::from_ref(&found.item));
 
     assert_eq!((summary.filed, summary.failed), (1, 0));
     assert_eq!(fs::read_to_string(&found.target).unwrap(), INCOMING);
@@ -828,7 +835,7 @@ fn keeping_both_files_the_new_one_under_the_next_free_number() {
     let second = found.target.with_file_name("Invoice (2).pdf");
     fs::write(&second, "already there").unwrap();
 
-    let summary = found.access.keep_both(&[found.item.clone()]);
+    let summary = found.access.keep_both(std::slice::from_ref(&found.item));
 
     assert_eq!((summary.filed, summary.failed), (1, 0));
     assert_eq!(fs::read_to_string(&found.target).unwrap(), "the old file");
@@ -866,7 +873,7 @@ fn an_ignored_document_leaves_the_list_and_stays_where_it_is() {
     let access = setup.access();
     let item = first(&access);
 
-    access.exclude(&[item.path.clone()]).unwrap();
+    access.exclude(std::slice::from_ref(&item.path)).unwrap();
 
     assert!(access.load().unwrap().is_empty());
     assert!(item.path.exists());

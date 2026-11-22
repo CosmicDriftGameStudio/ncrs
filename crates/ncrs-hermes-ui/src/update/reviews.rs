@@ -25,6 +25,7 @@ use crate::reviews_page::{Answer, Question, ReviewsPage};
 use crate::rule_form::RuleForm;
 use crate::state::Hermes;
 
+type Work = Box<dyn Fn(&ReviewAccess, &[ReviewItem]) -> AcceptSummary + Send>;
 
 pub fn open(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
     if hermes.reviews.is_some() {
@@ -150,7 +151,7 @@ pub fn update(
             actions.push(Action::PreviewFile(path));
             Task::none()
         }
-        ReviewsMessage::FolderPicked(folder) => {
+        ReviewsMessage::FolderPicked(picked_folder) => {
             let Some(items) = hermes
                 .reviews
                 .as_mut()
@@ -158,11 +159,11 @@ pub fn update(
             else {
                 return Task::none();
             };
-            let Some(folder) = folder else {
+            let Some(folder) = picked_folder else {
                 return Task::none();
             };
-            let picked = move |access: &ReviewAccess, items: &[ReviewItem]| {
-                access.accept_into(items, &folder)
+            let picked = move |access: &ReviewAccess, batch: &[ReviewItem]| {
+                access.accept_into(batch, &folder)
             };
             run(hermes, items, ctx, actions, Box::new(picked))
         }
@@ -190,9 +191,7 @@ fn answer_question(
         return Task::none();
     };
     let items = match (answer, document) {
-        (Answer::FileTyped, Some(document)) => {
-            page.typed_for(question, document).into_iter().collect()
-        }
+        (Answer::FileTyped, Some(single)) => page.typed_for(question, single).into_iter().collect(),
         _ => page.answer_items(question, answer, document),
     };
     match answer {
@@ -200,10 +199,9 @@ fn answer_question(
             if !page.is_unfolded(question) {
                 page.toggle(question);
             }
-            page.first_input(question)
-                .map_or_else(Task::none, |first| {
-                    operation::focus(crate::ui::reviews::input_id(first))
-                })
+            page.first_input(question).map_or_else(Task::none, |first| {
+                operation::focus(crate::ui::reviews::input_id(first))
+            })
         }
         Answer::SetFields => {
             actions.push(Action::OpenChat);
@@ -278,16 +276,16 @@ fn run(
     items: Vec<ReviewItem>,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
-    work: Box<dyn Fn(&ReviewAccess, &[ReviewItem]) -> AcceptSummary + Send>,
+    work: Work,
 ) -> Task<Message> {
     if items.is_empty() {
         return Task::none();
     }
-    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
+    let Some(bare_access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
-    let access = access.with_trash(Arc::clone(&ctx.trash.0));
+    let access = bare_access.with_trash(Arc::clone(&ctx.trash.0));
     Task::perform(
         tokio::task::spawn_blocking(move || work(&access, &items)),
         |joined| {
@@ -304,7 +302,12 @@ fn run(
 
 /// What the status bar says about an answer; failures go through the error
 /// line, the rest is a notice. The column and the panels read again.
-fn answered(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+fn answered(
+    hermes: &mut Hermes,
+    summary: &AcceptSummary,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) {
     settle_column(hermes);
     if summary.failed > 0 {
         actions.push(Action::ShowError(

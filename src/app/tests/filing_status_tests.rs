@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::time::SystemTime;
 
 use crate::app::*;
-use crate::messages::SettingsFeature;
+use crate::messages::{ActivityMessage, SettingsFeature};
 use ncrs_pipeline::{RunnerState, Settings, Snapshot, SystemClock};
 
 fn status(message: FilingStatusMessage) -> Message {
@@ -78,11 +78,27 @@ fn without_a_pipeline_the_pause_does_nothing() {
 }
 
 #[test]
-fn the_status_key_and_the_chip_open_the_settings_on_the_read_errors() {
+fn the_status_key_and_the_chip_open_the_activity_page() {
     let mut app = App::with_fixed_panels();
 
     drop(app.update(status(FilingStatusMessage::Open)));
 
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
+    assert_eq!(
+        settings_ui::shown_feature(&app.settings_view(app.settings.page.as_ref().unwrap())),
+        Some(SettingsFeature::Activity)
+    );
+}
+
+#[test]
+fn the_activity_page_leads_to_the_reviews_and_to_the_read_errors() {
+    let mut app = App::with_fixed_panels();
+    drop(app.update(status(FilingStatusMessage::Open)));
+
+    drop(app.update(Message::Activity(ActivityMessage::OpenReviews)));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Reviews));
+
+    drop(app.update(Message::Activity(ActivityMessage::OpenReadErrors)));
     assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
     assert_eq!(
         settings_ui::shown_feature(&app.settings_view(app.settings.page.as_ref().unwrap())),
@@ -95,7 +111,7 @@ fn the_status_opens_no_second_tab_and_escape_closes_the_settings() {
     let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
 
     drop(app.update(status(FilingStatusMessage::Open)));
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
 
     close_settings_with_escape(&mut app);
 

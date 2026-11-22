@@ -5,8 +5,8 @@
 use std::path::Path;
 
 use ncrs_config::palette::Palette;
-use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_filing::review_work::ReviewItem;
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::DocumentId;
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{self, Tone};
@@ -102,8 +102,8 @@ fn answer_buttons(
 ) -> Vec<RowButton<Message>> {
     let members = state.members(question).len();
     let offered: Vec<(Answer, usize)> = match document {
-        Some(document) => state
-            .file_answers(question, document)
+        Some(row_document) => state
+            .file_answers(question, row_document)
             .into_iter()
             .map(|answer| (answer, members))
             .collect(),
@@ -115,9 +115,9 @@ fn answer_buttons(
         .map(|(position, (answer, fits))| {
             let message = match document {
                 Some(_) if answer == Answer::FileTyped => document
-                    .filter(|&document| state.typed_for(question, document).is_some())
-                    .map(|document| ReviewsMessage::AnswerFile(question, answer, document)),
-                Some(document) => Some(ReviewsMessage::AnswerFile(question, answer, document)),
+                    .filter(|&candidate| state.typed_for(question, candidate).is_some())
+                    .map(|candidate| ReviewsMessage::AnswerFile(question, answer, candidate)),
+                Some(only) => Some(ReviewsMessage::AnswerFile(question, answer, only)),
                 None => Some(ReviewsMessage::Answer(question, answer)),
             };
             let mut label = answer_text(question, answer, lang);
@@ -164,12 +164,12 @@ fn question_text(question: Question, lang: Language) -> String {
 /// The line under the question: what Hermes read and where it would file for
 /// the questions about the sender and the rule, else why Hermes asks.
 fn detail_text(state: &ReviewsPage, question: Question, lang: Language) -> String {
-    let template = match question {
+    let detail_message = match question {
         Question::Sender => Some(Msg::ReviewsPageDetailSender),
         Question::RuleUnconfirmed => Some(Msg::ReviewsPageDetailRule),
         _ => None,
     };
-    let known = template
+    let known = detail_message
         .zip(state.single_sender(question))
         .zip(state.main_folder(question));
     if let Some(((template, sender), (folder, others))) = known {
@@ -255,7 +255,10 @@ fn file_line(
 
 fn taken_line(state: &ReviewsPage, item: &ReviewItem, lang: Language) -> String {
     let free = || lang.text(Msg::ReviewsPageTakenFree).to_owned();
-    match (state.taken_by(item.document_id), state.comparison(item.document_id)) {
+    match (
+        state.taken_by(item.document_id),
+        state.comparison(item.document_id),
+    ) {
         (TakenBy::Unknown, _) => lang.text(Msg::ReviewsPageTakenComparing).to_owned(),
         (_, None) => free(),
         (_, Some(found)) => {
@@ -319,14 +322,14 @@ fn file_rows<'a>(
     rows
 }
 
-pub(super) fn file_name(path: &Path) -> String {
+pub(in crate::ui) fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(
         || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     )
 }
 
-pub(super) fn folder_of(path: &Path) -> String {
+pub(in crate::ui) fn folder_of(path: &Path) -> String {
     format::ellipsize_middle(
         &path
             .parent()
@@ -368,7 +371,8 @@ fn typed_row<'a>(
             palette,
         )
     };
-    let row = SettingRow::listed_field_buttons(file_name(&item.path), line, field, buttons, palette);
+    let row =
+        SettingRow::listed_field_buttons(file_name(&item.path), line, field, buttons, palette);
     SettingRow {
         problem: invalid.then(|| lang.text(Msg::ReviewsPageInvalidDate).to_owned()),
         ..row

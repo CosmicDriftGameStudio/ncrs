@@ -225,7 +225,10 @@ fn open_rule_form_from_menu(
 
 /// What the status bar says about the documents filed from the menu; `None`
 /// when the only one failed, which is an error rather than a notice.
-pub(super) fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<String> {
+pub(in crate::update) fn accept_notice(
+    summary: &AcceptSummary,
+    lang: ncrs_i18n::Language,
+) -> Option<String> {
     let template = |msg: Msg| lang.text(msg).to_owned();
     match (summary.total(), summary) {
         (
@@ -259,7 +262,7 @@ pub(super) fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) 
 }
 
 /// Documents were filed or removed: the column asks again for everything.
-pub(super) fn settle_column(hermes: &mut Hermes) {
+pub(in crate::update) fn settle_column(hermes: &mut Hermes) {
     hermes.hermes_column.invalidate_all();
     hermes.hermes_failed_reads.clear();
     hermes.hermes_detail_reads.clear();
@@ -267,7 +270,7 @@ pub(super) fn settle_column(hermes: &mut Hermes) {
 
 /// The documents of a group were filed from the menu: the column asks again
 /// and the panels read their folders.
-pub(super) fn filed(
+pub(in crate::update) fn filed(
     hermes: &mut Hermes,
     summary: &AcceptSummary,
     ctx: &Ctx<'_>,

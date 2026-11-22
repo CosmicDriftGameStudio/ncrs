@@ -462,6 +462,18 @@ pub fn show_setting(
     feature: SettingsFeature,
     row: Option<String>,
 ) -> Task<Message> {
+    Task::batch([
+        open_on(settings, ctx, feature, row),
+        ncrs_ui_kit::nav_list::chosen_into_view(),
+    ])
+}
+
+fn open_on(
+    settings: &mut Settings,
+    ctx: &Ctx<'_>,
+    feature: SettingsFeature,
+    row: Option<String>,
+) -> Task<Message> {
     let reading = page_data(feature, ctx);
     if settings.page.is_some() {
         let left = leave_page(settings, ctx, |held| {
