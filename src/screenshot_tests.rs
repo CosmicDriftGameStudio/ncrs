@@ -265,7 +265,9 @@ fn batch_rename_app() -> App {
         .collect();
     let downloads = app.panel_mut_for_test(PanelSide::Right);
     let last = position_of(&downloads.entries, "holiday-003.jpg");
-    let template = downloads.entries[last].clone();
+    let Some(template) = downloads.entries.get(last).cloned() else {
+        return app;
+    };
     for (offset, name) in photos.iter().skip(3).enumerate() {
         let mut photo = template.clone();
         photo.name = OsString::from(name);
@@ -364,6 +366,7 @@ fn write_screenshot(app: &App, file_name: &str) {
     write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -429,8 +432,8 @@ mod tests {
 
         let pages = Scenes::new();
         let page_app = || showcase_app().with_window_size_for_test(FILING_WINDOW_SIZE);
-        let page = |app: &App, file_name: &str| {
-            write_screenshot_to(app, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, file_name);
+        let page = |shown: &App, file_name: &str| {
+            write_screenshot_to(shown, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, file_name);
         };
         page(&page_app().showing_git_for_test(pages.git()), "git.png");
         page(

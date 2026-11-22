@@ -65,7 +65,7 @@ impl GitTabs {
     }
 
     /// A tab that is already filled, for the screenshot generators.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "media-tools"))]
     pub(in crate::app) fn adopt_for_test(&mut self, state: State) -> GitTabId {
         let id = GitTabId(self.next_id);
         self.next_id += 1;

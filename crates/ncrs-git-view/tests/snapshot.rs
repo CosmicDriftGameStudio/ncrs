@@ -45,9 +45,15 @@ mod ui_tests {
             short: id.chars().take(7).collect(),
             id,
             parents: Vec::new(),
-            author: AUTHORS[number % AUTHORS.len()].to_owned(),
+            author: AUTHORS
+                .get(number % AUTHORS.len())
+                .expect("an author")
+                .to_string(),
             time: 1_790_000_000 - number as i64 * 5_400,
-            summary: SUMMARIES[number % SUMMARIES.len()].to_owned(),
+            summary: SUMMARIES
+                .get(number % SUMMARIES.len())
+                .expect("a summary")
+                .to_string(),
             refs: Vec::new(),
             is_merge: false,
             graph: GraphRow::default(),
@@ -60,7 +66,7 @@ mod ui_tests {
             name: "ncrs".to_owned(),
             ..State::default()
         };
-        let (generation, _) = state.loads.log.begin();
+        let (read_log, _) = state.loads.log.begin();
         let log = Log {
             commits: (0..30).map(commit).collect(),
             has_more: false,
@@ -69,10 +75,10 @@ mod ui_tests {
         };
         drop(update(
             &mut state,
-            Message::LogLoaded(generation, Box::new(Ok(log))),
+            Message::LogLoaded(read_log, Box::new(Ok(log))),
             &CTX,
         ));
-        let (generation, _) = state.loads.refs.begin();
+        let (read_refs, _) = state.loads.refs.begin();
         let overview = RefsOverview {
             main_branch: Some("main".to_owned()),
             local: vec![BranchInfo {
@@ -99,10 +105,10 @@ mod ui_tests {
         };
         drop(update(
             &mut state,
-            Message::RefsLoaded(generation, Box::new(Ok(overview))),
+            Message::RefsLoaded(read_refs, Box::new(Ok(overview))),
             &CTX,
         ));
-        let (generation, _) = state.loads.detail.begin();
+        let (read_detail, _) = state.loads.detail.begin();
         let first = commit(0);
         let info = CommitDetail {
             id: first.id,
@@ -110,7 +116,7 @@ mod ui_tests {
             parents: Vec::new(),
             author: first.author,
             time: first.time,
-            message: SUMMARIES[0].to_owned(),
+            message: SUMMARIES.first().expect("a summary").to_string(),
             files: vec![ChangedFile {
                 path: "src/engine.rs".to_owned(),
                 old_path: None,
@@ -122,7 +128,7 @@ mod ui_tests {
         };
         drop(update(
             &mut state,
-            Message::DetailLoaded(generation, Box::new(Ok(info))),
+            Message::DetailLoaded(read_detail, Box::new(Ok(info))),
             &CTX,
         ));
         state

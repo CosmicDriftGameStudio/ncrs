@@ -1,6 +1,15 @@
 //! Fixture pages for the screenshot generators: the Git, filing, notes, system
 //! and viewer tabs, filled by hand through the public API of their crates.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::shadow_unrelated,
+    reason = "test code: a failing setup is the signal"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -244,8 +253,8 @@ fn filing_state(index: usize, resolved: usize) -> LiveState {
 
 /// The Filing tab with the read folder, the write tree and 60 scans, `resolved`
 /// of them already looked at; all of them when `done`.
-pub fn filing_tab(resolved: usize, done: bool) -> ncrs_filing_view::State {
-    let resolved = if done { FILING_FILES } else { resolved };
+pub fn filing_tab(read: usize, done: bool) -> ncrs_filing_view::State {
+    let resolved = if done { FILING_FILES } else { read };
     let mut session = ncrs_filing_view::Session::new(
         PathBuf::from("/Users/alex/Scans"),
         PathBuf::from("/Users/alex/Documents"),
@@ -425,8 +434,17 @@ fn drive(name: &str, mount: &str, file_system: &str, total_gb: u64, available_gb
     }
 }
 
-/// (file, month, sender, kind, tags, euro cents)
-const DOCUMENTS: [(&str, u32, &str, &str, &[&str], i64); 14] = [
+/// A document: file, month, sender, kind, tags and euro cents.
+type Document = (
+    &'static str,
+    u32,
+    &'static str,
+    &'static str,
+    &'static [&'static str],
+    i64,
+);
+
+const DOCUMENTS: [Document; 14] = [
     (
         "telekom-2026-04.pdf",
         4,
@@ -535,12 +553,12 @@ const DOCUMENTS: [(&str, u32, &str, &str, &[&str], i64); 14] = [
 ];
 
 /// The document search with the year filter on and 14 hits of several senders and kinds.
-pub fn dense_document_search(app: crate::app::App) -> crate::app::App {
+pub fn dense_document_search(base: crate::app::App) -> crate::app::App {
     use ncrs_index::{Amount, Currency, FileStamp};
     use ncrs_search::filters::{FacetValue, SearchFilters};
     use ncrs_search::test_support::found_hit;
 
-    let mut app = app.searching_filters_for_test("2026", |root| {
+    let mut app = base.searching_filters_for_test("2026", |root| {
         let mut filters = SearchFilters::new(Default::default());
         filters.ask("2026");
         let hits: Vec<_> = DOCUMENTS
