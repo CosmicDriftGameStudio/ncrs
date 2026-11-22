@@ -2,7 +2,9 @@
 
 use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, RefsOverview};
 
-use crate::state::Section;
+use ncrs_ui_kit::git_rows::CommitColumn;
+
+use crate::state::Fold;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
@@ -21,7 +23,12 @@ pub enum Message {
     FilePressed(usize),
     /// A folder row of the file tree: the pane gets the focus.
     FolderPressed,
-    ToggleSection(Section),
+    ToggleFold(Fold),
+    /// The gap before a commit column was pressed: dragging changes its width.
+    ResizePressed(CommitColumn),
+    /// The pointer moved to this x while a column is dragged.
+    ResizeMoved(f32),
+    ResizeReleased,
     LoadMore,
     SetTreeMode(bool),
     SetUnified(bool),

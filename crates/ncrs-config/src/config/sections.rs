@@ -51,6 +51,21 @@ pub struct ColumnsSection {
     pub size_format: Option<SizeFormat>,
 }
 
+/// The `[git_view]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitViewSection {
+    /// Checked by `resolve_git_view`: a width that is no pixel count is dropped.
+    #[serde(default)]
+    pub author_width: Option<i64>,
+    #[serde(default)]
+    pub date_width: Option<i64>,
+    #[serde(default)]
+    pub sha_width: Option<i64>,
+    #[serde(default)]
+    pub folded: std::collections::BTreeMap<String, Vec<String>>,
+}
+
 /// The `[appearance]` section, unchecked.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]

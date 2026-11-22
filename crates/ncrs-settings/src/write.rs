@@ -44,6 +44,7 @@ pub fn write_setting_change(
         SettingChange::FileListTags(tags) => config::write_file_list_tags(path, &tags),
         SettingChange::System(settings) => config::write_system_settings(path, &settings),
         SettingChange::Columns(columns) => config::write_columns(path, &columns),
+        SettingChange::GitView(settings) => config::write_git_view(path, &settings),
         SettingChange::Appearance(appearance) => config::write_appearance(path, &appearance),
         SettingChange::Locations(locations) => config::write_read_folders(path, &locations),
     };

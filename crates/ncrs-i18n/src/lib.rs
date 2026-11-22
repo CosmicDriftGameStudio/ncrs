@@ -394,7 +394,7 @@ mod tests {
                 // Git and Hermes terms, abbreviations and loanwords German keeps as they are.
                 | Msg::GitViewColumnSha
                 | Msg::GitViewMode
-                | Msg::GitViewSectionRemote
+                | Msg::GitViewSectionRemotes
                 | Msg::GitViewSectionStashes
                 | Msg::GitViewSectionTags
                 | Msg::GitViewSectionWorktrees

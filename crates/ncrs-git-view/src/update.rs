@@ -16,7 +16,7 @@ use crate::ctx::Ctx;
 use crate::diff_layout::rows_before;
 use crate::load;
 use crate::message::Message;
-use crate::state::{Area, Detail, DiffState, Section, SidebarItem, State, Subject, PAGE};
+use crate::state::{Area, ColumnDrag, Detail, DiffState, Fold, SidebarItem, State, Subject, PAGE};
 use crate::view::{DIFF_ID, FILTER_ID};
 
 /// Lines an arrow key scrolls the diff by.
@@ -29,13 +29,19 @@ fn quiet(task: Task<Message>) -> Outcome {
 }
 
 /// Shows the tab for the repository at `root` and reads it. The same
-/// repository again only reads it anew.
-pub fn open(state: &mut State, root: PathBuf, name: String) -> Task<Message> {
+/// repository again only reads it anew. A repository that is opened takes the
+/// folded groups the app remembers for it.
+pub fn open(state: &mut State, root: PathBuf, name: String, ctx: &Ctx) -> Task<Message> {
     if state.root.as_ref() != Some(&root) {
         state.close();
         state.root = Some(root);
         state.name = name;
         state.limit = PAGE;
+        state.collapsed = ctx
+            .folded
+            .iter()
+            .filter_map(|key| Fold::from_key(key))
+            .collect();
     }
     state.problem = None;
     Task::batch([load::refs(state), load::log(state)])
@@ -160,9 +166,32 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.file_cursor = index;
             quiet(open_diff(state, index))
         }
-        Message::ToggleSection(section) => {
-            toggle_section(state, section);
+        Message::ToggleFold(fold) => (Task::none(), toggle_fold(state, fold)),
+        Message::ResizePressed(column) => {
+            state.column_drag = Some(ColumnDrag {
+                column,
+                start: ctx.columns,
+                origin: None,
+                current: ctx.columns,
+            });
             quiet(Task::none())
+        }
+        Message::ResizeMoved(x) => {
+            if let Some(drag) = state.column_drag.as_mut() {
+                let origin = *drag.origin.get_or_insert(x);
+                drag.current = drag.start.dragged(drag.column, x - origin);
+            }
+            quiet(Task::none())
+        }
+        Message::ResizeReleased => {
+            let resized = state
+                .column_drag
+                .take()
+                .filter(|drag| drag.current != drag.start);
+            (
+                Task::none(),
+                resized.map(|drag| Action::ColumnsResized(drag.current)),
+            )
         }
         Message::LoadMore => quiet(load_more(state)),
         Message::SetTreeMode(tree) => {
@@ -184,19 +213,21 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Up => quiet(move_cursor(state, -1)),
         Message::Down => quiet(move_cursor(state, 1)),
-        // On a section header the arrows fold it first; otherwise they move
+        // On a group the arrows fold it first; otherwise they move
         // between the areas, without wrapping around.
         Message::Left => {
-            if !collapse_at_cursor(state, true) && state.area != Area::Sidebar {
+            let folded = fold_at_cursor(state, true);
+            if folded.is_none() && state.area != Area::Sidebar {
                 state.area = state.area.previous();
             }
-            quiet(Task::none())
+            (Task::none(), folded)
         }
         Message::Right => {
-            if !collapse_at_cursor(state, false) && state.area != Area::Detail {
+            let folded = fold_at_cursor(state, false);
+            if folded.is_none() && state.area != Area::Detail {
                 state.area = state.area.next();
             }
-            quiet(Task::none())
+            (Task::none(), folded)
         }
         Message::Enter => enter(state),
         Message::NextArea => {
@@ -272,45 +303,48 @@ fn load_more(state: &mut State) -> Task<Message> {
     load::log(state)
 }
 
-fn toggle_section(state: &mut State, section: Section) {
-    if !state.collapsed.remove(&section) {
-        state.collapsed.insert(section);
+/// Folds `fold` if it is open and unfolds it if it is folded; the action tells
+/// the app what to remember.
+fn toggle_fold(state: &mut State, fold: Fold) -> Option<Action> {
+    if !state.collapsed.remove(&fold) {
+        state.collapsed.insert(fold);
     }
     state.sidebar_cursor = state
         .sidebar_cursor
         .min(state.sidebar_items().len().saturating_sub(1));
+    Some(Action::FoldsChanged {
+        root: state.root.clone()?,
+        folded: state.folded_keys(),
+    })
 }
 
-/// Folds or unfolds the section header under the cursor; whether it did.
-fn collapse_at_cursor(state: &mut State, collapse: bool) -> bool {
+/// Folds or unfolds the group under the cursor; `None` if there is none or it is
+/// as asked already.
+fn fold_at_cursor(state: &mut State, collapse: bool) -> Option<Action> {
     if state.area != Area::Sidebar {
-        return false;
+        return None;
     }
-    let item = state.sidebar_items().get(state.sidebar_cursor).copied();
-    let Some(SidebarItem::Header(section)) = item else {
-        return false;
-    };
-    if state.collapsed.contains(&section) == collapse {
-        return false;
+    let item = state.sidebar_items().get(state.sidebar_cursor).copied()?;
+    let fold = state.fold_of(item)?;
+    if state.collapsed.contains(&fold) == collapse {
+        return None;
     }
-    toggle_section(state, section);
-    true
+    toggle_fold(state, fold)
 }
 
 fn activate_sidebar(state: &mut State, index: usize) -> Outcome {
     let item = state.sidebar_items().get(index).copied();
+    if let Some(fold) = item.and_then(|row| state.fold_of(row)) {
+        return (Task::none(), toggle_fold(state, fold));
+    }
     match item {
-        Some(SidebarItem::Header(section)) => {
-            toggle_section(state, section);
-            quiet(Task::none())
-        }
         Some(SidebarItem::Worktree(position)) => {
             let path = state
                 .overview
                 .as_ref()
                 .and_then(|overview| overview.worktrees.get(position))
                 .map(|worktree| worktree.path.clone());
-            (Task::none(), path.map(Action::ShowWorktree))
+            (Task::none(), path.map(Action::OpenWorktreeTab))
         }
         _ => quiet(Task::none()),
     }
@@ -451,6 +485,9 @@ fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
 }
 
 fn escape(state: &mut State) -> Outcome {
+    if state.column_drag.take().is_some() {
+        return quiet(Task::none());
+    }
     if state.filter_focused {
         state.filter_focused = false;
         return quiet(release_focus());

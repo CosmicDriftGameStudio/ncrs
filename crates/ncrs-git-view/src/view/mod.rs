@@ -6,9 +6,10 @@ mod detail;
 mod diff;
 mod sidebar;
 
-use iced::widget::{column, container, row, Space};
+use iced::widget::{column, container, row, stack, Space};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::git_rows::drag_capture;
 use ncrs_ui_kit::kit::text_field;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
@@ -68,24 +69,40 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             theme::vertical_rule(palette.border_inactive),
             container(commits::view(state, ctx)).width(Length::Fill),
             theme::vertical_rule(palette.border_inactive),
-            container(detail::view(state, ctx)).width(if is_narrow(ctx) {
-                size::SIDE_PANE
-            } else {
-                size::SIDE_PANE * 1.5
-            }),
+            container(detail::view(state, ctx)).width(detail_width(ctx)),
         ]
         .height(Length::Fill)
         .into(),
     };
-    column![
+    let page = column![
         header(state, ctx),
         theme::horizontal_rule(palette.border_inactive),
         body,
         page_status_bar(bar, palette),
     ]
     .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    .height(Length::Fill);
+    if state.column_drag.is_some() {
+        return stack![
+            page,
+            drag_capture(Message::ResizeMoved, Message::ResizeReleased)
+        ]
+        .into();
+    }
+    page.into()
+}
+
+fn detail_width(ctx: ViewCtx<'_>) -> f32 {
+    if is_narrow(ctx) {
+        size::SIDE_PANE
+    } else {
+        size::SIDE_PANE * 1.5
+    }
+}
+
+/// How wide the commit list is: what the sidebar, the detail pane and the rules between leave.
+fn commits_pane_width(ctx: ViewCtx<'_>) -> f32 {
+    ctx.window.width - size::SIDE_PANE - detail_width(ctx) - 2.0 * spacing::BORDER_WIDTH
 }
 
 fn hint_of(state: &State) -> Msg {

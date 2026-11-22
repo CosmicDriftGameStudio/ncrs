@@ -435,6 +435,10 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::GitView(settings) => {
+                self.git_view_settings = settings;
+                Task::none()
+            }
             SettingChange::Columns(columns) => {
                 self.columns = columns;
                 Task::none()

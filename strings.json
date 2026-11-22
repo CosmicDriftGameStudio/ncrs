@@ -12799,10 +12799,10 @@
       "de": "LOKAL"
     },
     {
-      "key": "git_view.section_remote",
-      "context": "Git tab: heading of the group of remote branches in the left list. Upper case, short.",
-      "en": "REMOTE",
-      "de": "REMOTE"
+      "key": "git_view.section_remotes",
+      "context": "Git tab: heading of the group of remotes in the left list. Below it each remote (a server copy of the repository, such as origin) is one line with its branches under it, the number of remote branches is added in brackets. Upper case, short.",
+      "en": "REMOTES",
+      "de": "REMOTES"
     },
     {
       "key": "git_view.section_tags",

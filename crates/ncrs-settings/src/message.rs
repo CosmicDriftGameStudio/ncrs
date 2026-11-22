@@ -71,6 +71,8 @@ pub enum SettingChange {
     System(SystemSettings),
     /// The whole `[columns]` section, as it is to be written.
     Columns(PanelColumns),
+    /// The whole `[git_view]` section: what the Git tab remembers.
+    GitView(ncrs_config::git_view::GitViewSettings),
     /// The whole `[appearance]` section: the font and its size.
     Appearance(Appearance),
     /// The whole list of read folders, as it is to be written. Hermes and the

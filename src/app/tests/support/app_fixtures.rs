@@ -79,6 +79,7 @@ impl App {
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
             columns: ncrs_config::panel_columns::PanelColumns::default(),
+            git_view_settings: ncrs_config::git_view::GitViewSettings::default(),
             special_folders: Vec::new(),
             special_folders_source: Vec::new(),
             appearance: ncrs_config::panel_columns::Appearance::default(),

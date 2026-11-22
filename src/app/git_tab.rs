@@ -5,10 +5,30 @@ use crate::app::update::git_repository_of;
 use crate::app::*;
 use crate::messages::GitTabId;
 use ncrs_git_view::Action as Ask;
+use ncrs_ui_kit::git_rows::CommitColumns;
+use std::path::{Path, PathBuf};
 
 impl App {
-    fn git_ctx(&self) -> ncrs_git_view::Ctx {
-        ncrs_git_view::Ctx { lang: self.lang }
+    fn git_ctx(&self, root: Option<&Path>) -> ncrs_git_view::Ctx {
+        let settings = &self.git_view_settings;
+        ncrs_git_view::Ctx {
+            lang: self.lang,
+            folded: root
+                .map(|folder| settings.folded_in(&folder.to_string_lossy()).to_vec())
+                .unwrap_or_default(),
+            columns: self.git_columns(),
+        }
+    }
+
+    /// The commit columns the user dragged to; the standard width where none was.
+    fn git_columns(&self) -> CommitColumns {
+        let settings = &self.git_view_settings;
+        let standard = CommitColumns::STANDARD;
+        CommitColumns {
+            author: settings.author_width.unwrap_or(standard.author),
+            date: settings.date_width.unwrap_or(standard.date),
+            sha: settings.sha_width.unwrap_or(standard.sha),
+        }
     }
 
     /// The Git tab the area under the title bar shows, if one is.
@@ -25,6 +45,7 @@ impl App {
             palette: &self.palette,
             date_format: self.columns.date_format,
             window: self.window_size,
+            columns: self.git_columns(),
         };
         let content: Element<'_, Message> = match self
             .shown_git_tab()
@@ -49,12 +70,19 @@ impl App {
             self.set_status_error(self.lang.text(Msg::GitViewNotARepository));
             return Task::none();
         };
+        self.open_git_tab_at(root)
+    }
+
+    /// Shows the Git tab of the repository at `root`, opening one if it has
+    /// none, and reads the repository.
+    fn open_git_tab_at(&mut self, root: PathBuf) -> Task<Message> {
         let name = root
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| root.to_string_lossy().into_owned());
+        let ctx = self.git_ctx(Some(&root));
         let was_open = self.open_pages();
-        let (id, task) = self.git_tabs.open(root, name);
+        let (id, task) = self.git_tabs.open(root, name, &ctx);
         self.follow_opened_pages(was_open);
         self.shown_tab = ShownTab::Git(id);
         task.map(move |message| Message::GitView(id, message))
@@ -65,7 +93,7 @@ impl App {
         id: GitTabId,
         message: ncrs_git_view::Message,
     ) -> Task<Message> {
-        let ctx = self.git_ctx();
+        let ctx = self.git_ctx(None);
         let was_open = self.open_pages();
         let Some(state) = self.git_tabs.get_mut(id) else {
             return Task::none();
@@ -86,8 +114,38 @@ impl App {
     fn run_git_action(&mut self, action: Ask) -> Task<Message> {
         match action {
             Ask::Close => Task::none(),
-            Ask::ShowWorktree(folder) => self.reveal_in_active_panel(&folder),
+            Ask::OpenWorktreeTab(root) => self.open_git_tab_at(root),
             Ask::ViewFile(file) => self.open_in_viewer(file),
+            Ask::FoldsChanged { root, folded } => {
+                let changed = self
+                    .git_view_settings
+                    .with_folded(&root.to_string_lossy(), folded);
+                self.save_git_view(changed)
+            }
+            Ask::ColumnsResized(columns) => {
+                let changed = ncrs_config::git_view::GitViewSettings {
+                    author_width: Some(columns.author),
+                    date_width: Some(columns.date),
+                    sha_width: Some(columns.sha),
+                    ..self.git_view_settings.clone()
+                };
+                self.save_git_view(changed)
+            }
         }
+    }
+
+    /// Takes `settings` at once and writes them to the config, one write after
+    /// the other with the other settings.
+    fn save_git_view(&mut self, settings: ncrs_config::git_view::GitViewSettings) -> Task<Message> {
+        if settings == self.git_view_settings {
+            return Task::none();
+        }
+        self.git_view_settings = settings.clone();
+        if self.config_path.is_none() {
+            return Task::none();
+        }
+        self.update_settings(ncrs_settings::message::SettingsMessage::Change(
+            ncrs_settings::message::SettingChange::GitView(settings),
+        ))
     }
 }

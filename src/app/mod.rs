@@ -407,6 +407,8 @@ pub struct App {
     kinds: Kinds,
     /// The `[columns]` setting: which columns the panels show and how wide.
     columns: ncrs_config::panel_columns::PanelColumns,
+    /// The `[git_view]` setting: the commit columns and the folded groups of the Git tabs.
+    git_view_settings: ncrs_config::git_view::GitViewSettings,
     /// Folders that get a symbol of their own, worked out from the Hermes
     /// folders in `special_folders_source` so a frame only reads them.
     special_folders: Vec<(PathBuf, ncrs_ui_kit::file_icon::SpecialFolder)>,

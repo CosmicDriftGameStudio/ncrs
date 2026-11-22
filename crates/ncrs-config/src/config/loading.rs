@@ -142,6 +142,7 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
     config.file_list_tags = resolve_file_list_tags(&config.file_list_tags_section);
     config.columns = resolve_columns(&config.columns_section);
     config.appearance = resolve_appearance(&config.appearance_section);
+    config.git_view = resolve_git_view(&config.git_view_section);
     config.servers =
         resolve_servers(&config.server_sections).map_err(|err| ConfigError::Invalid {
             path: path.to_path_buf(),
@@ -211,6 +212,25 @@ pub fn resolve_columns(section: &ColumnsSection) -> PanelColumns {
         widths,
         date_format: section.date_format.unwrap_or(defaults.date_format),
         size_format: section.size_format.unwrap_or(defaults.size_format),
+    }
+}
+
+pub fn resolve_git_view(section: &GitViewSection) -> GitViewSettings {
+    let pixels = |width: Option<i64>| {
+        width
+            .and_then(|pixels| u16::try_from(pixels).ok())
+            .filter(|pixels| *pixels > 0)
+    };
+    GitViewSettings {
+        author_width: pixels(section.author_width),
+        date_width: pixels(section.date_width),
+        sha_width: pixels(section.sha_width),
+        folded: section
+            .folded
+            .iter()
+            .filter(|(_, groups)| !groups.is_empty())
+            .map(|(root, groups)| (root.clone(), groups.clone()))
+            .collect(),
     }
 }
 
