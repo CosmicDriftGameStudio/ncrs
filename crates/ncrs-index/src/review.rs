@@ -79,6 +79,25 @@ impl Index {
         Ok(())
     }
 
+    /// Sets the document to `Filed` and resolves its open review, both or
+    /// neither: a filed document has nothing left to decide.
+    pub fn mark_document_filed(&self, document: DocumentId) -> Result<(), IndexError> {
+        let tx = self.connection().unchecked_transaction()?;
+        let changed = tx.execute(
+            "UPDATE document SET status = ?2 WHERE id = ?1",
+            params![document.get(), DocumentStatus::Filed.as_str()],
+        )?;
+        if changed == 0 {
+            return Err(IndexError::DocumentNotFound(document));
+        }
+        tx.execute(
+            "UPDATE review_entry SET resolved_at = ?2 WHERE document_id = ?1 AND resolved_at IS NULL",
+            params![document.get(), Utc::now().timestamp()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Oldest first.
     pub fn open_reviews(&self) -> Result<Vec<ReviewEntry>, IndexError> {
         self.open_reviews_where("", [])
@@ -160,6 +179,32 @@ mod tests {
         );
         assert!(matches!(
             index.place_document(DocumentId::new(9999)),
+            Err(IndexError::DocumentNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn marking_a_document_filed_resolves_only_its_own_review() {
+        let (_dir, mut index) = encrypted_index();
+        let filed = index.insert_document(&new_document(1)).unwrap();
+        let waiting = index.insert_document(&new_document(2)).unwrap();
+        index
+            .add_review(filed, ReviewReason::NoMatchingRule)
+            .unwrap();
+        index
+            .add_review(waiting, ReviewReason::NoMatchingRule)
+            .unwrap();
+
+        index.mark_document_filed(filed).unwrap();
+
+        assert_eq!(index.open_review_of(filed).unwrap(), None);
+        assert!(index.open_review_of(waiting).unwrap().is_some());
+        assert_eq!(
+            index.document(filed).unwrap().unwrap().status,
+            DocumentStatus::Filed
+        );
+        assert!(matches!(
+            index.mark_document_filed(DocumentId::new(9999)),
             Err(IndexError::DocumentNotFound(_))
         ));
     }

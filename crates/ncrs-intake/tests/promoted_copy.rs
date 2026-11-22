@@ -89,4 +89,34 @@ mod tests {
         assert_eq!(document.path, archive_file);
         assert_eq!(document.status, DocumentStatus::Filed);
     }
+
+    #[test]
+    fn filing_a_document_in_review_by_hand_resolves_its_review() {
+        let mut world = World::new();
+        let inbox_dir = TempDir::new().unwrap();
+        let archive_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let archive = location(&archive_dir, LocationMode::Archive);
+        let inbox_file = inbox.path.join("invoice.pdf");
+        fs::write(&inbox_file, INVOICE).unwrap();
+        world.scan_settled(&inbox);
+        let id = world
+            .index
+            .document_by_path(&inbox_file)
+            .unwrap()
+            .unwrap()
+            .id;
+        world
+            .index
+            .add_review(id, ncrs_index::ReviewReason::NoMatchingRule)
+            .unwrap();
+        let archive_file = archive.path.join("invoice.pdf");
+        fs::rename(&inbox_file, &archive_file).unwrap();
+
+        world.scan_settled(&archive);
+
+        let document = world.index.document(id).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::Filed);
+        assert_eq!(world.index.open_review_of(id).unwrap(), None);
+    }
 }

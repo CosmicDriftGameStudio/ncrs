@@ -41,6 +41,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/033_excluded_path_automatic.sql"),
     include_str!("migrations/034_filed_inbox_path.sql"),
     include_str!("migrations/035_duplicate_path_in_archive.sql"),
+    include_str!("migrations/036_resolve_reviews_of_filed_documents.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of
@@ -214,5 +215,31 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn reviews_of_documents_filed_before_are_resolved_and_the_others_stay_open() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let (_, before) = MIGRATIONS.split_last().unwrap();
+        run_migrations(&mut conn, before).unwrap();
+        conn.execute_batch(
+            "INSERT INTO document (id, hash, path, source, received_at, status)
+             VALUES (1, zeroblob(32), '/a', 'inbox', 1, 'filed'),
+                    (2, x'0101010101010101010101010101010101010101010101010101010101010101', '/b', 'inbox', 1, 'in_review');
+             INSERT INTO review_entry (document_id, reason, created_at)
+             VALUES (1, 'no_matching_rule', 5), (2, 'no_matching_rule', 5);",
+        )
+        .unwrap();
+
+        run_migrations(&mut conn, MIGRATIONS).unwrap();
+
+        let open: Vec<i64> = conn
+            .prepare("SELECT document_id FROM review_entry WHERE resolved_at IS NULL")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(open, [2]);
     }
 }

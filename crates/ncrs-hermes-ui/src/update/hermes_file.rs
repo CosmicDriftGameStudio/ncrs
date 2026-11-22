@@ -441,7 +441,7 @@ pub fn update(
         HermesFileMessage::SetRole(role) if is_dir => {
             set_folder_role(hermes, path, role, ctx, actions)
         }
-        HermesFileMessage::StopContinuous if is_dir => {
+        HermesFileMessage::StopContinuous if is_dir && hermes.cursor_roles(path).is_continuous => {
             set_continuous_filing(hermes, path, None, ctx, actions)
         }
         HermesFileMessage::ToggleExclusion => {

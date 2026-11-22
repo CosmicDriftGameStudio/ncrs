@@ -240,7 +240,7 @@ pub fn promote_first_copy(index: &Index, document: &Document) -> Result<bool, In
         // An archive file is filed; a copy in an inbox leaves the status alone,
         // as it does for a document that turns up there again.
         if in_archive == Some(true) && document.status != DocumentStatus::Filed {
-            index.set_document_status(document.id, DocumentStatus::Filed)?;
+            index.mark_document_filed(document.id)?;
         }
         return Ok(true);
     }
@@ -469,7 +469,7 @@ fn file_with_known_hash(
             index.set_document_path(known.id, path, stamp)?;
         }
         if location.mode == LocationMode::Archive && known.status != DocumentStatus::Filed {
-            index.set_document_status(known.id, DocumentStatus::Filed)?;
+            index.mark_document_filed(known.id)?;
         }
         return Ok(Outcome::Moved(known.id));
     }
