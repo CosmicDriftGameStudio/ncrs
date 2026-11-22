@@ -117,14 +117,6 @@ impl App {
         self.job_error_press = Some(press);
     }
 
-    fn hermes_status(&self) -> Option<HermesStatus> {
-        ncrs_hermes_ui::hermes_status(&self.hermes)
-    }
-
-    fn hermes_chip(&self) -> Option<String> {
-        ncrs_hermes_ui::hermes_chip(&self.hermes, self.lang)
-    }
-
     pub(in crate::app) fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
         let on_press = Message::FilingStatus(FilingStatusMessage::Open);
         if let Some(text) = ncrs_hermes_chat::picks_line(&self.hermes_chat, self.lang) {
@@ -197,24 +189,12 @@ impl App {
                 active: self.panels.active == side && self.shown_tab == ShownTab::Panels,
             }
         };
-        let switched_off = !self.hermes.filing_config.hermes_on();
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
             page_tabs: self.page_tabs(),
             window_width: self.window_size.width,
             first_tab: self.title_tabs_first,
             home: &self.home,
-            hermes: self.hermes_chip(),
-            hermes_switched_off: switched_off,
-            hermes_tone: if switched_off {
-                titlebar::HermesTone::Paused
-            } else {
-                self.hermes_status()
-                    .map_or(titlebar::HermesTone::Fine, |status| status.tone())
-            },
-            lab_shortcut: self
-                .keymap
-                .shortcut_label(&KeyAction::CommandPalette.message()),
             lang: self.lang,
             palette: &self.palette,
         })
@@ -322,10 +302,5 @@ impl App {
                     first.to_uppercase().chain(letters).collect()
                 })
             })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn hermes_chip_for_test(&self) -> Option<String> {
-        self.hermes_chip()
     }
 }

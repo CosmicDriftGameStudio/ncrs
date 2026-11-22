@@ -44,7 +44,6 @@ use crate::hermes_column::{ColumnView, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
-use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
 use crate::jobs;

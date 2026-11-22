@@ -1,7 +1,6 @@
 //! The row across the window top: a tab with the path of each panel, the
-//! Hermes status and the button for the command palette. Where the system
-//! draws no window frame it also holds the window buttons, and the window
-//! edges resize.
+//! Where the system draws no window frame it also holds the window buttons,
+//! and the window edges resize.
 use std::path::{Path, MAIN_SEPARATOR};
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
@@ -14,15 +13,14 @@ use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::PanelMessage;
 use crate::messages::{
-    CommandPaletteMessage, FilingStatusMessage, HermesChatMessage, HitListMessage, Message,
-    PanelSide, ResizeEdge, SettingsMessage, TitleBarMessage,
+    HermesChatMessage, HitListMessage, Message, PanelSide, ResizeEdge, SettingsMessage,
+    TitleBarMessage,
 };
 use crate::messages::{GitTabId, ShownTab};
 use crate::palette::Palette;
 
 pub const LEFT_TAB_ID: &str = "title-tab-left";
 pub const RIGHT_TAB_ID: &str = "title-tab-right";
-pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
 pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
 pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
@@ -41,10 +39,7 @@ const WINDOW_BUTTON_WIDTH: f32 = 44.0;
 const TAB_LETTER_WIDTH: f32 = 8.0;
 /// Room the cross of a page tab takes.
 const PAGE_CROSS_WIDTH: f32 = 22.0;
-const RIGHT_GAP: f32 = 2.0;
 const RIGHT_PADDING: f32 = spacing::M;
-const BUTTON_PADDING_X: f32 = spacing::M;
-const BUTTON_CONTENT_GAP: f32 = spacing::XS;
 const LOADING_MARK: &str = "  …";
 /// Width of the resize handles along the window edges.
 const EDGE_WIDTH: f32 = 5.0;
@@ -69,7 +64,6 @@ pub enum TabTitle<'a> {
     HitList(String),
 }
 
-pub use crate::hermes_status::Tone as HermesTone;
 
 /// The page that stands in for the panels, as a tab with a cross.
 pub enum PageTab {
@@ -93,14 +87,6 @@ pub struct PageTabState {
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
-    /// The Hermes text; `None` hides it.
-    pub hermes: Option<String>,
-    /// The Hermes switch is off: the chip opens the AI page, where it is.
-    pub hermes_switched_off: bool,
-    /// How the dot of Hermes is coloured.
-    pub hermes_tone: HermesTone,
-    /// The key of the command palette, if it has one.
-    pub lab_shortcut: Option<String>,
     /// The tabs of the open pages after the two path tabs.
     pub page_tabs: Vec<PageTabState>,
     /// The window width, which the tabs share with the right side.
@@ -166,29 +152,15 @@ fn page_tab_chars(width: f32) -> usize {
     characters_that_fit(room, font_size::FILE)
 }
 
-/// The room the right side of the bar takes, estimated from its texts. Too
-/// large a guess only makes the tabs a little narrower; too small a one is
-/// caught by the tab area, which clips.
-fn right_side_width(bar: &TitleBar<'_>) -> f32 {
-    let chip = bar.hermes.as_ref().map_or(0.0, |chip| {
-        estimated_text_width(chip.chars().count(), font_size::BODY)
-            + 2.0 * BUTTON_PADDING_X
-            + size::DOT
-            + BUTTON_CONTENT_GAP
-            + RIGHT_GAP
-    });
-    let command_chars = bar
-        .lab_shortcut
-        .as_ref()
-        .map_or(0, |key| key.chars().count())
-        + 12;
-    let command = estimated_text_width(command_chars, font_size::BODY) + 2.0 * BUTTON_PADDING_X;
+/// The room beside the tabs: the window margin and, where we draw them, the
+/// window buttons.
+fn outside_tabs_width() -> f32 {
     let window_buttons = if OWN_WINDOW_BUTTONS {
         3.0 * WINDOW_BUTTON_WIDTH
     } else {
         RIGHT_PADDING
     };
-    left_inset() + chip + command + RIGHT_PADDING + window_buttons
+    left_inset() + window_buttons
 }
 
 pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
@@ -197,7 +169,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     let layout = kit::tab_strip_layout(
         bar.tabs.len(),
         bar.page_tabs.len(),
-        (bar.window_width - right_side_width(bar)).max(size::TAB_MIN_WIDTH),
+        (bar.window_width - outside_tabs_width()).max(size::TAB_MIN_WIDTH),
         bar.page_tabs.iter().position(|tab| tab.active),
         bar.first_tab,
     );
@@ -315,80 +287,20 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         });
     }
 
-    let mut right_side = row![]
-        .spacing(RIGHT_GAP)
-        .align_y(alignment::Vertical::Center);
-    if let Some(chip) = bar.hermes.clone() {
-        let dot_color = match bar.hermes_tone {
-            HermesTone::Failing => palette.error,
-            // The accent is for keyboard focus only, so a stuck Hermes is the
-            // text color, between the dim paused and the red failing dot.
-            HermesTone::Stuck => palette.text,
-            HermesTone::Paused => palette.dim_text,
-            HermesTone::Fine => palette.success,
-        };
-        right_side = right_side.push(
-            container(
-                button(
-                    row![
-                        theme::status_dot(dot_color),
-                        text(chip).size(font_size::BODY).color(palette.dim_text)
-                    ]
-                    .spacing(BUTTON_CONTENT_GAP)
-                    .align_y(alignment::Vertical::Center),
-                )
-                .on_press(if bar.hermes_switched_off {
-                    Message::ShowAiSettings
-                } else {
-                    Message::FilingStatus(FilingStatusMessage::Open)
-                })
-                .padding([0.0, BUTTON_PADDING_X])
-                .height(size::BUTTON)
-                .style(theme::icon_button(palette)),
-            )
-            .id(HERMES_CHIP_ID),
-        );
-    }
-    right_side = right_side.push(
-        button(
-            row![
-                text(lang.text(Msg::ShortcutCommands)).size(font_size::BODY),
-                text(bar.lab_shortcut.clone().unwrap_or_default())
-                    .size(font_size::BODY)
-                    .color(palette.dim_text),
-            ]
-            .spacing(BUTTON_CONTENT_GAP)
-            .align_y(alignment::Vertical::Center),
-        )
-        .on_press(Message::CommandPalette(CommandPaletteMessage::Toggle))
-        .padding([0.0, BUTTON_PADDING_X])
-        .height(size::BUTTON)
-        .style(theme::title_command_button(palette)),
-    );
-
-    let mut bar_row = row![
-        kit::tab_strip(
-            layout,
-            pinned,
-            others,
-            |first| Message::TitleBar(TitleBarMessage::TabsFrom(first)),
-            palette,
-        ),
-        container(right_side).padding(Padding {
-            right: if OWN_WINDOW_BUTTONS {
-                0.0
-            } else {
-                RIGHT_PADDING
-            },
-            left: RIGHT_PADDING,
-            ..Padding::ZERO
-        }),
-    ]
+    let mut bar_row = row![kit::tab_strip(
+        layout,
+        pinned,
+        others,
+        |first| Message::TitleBar(TitleBarMessage::TabsFrom(first)),
+        palette,
+    )]
     .height(Length::Fill)
     .align_y(alignment::Vertical::Center);
-    if OWN_WINDOW_BUTTONS {
-        bar_row = bar_row.push(window_buttons(palette));
-    }
+    bar_row = if OWN_WINDOW_BUTTONS {
+        bar_row.push(window_buttons(palette))
+    } else {
+        bar_row.push(Space::new().width(RIGHT_PADDING))
+    };
 
     mouse_area(
         container(column![

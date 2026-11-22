@@ -218,8 +218,6 @@ pub enum Message {
     Activity(ActivityMessage),
     /// Opens one of the single pages.
     HermesPage(HermesPage),
-    /// Opens the settings on the AI page, where the Hermes switch is.
-    ShowAiSettings,
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
     /// The background filing of new files is done.

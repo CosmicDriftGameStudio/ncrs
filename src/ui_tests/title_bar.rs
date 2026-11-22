@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime};
 use ncrs_pipeline::{RunnerState, Snapshot};
 
 use super::*;
-use crate::messages::{FilingStatusMessage, HermesPage, PanelSide, SettingsMessage};
-use crate::ui::titlebar::{HERMES_CHIP_ID, LEFT_TAB_ID, RIGHT_TAB_ID};
+use crate::messages::{PanelSide, SettingsMessage};
+use crate::ui::titlebar::{LEFT_TAB_ID, RIGHT_TAB_ID};
 
 fn taken_at() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
@@ -53,130 +53,6 @@ fn a_click_on_the_inactive_tab_makes_its_panel_active() {
         messages_after_click(&app, LEFT_TAB_ID),
         vec![Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))]
     );
-}
-
-#[test]
-fn a_click_on_the_hermes_chip_opens_the_activity_page() {
-    let mut app = with_hermes().with_starting_hermes_for_test();
-    let messages = messages_after_click(&app, HERMES_CHIP_ID);
-    assert_eq!(
-        messages,
-        vec![Message::FilingStatus(FilingStatusMessage::Open)]
-    );
-    for message in messages {
-        drop(app.update(message));
-    }
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
-}
-
-#[test]
-fn the_chip_says_hermes_is_off_while_the_switch_is_off() {
-    let shows_chip = |app: &App| {
-        simulator(app)
-            .find(iced::widget::Id::new(HERMES_CHIP_ID))
-            .is_ok()
-    };
-    let switched_off = || {
-        App::with_settings_file(
-            crate::messages::SettingsFeature::Look,
-            Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
-        )
-    };
-    let off = switched_off();
-    assert!(shows_chip(&off));
-    assert_eq!(off.hermes_chip_for_test().as_deref(), Some("Hermes off"));
-    let german = switched_off().in_language(Language::German);
-    assert_eq!(german.hermes_chip_for_test().as_deref(), Some("Hermes aus"));
-    assert!(shows_chip(&with_hermes()));
-}
-
-#[test]
-fn a_click_on_the_off_chip_opens_the_ai_settings() {
-    let mut app = App::with_settings_file(
-        crate::messages::SettingsFeature::Look,
-        Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
-    );
-    let messages = messages_after_click(&app, HERMES_CHIP_ID);
-    assert_eq!(messages, vec![Message::ShowAiSettings]);
-    for message in messages {
-        drop(app.update(message));
-    }
-    simulator(&app)
-        .find("One model for everything: sorting, chat (F2), rules, name suggestions.")
-        .unwrap();
-}
-
-#[test]
-fn the_chip_names_the_rate_in_the_language_of_the_app() {
-    let english = with_hermes();
-    simulator(&english).find("Hermes 78/min processed").unwrap();
-    let german = with_hermes().in_language(Language::German);
-    simulator(&german)
-        .find("Hermes 78/Min. verarbeitet")
-        .unwrap();
-}
-
-#[test]
-fn an_idle_chip_shows_no_rate() {
-    let mut snapshot = Snapshot::off();
-    snapshot.state = RunnerState::Idle;
-    snapshot.documents_per_minute[1] = 78;
-    let snapshot_again = snapshot.clone();
-    let app = App::with_filing_snapshot(snapshot, taken_at());
-    assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
-    let themed = App::with_filing_snapshot(snapshot_again, taken_at())
-        .in_language(Language::EnglishFuturama);
-    assert_eq!(themed.hermes_chip_for_test().as_deref(), Some("Hermes"));
-}
-
-#[test]
-fn a_failed_request_to_the_own_server_shows_in_the_chip() {
-    let provider = crate::filing::http_ai_provider(
-        "http://127.0.0.1:1/v1",
-        "model-x",
-        &ncrs_ai::ConsentedOrigins::default(),
-        std::path::Path::new("index.db"),
-    )
-    .unwrap();
-    let mut snapshot = Snapshot::off();
-    snapshot.state = RunnerState::Running;
-    snapshot.documents_per_minute[1] = 78;
-    let app = App::with_filing_snapshot(snapshot, taken_at())
-        .in_language(Language::English)
-        .with_filing_module_for_test(crate::filing::FilingModule::in_phase_with_own_server(
-            crate::filing::Phase::Ready,
-            std::sync::Arc::clone(&provider),
-            "http://127.0.0.1:1",
-            "model-x",
-        ));
-    let chip_before = app.hermes_chip_for_test();
-
-    ncrs_ai::Provider::extract(
-        provider.as_ref(),
-        &ncrs_ai::ExtractionRequest {
-            text: "Invoice 4711".to_owned(),
-            open_fields: Vec::new(),
-            known: ncrs_index::DocumentFields::default(),
-            source: std::path::PathBuf::from("inbox"),
-            kinds: std::sync::Arc::default(),
-            language: ncrs_index::KindLanguage::default(),
-            judge_document: false,
-        },
-    )
-    .unwrap_err();
-
-    let problem = ncrs_i18n::fill_template(
-        Language::English.text(ncrs_i18n::Msg::TitleBarHermesServerProblem),
-        &[(
-            "{problem}",
-            &crate::hermes_overview::server_failure_text(
-                ncrs_ai::ReplyFailure::NoAnswer,
-                Language::English,
-            ),
-        )],
-    );
-    assert_eq!(chip_before.as_deref(), Some("Hermes"));
-    assert_eq!(app.hermes_chip_for_test(), Some(problem));
 }
 
 #[test]

@@ -1,5 +1,5 @@
 //! What the app draws of the Hermes pages: the single pages under the
-//! title bar, the keys line under them and the parts of the title and status
+//! title bar, the keys line under them and the parts of the status
 //! bar that speak for Hermes.
 
 use std::path::Path;
@@ -8,14 +8,11 @@ use iced::widget::Column;
 use iced::{Element, Size};
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
-use ncrs_filing::filing::{AiStatus, FilingModule, Phase};
-use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
-use ncrs_pipeline::RunnerState;
+use ncrs_filing::filing::{FilingModule, Phase};
+use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::setting_rows;
 
-use crate::hermes_overview::{
-    server_failure_text, ModuleState, OcrFacts, OverviewFacts, Protection,
-};
+use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
 use crate::hermes_status::HermesStatus;
 use crate::message::{HermesPage, Message};
 use crate::state::Hermes;
@@ -214,45 +211,6 @@ pub fn hermes_status(hermes: &Hermes) -> Option<HermesStatus> {
         hermes.filing_status.hermes_counts(),
         hermes.pdf_library_missing.is_some(),
     )
-}
-
-fn server_failure(hermes: &Hermes) -> Option<ncrs_ai::ReplyFailure> {
-    match hermes.filing.as_ref()?.ai_status() {
-        AiStatus::Http { last_failure, .. } => last_failure,
-        _ => None,
-    }
-}
-
-/// The title bar chip: how fast Hermes files, or that its switch is off.
-/// Absent while the module is not running for another reason.
-pub fn hermes_chip(hermes: &Hermes, lang: Language) -> Option<String> {
-    if !hermes.filing_config.hermes_on() {
-        return Some(lang.text(Msg::TitleBarHermesOff).to_owned());
-    }
-    let text = match hermes.filing_status.snapshot().state {
-        RunnerState::Off => return None,
-        RunnerState::Paused => lang.text(Msg::TitleBarHermesPaused).to_owned(),
-        RunnerState::Running | RunnerState::Idle => {
-            if let Some(failure) = server_failure(hermes) {
-                return Some(fill_template(
-                    lang.text(Msg::TitleBarHermesServerProblem),
-                    &[("{problem}", &server_failure_text(failure, lang))],
-                ));
-            }
-            let busy = hermes_status(hermes).is_some_and(|status| status.is_busy());
-            match hermes.filing_status.documents_per_minute().filter(|_| busy) {
-                Some(rate) => fill_template(
-                    lang.text(Msg::TitleBarHermesRate),
-                    &[("{rate}", &rate.to_string())],
-                ),
-                None => lang
-                    .futurama_name(FuturamaName::ActionFilingSetup)
-                    .unwrap_or_else(|| lang.text(Msg::GroupHermes))
-                    .to_owned(),
-            }
-        }
-    };
-    Some(text)
 }
 
 /// The badge of Hermes in the status bar. It opens the status page.
