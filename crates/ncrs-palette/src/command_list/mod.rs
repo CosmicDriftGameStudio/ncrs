@@ -36,6 +36,15 @@ pub enum Target {
         feature: SettingsFeature,
         row: Option<String>,
     },
+    /// A command of the Git tab, by its place in the list the app gave.
+    Git(usize),
+}
+
+/// A command of the Git tab: what the list shows; the app knows what it does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitCommandEntry {
+    pub label: String,
+    pub shortcut: Option<String>,
 }
 
 /// The groups of the list. Not [`CommandGroup`] alone: that one also drives the
@@ -43,6 +52,8 @@ pub enum Target {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PaletteGroup {
     Command(CommandGroup),
+    /// Only while a Git tab is shown.
+    Git,
     /// After every command group, so a command wins a tie.
     Settings,
 }
@@ -51,6 +62,7 @@ impl PaletteGroup {
     fn label(self) -> Msg {
         match self {
             Self::Command(group) => group.label(),
+            Self::Git => Msg::GitViewPaletteGroup,
             Self::Settings => Msg::ActionSettings,
         }
     }
@@ -58,14 +70,14 @@ impl PaletteGroup {
     fn theme_name(self) -> Option<FuturamaName> {
         match self {
             Self::Command(group) => group.theme_name(),
-            Self::Settings => None,
+            Self::Git | Self::Settings => None,
         }
     }
 
     fn beta_mark(self) -> Option<Msg> {
         match self {
             Self::Command(CommandGroup::Hermes) => Some(Msg::HermesBeta),
-            Self::Command(_) | Self::Settings => None,
+            Self::Command(_) | Self::Git | Self::Settings => None,
         }
     }
 }
@@ -84,7 +96,7 @@ impl Entry {
     pub fn command(&self) -> Option<KeyAction> {
         match self.target {
             Target::Command(action) => Some(action),
-            Target::Setting { .. } => None,
+            Target::Setting { .. } | Target::Git(_) => None,
         }
     }
 }
@@ -184,6 +196,20 @@ impl CommandPalette {
     /// Drops one command that cannot run for the row under the cursor.
     pub fn without_command(mut self, action: KeyAction) -> Self {
         self.entries.retain(|entry| entry.command() != Some(action));
+        self.rank();
+        self
+    }
+
+    /// Adds the commands of the Git tab, in a group of their own.
+    pub fn with_git_commands(mut self, commands: Vec<GitCommandEntry>) -> Self {
+        self.entries
+            .extend(commands.into_iter().enumerate().map(|(place, command)| Entry {
+                target: Target::Git(place),
+                group: PaletteGroup::Git,
+                label: command.label,
+                theme_name: None,
+                shortcut: command.shortcut,
+            }));
         self.rank();
         self
     }
@@ -344,6 +370,7 @@ impl CommandPalette {
         let order: Vec<usize> = CommandGroup::ALL
             .iter()
             .map(|&group| PaletteGroup::Command(group))
+            .chain([PaletteGroup::Git])
             .flat_map(|group| {
                 let mut ids: Vec<usize> = (0..self.entries.len())
                     .filter(|&entry| self.entries.get(entry).is_some_and(|e| e.group == group))

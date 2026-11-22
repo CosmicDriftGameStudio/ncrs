@@ -34,6 +34,9 @@ pub enum Job {
     Checkout(String),
     CheckoutRemote(String),
     DeleteBranch { name: String, force: bool },
+    RenameBranch { from: String, to: String },
+    DeleteOnRemote { remote: String, branch: String },
+    StashDrop(String),
     Merge(String),
     Rebase(String),
     ResolveBlock { path: String, block: usize, choice: ConflictChoice },
@@ -89,12 +92,17 @@ impl Job {
             Self::Fetch => Operation::Fetch,
             Self::Pull(_) => Operation::Pull,
             Self::Push | Self::PushBranch(_) => Operation::Push,
-            Self::StashPush { .. } | Self::StashApply(_) | Self::StashPop(_) => Operation::Stash,
+            Self::StashPush { .. }
+            | Self::StashApply(_)
+            | Self::StashPop(_)
+            | Self::StashDrop(_) => Operation::Stash,
             Self::Undo(_) => Operation::Undo,
             Self::CreateBranch { .. }
             | Self::Checkout(_)
             | Self::CheckoutRemote(_)
-            | Self::DeleteBranch { .. } => Operation::Branch,
+            | Self::DeleteBranch { .. }
+            | Self::RenameBranch { .. }
+            | Self::DeleteOnRemote { .. } => Operation::Branch,
             Self::Merge(_)
             | Self::Rebase(_)
             | Self::AbortIntegration
@@ -148,6 +156,11 @@ impl Job {
             Self::DeleteBranch { name, force } => git
                 .delete_branch(name, *force)
                 .map(|record| Done::Undoable(Some(record))),
+            Self::RenameBranch { from, to } => git.rename_branch(from, to).map(|()| Done::Plain),
+            Self::DeleteOnRemote { remote, branch } => git
+                .delete_remote_branch(remote, branch)
+                .map(|()| Done::Plain),
+            Self::StashDrop(sha) => git.stash_drop(sha).map(|()| Done::Plain),
             Self::Merge(name) => git.merge(name).map(|_| Done::Plain),
             Self::Rebase(name) => git.rebase(name).map(|_| Done::Plain),
             Self::ResolveBlock {

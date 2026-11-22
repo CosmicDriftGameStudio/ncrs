@@ -20,7 +20,8 @@ use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
 use ncrs_git::PullStrategy;
 use ncrs_git_view::actions::{
-    ChangeSide, ConflictLine, MenuAction, MenuTarget, Notice, Side,
+    ChangeSide, ConflictAction, ConflictLine, Dialog, MenuAction, MenuTarget, Notice, Question,
+    Side,
 };
 use ncrs_git_view::snapshot::view_lines;
 use ncrs_git_view::{open, update, Ctx, Message, State};
@@ -167,6 +168,19 @@ async fn discarding_a_file_can_be_undone() {
     write(dir.path(), "a.txt", &two_hunks());
     let mut state = opened(dir.path()).await;
     send(&mut state, Message::DiscardFile(0)).await;
+    assert_eq!(
+        state.actions.dialog,
+        Some(Dialog::Ask(Question::DiscardFile {
+            path: "a.txt".to_owned()
+        }))
+    );
+    assert_eq!(read(dir.path(), "a.txt"), two_hunks());
+    send(&mut state, Message::Escape).await;
+    assert_eq!(state.actions.dialog, None);
+    assert_eq!(read(dir.path(), "a.txt"), two_hunks());
+    send(&mut state, Message::DiscardFile(0)).await;
+    send(&mut state, Message::Enter).await;
+    assert_eq!(state.actions.dialog, None);
     assert_eq!(read(dir.path(), "a.txt"), numbered(30));
     assert!(state.actions.local.as_ref().unwrap().unstaged.is_empty());
     assert_eq!(
@@ -210,6 +224,11 @@ async fn an_unmerged_branch_is_deleted_after_the_second_question() {
     let topic = local_index(&state, "topic");
     send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
     send(&mut state, Message::MenuPressed(MenuAction::Delete)).await;
+    assert!(matches!(
+        state.actions.dialog,
+        Some(Dialog::Ask(Question::DeleteBranch { .. }))
+    ));
+    send(&mut state, Message::ConfirmDialog).await;
     assert_eq!(
         state.actions.notice,
         Some(Notice::BranchNotMerged {
@@ -294,6 +313,135 @@ async fn a_merge_with_conflicts_is_resolved_block_by_block_and_continued() {
     send(&mut state, Message::MergeContinue).await;
     assert!(state.actions.merge.is_none());
     assert_eq!(read(dir.path(), "c.txt"), lines("M1", "F10"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn renaming_a_branch_asks_for_the_name_and_the_backend_checks_it() {
+    let dir = repo();
+    sh(dir.path(), &["branch", "topic"]);
+    let mut state = opened(dir.path()).await;
+    let topic = local_index(&state, "topic");
+    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::Rename)).await;
+    let Some(Dialog::Rename(rename)) = &state.actions.dialog else {
+        panic!("no rename dialog: {:?}", state.actions.dialog);
+    };
+    assert_eq!(rename.name, "topic");
+
+    send(&mut state, Message::RenameNameChanged("bad..name".to_owned())).await;
+    send(&mut state, Message::ConfirmDialog).await;
+    assert_eq!(
+        state.actions.notice,
+        Some(Notice::InvalidName {
+            name: "bad..name".to_owned()
+        })
+    );
+    assert!(sh(dir.path(), &["branch", "--list", "topic"]).contains("topic"));
+
+    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(topic))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::Rename)).await;
+    send(&mut state, Message::RenameNameChanged("better".to_owned())).await;
+    send(&mut state, Message::Enter).await;
+    assert_eq!(state.actions.dialog, None);
+    assert_eq!(sh(dir.path(), &["branch", "--list", "topic"]), "");
+    assert!(sh(dir.path(), &["branch", "--list", "better"]).contains("better"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn dropping_a_stash_and_deleting_on_the_remote_ask_and_cannot_be_undone() {
+    let origin = TempDir::new().unwrap();
+    sh(origin.path(), &["init", "-q", "--bare", "-b", "main"]);
+    let dir = repo();
+    let url = origin.path().to_str().unwrap().to_owned();
+    sh(dir.path(), &["remote", "add", "origin", &url]);
+    sh(dir.path(), &["push", "-q", "-u", "origin", "main"]);
+    sh(dir.path(), &["push", "-q", "origin", "main:topic"]);
+    sh(dir.path(), &["fetch", "-q", "origin"]);
+    write(dir.path(), "a.txt", &two_hunks());
+    sh(dir.path(), &["stash", "push", "-q", "-m", "work"]);
+    let mut state = opened(dir.path()).await;
+
+    send(&mut state, Message::OpenMenu(MenuTarget::Stash(0))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::StashDrop)).await;
+    let Some(Dialog::Ask(question)) = state.actions.dialog.clone() else {
+        panic!("no question: {:?}", state.actions.dialog);
+    };
+    assert!(matches!(question, Question::DropStash { .. }));
+    assert!(!question.can_be_undone());
+    send(&mut state, Message::ConfirmDialog).await;
+    assert_eq!(sh(dir.path(), &["stash", "list"]), "");
+    assert!(state.actions.sync.as_ref().unwrap().undo.is_none());
+
+    let remote = state
+        .overview
+        .as_ref()
+        .unwrap()
+        .remote
+        .iter()
+        .position(|name| name == "origin/topic")
+        .unwrap();
+    send(&mut state, Message::OpenMenu(MenuTarget::RemoteBranch(remote))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::DeleteOnRemote)).await;
+    assert_eq!(
+        state.actions.dialog,
+        Some(Dialog::Ask(Question::DeleteOnRemote {
+            remote: "origin".to_owned(),
+            branch: "topic".to_owned()
+        }))
+    );
+    assert!(sh(origin.path(), &["branch", "--list", "topic"]).contains("topic"));
+    send(&mut state, Message::ConfirmDialog).await;
+    assert_eq!(sh(origin.path(), &["branch", "--list", "topic"]), "");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn in_a_rebase_both_puts_mine_first() {
+    let dir = repo();
+    commit_file(dir.path(), "c.txt", &lines("start", "end"), "base");
+    sh(dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(dir.path(), "c.txt", &lines("F1", "F10"), "feature side");
+    sh(dir.path(), &["checkout", "-q", "main"]);
+    commit_file(dir.path(), "c.txt", &lines("M1", "M10"), "main side");
+    sh(dir.path(), &["checkout", "-q", "feature"]);
+
+    let mut state = opened(dir.path()).await;
+    let main = local_index(&state, "main");
+    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(main))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::RebaseOnto)).await;
+    assert!(state.actions.rebasing);
+    send(
+        &mut state,
+        Message::ConflictShortcut(ConflictAction::Take(Side::Both)),
+    )
+    .await;
+    let middle: String = (2..=9).map(|n| format!("mid {n}\n")).collect();
+    assert_eq!(
+        read(dir.path(), "c.txt"),
+        format!("F1\nM1\n{middle}F10\nM10\n")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn opening_a_conflict_in_the_editor_asks_the_app() {
+    let dir = repo();
+    commit_file(dir.path(), "c.txt", &lines("start", "end"), "base");
+    sh(dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(dir.path(), "c.txt", &lines("F1", "F10"), "feature side");
+    sh(dir.path(), &["checkout", "-q", "main"]);
+    commit_file(dir.path(), "c.txt", &lines("M1", "M10"), "main side");
+    let mut state = opened(dir.path()).await;
+    let feature = local_index(&state, "feature");
+    send(&mut state, Message::OpenMenu(MenuTarget::LocalBranch(feature))).await;
+    send(&mut state, Message::MenuPressed(MenuAction::MergeInto)).await;
+    let (_, asked) = update(
+        &mut state,
+        Message::ConflictShortcut(ConflictAction::OpenEditor),
+        &CTX,
+    );
+    assert_eq!(
+        asked,
+        Some(ncrs_git_view::Action::OpenInEditor(dir.path().join("c.txt")))
+    );
 }
 
 #[test]

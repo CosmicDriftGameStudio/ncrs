@@ -17,7 +17,10 @@ use ncrs_ui_kit::popup_menu::{
 use ncrs_ui_kit::theme::{size, spacing};
 use ncrs_ui_kit::tree_list::{LIST_INSET, ROW_OVERHEAD, TREE_INDENT};
 
-use crate::actions::{ConflictAction, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu, Side};
+use crate::actions::{
+    ConflictAction, Dialog, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu, Question,
+    RenameBranch, Side,
+};
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
@@ -26,6 +29,7 @@ use crate::update::menu_target_of;
 
 const MENU_WIDTH: f32 = 300.0;
 const NAME_ID: &str = "git-new-branch-name";
+const RENAME_ID: &str = "git-rename-branch-name";
 
 fn row(label: String, shortcut: Shortcut, message: Message, enabled: bool) -> MenuRow<Message> {
     MenuRow::Entry(PopupEntry {
@@ -292,6 +296,111 @@ fn new_branch_dialog<'a>(draft: &'a NewBranch, ctx: ViewCtx<'a>) -> Element<'a, 
     .into_element()
 }
 
+/// The dialog with a cancel button and a confirm button that Enter presses.
+fn dialog_frame<'a>(
+    title: &str,
+    content: Element<'a, Message>,
+    confirm: &str,
+    confirm_message: Option<Message>,
+    tone: Tone,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    Frame::new(title, content, DialogSize::Medium, ctx.window, lang, palette)
+        .buttons(vec![
+            button(
+                lang.text(Msg::GitViewDialogCancel),
+                Some(Message::CloseDialog),
+                Tone::Secondary,
+                palette,
+            ),
+            enter_button(confirm, confirm_message, tone, palette),
+        ])
+        .on_close(Message::CloseDialog)
+        .into_element()
+}
+
+fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let (title, text, button_label) = match question {
+        Question::DiscardFile { path } => (
+            Msg::GitViewAskDiscardFileTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskDiscardFileText),
+                &[("{name}", path)],
+            ),
+            Msg::GitViewAskDiscardButton,
+        ),
+        Question::DiscardAll { count } => (
+            Msg::GitViewAskDiscardAllTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskDiscardAllText),
+                &[("{count}", &count.to_string())],
+            ),
+            Msg::GitViewAskDiscardButton,
+        ),
+        Question::DeleteBranch { name } => (
+            Msg::GitViewAskDeleteBranchTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskDeleteBranchText),
+                &[("{name}", name)],
+            ),
+            Msg::GitViewAskDeleteButton,
+        ),
+        Question::DeleteOnRemote { remote, branch } => (
+            Msg::GitViewAskDeleteRemoteTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskDeleteRemoteText),
+                &[("{branch}", branch), ("{remote}", remote)],
+            ),
+            Msg::GitViewAskDeleteButton,
+        ),
+        Question::DropStash { message, .. } => (
+            Msg::GitViewAskDropStashTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskDropStashText),
+                &[("{name}", message)],
+            ),
+            Msg::GitViewAskDeleteButton,
+        ),
+    };
+    dialog_frame(
+        lang.text(title),
+        paragraph(text, ctx.palette),
+        lang.text(button_label),
+        Some(Message::ConfirmDialog),
+        Tone::Danger,
+        ctx,
+    )
+}
+
+fn rename_dialog<'a>(rename: &'a RenameBranch, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    let content = column![
+        paragraph(lang.text(Msg::GitViewRenameLabel), palette),
+        text_field(
+            "",
+            &rename.name,
+            RENAME_ID,
+            Some(Message::RenameNameChanged),
+            Message::ConfirmDialog,
+            palette,
+        ),
+    ]
+    .spacing(spacing::XS);
+    let changed = !rename.name.trim().is_empty() && rename.name.trim() != rename.from;
+    dialog_frame(
+        lang.text(Msg::GitViewRenameTitle),
+        content.into(),
+        lang.text(Msg::GitViewRenameButton),
+        changed.then_some(Message::ConfirmDialog),
+        Tone::Primary,
+        ctx,
+    )
+}
+
 pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let lang = ctx.lang;
@@ -469,6 +578,15 @@ pub fn over<'a>(
 ) -> Element<'a, Message> {
     if let Some(draft) = &state.actions.new_branch {
         return stack![page, scrim(new_branch_dialog(draft, ctx))].into();
+    }
+    match &state.actions.dialog {
+        Some(Dialog::Ask(question)) => {
+            return stack![page, scrim(question_dialog(question, ctx))].into();
+        }
+        Some(Dialog::Rename(rename)) => {
+            return stack![page, scrim(rename_dialog(rename, ctx))].into();
+        }
+        None => {}
     }
     if let Some(open) = state.actions.menu {
         return stack![page, menu(state, open, ctx)].into();

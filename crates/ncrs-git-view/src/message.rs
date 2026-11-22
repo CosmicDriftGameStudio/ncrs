@@ -89,6 +89,9 @@ pub enum Message {
     ToggleNewBranchCheckout,
     CreateBranch,
     CloseDialog,
+    /// Enter or the confirm button of a question or the rename dialog.
+    ConfirmDialog,
+    RenameNameChanged(String),
     MergeAbort,
     MergeContinue,
     SelectConflict(usize),

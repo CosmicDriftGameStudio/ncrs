@@ -13,9 +13,10 @@ use ncrs_git::{
 };
 use ncrs_i18n::{fill_template, Language, Msg};
 
+use crate::action::Action;
 use crate::actions::{
-    Actions, ChangeSide, Conflict, ConflictAction, LocalChanges, MenuAction, MenuTarget,
-    MergeInProgress, NewBranch, Notice, Side, SyncBar, Unavailable,
+    Actions, ChangeSide, Conflict, ConflictAction, Dialog, LocalChanges, MenuAction, MenuTarget,
+    MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
 };
 use crate::ctx::Ctx;
 use crate::job::{Done, Finished, Job};
@@ -37,11 +38,24 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             Job::Unstage(vec![path])
         }),
         Message::DiscardFile(index) => {
-            file_job(state, ChangeSide::Unstaged, index, Job::DiscardFile)
+            let file = state
+                .actions
+                .local
+                .as_ref()
+                .and_then(|local| local.unstaged.get(index))
+                .map(|file| file.path.clone());
+            ask(state, file.map(|path| Question::DiscardFile { path }))
         }
         Message::StageAll => start(state, Job::StageAll),
         Message::UnstageAll => start(state, Job::UnstageAll),
-        Message::DiscardAll => start(state, Job::DiscardAll),
+        Message::DiscardAll => {
+            let count = state
+                .actions
+                .local
+                .as_ref()
+                .map_or(0, |local| local.unstaged.len());
+            ask(state, (count > 0).then_some(Question::DiscardAll { count }))
+        }
         Message::StageHunk(index) => hunk_job(state, ChangeSide::Unstaged, index, |path, hunk| {
             Job::StageHunk { path, hunk }
         }),
@@ -111,9 +125,17 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::CreateBranch => create_branch(state),
         Message::CloseDialog => {
             state.actions.new_branch = None;
+            state.actions.dialog = None;
             state.actions.menu = None;
             quiet(Task::none())
         }
+        Message::RenameNameChanged(name) => {
+            if let Some(Dialog::Rename(rename)) = state.actions.dialog.as_mut() {
+                rename.name = name;
+            }
+            quiet(Task::none())
+        }
+        Message::ConfirmDialog => confirm_dialog(state),
         Message::MergeAbort => start(state, Job::AbortIntegration),
         Message::MergeContinue => start(state, Job::ContinueIntegration),
         Message::SelectConflict(index) => {
@@ -333,15 +355,55 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         MenuTarget::Stash(index) => state.actions.stash_ids.get(index).cloned(),
         _ => None,
     };
-    let job = match (action, chosen) {
+    // The one key for "delete" means what the row it is pressed on can lose.
+    let target_action = match (action, chosen) {
+        (MenuAction::Delete, MenuTarget::RemoteBranch(_)) => MenuAction::DeleteOnRemote,
+        (MenuAction::Delete, MenuTarget::Stash(_)) => MenuAction::StashDrop,
+        (other, _) => other,
+    };
+    let question = match (target_action, chosen) {
+        (MenuAction::Delete, MenuTarget::LocalBranch(_)) => {
+            branch.clone().map(|name| Question::DeleteBranch { name })
+        }
+        (MenuAction::DeleteOnRemote, MenuTarget::RemoteBranch(_)) => {
+            branch.as_deref().and_then(|full| {
+                let (remote_name, branch_name) = full.split_once('/')?;
+                Some(Question::DeleteOnRemote {
+                    remote: remote_name.to_owned(),
+                    branch: branch_name.to_owned(),
+                })
+            })
+        }
+        (MenuAction::StashDrop, MenuTarget::Stash(index)) => stash.clone().map(|sha| {
+            Question::DropStash {
+                sha,
+                message: state
+                    .actions
+                    .stashes
+                    .get(index)
+                    .map(|entry| entry.message.clone())
+                    .unwrap_or_default(),
+            }
+        }),
+        _ => None,
+    };
+    if question.is_some() {
+        return ask(state, question);
+    }
+    if target_action == MenuAction::Rename {
+        if let (MenuTarget::LocalBranch(_), Some(from)) = (chosen, branch.clone()) {
+            state.actions.dialog = Some(Dialog::Rename(RenameBranch {
+                name: from.clone(),
+                from,
+            }));
+        }
+        return quiet(Task::none());
+    }
+    let job = match (target_action, chosen) {
         (MenuAction::Checkout, MenuTarget::LocalBranch(_)) => branch.map(Job::Checkout),
         (MenuAction::CheckoutAsLocal, MenuTarget::RemoteBranch(_)) => {
             branch.map(Job::CheckoutRemote)
         }
-        (MenuAction::Delete, MenuTarget::LocalBranch(_)) => branch.map(|name| Job::DeleteBranch {
-            name,
-            force: false,
-        }),
         (MenuAction::Push, MenuTarget::LocalBranch(_)) => branch.map(Job::PushBranch),
         (MenuAction::MergeInto, MenuTarget::LocalBranch(_) | MenuTarget::RemoteBranch(_)) => {
             branch.map(Job::Merge)
@@ -351,10 +413,41 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         }
         (MenuAction::StashApply, MenuTarget::Stash(_)) => stash.map(Job::StashApply),
         (MenuAction::StashApplyAndDrop, MenuTarget::Stash(_)) => stash.map(Job::StashPop),
-        // Rename, delete on the remote and drop a stash ask a question or a name first.
         _ => None,
     };
     start_any(state, job)
+}
+
+/// Opens the question unless another call to git runs or there are no actions.
+fn ask(state: &mut State, question: Option<Question>) -> Outcome {
+    if state.actions.busy.is_none() && state.actions.unavailable.is_none() {
+        if let Some(asked) = question {
+            state.actions.dialog = Some(Dialog::Ask(asked));
+        }
+    }
+    quiet(Task::none())
+}
+
+/// The answer of a dialog: a question runs its job, a new name renames.
+fn confirm_dialog(state: &mut State) -> Outcome {
+    if state.actions.busy.is_some() {
+        return quiet(Task::none());
+    }
+    let job = match state.actions.dialog.take() {
+        Some(Dialog::Ask(question)) => question.job(),
+        Some(Dialog::Rename(rename)) => {
+            let to = rename.name.trim().to_owned();
+            if to.is_empty() || to == rename.from {
+                return quiet(Task::none());
+            }
+            Job::RenameBranch {
+                from: rename.from,
+                to,
+            }
+        }
+        None => return quiet(Task::none()),
+    };
+    start(state, job)
 }
 
 fn create_branch(state: &mut State) -> Outcome {
@@ -378,7 +471,8 @@ fn choice_of(side: Side, rebasing: bool) -> ConflictChoice {
     match (side, rebasing) {
         (Side::Mine, false) | (Side::Theirs, true) => ConflictChoice::Ours,
         (Side::Theirs, false) | (Side::Mine, true) => ConflictChoice::Theirs,
-        (Side::Both, _) => ConflictChoice::Both,
+        (Side::Both, false) => ConflictChoice::Both,
+        (Side::Both, true) => ConflictChoice::TheirsThenOurs,
     }
 }
 
@@ -404,6 +498,10 @@ fn conflict_action(state: &mut State, action: ConflictAction) -> Outcome {
         return quiet(Task::none());
     };
     let path = conflict.path.clone();
+    if action == ConflictAction::OpenEditor {
+        let file = state.root.as_ref().map(|root| root.join(&path));
+        return (Task::none(), file.map(Action::OpenInEditor));
+    }
     let job = match action {
         ConflictAction::Take(side) if !conflict.resolved => Some(Job::ResolveFile {
             path,
@@ -411,7 +509,6 @@ fn conflict_action(state: &mut State, action: ConflictAction) -> Outcome {
         }),
         ConflictAction::MarkResolved if !conflict.resolved => Some(Job::MarkResolved(path)),
         ConflictAction::Reset if conflict.resolved => Some(Job::ResetFile(path)),
-        // Opening the editor is asked of the app, which comes with the dialogs.
         ConflictAction::Take(_)
         | ConflictAction::MarkResolved
         | ConflictAction::Reset
@@ -446,6 +543,7 @@ fn switch_off(state: &mut State, reason: Unavailable) {
     actions.merge = None;
     actions.notice = None;
     actions.new_branch = None;
+    actions.dialog = None;
     actions.menu = None;
     actions.changes_open = false;
 }

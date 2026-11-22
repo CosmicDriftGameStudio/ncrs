@@ -12,6 +12,8 @@ pub enum Action {
     OpenWorktreeTab(PathBuf),
     /// Show this file in the viewer (F3).
     ViewFile(PathBuf),
+    /// Open this file in the editor (F4).
+    OpenInEditor(PathBuf),
     /// The groups folded in the left list of the repository at `root` changed;
     /// the app remembers them.
     FoldsChanged { root: PathBuf, folded: Vec<String> },

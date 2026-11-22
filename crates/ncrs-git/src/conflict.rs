@@ -25,6 +25,8 @@ pub enum ConflictChoice {
     Theirs,
     /// Ours, then theirs.
     Both,
+    /// Theirs, then ours: "both" of a rebase, where the user's own side is git's theirs.
+    TheirsThenOurs,
 }
 
 fn marker_rest(line: &str, marker: char) -> Option<&str> {
@@ -175,6 +177,10 @@ pub fn resolve_blocks(text: &str, only: Option<usize>, choice: ConflictChoice) -
                 result.push_str(&block.block.ours);
                 result.push_str(&block.block.theirs);
             }
+            ConflictChoice::TheirsThenOurs => {
+                result.push_str(&block.block.theirs);
+                result.push_str(&block.block.ours);
+            }
         }
         cursor = block.lines.end;
     }
@@ -246,6 +252,15 @@ mod tests {
         assert_eq!(
             resolved,
             "head\nmine 1\ntheirs 1\nmiddle\nmine 2\ntheirs 2\ntail\n"
+        );
+    }
+
+    #[test]
+    fn theirs_then_ours_swaps_the_order_of_both() {
+        let resolved = resolve_blocks(TWO, None, ConflictChoice::TheirsThenOurs).unwrap();
+        assert_eq!(
+            resolved,
+            "head\ntheirs 1\nmine 1\nmiddle\ntheirs 2\nmine 2\ntail\n"
         );
     }
 

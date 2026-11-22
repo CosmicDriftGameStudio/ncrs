@@ -116,6 +116,16 @@ impl App {
             Ask::Close => Task::none(),
             Ask::OpenWorktreeTab(root) => self.open_git_tab_at(root),
             Ask::ViewFile(file) => self.open_in_viewer(file),
+            Ask::OpenInEditor(file) => {
+                self.launch_external(
+                    ncrs_fs::OpenKind::Edit,
+                    file,
+                    None,
+                    ncrs_files::open_plan::CopyOf::Nothing,
+                    false,
+                );
+                Task::none()
+            }
             Ask::FoldsChanged { root, folded } => {
                 let changed = self
                     .git_view_settings

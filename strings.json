@@ -13613,6 +13613,144 @@
       "context": "Git tab: explanation of an error git reported; the Details button shows what git printed.",
       "en": "Git reported an error. The details show what it said.",
       "de": "Git hat einen Fehler gemeldet. Die Details zeigen, was es geschrieben hat."
+    },
+    {
+      "key": "git_view.ask_discard_file_title",
+      "context": "Git tab, question dialog before one file of the local changes is discarded: title.",
+      "en": "Discard changes",
+      "de": "Änderungen verwerfen"
+    },
+    {
+      "key": "git_view.ask_discard_file_text",
+      "context": "Git tab, question dialog before one file of the local changes is discarded. {name} is the path of the file. Says what is lost and that Undo brings it back; Undo is the name of the toolbar button.",
+      "en": "The changes in “{name}” are thrown away. Undo can bring them back.",
+      "de": "Die Änderungen in „{name}“ werden verworfen. Rückgängig kann sie zurückholen."
+    },
+    {
+      "key": "git_view.ask_discard_all_title",
+      "context": "Git tab, question dialog before all not staged local changes are discarded: title.",
+      "en": "Discard all changes",
+      "de": "Alle Änderungen verwerfen"
+    },
+    {
+      "key": "git_view.ask_discard_all_text",
+      "context": "Git tab, question dialog before all not staged local changes are discarded. {count} is the number of files; new files that git does not track yet are deleted too. Undo is the name of the toolbar button.",
+      "en": "The changes in {count} files are thrown away, new files are deleted. Undo can bring them back.",
+      "de": "Die Änderungen in {count} Dateien werden verworfen, neue Dateien gelöscht. Rückgängig kann sie zurückholen."
+    },
+    {
+      "key": "git_view.ask_delete_branch_title",
+      "context": "Git tab, question dialog before a local branch is deleted: title.",
+      "en": "Delete branch",
+      "de": "Branch löschen"
+    },
+    {
+      "key": "git_view.ask_delete_branch_text",
+      "context": "Git tab, question dialog before a local branch is deleted. {name} is the branch. Undo is the name of the toolbar button.",
+      "en": "The branch “{name}” is deleted. Undo can bring it back.",
+      "de": "Der Branch „{name}“ wird gelöscht. Rückgängig kann ihn zurückholen."
+    },
+    {
+      "key": "git_view.ask_delete_remote_title",
+      "context": "Git tab, question dialog before a branch is deleted on the remote server: title.",
+      "en": "Delete on remote",
+      "de": "Auf Remote löschen"
+    },
+    {
+      "key": "git_view.ask_delete_remote_text",
+      "context": "Git tab, question dialog before a branch is deleted on the remote server. {branch} is the branch, {remote} the remote. Warns that it cannot be undone. Undo is the name of the toolbar button.",
+      "en": "The branch “{branch}” is deleted on “{remote}” for everyone who uses it. Undo cannot bring it back.",
+      "de": "Der Branch „{branch}“ wird auf „{remote}“ für alle gelöscht, die ihn nutzen. Rückgängig kann ihn nicht zurückholen."
+    },
+    {
+      "key": "git_view.ask_drop_stash_title",
+      "context": "Git tab, question dialog before a stash is deleted: title. A stash is a set of changes put aside.",
+      "en": "Delete stash",
+      "de": "Stash löschen"
+    },
+    {
+      "key": "git_view.ask_drop_stash_text",
+      "context": "Git tab, question dialog before a stash is deleted. {name} is the message of the stash. Warns that it cannot be undone. Undo is the name of the toolbar button.",
+      "en": "The stash “{name}” and the changes in it are lost. Undo cannot bring it back.",
+      "de": "Der Stash „{name}“ und die Änderungen darin gehen verloren. Rückgängig kann ihn nicht zurückholen."
+    },
+    {
+      "key": "git_view.ask_discard_button",
+      "context": "Git tab, confirm button of the discard questions. Short.",
+      "en": "Discard",
+      "de": "Verwerfen"
+    },
+    {
+      "key": "git_view.ask_delete_button",
+      "context": "Git tab, confirm button of the delete questions (branch, branch on the remote, stash). Short.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "git_view.rename_title",
+      "context": "Git tab, dialog that renames a local branch: title.",
+      "en": "Rename branch",
+      "de": "Branch umbenennen"
+    },
+    {
+      "key": "git_view.rename_label",
+      "context": "Git tab, rename dialog: label above the field with the new name of the branch.",
+      "en": "New name",
+      "de": "Neuer Name"
+    },
+    {
+      "key": "git_view.rename_button",
+      "context": "Git tab, rename dialog: confirm button. Short.",
+      "en": "Rename",
+      "de": "Umbenennen"
+    },
+    {
+      "key": "git_view.palette_group",
+      "context": "Command list: heading of the Git commands, offered while a Git tab is shown. git is the name of the program.",
+      "en": "Git",
+      "de": "Git"
+    },
+    {
+      "key": "git_view.command_undo",
+      "context": "Command list, Git group: takes back the last local Git action of the tab.",
+      "en": "Undo the last Git action",
+      "de": "Letzte Git-Aktion rückgängig machen"
+    },
+    {
+      "key": "git_view.command_commit",
+      "context": "Command list, Git group: commits the staged files with the message typed in the tab.",
+      "en": "Commit the staged files",
+      "de": "Vorgemerkte Dateien committen"
+    },
+    {
+      "key": "git_view.command_merge",
+      "context": "Command list, Git group: merges the branch chosen in the left list into the current branch.",
+      "en": "Merge the chosen branch into the current one",
+      "de": "Gewählten Branch in den aktuellen mergen"
+    },
+    {
+      "key": "git_view.command_rebase",
+      "context": "Command list, Git group: rebases the current branch onto the branch chosen in the left list.",
+      "en": "Rebase the current branch onto the chosen one",
+      "de": "Aktuellen Branch auf den gewählten rebasen"
+    },
+    {
+      "key": "git_view.command_stash_apply",
+      "context": "Command list, Git group: applies the stash chosen in the left list and keeps it. A stash is a set of changes put aside.",
+      "en": "Apply the chosen stash",
+      "de": "Gewählten Stash anwenden"
+    },
+    {
+      "key": "git_view.command_stash_pop",
+      "context": "Command list, Git group: applies the stash chosen in the left list and deletes it.",
+      "en": "Apply the chosen stash and delete it",
+      "de": "Gewählten Stash anwenden und löschen"
+    },
+    {
+      "key": "git_view.command_conflict_reset",
+      "context": "Command list, Git group: brings the conflict markers of the chosen file back and throws its resolution away.",
+      "en": "Reset the resolution of the chosen file",
+      "de": "Lösung der gewählten Datei zurücksetzen"
     }
   ]
 }

@@ -197,13 +197,16 @@ impl Git {
             return self.rewrite_conflicts(path, None, choice);
         }
         let (ours, theirs) = sides_with_file(conflict.kind);
-        if choice == ConflictChoice::Both && ours && theirs {
+        if matches!(choice, ConflictChoice::Both | ConflictChoice::TheirsThenOurs)
+            && ours
+            && theirs
+        {
             return Err(other(format!("{path} has no text blocks to combine")));
         }
         let (keep_ours, keep_theirs) = match choice {
             ConflictChoice::Ours => (ours, false),
             ConflictChoice::Theirs => (false, theirs),
-            ConflictChoice::Both => (ours, !ours && theirs),
+            ConflictChoice::Both | ConflictChoice::TheirsThenOurs => (ours, !ours && theirs),
         };
         if keep_ours {
             self.ok(&["checkout", "--ours", "--", path])?;

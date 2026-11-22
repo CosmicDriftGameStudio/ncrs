@@ -21,8 +21,8 @@ mod ui_tests {
         Log, LogCommit, RefKind, RefLabel, RefsOverview, RowKind, WorktreeInfo,
     };
     use ncrs_git_view::actions::{
-        ChangeSide, Conflict, ConflictLine, LocalChanges, MenuTarget, MergeInProgress, NewBranch,
-        Notice, OpenMenu, StashEntry, SyncBar,
+        ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
+        NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar,
     };
     use ncrs_git_view::state::{Area, Detail, Subject};
     use ncrs_git_view::{update, view, Ctx, Message, State, ViewCtx};
@@ -529,6 +529,63 @@ mod ui_tests {
             problem: Some("Der Name darf keine Leerzeichen enthalten.".to_owned()),
         });
         picture(&state, "tests/snapshots/git-new-branch-dialog-cosmic");
+    }
+
+    fn with_dialog(dialog: Dialog) -> State {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.actions.sync = Some(sync());
+        state.actions.dialog = Some(dialog);
+        state
+    }
+
+    #[test]
+    fn discard_file_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::DiscardFile {
+            path: "src/rechnung/runden.rs".to_owned(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-discard-file-cosmic");
+    }
+
+    #[test]
+    fn discard_all_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::DiscardAll { count: 7 }));
+        picture(&state, "tests/snapshots/git-ask-discard-all-cosmic");
+    }
+
+    #[test]
+    fn delete_branch_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::DeleteBranch {
+            name: "feature/mehrwertsteuer".to_owned(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-delete-branch-cosmic");
+    }
+
+    #[test]
+    fn delete_on_remote_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::DeleteOnRemote {
+            remote: "origin".to_owned(),
+            branch: "fix/rundung".to_owned(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-delete-remote-cosmic");
+    }
+
+    #[test]
+    fn drop_stash_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::DropStash {
+            sha: "0123456789abcdef".to_owned(),
+            message: "Skonto-Experiment".to_owned(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-drop-stash-cosmic");
+    }
+
+    #[test]
+    fn rename_dialog_picture() {
+        let state = with_dialog(Dialog::Rename(RenameBranch {
+            from: "feature/mehrwertsteuer".to_owned(),
+            name: "feature/mehrwertsteuer-satz".to_owned(),
+        }));
+        picture(&state, "tests/snapshots/git-rename-dialog-cosmic");
     }
 
     #[test]

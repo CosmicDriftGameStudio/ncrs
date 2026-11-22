@@ -378,6 +378,7 @@ mod tests {
                 | Msg::GitViewToolbarPull
                 | Msg::GitViewToolbarPush
                 | Msg::GitViewToolbarStash
+                | Msg::GitViewPaletteGroup
                 // The same word in German: Name, Details.
                 | Msg::GitViewNewBranchName
                 | Msg::GitViewNoticeDetails

@@ -14,7 +14,12 @@ pub fn git_view_key(
     modifiers: Modifiers,
     filter_focused: bool,
     in_diff: bool,
+    dialog_open: bool,
 ) -> Option<Message> {
+    if dialog_open {
+        return (modifiers.is_empty() && key.as_ref() == Key::Named(Named::Enter))
+            .then_some(Message::Enter);
+    }
     if modifiers == Modifiers::COMMAND && in_diff {
         return match key.as_ref() {
             Key::Named(Named::ArrowUp) => Some(Message::PreviousFile),

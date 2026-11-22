@@ -25,6 +25,13 @@ pub struct LocalChanges {
     pub amend: bool,
 }
 
+impl Actions {
+    /// A dialog is over the tab: it takes the keys.
+    pub fn dialog_open(&self) -> bool {
+        self.new_branch.is_some() || self.dialog.is_some()
+    }
+}
+
 /// What the toolbar of the header shows.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SyncBar {
@@ -75,6 +82,56 @@ pub struct NewBranch {
     pub checkout: bool,
     /// Why the name does not work, ready to show.
     pub problem: Option<String>,
+}
+
+/// What the user is asked to confirm; the job of [`Question::job`] runs when they do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Question {
+    DiscardFile { path: String },
+    DiscardAll { count: usize },
+    DeleteBranch { name: String },
+    DeleteOnRemote { remote: String, branch: String },
+    DropStash { sha: String, message: String },
+}
+
+impl Question {
+    /// Whether "undo" brings back what the action takes away.
+    pub fn can_be_undone(&self) -> bool {
+        match self {
+            Self::DiscardFile { .. } | Self::DiscardAll { .. } | Self::DeleteBranch { .. } => true,
+            Self::DeleteOnRemote { .. } | Self::DropStash { .. } => false,
+        }
+    }
+
+    pub fn job(&self) -> Job {
+        match self {
+            Self::DiscardFile { path } => Job::DiscardFile(path.clone()),
+            Self::DiscardAll { .. } => Job::DiscardAll,
+            Self::DeleteBranch { name } => Job::DeleteBranch {
+                name: name.clone(),
+                force: false,
+            },
+            Self::DeleteOnRemote { remote, branch } => Job::DeleteOnRemote {
+                remote: remote.clone(),
+                branch: branch.clone(),
+            },
+            Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
+        }
+    }
+}
+
+/// The dialog for a new name of a branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameBranch {
+    pub from: String,
+    pub name: String,
+}
+
+/// A dialog over the tab, besides the one for a new branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Dialog {
+    Ask(Question),
+    Rename(RenameBranch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,6 +249,7 @@ pub struct Actions {
     pub sync: Option<SyncBar>,
     pub menu: Option<OpenMenu>,
     pub new_branch: Option<NewBranch>,
+    pub dialog: Option<Dialog>,
     pub merge: Option<MergeInProgress>,
     pub notice: Option<Notice>,
     pub stashes: Vec<StashEntry>,

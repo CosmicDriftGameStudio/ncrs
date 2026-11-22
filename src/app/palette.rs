@@ -13,6 +13,24 @@ impl App {
         })
     }
 
+    /// The Git actions, while a Git tab is shown that offers them.
+    pub(in crate::app) fn command_palette_git_commands(&self) -> Vec<GitCommandEntry> {
+        let offered = self
+            .shown_git_tab()
+            .and_then(|id| self.git_tabs.get(id))
+            .is_some_and(ncrs_git_view::actions_available);
+        if !offered {
+            return Vec::new();
+        }
+        ncrs_git_view::commands(self.lang)
+            .into_iter()
+            .map(|(label, shortcut)| GitCommandEntry {
+                label,
+                shortcut: Some(shortcut),
+            })
+            .collect()
+    }
+
     /// The settings pages and settings the command list finds by a query.
     fn command_palette_settings_targets(&self) -> Vec<ncrs_config::SettingsTarget> {
         let fresh;
@@ -101,6 +119,11 @@ impl App {
             } else {
                 Vec::new()
             },
+            git_commands: if opening && !blocked {
+                self.command_palette_git_commands()
+            } else {
+                Vec::new()
+            },
             settings_targets,
         };
         let (inner, action) = command_list::update(&mut self.command_palette, message, &ctx);
@@ -115,6 +138,13 @@ impl App {
             // prompt the action opens takes the focus after the list gave it
             // up.
             Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
+            Some(CommandPaletteAction::RunGit(place)) => {
+                let sent = self.shown_git_tab().zip(ncrs_git_view::message_of_command(place));
+                match sent {
+                    Some((id, message)) => task.chain(self.update_git_tab(id, message)),
+                    None => task,
+                }
+            }
             Some(CommandPaletteAction::ShowSetting { feature, row }) => {
                 Task::batch([task, self.show_setting(feature, row)])
             }

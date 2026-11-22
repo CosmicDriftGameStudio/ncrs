@@ -4,6 +4,8 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
+use ncrs_i18n::{Language, Msg};
+
 use crate::actions::{ConflictAction, MenuAction, Side};
 use crate::message::Message;
 
@@ -81,15 +83,15 @@ impl Shortcut {
             Self::Stash => (shifted, Pressed::Letter("s")),
             Self::Undo => (shifted, Pressed::Letter("y")),
             Self::Commit => (Modifiers::COMMAND, Pressed::Named(Named::Enter)),
-            Self::StageAll => (shifted, Pressed::Letter("a")),
+            Self::StageAll => (shifted, Pressed::Letter("i")),
             Self::UnstageAll => (shifted, Pressed::Letter("r")),
             Self::DiscardAll => (shifted, Pressed::Named(Named::Backspace)),
-            Self::NewBranch => (shifted, Pressed::Letter("n")),
+            Self::NewBranch => (shifted, Pressed::Letter("t")),
             Self::Checkout => (shifted, Pressed::Letter("o")),
-            Self::Rename => (Modifiers::empty(), Pressed::Named(Named::F2)),
+            Self::Rename => (Modifiers::SHIFT, Pressed::Named(Named::F6)),
             Self::Delete => (Modifiers::COMMAND, Pressed::Named(Named::Backspace)),
             Self::Merge => (shifted, Pressed::Letter("m")),
-            Self::Rebase => (shifted, Pressed::Letter("g")),
+            Self::Rebase => (shifted, Pressed::Letter("x")),
             Self::StashApply => (shifted, Pressed::Named(Named::Enter)),
             Self::StashPop => (shifted, Pressed::Letter("w")),
             Self::OpenMenu => (Modifiers::SHIFT, Pressed::Named(Named::F10)),
@@ -100,6 +102,46 @@ impl Shortcut {
             Self::MarkResolved => (shifted, Pressed::Letter("j")),
             Self::ResetConflict => (shifted, Pressed::Letter("z")),
         }
+    }
+
+    /// The modifiers and key of the chord, as the app-wide keymap spells them.
+    pub fn binding(self) -> (Modifiers, Key) {
+        let (held, pressed) = self.chord();
+        let key = match pressed {
+            Pressed::Letter(letter) => Key::Character(letter.into()),
+            Pressed::Named(named) => Key::Named(named),
+        };
+        (held, key)
+    }
+
+    /// The name in the command list; the menu key opens a menu and is no command.
+    pub fn command_label(self) -> Option<Msg> {
+        Some(match self {
+            Self::Fetch => Msg::GitViewToolbarFetch,
+            Self::Pull => Msg::GitViewToolbarPull,
+            Self::Push => Msg::GitViewToolbarPush,
+            Self::Stash => Msg::GitViewToolbarStash,
+            Self::Undo => Msg::GitViewCommandUndo,
+            Self::Commit => Msg::GitViewCommandCommit,
+            Self::StageAll => Msg::GitViewStageAll,
+            Self::UnstageAll => Msg::GitViewUnstageAll,
+            Self::DiscardAll => Msg::GitViewDiscardAll,
+            Self::NewBranch => Msg::GitViewMenuNewBranchFrom,
+            Self::Checkout => Msg::GitViewMenuCheckout,
+            Self::Rename => Msg::GitViewMenuRename,
+            Self::Delete => Msg::GitViewMenuDelete,
+            Self::Merge => Msg::GitViewCommandMerge,
+            Self::Rebase => Msg::GitViewCommandRebase,
+            Self::StashApply => Msg::GitViewCommandStashApply,
+            Self::StashPop => Msg::GitViewCommandStashPop,
+            Self::OpenMenu => return None,
+            Self::TakeMine => Msg::GitViewConflictTakeMine,
+            Self::TakeTheirs => Msg::GitViewConflictTakeTheirs,
+            Self::TakeBoth => Msg::GitViewConflictTakeBoth,
+            Self::OpenEditor => Msg::GitViewConflictOpenEditor,
+            Self::MarkResolved => Msg::GitViewConflictMarkResolved,
+            Self::ResetConflict => Msg::GitViewCommandConflictReset,
+        })
     }
 
     pub fn message(self) -> Message {
@@ -205,6 +247,28 @@ impl Shortcut {
         }
         label
     }
+}
+
+/// Every Git action the command list offers while a Git tab is shown, with
+/// its label and key. The place in the list is what the app sends back to
+/// [`message_of_command`].
+pub fn commands(lang: Language) -> Vec<(String, String)> {
+    Shortcut::ALL
+        .into_iter()
+        .filter_map(|shortcut| {
+            let label = lang.text(shortcut.command_label()?).to_owned();
+            Some((label, shortcut.label()))
+        })
+        .collect()
+}
+
+/// The message of the command at `place` in [`commands`].
+pub fn message_of_command(place: usize) -> Option<Message> {
+    Shortcut::ALL
+        .into_iter()
+        .filter(|shortcut| shortcut.command_label().is_some())
+        .nth(place)
+        .map(Shortcut::message)
 }
 
 #[cfg(test)]

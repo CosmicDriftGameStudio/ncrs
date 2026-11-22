@@ -20,9 +20,15 @@ pub use action::Action;
 pub use ctx::{Ctx, ViewCtx};
 pub use keys::git_view_key;
 pub use message::Message;
+pub use shortcuts::{commands, message_of_command};
 pub use state::State;
 pub use update::{open, update};
 pub use view::{tab_title, view};
+
+/// Whether the tab offers the write actions: git is there and the repository was read.
+pub fn actions_available(state: &State) -> bool {
+    state.actions.unavailable.is_none() && state.actions.local.is_some()
+}
 
 #[cfg(test)]
 mod tests;

@@ -232,7 +232,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             }
             (Task::none(), folded)
         }
-        Message::Enter => enter(state),
+        Message::Enter => enter(state, ctx),
         Message::NextArea => {
             state.area = state.area.next();
             quiet(Task::none())
@@ -257,7 +257,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 .map(|(root, changed)| Action::ViewFile(root.join(&changed.path)));
             (Task::none(), action)
         }
-        Message::Escape => escape(state),
+        Message::Escape => escape(state, ctx),
         Message::Close => {
             state.close();
             (Task::none(), Some(Action::Close))
@@ -311,6 +311,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::ToggleNewBranchCheckout
         | Message::CreateBranch
         | Message::CloseDialog
+        | Message::ConfirmDialog
+        | Message::RenameNameChanged(_)
         | Message::MergeAbort
         | Message::MergeContinue
         | Message::SelectConflict(_)
@@ -422,7 +424,16 @@ fn activate_sidebar(state: &mut State, index: usize) -> Outcome {
     }
 }
 
-fn enter(state: &mut State) -> Outcome {
+fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
+    if state.actions.dialog_open() {
+        // A text field sends Enter as its own submit too; the second one finds nothing to do.
+        let answer = if state.actions.dialog.is_some() {
+            Message::ConfirmDialog
+        } else {
+            Message::CreateBranch
+        };
+        return handlers::act(state, answer, ctx);
+    }
     if state.diff.is_some() {
         return quiet(Task::none());
     }
@@ -556,7 +567,14 @@ fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
     )
 }
 
-fn escape(state: &mut State) -> Outcome {
+fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
+    if state.actions.dialog_open() {
+        return handlers::act(state, Message::CloseDialog, ctx);
+    }
+    if state.actions.menu.is_some() {
+        state.actions.menu = None;
+        return quiet(Task::none());
+    }
     if state.column_drag.take().is_some() {
         return quiet(Task::none());
     }
