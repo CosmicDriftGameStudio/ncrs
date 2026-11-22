@@ -28,13 +28,15 @@ use crate::trailer_data::{
 };
 use ncrs_config::keymap::KeyAction;
 
+mod filing;
+
 const OUTPUT_DIRECTORY: &str = "target/trailer";
 
 const LETTER: f32 = 0.07;
 
 /// The area the camera aims at, in logical pixels of the window.
 #[derive(Clone, Copy)]
-struct Focus {
+pub(in crate::trailer) struct Focus {
     x: f32,
     y: f32,
     w: f32,
@@ -51,7 +53,7 @@ const RENAME_DIALOG: Focus = Focus::new(640.0, 356.0, 640.0, 368.0);
 const COLOUR_SCHEME_SWITCH: Focus = Focus::new(1100.0, 100.0, 800.0, 90.0);
 
 impl Focus {
-    const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
+    pub(in crate::trailer) const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self { x, y, w, h }
     }
 }
@@ -70,7 +72,7 @@ struct Scene {
     steps: Vec<Step>,
 }
 
-struct Recorder {
+pub(in crate::trailer) struct Recorder {
     app: App,
     scenes: Vec<Scene>,
     focus: Focus,
@@ -129,7 +131,12 @@ impl Recorder {
         }
     }
 
-    fn begin_scene(&mut self, id: &'static str, title: &'static str, subtitle: &'static str) {
+    pub(in crate::trailer) fn begin_scene(
+        &mut self,
+        id: &'static str,
+        title: &'static str,
+        subtitle: &'static str,
+    ) {
         self.scenes.push(Scene {
             id,
             title,
@@ -144,7 +151,11 @@ impl Recorder {
         self.app = dense_showcase_app();
     }
 
-    fn aim(&mut self, focus: Focus) {
+    pub(in crate::trailer) fn show_app(&mut self, app: App) {
+        self.app = app;
+    }
+
+    pub(in crate::trailer) fn aim(&mut self, focus: Focus) {
         self.focus = focus;
     }
 
@@ -181,7 +192,7 @@ impl Recorder {
         self.note_key(&key, modifiers);
     }
 
-    fn send(&mut self, message: Message) {
+    pub(in crate::trailer) fn send(&mut self, message: Message) {
         drop(self.app.update(message));
     }
 
@@ -190,7 +201,7 @@ impl Recorder {
     }
 
     /// Shows the app as it is now for `seconds`.
-    fn frame(&mut self, seconds: f32) {
+    pub(in crate::trailer) fn frame(&mut self, seconds: f32) {
         let scene = self.scenes.last().expect("a scene is open");
         let file = format!("frames/{}-{:03}.png", scene.id, scene.steps.len() + 1);
         write_view_to(
@@ -561,5 +572,6 @@ fn trailer_frames() {
     compare(&mut recorder);
     sftp(&mut recorder);
     themes(&mut recorder);
+    filing::filing(&mut recorder);
     recorder.finish();
 }
