@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use chrono::NaiveDate;
 use ncrs_filing::filing::ActivityBatch;
-use ncrs_filing::review_work::{ReviewItem, TextState};
+use ncrs_filing::review_work::{FileFacts, ReviewItem, TargetComparison, TextState};
 use ncrs_hermes_ui::activity_page::ActivityPage;
 use ncrs_hermes_ui::reviews_page::{Answer, Question, ReviewsPage};
 use ncrs_index::{
@@ -168,9 +168,44 @@ fn waiting_documents() -> Vec<ReviewItem> {
 }
 
 fn reviews_app(size: iced::Size) -> App {
+    reviews_app_open(size, Question::TargetTaken)
+}
+
+/// The page with the group of `open` unfolded; a date is typed into the
+/// second file of the date group.
+fn reviews_app_open(size: iced::Size, open: Question) -> App {
     let mut page = ReviewsPage::new();
     page.loaded(waiting_documents(), &Kinds::built_in(KindLanguage::German));
-    page.toggle(Question::TargetTaken);
+    page.toggle(open);
+    if open == Question::Date {
+        let second = page.members(Question::Date)[1].document_id;
+        page.type_into(second, "07.03.2025".to_owned());
+    }
+    let found = page
+        .taken_to_compare()
+        .into_iter()
+        .enumerate()
+        .map(|(position, (document, _, _))| {
+            let facts = |size: u64, day: u64| FileFacts {
+                size,
+                modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(day * 86_400)),
+            };
+            let same_content = position % 3 != 1;
+            let existing_size = 421_000 + position as u64 * 1_300;
+            let incoming_size = if same_content {
+                existing_size
+            } else {
+                existing_size + 9_000
+            };
+            let comparison = (position != 5).then(|| TargetComparison {
+                incoming: facts(incoming_size, 20_150),
+                existing: facts(existing_size, 20_148),
+                same_content,
+            });
+            (document, comparison)
+        })
+        .collect();
+    page.compared(found);
     App::with_reviews(page)
         .in_language(Language::German)
         .with_window_size_for_test(size)
@@ -273,6 +308,15 @@ fn the_reviews_page_matches_its_snapshots() {
 }
 
 #[test]
+fn the_date_question_matches_its_snapshot() {
+    matches_reference(
+        &reviews_app_open(WINDOW, Question::Date),
+        WINDOW,
+        "reviews_page_date_de",
+    );
+}
+
+#[test]
 fn the_activity_page_matches_its_snapshot() {
     matches_reference(&activity_app(), WINDOW, "activity_page_de");
 }
@@ -290,8 +334,8 @@ fn a_group_answers_its_question_with_one_button_and_unfolds_to_its_files() {
             ReviewsMessage::Answer(Question::Sender, Answer::Accept),
         ),
         (
-            "Später",
-            ReviewsMessage::Answer(Question::RuleUnconfirmed, Answer::Later),
+            "Doppelte löschen (10)",
+            ReviewsMessage::Answer(Question::TargetTaken, Answer::DeleteDuplicate),
         ),
     ] {
         let mut sim = simulator_in(&app, WINDOW);
@@ -303,7 +347,7 @@ fn a_group_answers_its_question_with_one_button_and_unfolds_to_its_files() {
             .collect();
         assert_eq!(messages, [Message::Reviews(expected)]);
     }
-    assert!(simulator_in(&app, WINDOW).find("Datei zeigen").is_ok());
+    assert!(simulator_in(&app, WINDOW).find("Datei zeigen").is_err());
 }
 
 #[test]

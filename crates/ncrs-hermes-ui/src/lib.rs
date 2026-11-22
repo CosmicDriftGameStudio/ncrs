@@ -30,7 +30,7 @@ pub mod update;
 pub mod view;
 
 pub use action::{Action, ProgressJobBuilder, ProtectionStep, StartProgressJob};
-pub use ctx::{ContinuousTools, Ctx};
+pub use ctx::{Bin, ContinuousTools, Ctx};
 pub use cursor_roles::CursorRoles;
 pub use message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,

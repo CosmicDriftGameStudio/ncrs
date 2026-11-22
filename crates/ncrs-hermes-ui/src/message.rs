@@ -10,10 +10,10 @@ use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, ReviewItem, TargetComparison};
 use ncrs_filing::rules_work::{RulesLoad, TryResult};
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
-use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
+use ncrs_index::{DocumentId, HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
@@ -341,8 +341,21 @@ pub enum ReviewsMessage {
     ToggleGroup(Question),
     /// Answers the question of a group for all its documents.
     Answer(Question, Answer),
-    ShowFile(PathBuf),
-    /// The sequential filing of a group is done.
+    /// Answers the question for one document of the group.
+    AnswerFile(Question, Answer, DocumentId),
+    /// The name of a file: opens it in the viewer.
+    OpenFile(PathBuf),
+    /// The text of the input in the row of a document changed.
+    InputChanged(DocumentId, String),
+    /// How the files in the taken places compare with the incoming ones. Dropped
+    /// when the list was read again meanwhile.
+    Compared {
+        generation: u64,
+        result: Vec<(DocumentId, Option<TargetComparison>)>,
+    },
+    /// The folder the user picked for the documents that wait for one.
+    FolderPicked(Option<PathBuf>),
+    /// What an answer did to its documents.
     Filed(AcceptSummary),
 }
 

@@ -23,6 +23,16 @@ impl std::fmt::Debug for ContinuousTools {
     }
 }
 
+/// The trash the app deletes into, so what an answer removes can be got back.
+#[derive(Clone)]
+pub struct Bin(pub Arc<dyn ncrs_fs::Trash>);
+
+impl std::fmt::Debug for Bin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bin").finish_non_exhaustive()
+    }
+}
+
 /// What `update` reads from the app.
 #[derive(Debug, Clone)]
 pub struct Ctx<'a> {
@@ -43,6 +53,7 @@ pub struct Ctx<'a> {
     pub hermes_counts_missing: bool,
     pub jobs_busy: bool,
     pub continuous: Option<ContinuousTools>,
+    pub trash: Bin,
     /// The source folder of the "Ablegen" tab while it plans or files.
     pub filing_tab_source: Option<&'a Path>,
     pub window_size: Size,

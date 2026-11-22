@@ -90,6 +90,11 @@ pub enum Action {
     },
     /// Asks for the folder the reports are exported to, starting at the path.
     PickExportFolder(PathBuf),
+    /// Asks for the folder the documents of the reviews page are filed in,
+    /// starting at the path.
+    PickReviewFolder(PathBuf),
+    /// Opens the file in the viewer.
+    PreviewFile(PathBuf),
     /// Put the job into the queue and start it if nothing runs; the work
     /// sends its progress through the app's channel, which the app makes
     /// first.

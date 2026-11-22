@@ -304,6 +304,19 @@ pub fn time(time: Option<SystemTime>) -> String {
         .unwrap_or_default()
 }
 
+/// The day of a time with its year, no clock time (`01.03.2025`). Empty when
+/// unknown.
+pub fn day_in(time: Option<SystemTime>, lang: Language) -> String {
+    let Some(at) = time.and_then(local_time) else {
+        return String::new();
+    };
+    let mut written = String::new();
+    if write!(written, "{}", at.format(lang.text(Msg::FormatDateShortWithYear))).is_err() {
+        return at.format("%Y-%m-%d").to_string();
+    }
+    written
+}
+
 /// A time as a date column writes it. Empty when unknown.
 pub fn time_in(time: Option<SystemTime>, format: DateFormat, lang: Language) -> String {
     time.and_then(local_time)

@@ -29,6 +29,9 @@ use ncrs_fs::transfer::{Counting, Move, Source};
 
 pub use ncrs_index::{amount_digits, amount_text};
 
+mod answers;
+pub use answers::{compare_files, FileFacts, TargetComparison};
+
 mod neighbour_cache;
 pub use neighbour_cache::NeighbourCache;
 
@@ -102,6 +105,8 @@ pub struct AcceptSummary {
     pub filed: usize,
     pub target_exists: usize,
     pub requeued: usize,
+    /// Incoming duplicates that went to the trash.
+    pub trashed: usize,
     /// No suggestion, or the work failed; the first detail is kept.
     pub failed: usize,
     pub first_failure: Option<String>,
@@ -124,7 +129,7 @@ impl AcceptSummary {
     }
 
     pub fn total(&self) -> usize {
-        self.filed + self.target_exists + self.requeued + self.failed
+        self.filed + self.target_exists + self.requeued + self.trashed + self.failed
     }
 }
 
@@ -151,6 +156,7 @@ pub struct ReviewAccess {
     own: OwnDetails,
     index_work: crate::index_work::IndexWork,
     neighbour_cache: NeighbourCache,
+    trash: Option<Arc<dyn ncrs_fs::Trash>>,
 }
 
 impl std::fmt::Debug for ReviewAccess {
@@ -170,6 +176,7 @@ impl ReviewAccess {
             own: OwnDetails::default(),
             index_work: crate::index_work::IndexWork::default(),
             neighbour_cache: NeighbourCache::default(),
+            trash: None,
         }
     }
 

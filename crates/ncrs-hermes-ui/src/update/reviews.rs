@@ -1,12 +1,21 @@
-//! The reviews page: reads the open reviews, files a group in one go through
-//! the review's own confirm, and sends the rest to the chat or the panel.
+//! The reviews page: reads the open reviews and carries out the answer a
+//! person gives to a question, for a whole group or for one file. Every answer
+//! that files or removes documents runs on a blocking thread through the
+//! journaled paths of the review work, and the list is read again after it.
 
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use iced::widget::operation;
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+use ncrs_i18n::{fill_template, Msg};
+use ncrs_index::DocumentId;
 
-use super::quick_fix::{exclude_from_hermes, filed};
+use super::quick_fix::{accept_notice, exclude_from_hermes, settle_column};
 use super::rules::open_rule_form;
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -15,6 +24,7 @@ use crate::quick_fix::rule_prefill_of;
 use crate::reviews_page::{Answer, Question, ReviewsPage};
 use crate::rule_form::RuleForm;
 use crate::state::Hermes;
+
 
 pub fn open(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
     if hermes.reviews.is_some() {
@@ -47,6 +57,44 @@ fn request(hermes: &mut Hermes) -> Task<Message> {
     )
 }
 
+/// Looks at the files in the taken places on a blocking thread: hashing is
+/// slow, so the list shows before it is done.
+fn compare_taken(hermes: &Hermes) -> Task<Message> {
+    let Some(page) = hermes.reviews.as_ref() else {
+        return Task::none();
+    };
+    let pairs = page.taken_to_compare();
+    let Some(access) = hermes
+        .filing
+        .as_ref()
+        .and_then(FilingModule::review_access)
+        .filter(|_| !pairs.is_empty())
+    else {
+        return Task::none();
+    };
+    let generation = hermes.reviews_generation;
+    Task::perform(
+        tokio::task::spawn_blocking(move || {
+            let places: Vec<(PathBuf, PathBuf)> = pairs
+                .iter()
+                .map(|(_, incoming, relative)| (incoming.clone(), relative.clone()))
+                .collect();
+            let found = access.compare_targets(&places);
+            pairs
+                .into_iter()
+                .map(|(document, _, _)| document)
+                .zip(found)
+                .collect::<Vec<_>>()
+        }),
+        move |joined| {
+            Message::Reviews(ReviewsMessage::Compared {
+                generation,
+                result: joined.unwrap_or_default(),
+            })
+        },
+    )
+}
+
 pub fn update(
     hermes: &mut Hermes,
     message: ReviewsMessage,
@@ -58,10 +106,24 @@ pub fn update(
             if generation != hermes.reviews_generation {
                 return Task::none();
             }
-            if let Some(page) = hermes.reviews.as_mut() {
-                match result {
-                    Ok(items) => page.loaded(items, ctx.kinds),
-                    Err(detail) => page.failed(detail),
+            let Some(page) = hermes.reviews.as_mut() else {
+                return Task::none();
+            };
+            match result {
+                Ok(items) => {
+                    page.loaded(items, ctx.kinds);
+                    compare_taken(hermes)
+                }
+                Err(detail) => {
+                    page.failed(detail);
+                    Task::none()
+                }
+            }
+        }
+        ReviewsMessage::Compared { generation, result } => {
+            if generation == hermes.reviews_generation {
+                if let Some(page) = hermes.reviews.as_mut() {
+                    page.compared(result);
                 }
             }
             Task::none()
@@ -73,14 +135,39 @@ pub fn update(
             Task::none()
         }
         ReviewsMessage::Answer(question, answer) => {
-            answer_question(hermes, question, answer, ctx, actions)
+            answer_question(hermes, (question, answer), None, ctx, actions)
         }
-        ReviewsMessage::ShowFile(path) => {
-            actions.push(Action::RevealFile(path));
+        ReviewsMessage::AnswerFile(question, answer, document) => {
+            answer_question(hermes, (question, answer), Some(document), ctx, actions)
+        }
+        ReviewsMessage::InputChanged(document, text) => {
+            if let Some(page) = hermes.reviews.as_mut() {
+                page.type_into(document, text);
+            }
             Task::none()
         }
+        ReviewsMessage::OpenFile(path) => {
+            actions.push(Action::PreviewFile(path));
+            Task::none()
+        }
+        ReviewsMessage::FolderPicked(folder) => {
+            let Some(items) = hermes
+                .reviews
+                .as_mut()
+                .map(ReviewsPage::take_awaiting_folder)
+            else {
+                return Task::none();
+            };
+            let Some(folder) = folder else {
+                return Task::none();
+            };
+            let picked = move |access: &ReviewAccess, items: &[ReviewItem]| {
+                access.accept_into(items, &folder)
+            };
+            run(hermes, items, ctx, actions, Box::new(picked))
+        }
         ReviewsMessage::Filed(summary) => {
-            filed(hermes, &summary, ctx, actions);
+            answered(hermes, &summary, ctx, actions);
             actions.push(Action::RequestHermesCounts);
             if let Some(page) = hermes.reviews.as_mut() {
                 page.loading_again();
@@ -90,33 +177,44 @@ pub fn update(
     }
 }
 
-/// Carries out what the user chose for the group of `question`, with the
-/// actions the quick-fix menu has.
+/// Carries out what the user chose, for the group of `question` or for the
+/// one `document` of it.
 fn answer_question(
     hermes: &mut Hermes,
-    question: Question,
-    answer: Answer,
+    (question, answer): (Question, Answer),
+    document: Option<DocumentId>,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     let Some(page) = hermes.reviews.as_mut() else {
         return Task::none();
     };
+    let items = match (answer, document) {
+        (Answer::FileTyped, Some(document)) => {
+            page.typed_for(question, document).into_iter().collect()
+        }
+        _ => page.answer_items(question, answer, document),
+    };
     match answer {
-        Answer::Accept => {
-            let items = page.fileable(question);
-            file_group(hermes, items, actions)
+        Answer::EnterValue => {
+            if !page.is_unfolded(question) {
+                page.toggle(question);
+            }
+            page.first_input(question)
+                .map_or_else(Task::none, |first| {
+                    operation::focus(crate::ui::reviews::input_id(first))
+                })
         }
         Answer::SetFields => {
             actions.push(Action::OpenChat);
             Task::none()
         }
         Answer::CreateRule => {
-            let Some(item) = page.members(question).first().map(|item| (*item).clone()) else {
+            let Some(item) = items.first() else {
                 return Task::none();
             };
             let prefill = rule_prefill_of(
-                &item,
+                item,
                 hermes.filing_config.default_pattern.as_deref(),
                 ctx.kinds,
             );
@@ -128,27 +226,59 @@ fn answer_question(
             )
         }
         Answer::Exclude => {
-            let paths = page
-                .members(question)
-                .into_iter()
-                .map(|item| item.path.clone())
-                .collect();
-            page.put_off(question);
+            let documents: HashSet<DocumentId> =
+                items.iter().map(|item| item.document_id).collect();
+            let paths = items.iter().map(|item| item.path.clone()).collect();
+            page.remove(&documents);
             exclude_from_hermes(hermes, paths, actions)
         }
-        Answer::Later => {
-            page.put_off(question);
+        Answer::PickFolder => {
+            let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
+                actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+                return Task::none();
+            };
+            if items.is_empty() {
+                return Task::none();
+            }
+            page.await_folder(items);
+            actions.push(Action::PickReviewFolder(access.target_root().to_path_buf()));
             Task::none()
         }
+        Answer::Accept | Answer::FileTyped => {
+            run(hermes, items, ctx, actions, Box::new(ReviewAccess::accept))
+        }
+        Answer::DeleteDuplicate => run(
+            hermes,
+            items,
+            ctx,
+            actions,
+            Box::new(ReviewAccess::delete_duplicates),
+        ),
+        Answer::Overwrite => run(
+            hermes,
+            items,
+            ctx,
+            actions,
+            Box::new(ReviewAccess::overwrite),
+        ),
+        Answer::KeepBoth => run(
+            hermes,
+            items,
+            ctx,
+            actions,
+            Box::new(ReviewAccess::keep_both),
+        ),
     }
 }
 
-/// Files the documents one after the other, each through the review's own
-/// confirm: never a plain move.
-fn file_group(
-    hermes: &mut Hermes,
+/// Runs `work` on the documents, one after the other: each can fail on its
+/// own, and the summary says how it went for all.
+fn run(
+    hermes: &Hermes,
     items: Vec<ReviewItem>,
+    ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
+    work: Box<dyn Fn(&ReviewAccess, &[ReviewItem]) -> AcceptSummary + Send>,
 ) -> Task<Message> {
     if items.is_empty() {
         return Task::none();
@@ -157,8 +287,9 @@ fn file_group(
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
+    let access = access.with_trash(Arc::clone(&ctx.trash.0));
     Task::perform(
-        tokio::task::spawn_blocking(move || access.accept(&items)),
+        tokio::task::spawn_blocking(move || work(&access, &items)),
         |joined| {
             Message::Reviews(ReviewsMessage::Filed(joined.unwrap_or_else(|err| {
                 AcceptSummary {
@@ -169,4 +300,23 @@ fn file_group(
             })))
         },
     )
+}
+
+/// What the status bar says about an answer; failures go through the error
+/// line, the rest is a notice. The column and the panels read again.
+fn answered(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    settle_column(hermes);
+    if summary.failed > 0 {
+        actions.push(Action::ShowError(
+            summary.first_failure.clone().unwrap_or_default(),
+        ));
+    } else if summary.trashed > 0 {
+        actions.push(Action::ShowNotice(fill_template(
+            ctx.lang.text(Msg::StatusReviewsTrashed),
+            &[("{count}", &summary.trashed.to_string())],
+        )));
+    } else if let Some(text) = accept_notice(summary, ctx.lang) {
+        actions.push(Action::ShowNotice(text));
+    }
+    actions.push(Action::ReloadPanels);
 }

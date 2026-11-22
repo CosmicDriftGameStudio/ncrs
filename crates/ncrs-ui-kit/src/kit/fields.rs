@@ -17,7 +17,7 @@ pub const FIELD_LINE_HEIGHT: f32 = 16.0;
 pub fn text_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
-    id: &'static str,
+    id: impl Into<iced::widget::Id>,
     on_input: Option<impl Fn(String) -> M + 'a>,
     on_submit: M,
     palette: &Palette,

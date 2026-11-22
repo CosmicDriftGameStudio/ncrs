@@ -927,3 +927,18 @@ pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> contai
 
 #[cfg(test)]
 mod tests;
+
+/// A flat button in the accent, for a name that opens what it names: it reads
+/// as a link and not as plain text.
+pub fn named_link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then(|| hover_fill(&colors)),
+            text_color: colors.accent,
+            border: Border::default(),
+            ..button::Style::default()
+        }
+    }
+}

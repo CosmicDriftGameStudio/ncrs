@@ -6,13 +6,15 @@ use std::path::Path;
 
 use ncrs_config::palette::Palette;
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_filing::review_work::ReviewItem;
+use ncrs_index::DocumentId;
 use ncrs_ui_kit::format;
-use ncrs_ui_kit::kit::Tone;
+use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use super::review_reason::field_name;
 use crate::message::{Message, ReviewsMessage};
-use crate::reviews_page::{Answer, Question, ReviewsPage};
+use crate::reviews_page::{Answer, Question, ReviewsPage, TakenBy};
 
 /// A group lists this many files; the rest is a count.
 pub const MAX_FILES_SHOWN: usize = 50;
@@ -79,22 +81,7 @@ fn group_row<'a>(
         Some(send(ReviewsMessage::ToggleGroup(question))),
         Tone::Secondary,
     );
-    let can_file = !state.fileable(question).is_empty();
-    let answers = question
-        .answers(can_file)
-        .into_iter()
-        .enumerate()
-        .map(|(position, answer)| {
-            RowButton::new(
-                lang.text(answer_text(question, answer)).to_owned(),
-                Some(send(ReviewsMessage::Answer(question, answer))),
-                if position == 0 {
-                    Tone::Primary
-                } else {
-                    Tone::Secondary
-                },
-            )
-        });
+    let answers = answer_buttons(state, question, None, lang);
     SettingRow::listed_buttons(
         question_text(question, lang),
         Some(detail_text(state, question, lang)),
@@ -102,6 +89,57 @@ fn group_row<'a>(
         std::iter::once(fold).chain(answers).collect(),
         palette,
     )
+}
+
+/// The answers of a group, or of one document of it; only the first is
+/// primary. A group's button says how many files it hits when that is not
+/// all of them.
+fn answer_buttons(
+    state: &ReviewsPage,
+    question: Question,
+    document: Option<DocumentId>,
+    lang: Language,
+) -> Vec<RowButton<Message>> {
+    let members = state.members(question).len();
+    let offered: Vec<(Answer, usize)> = match document {
+        Some(document) => state
+            .file_answers(question, document)
+            .into_iter()
+            .map(|answer| (answer, members))
+            .collect(),
+        None => state.group_answers(question),
+    };
+    offered
+        .into_iter()
+        .enumerate()
+        .map(|(position, (answer, fits))| {
+            let message = match document {
+                Some(_) if answer == Answer::FileTyped => document
+                    .filter(|&document| state.typed_for(question, document).is_some())
+                    .map(|document| ReviewsMessage::AnswerFile(question, answer, document)),
+                Some(document) => Some(ReviewsMessage::AnswerFile(question, answer, document)),
+                None => Some(ReviewsMessage::Answer(question, answer)),
+            };
+            let mut label = answer_text(question, answer, lang);
+            if document.is_none() && fits < members {
+                label = format!("{label} ({})", format::grouped(fits as u64));
+            }
+            RowButton::new(
+                label,
+                message.map(send),
+                if position == 0 {
+                    Tone::Primary
+                } else {
+                    Tone::Secondary
+                },
+            )
+        })
+        .collect()
+}
+
+/// The id of the input in the row of a document, to put the cursor there.
+pub fn input_id(document: DocumentId) -> iced::widget::Id {
+    iced::widget::Id::from(format!("review-input-{document}"))
 }
 
 fn field_text(field: ncrs_index::Field, template: Msg, lang: Language) -> String {
@@ -167,16 +205,76 @@ fn detail_text(state: &ReviewsPage, question: Question, lang: Language) -> Strin
     }
 }
 
-fn answer_text(question: Question, answer: Answer) -> Msg {
-    match (answer, question) {
+fn answer_text(question: Question, answer: Answer, lang: Language) -> String {
+    let msg = match (answer, question) {
         (Answer::Accept, Question::RuleUnconfirmed) => Msg::ReviewsPageAnswerOnce,
+        (Answer::Accept, Question::Date) => Msg::ReviewsPageAnswerWithoutDate,
+        (Answer::Accept, Question::TargetTaken) | (Answer::FileTyped, _) => {
+            Msg::ReviewsPageAnswerFile
+        }
+        (Answer::Accept, Question::Missing(field)) => {
+            return field_text(field, Msg::ReviewsPageAnswerWithoutField, lang);
+        }
         (Answer::Accept, _) => Msg::ReviewsPageAnswerAccept,
-        (Answer::SetFields, Question::Sender) => Msg::ReviewsPageAnswerOtherSender,
-        (Answer::SetFields, Question::Date) => Msg::ReviewsPageAnswerEnterDate,
+        (Answer::EnterValue, Question::Sender) => Msg::ReviewsPageAnswerOtherSender,
+        (Answer::EnterValue, _) => Msg::ReviewsPageAnswerEnterDate,
         (Answer::SetFields, _) => Msg::ReviewsPageAskChat,
         (Answer::CreateRule, _) => Msg::ReviewsPageAnswerCreateRule,
-        (Answer::Exclude, _) => Msg::QuickFixExclude,
-        (Answer::Later, _) => Msg::QuickFixLater,
+        (Answer::Exclude, _) => Msg::ReviewsPageAnswerIgnore,
+        (Answer::DeleteDuplicate, _) => Msg::ReviewsPageAnswerDeleteDuplicate,
+        (Answer::Overwrite, _) => Msg::ReviewsPageAnswerOverwrite,
+        (Answer::KeepBoth, _) => Msg::ReviewsPageAnswerKeepBoth,
+        (Answer::PickFolder, _) => Msg::ReviewsPageAnswerPickFolder,
+    };
+    lang.text(msg).to_owned()
+}
+
+/// The line under a file: how it compares with the file in its place when
+/// that is taken, else where it would be filed.
+fn file_line(
+    state: &ReviewsPage,
+    question: Question,
+    item: &ReviewItem,
+    target: Option<&Path>,
+    lang: Language,
+) -> String {
+    if question == Question::TargetTaken {
+        return taken_line(state, item, lang);
+    }
+    match target {
+        Some(path) => {
+            let extension = item
+                .path
+                .extension()
+                .map_or_else(String::new, |found| format!(".{}", found.to_string_lossy()));
+            format::ellipsize_middle(&format!("{}{extension}", path.display()), PATH_CHARS)
+        }
+        None => folder_of(&item.path),
+    }
+}
+
+fn taken_line(state: &ReviewsPage, item: &ReviewItem, lang: Language) -> String {
+    let free = || lang.text(Msg::ReviewsPageTakenFree).to_owned();
+    match (state.taken_by(item.document_id), state.comparison(item.document_id)) {
+        (TakenBy::Unknown, _) => lang.text(Msg::ReviewsPageTakenComparing).to_owned(),
+        (_, None) => free(),
+        (_, Some(found)) => {
+            let verdict = if found.same_content {
+                Msg::ReviewsPageSameContent
+            } else {
+                Msg::ReviewsPageOtherContent
+            };
+            fill_template(
+                lang.text(Msg::ReviewsPageTakenCompare),
+                &[
+                    ("{new_size}", &format::size_shown(found.incoming.size, lang)),
+                    ("{new_date}", &format::day_in(found.incoming.modified, lang)),
+                    ("{old_size}", &format::size_shown(found.existing.size, lang)),
+                    ("{old_date}", &format::day_in(found.existing.modified, lang)),
+                    ("{verdict}", lang.text(verdict)),
+                ],
+            )
+        }
     }
 }
 
@@ -191,28 +289,15 @@ fn file_rows<'a>(
         .iter()
         .take(MAX_FILES_SHOWN)
         .map(|(item, target)| {
-            let line = match target {
-                Some(path) => {
-                    let extension = item
-                        .path
-                        .extension()
-                        .map_or_else(String::new, |found| format!(".{}", found.to_string_lossy()));
-                    format::ellipsize_middle(&format!("{}{extension}", path.display()), PATH_CHARS)
-                }
-                None => folder_of(&item.path),
+            let line = Some(file_line(state, question, item, *target, lang));
+            let buttons = answer_buttons(state, question, Some(item.document_id), lang);
+            let row = if question.is_typed() {
+                typed_row(state, question, item, (line, buttons), lang, palette)
+            } else {
+                SettingRow::listed_buttons(file_name(&item.path), line, None, buttons, palette)
             };
-            SettingRow::listed_buttons(
-                file_name(&item.path),
-                Some(line),
-                None,
-                vec![RowButton::new(
-                    lang.text(Msg::HermesPagesShowFile),
-                    Some(send(ReviewsMessage::ShowFile(item.path.clone()))),
-                    Tone::Secondary,
-                )],
-                palette,
-            )
-            .indented()
+            row.with_label_action(send(ReviewsMessage::OpenFile(item.path.clone())))
+                .indented()
         })
         .collect();
     if members.len() > MAX_FILES_SHOWN {
@@ -248,4 +333,44 @@ pub(super) fn folder_of(path: &Path) -> String {
             .map_or_else(String::new, |parent| parent.display().to_string()),
         FOLDER_CHARS,
     )
+}
+
+/// A file of the date or sender question: an input for the value that files
+/// it, then the buttons.
+fn typed_row<'a>(
+    state: &ReviewsPage,
+    question: Question,
+    item: &ReviewItem,
+    (line, buttons): (Option<String>, Vec<RowButton<Message>>),
+    lang: Language,
+    palette: &Palette,
+) -> SettingRow<'a, Message> {
+    let document = item.document_id;
+    let typed = state.input_of(question, item);
+    let (placeholder, invalid) = match question {
+        Question::Date => (
+            lang.text(Msg::ReviewsPageInputDate),
+            !typed.trim().is_empty() && state.typed_for(question, document).is_none(),
+        ),
+        _ => (lang.text(Msg::ReviewsPageInputSender), false),
+    };
+    let field = || {
+        kit::text_field(
+            placeholder,
+            &typed,
+            input_id(document),
+            Some(move |text| send(ReviewsMessage::InputChanged(document, text))),
+            send(ReviewsMessage::AnswerFile(
+                question,
+                Answer::FileTyped,
+                document,
+            )),
+            palette,
+        )
+    };
+    let row = SettingRow::listed_field_buttons(file_name(&item.path), line, field, buttons, palette);
+    SettingRow {
+        problem: invalid.then(|| lang.text(Msg::ReviewsPageInvalidDate).to_owned()),
+        ..row
+    }
 }

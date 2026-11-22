@@ -719,3 +719,191 @@ fn a_write_to_the_index_makes_the_neighbours_build_again() {
     assert_eq!(access.neighbour_builds(), 2);
     assert_ne!(before.placement, after.placement);
 }
+
+/// A document in review whose place already holds `existing`, with the
+/// archive-side trash of the answers.
+struct Taken {
+    access: ReviewAccess,
+    item: ReviewItem,
+    target: PathBuf,
+    bin: PathBuf,
+}
+
+fn taken(setup: &Setup, existing: &str) -> Taken {
+    setup.in_review("scan.pdf");
+    let target = setup.archive.join("Company A").join("Invoice.pdf");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, existing).unwrap();
+    let bin = setup._dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let trash: Arc<dyn ncrs_fs::Trash> = Arc::new(ncrs_fs::JournaledTrash::new(
+        setup._dir.path().join("trash.toml"),
+        ncrs_fs::FolderBackend(bin.clone()),
+    ));
+    let access = setup
+        .access()
+        .with_location_roots(vec![setup.inbox.clone()])
+        .with_trash(trash);
+    let mut item = first(&access);
+    item.fields = Setup::fields("Company A");
+    item.proposed_pattern = Some("{sender}/{kind}".to_owned());
+    Taken {
+        access,
+        item,
+        target,
+        bin,
+    }
+}
+
+const INCOMING: &str = "content of scan.pdf";
+
+#[test]
+fn comparing_tells_equal_content_from_different_content() {
+    let setup = Setup::new();
+    let same = taken(&setup, INCOMING);
+    let relative = PathBuf::from("Company A/Invoice");
+    let found = same
+        .access
+        .compare_targets(&[(same.item.path.clone(), relative.clone())]);
+    assert_eq!(found[0].map(|found| found.same_content), Some(true));
+
+    fs::write(&same.target, "something else entirely").unwrap();
+    let found = same
+        .access
+        .compare_targets(&[(same.item.path.clone(), relative)]);
+    assert_eq!(found[0].map(|found| found.same_content), Some(false));
+}
+
+#[test]
+fn a_duplicate_goes_to_the_trash_and_the_target_stays() {
+    let setup = Setup::new();
+    let found = taken(&setup, INCOMING);
+
+    let summary = found.access.delete_duplicates(&[found.item.clone()]);
+
+    assert_eq!((summary.trashed, summary.failed), (1, 0));
+    assert!(!found.item.path.exists());
+    assert_eq!(fs::read_to_string(&found.target).unwrap(), INCOMING);
+    assert_eq!(
+        fs::read_to_string(found.bin.join("scan.pdf")).unwrap(),
+        INCOMING
+    );
+    assert!(found.access.load().unwrap().is_empty());
+}
+
+#[test]
+fn a_file_that_differs_is_not_taken_for_a_duplicate() {
+    let setup = Setup::new();
+    let found = taken(&setup, "another content");
+
+    let summary = found.access.delete_duplicates(&[found.item.clone()]);
+
+    assert_eq!((summary.trashed, summary.failed), (0, 1));
+    assert_eq!(summary.first_failure.as_deref(), Some(answers::NOT_A_DUPLICATE));
+    assert!(found.item.path.exists());
+    assert_eq!(found.access.load().unwrap().len(), 1);
+}
+
+#[test]
+fn overwriting_puts_the_old_file_in_the_trash_and_files_the_new_one() {
+    let setup = Setup::new();
+    let found = taken(&setup, "the old file");
+
+    let summary = found.access.overwrite(&[found.item.clone()]);
+
+    assert_eq!((summary.filed, summary.failed), (1, 0));
+    assert_eq!(fs::read_to_string(&found.target).unwrap(), INCOMING);
+    assert_eq!(
+        fs::read_to_string(found.bin.join("Invoice.pdf")).unwrap(),
+        "the old file"
+    );
+    assert!(!found.item.path.exists());
+    assert!(found.access.load().unwrap().is_empty());
+}
+
+#[test]
+fn keeping_both_files_the_new_one_under_the_next_free_number() {
+    let setup = Setup::new();
+    let found = taken(&setup, "the old file");
+    let second = found.target.with_file_name("Invoice (2).pdf");
+    fs::write(&second, "already there").unwrap();
+
+    let summary = found.access.keep_both(&[found.item.clone()]);
+
+    assert_eq!((summary.filed, summary.failed), (1, 0));
+    assert_eq!(fs::read_to_string(&found.target).unwrap(), "the old file");
+    assert_eq!(fs::read_to_string(&second).unwrap(), "already there");
+    assert_eq!(
+        fs::read_to_string(found.target.with_file_name("Invoice (3).pdf")).unwrap(),
+        INCOMING
+    );
+    assert!(found.access.load().unwrap().is_empty());
+}
+
+#[test]
+fn a_document_without_a_date_is_filed_without_it() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let mut item = first(&access);
+    item.fields = Setup::fields("Company A");
+    item.proposed_pattern = Some("{sender}/{date}_{kind}".to_owned());
+
+    let summary = access.accept(&[item]);
+
+    assert_eq!((summary.filed, summary.failed), (1, 0));
+    assert_eq!(
+        fs::read_to_string(setup.archive.join("Company A").join("Invoice.pdf")).unwrap(),
+        INCOMING
+    );
+    assert!(access.load().unwrap().is_empty());
+}
+
+#[test]
+fn an_ignored_document_leaves_the_list_and_stays_where_it_is() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let item = first(&access);
+
+    access.exclude(&[item.path.clone()]).unwrap();
+
+    assert!(access.load().unwrap().is_empty());
+    assert!(item.path.exists());
+}
+
+#[test]
+fn a_typed_date_is_filed_into_the_name() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let mut item = first(&access);
+    item.fields = Setup::fields("Company A");
+    item.fields.date = chrono::NaiveDate::from_ymd_opt(2025, 3, 7);
+    item.proposed_pattern = Some("{sender}/{year}-{month}-{day}_{kind}".to_owned());
+
+    let summary = access.accept(&[item]);
+
+    assert_eq!((summary.filed, summary.failed), (1, 0));
+    assert!(setup
+        .archive
+        .join("Company A")
+        .join("2025-03-07_Invoice.pdf")
+        .exists());
+}
+
+#[test]
+fn a_typed_sender_is_filed_into_the_folder() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let mut item = first(&access);
+    item.fields = Setup::fields("Company A");
+    item.fields.sender = Some("Company B".to_owned());
+    item.proposed_pattern = Some("{sender}/{kind}".to_owned());
+
+    let summary = access.accept(&[item]);
+
+    assert_eq!((summary.filed, summary.failed), (1, 0));
+    assert!(setup.archive.join("Company B").join("Invoice.pdf").exists());
+}

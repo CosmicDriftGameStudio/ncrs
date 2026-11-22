@@ -167,6 +167,7 @@ impl App {
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
             continuous: self.continuous_tools(),
+            trash: ncrs_hermes_ui::Bin(Arc::clone(&self.trash)),
             filing_tab_source: self
                 .filing_view
                 .session
@@ -341,6 +342,13 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
+            Ask::PickReviewFolder(start_in) => (self.pick_folder)(&start_in)
+                .map(|folder| Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder))),
+            Ask::PreviewFile(path) => {
+                let left = self.leave_settings_page();
+                let opened = self.open_in_viewer(path);
+                Task::batch([left, opened])
+            }
             Ask::StartJobWithProgress(start) => {
                 self.start_job_with_progress(start.job, start.build)
             }

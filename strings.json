@@ -3290,15 +3290,15 @@
     },
     {
       "key": "reviews_page.question_target_taken",
-      "context": "Title of a group on the reviews page: the place where the documents would go already holds an equal file.",
-      "en": "A file like this is already there.",
-      "de": "Im Ziel liegt schon eine gleiche Datei."
+      "context": "Title of a group on the reviews page: the place where the documents would go already holds a file.",
+      "en": "A file is already in the target.",
+      "de": "Im Ziel liegt schon eine Datei."
     },
     {
       "key": "reviews_page.hint_target_taken",
-      "context": "Line under the group whose target is taken on the reviews page. Nothing is overwritten.",
-      "en": "Nothing is overwritten. Exclude them from Hermes or decide later.",
-      "de": "Es wird nichts überschrieben. Lass Hermes sie in Ruhe oder entscheide später."
+      "context": "Line under the group whose target is taken on the reviews page. Nothing is deleted for good: removed files go to the trash.",
+      "en": "Delete the duplicate, overwrite or keep both. Removed files go to the trash.",
+      "de": "Doppelte löschen, überschreiben oder beide behalten. Entfernte Dateien liegen im Papierkorb."
     },
     {
       "key": "reviews_page.question_rule",
@@ -3395,6 +3395,108 @@
       "context": "Button on a group of the reviews page whose documents have no suggestion: opens the chat, which asks for what is missing.",
       "en": "Clarify in chat",
       "de": "Im Chat klären"
+    },
+    {
+      "key": "reviews_page.answer_ignore",
+      "context": "Button on the reviews page, for a group and for a file: Hermes leaves the file alone for good and it disappears from the page.",
+      "en": "Ignore",
+      "de": "Ignorieren"
+    },
+    {
+      "key": "reviews_page.answer_delete_duplicate",
+      "context": "Button on the reviews page for a file whose target already holds the same content: the incoming file goes to the trash, the file in the target stays.",
+      "en": "Delete duplicate",
+      "de": "Doppelte löschen"
+    },
+    {
+      "key": "reviews_page.answer_overwrite",
+      "context": "Button on the reviews page for a file whose target holds other content: the old file in the target goes to the trash and the new file is filed in its place.",
+      "en": "Overwrite",
+      "de": "Überschreiben"
+    },
+    {
+      "key": "reviews_page.answer_keep_both",
+      "context": "Button on the reviews page for a file whose target holds other content: the new file is filed next to the old one with a number added to its name.",
+      "en": "Keep both",
+      "de": "Beide behalten"
+    },
+    {
+      "key": "reviews_page.answer_without_date",
+      "context": "Button of the date question on the reviews page: files the documents where Hermes suggests, without a date in their name.",
+      "en": "File without date",
+      "de": "Ohne Datum ablegen"
+    },
+    {
+      "key": "reviews_page.answer_without_field",
+      "context": "Button of a question about a missing field on the reviews page: files the documents where Hermes suggests, without that field. {field} is its name, for example amount.",
+      "en": "File without {field}",
+      "de": "Ohne {field} ablegen"
+    },
+    {
+      "key": "reviews_page.answer_pick_folder",
+      "context": "Button of the question where documents belong on the reviews page: asks for a folder below the archive and files the documents there.",
+      "en": "Choose folder …",
+      "de": "Ordner wählen …"
+    },
+    {
+      "key": "reviews_page.taken_compare",
+      "context": "Second line of a file row on the reviews page when its target is taken. {new_size} and {new_date} are the size and the day of the incoming file, {old_size} and {old_date} those of the file in the target, {verdict} says whether both hold the same content.",
+      "en": "new {new_size} · {new_date} — in the target {old_size} · {old_date} · {verdict}",
+      "de": "neu {new_size} · {new_date} — im Ziel {old_size} · {old_date} · {verdict}"
+    },
+    {
+      "key": "reviews_page.same_content",
+      "context": "End of the comparison line of a file row on the reviews page: the file in the target holds exactly the same content.",
+      "en": "same content",
+      "de": "gleicher Inhalt"
+    },
+    {
+      "key": "reviews_page.other_content",
+      "context": "End of the comparison line of a file row on the reviews page: the file in the target holds other content.",
+      "en": "different content",
+      "de": "anderer Inhalt"
+    },
+    {
+      "key": "reviews_page.taken_comparing",
+      "context": "Second line of a file row on the reviews page while Hermes compares the file with the one in the target.",
+      "en": "Comparing with the file in the target …",
+      "de": "Vergleich mit der Datei im Ziel …"
+    },
+    {
+      "key": "reviews_page.taken_free",
+      "context": "Second line of a file row on the reviews page: nothing lies in the target any more, so the file can be filed there.",
+      "en": "The target is free now.",
+      "de": "Das Ziel ist jetzt frei."
+    },
+    {
+      "key": "status.reviews_trashed",
+      "context": "Notice in the status bar after duplicates were removed on the reviews page. {count} is how many files went to the trash, 1 or more.",
+      "en": "{count} duplicates moved to the trash.",
+      "de": "{count} Doppelte in den Papierkorb gelegt."
+    },
+    {
+      "key": "reviews_page.answer_file",
+      "context": "Button on the reviews page: files the document where Hermes suggests, with the date or sender typed in its row when there is an input.",
+      "en": "File",
+      "de": "Ablegen"
+    },
+    {
+      "key": "reviews_page.input_date",
+      "context": "Placeholder of the input in the row of a document on the reviews page, where the date of the document is typed. Write the format the German or English date takes.",
+      "en": "DD.MM.YYYY",
+      "de": "TT.MM.JJJJ"
+    },
+    {
+      "key": "reviews_page.input_sender",
+      "context": "Placeholder of the input in the row of a document on the reviews page, where the sender of the document is typed.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "reviews_page.invalid_date",
+      "context": "Line under a row on the reviews page when the typed text is no date that exists.",
+      "en": "That is not a date. Use DD.MM.YYYY.",
+      "de": "Das ist kein Datum. Schreibe TT.MM.JJJJ."
     },
     {
       "key": "activity_page.group_now",
