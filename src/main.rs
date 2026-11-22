@@ -1,4 +1,4 @@
-//! NC-rs – a fast, keyboard-first dual-panel file manager.
+//! ncrs – a fast, keyboard-first dual-panel file manager.
 //!
 //! The async runtime is tokio: iced's `tokio` feature makes the iced executor
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.

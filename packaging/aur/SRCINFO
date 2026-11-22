@@ -1,6 +1,6 @@
 # Template: rendered by scripts/aur-package.sh
 pkgbase = ncrs-bin
-	pkgdesc = A fast, keyboard-first dual-panel file manager, built with iced
+	pkgdesc = Keyboard-first dual-panel file manager with Git, SFTP, archives and AI document filing
 	pkgver = @VERSION@
 	pkgrel = 1
 	url = https://github.com/CosmicDriftGameStudio/ncrs
