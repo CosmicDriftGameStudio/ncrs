@@ -575,9 +575,17 @@ fn review_item(
                 .map(|rule| rule.spec.filing_pattern.clone()),
             Some(id),
         ),
-        Planning::Review { rule: None, .. } | Planning::Plan(_) => {
-            (document.fields.clone(), None, None)
-        }
+        // A document whose place is taken plans fine: the rule that planned
+        // it gives the place, not the neighbours.
+        Planning::Plan(plan) => (
+            document.fields.clone(),
+            rules
+                .iter()
+                .find(|rule| rule.id == plan.rule)
+                .map(|rule| rule.spec.filing_pattern.clone()),
+            None,
+        ),
+        Planning::Review { rule: None, .. } => (document.fields.clone(), None, None),
     };
     let effective_origins = match nearest_rule {
         Some(id) => with_planned_origins(origins, &document.fields, &fields, id, &kinds.catalog),

@@ -42,11 +42,21 @@ pub(in crate::e2e_tests) fn shoot_with(
     name: &str,
     touch: impl FnOnce(&mut Simulator<'_, Message>),
 ) {
+    shoot_sized(app, (SHOT_DIR, name), SHOT_SIZE, touch);
+}
+
+/// As [`shoot_with`] for `(folder, name)`, in a window of `size`.
+pub(in crate::e2e_tests) fn shoot_sized(
+    app: &App,
+    (dir, name): (&str, &str),
+    size: iced::Size,
+    touch: impl FnOnce(&mut Simulator<'_, Message>),
+) {
     if !shooting() {
         return;
     }
-    std::fs::create_dir_all(SHOT_DIR).unwrap();
-    let shot = PathBuf::from(SHOT_DIR);
+    std::fs::create_dir_all(dir).unwrap();
+    let shot = PathBuf::from(dir);
     drop(std::fs::remove_file(
         shot.join(format!("{name}-tiny-skia.png")),
     ));
@@ -55,7 +65,7 @@ pub(in crate::e2e_tests) fn shoot_with(
             default_font: ncrs_ui_kit::APP_FONT,
             ..iced::Settings::default()
         },
-        SHOT_SIZE,
+        size,
         app.view(),
     );
     touch(&mut simulator);

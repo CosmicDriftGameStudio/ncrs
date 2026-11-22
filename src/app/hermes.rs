@@ -267,6 +267,9 @@ impl App {
         use ncrs_hermes_ui::Action as Ask;
         match action {
             Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
+            Ask::OpenChatAbout(items) => {
+                self.update_hermes_chat(HermesChatMessage::OpenAbout(items))
+            }
             Ask::IndexReplaced => self.update_hermes_chat(HermesChatMessage::IndexReplaced),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),

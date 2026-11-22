@@ -204,7 +204,7 @@ fn answer_question(
             })
         }
         Answer::SetFields => {
-            actions.push(Action::OpenChat);
+            actions.push(Action::OpenChatAbout(items));
             Task::none()
         }
         Answer::CreateRule => {

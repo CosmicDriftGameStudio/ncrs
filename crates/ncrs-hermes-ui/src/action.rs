@@ -40,6 +40,8 @@ pub enum Action {
     IndexReplaced,
     /// Opens the Hermes chat.
     OpenChat,
+    /// Opens the Hermes chat on these documents, which it asks about.
+    OpenChatAbout(Vec<ncrs_filing::review_work::ReviewItem>),
     /// The settings show this page of the Hermes crate.
     ShowPage(HermesPage),
     /// Shows the file in the active panel.

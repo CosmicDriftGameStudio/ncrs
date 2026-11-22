@@ -145,6 +145,25 @@ pub fn loaded(state: &mut State, ctx: &Ctx, result: Result<Vec<WaitingGroup>, St
     next(state, ctx, None);
 }
 
+/// The walk through exactly these documents, one question each.
+pub fn ask_about(state: &mut State, ctx: &Ctx, items: Vec<ncrs_filing::review_work::ReviewItem>) {
+    state.step = Step::Idle;
+    let total = items.len();
+    state.session.waiting = Some(Walk {
+        groups: items
+            .into_iter()
+            .map(|item| WaitingGroup {
+                folder: None,
+                items: vec![item],
+            })
+            .collect(),
+        current: None,
+        total,
+        filed: 0,
+    });
+    next(state, ctx, None);
+}
+
 pub fn file_current(state: &mut State, ctx: &Ctx) {
     let Some(group) = state
         .session

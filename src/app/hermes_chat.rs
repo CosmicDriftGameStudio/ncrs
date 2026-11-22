@@ -7,13 +7,18 @@ impl App {
         message: HermesChatMessage,
     ) -> Task<Message> {
         let mut first_run = Task::none();
-        if matches!(message, HermesChatMessage::Open) {
+        if matches!(
+            message,
+            HermesChatMessage::Open | HermesChatMessage::OpenAbout(_)
+        ) {
             if self.blocking_overlay_is_open() {
                 return Task::none();
             }
             if self.hermes_chat.open && !self.hermes_chat_shown() {
                 self.shown_tab = ShownTab::Hermes;
-                return ncrs_hermes_chat::focus_input();
+                if matches!(message, HermesChatMessage::Open) {
+                    return ncrs_hermes_chat::focus_input();
+                }
             }
             self.close_context_menu();
             let filing = &self.hermes.filing_config;
