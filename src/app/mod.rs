@@ -44,7 +44,6 @@ use crate::hermes_column::{ColumnView, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
-use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
 use crate::jobs;
@@ -332,6 +331,8 @@ pub struct App {
     clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
     /// The window's size, for keeping the context menu inside it.
     window_size: Size,
+    /// The first title bar tab that shows while the tabs do not all fit.
+    title_tabs_first: usize,
     /// Where the session is remembered; `None` writes nothing.
     state_path: Option<PathBuf>,
     /// The snapshot last scheduled for writing, so a message that changes

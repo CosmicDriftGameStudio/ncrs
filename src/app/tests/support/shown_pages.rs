@@ -27,10 +27,4 @@ impl App {
         self.shown_tab = ShownTab::Filing;
         self
     }
-
-    pub fn showing_git_for_test(mut self, git: ncrs_git_view::State) -> Self {
-        let id = self.git_tabs.adopt_for_test(git);
-        self.shown_tab = ShownTab::Git(id);
-        self
-    }
 }

@@ -2065,30 +2065,6 @@
       "de": "PDF-Bibliothek fehlt, PDFs werden nicht gelesen"
     },
     {
-      "key": "title_bar.hermes_rate",
-      "context": "Chip in the title bar while the filing module (Hermes) is working: documents processed per minute (filed or sent to review), measured over the last full minutes; only shown while files are in work or queued. Takes the number. Pressing it opens the Inspection.",
-      "en": "Hermes {rate}/min processed",
-      "de": "Hermes {rate}/Min. verarbeitet"
-    },
-    {
-      "key": "title_bar.hermes_server_problem",
-      "context": "Chip in the title bar while the own AI server of Hermes failed on the last request. Takes the reason as a sentence, for example 'The server reported error 400.'",
-      "en": "Hermes: {problem}",
-      "de": "Hermes: {problem}"
-    },
-    {
-      "key": "title_bar.hermes_off",
-      "context": "Chip in the title bar while the Hermes switch (the module that sorts documents) is off; pressing it opens the AI page of the settings, where the switch is.",
-      "en": "Hermes off",
-      "de": "Hermes aus"
-    },
-    {
-      "key": "title_bar.hermes_paused",
-      "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
-      "en": "Hermes paused",
-      "de": "Hermes pausiert"
-    },
-    {
       "key": "filing_status.errors_none",
       "context": "Shown in the error list of the filing status page when there are no errors.",
       "en": "No errors",

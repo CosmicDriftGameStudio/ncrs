@@ -382,8 +382,6 @@ mod tests {
                 // The same word in German: Name, Details.
                 | Msg::GitViewNewBranchName
                 | Msg::GitViewNoticeDetails
-                // A name and a placeholder for an already translated sentence.
-                | Msg::TitleBarHermesServerProblem
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
                 | Msg::QuickFixLoading

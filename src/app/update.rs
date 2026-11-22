@@ -136,7 +136,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::HermesPage(_)
-            | Message::ShowAiSettings
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
             | Message::VersionPressed
@@ -167,6 +166,7 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
         TitleBarMessage::Drag => window.and_then(iced::window::drag),
         TitleBarMessage::ToggleMaximize => window.and_then(iced::window::toggle_maximize),
         TitleBarMessage::Minimize => window.and_then(|id| iced::window::minimize(id, true)),
+        TitleBarMessage::TabsFrom(_) => Task::none(),
         TitleBarMessage::Resize(edge) => {
             window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
         }
@@ -413,6 +413,10 @@ impl App {
                 Task::none()
             }
             Message::Panel(panel_message) => self.update_panel(panel_message),
+            Message::TitleBar(TitleBarMessage::TabsFrom(first)) => {
+                self.title_tabs_first = first;
+                Task::none()
+            }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::ComputeFolderSizes => {
                 let walk = self.panels.start_folder_size_run();
@@ -458,9 +462,6 @@ impl App {
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
-            Message::ShowAiSettings => {
-                self.show_setting(crate::messages::SettingsFeature::Ai, None)
-            }
             plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
                 self.update_hermes_plain(plain)
             }
