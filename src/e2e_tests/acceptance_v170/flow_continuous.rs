@@ -12,13 +12,18 @@ use crate::e2e_tests::acceptance_v160::Live;
 use crate::e2e_tests::Session;
 
 pub fn run<P: Live>(world: &World, session: &mut Session<P>) -> Arrivals {
-    let task = session.runtime.enter(|| session
-        .app
-        .switch_continuous_for_test(&world.inbox_dir, LocationTransfer::Move));
+    let task = session.runtime.enter(|| {
+        session
+            .app
+            .switch_continuous_for_test(&world.inbox_dir, LocationTransfer::Move)
+    });
     session.drive(task);
     session.settle();
     let saved = std::fs::read_to_string(world.root.join("config.toml")).unwrap();
-    println!("config has continuous: {}", saved.contains("continuous = true"));
+    println!(
+        "config has continuous: {}",
+        saved.contains("continuous = true")
+    );
 
     let arrivals = archive::write_arrivals(&world.inbox_dir, &world.archive_dir);
     // Scans of letters the archive holds already, with the very same bytes.
@@ -50,7 +55,10 @@ pub fn check(world: &World, arrivals: &Arrivals) {
     let saved = std::fs::read_to_string(world.root.join("config.toml")).unwrap();
     assert!(saved.contains("continuous = true"), "config: {saved}");
     for (from, target) in &arrivals.by_rule {
-        assert!(!from.exists() && target.is_file(), "not filed by rule: {from:?} -> {target:?}");
+        assert!(
+            !from.exists() && target.is_file(),
+            "not filed by rule: {from:?} -> {target:?}"
+        );
     }
     assert!(
         arrivals.strangers.iter().all(|path| path.exists()),
@@ -68,7 +76,11 @@ pub fn check(world: &World, arrivals: &Arrivals) {
     // neighbour-sure letters stay in place; the real model is out of scope here.
     println!(
         "neighbour-sure moved: {}/{}",
-        arrivals.neighbours.iter().filter(|(from, _)| !from.exists()).count(),
+        arrivals
+            .neighbours
+            .iter()
+            .filter(|(from, _)| !from.exists())
+            .count(),
         arrivals.neighbours.len()
     );
 }
@@ -83,7 +95,9 @@ fn write_identical_scans(world: &World) -> Vec<(PathBuf, PathBuf)> {
         .take(3)
         .enumerate()
         .map(|(number, (_, original))| {
-            let scan = world.inbox_dir.join(format!("Neu {} Scan nochmal.txt", 8800 + number));
+            let scan = world
+                .inbox_dir
+                .join(format!("Neu {} Scan nochmal.txt", 8800 + number));
             std::fs::write(&scan, drive::text_of(original)).unwrap();
             (scan, original.clone())
         })
@@ -98,10 +112,26 @@ fn check_identical_scans(world: &World, scans: &[(PathBuf, PathBuf)]) {
     for (scan, original) in scans {
         assert!(scan.is_file(), "{scan:?} left the inbox");
         assert!(original.is_file());
-        assert!(index.document_by_path(scan).unwrap().is_none(), "{scan:?} became a document");
-        let original_document = index.document_by_path(original).unwrap().expect("the archive file is known");
-        assert_eq!(super::probe::copy_of(&index, scan), Some(original_document.id), "{scan:?} is not noted as a copy");
-        assert!(!drive::has_open_review(world, scan), "{scan:?} got a review");
-        assert!(drive::journal_moved(world, scan).is_none(), "{scan:?} is in the activity");
+        assert!(
+            index.document_by_path(scan).unwrap().is_none(),
+            "{scan:?} became a document"
+        );
+        let original_document = index
+            .document_by_path(original)
+            .unwrap()
+            .expect("the archive file is known");
+        assert_eq!(
+            super::probe::copy_of(&index, scan),
+            Some(original_document.id),
+            "{scan:?} is not noted as a copy"
+        );
+        assert!(
+            !drive::has_open_review(world, scan),
+            "{scan:?} got a review"
+        );
+        assert!(
+            drive::journal_moved(world, scan).is_none(),
+            "{scan:?} is in the activity"
+        );
     }
 }

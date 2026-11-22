@@ -384,7 +384,9 @@ fn take_snapshot(state: &mut State, depth: Depth, snapshot: Snapshot, visible: u
     if state.depth() != Some(depth) {
         return;
     }
-    let followed = state.pid_under_cursor();
+    // A cursor nobody moved stays on the top row, whatever task a refresh puts there.
+    let cursor_was_moved = state.last_navigation.is_some() || state.cursor_index != 0;
+    let followed = state.pid_under_cursor().filter(|_| cursor_was_moved);
     state.snapshot = Some(snapshot);
     state.failure = None;
     if state.open {

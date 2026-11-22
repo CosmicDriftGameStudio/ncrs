@@ -12,11 +12,11 @@ use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::PanelMessage;
+use crate::messages::{GitTabId, ShownTab};
 use crate::messages::{
     HermesChatMessage, HitListMessage, Message, PanelSide, ResizeEdge, SettingsMessage,
     TitleBarMessage,
 };
-use crate::messages::{GitTabId, ShownTab};
 use crate::palette::Palette;
 
 pub const LEFT_TAB_ID: &str = "title-tab-left";
@@ -63,7 +63,6 @@ pub enum TabTitle<'a> {
     /// A hit list stands in for the panel; the tab has a cross that closes it.
     HitList(String),
 }
-
 
 /// The page that stands in for the panels, as a tab with a cross.
 pub enum PageTab {

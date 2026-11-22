@@ -47,7 +47,11 @@ impl World {
             index.create_rule(&spec).unwrap();
         }
         drop(index);
-        std::fs::write(root.join("config.toml"), Self::archive_only_config(&archive_dir)).unwrap();
+        std::fs::write(
+            root.join("config.toml"),
+            Self::archive_only_config(&archive_dir),
+        )
+        .unwrap();
         Self {
             root,
             dir,
@@ -78,7 +82,11 @@ impl World {
         format!(
             "{CONFIG_HEAD}[[modules.filing.locations]]\npath = {inbox:?}\nmode = \"inbox\"\n{}\
              [[modules.filing.locations]]\npath = {archive:?}\nmode = \"archive\"\ntarget = true\n",
-            if continuous { "continuous = true\n" } else { "" }
+            if continuous {
+                "continuous = true\n"
+            } else {
+                ""
+            }
         )
     }
 
@@ -100,7 +108,11 @@ impl World {
 
 /// Every file of the archive is in the index.
 pub fn archive_indexed(world: &World) -> bool {
-    let indexed = world.index().documents_beneath(&world.archive_dir).unwrap().len();
+    let indexed = world
+        .index()
+        .documents_beneath(&world.archive_dir)
+        .unwrap()
+        .len();
     indexed >= super::drive::files_below(&world.archive_dir).len()
 }
 
@@ -182,17 +194,28 @@ pub fn describe(world: &World) {
                     .document_by_path(file)
                     .unwrap()
                     .and_then(|document| index.open_review_of(document.id).unwrap())
-                    .map_or_else(|| "no review".to_owned(), |entry| format!("{:?}", entry.reason));
+                    .map_or_else(
+                        || "no review".to_owned(),
+                        |entry| format!("{:?}", entry.reason),
+                    );
                 match why.iter_mut().find(|(known, _)| *known == reason) {
                     Some((_, count)) => *count += 1,
                     None => why.push((reason, 1)),
                 }
             }
         }
-        let described: Vec<String> = why.iter().map(|(reason, count)| format!("{reason} x{count}")).collect();
-        println!("{label}: {} files, {left} left {}", files.len(), described.join(", "));
+        let described: Vec<String> = why
+            .iter()
+            .map(|(reason, count)| format!("{reason} x{count}"))
+            .collect();
+        println!(
+            "{label}: {} files, {left} left {}",
+            files.len(),
+            described.join(", ")
+        );
     };
-    let pairs = |pairs: &[(PathBuf, PathBuf)]| pairs.iter().map(|(a, _)| a.clone()).collect::<Vec<_>>();
+    let pairs =
+        |pairs: &[(PathBuf, PathBuf)]| pairs.iter().map(|(a, _)| a.clone()).collect::<Vec<_>>();
     line("sure", &pairs(&world.inbox.sure));
     line("duplicates", &pairs(&world.inbox.duplicates));
     line("clashes", &pairs(&world.inbox.clashes));
@@ -203,13 +226,15 @@ pub fn describe(world: &World) {
     line("unconfirmed", &world.inbox.unconfirmed);
 }
 
-
 /// The pipeline cannot find out by itself that it is unsure of a sender, so a
 /// few documents of a known sender are given that question in the index.
 pub fn mark_unsure_senders(world: &World) {
     let mut index = world.index();
     for path in &world.inbox.unsure_sender_marked {
-        let document = index.document_by_path(path).unwrap().expect("a known document");
+        let document = index
+            .document_by_path(path)
+            .unwrap()
+            .expect("a known document");
         let entry = index
             .open_review_of(document.id)
             .unwrap()
@@ -231,7 +256,10 @@ fn reason_of(index: &Index, path: &Path) -> Option<ReviewReason> {
 pub fn check_phase_a(world: &World) {
     let index = world.index();
     for (from, target) in &world.inbox.sure {
-        assert!(!from.exists() && target.is_file(), "sure but not filed: {from:?}");
+        assert!(
+            !from.exists() && target.is_file(),
+            "sure but not filed: {from:?}"
+        );
     }
     let expect = |label: &str, files: &[PathBuf], reason: &dyn Fn(&ReviewReason) -> bool| {
         assert!(files.len() >= 3, "{label}: fewer than three documents");
@@ -245,18 +273,35 @@ pub fn check_phase_a(world: &World) {
         }
     };
     let taken = |reason: &ReviewReason| *reason == ReviewReason::TargetExists;
-    let paths = |pairs: &[(PathBuf, PathBuf)]| pairs.iter().map(|(from, _)| from.clone()).collect::<Vec<_>>();
+    let paths = |pairs: &[(PathBuf, PathBuf)]| {
+        pairs
+            .iter()
+            .map(|(from, _)| from.clone())
+            .collect::<Vec<_>>()
+    };
     // An exact copy of an indexed archive file is no question: it stays in the
     // inbox, with no review, and the index only notes it as a repeat of the
     // archive document.
     assert!(world.inbox.duplicates.len() >= 3);
     for (copy, original) in &world.inbox.duplicates {
-        assert!(copy.is_file() && original.is_file(), "{copy:?}: a copy or its original is gone");
-        assert!(index.document_by_path(copy).unwrap().is_none(), "{copy:?} became a document");
-        let holder = copy_of(&index, copy)
-            .unwrap_or_else(|| panic!("{copy:?} is not noted as a copy"));
-        let original_document = index.document_by_path(original).unwrap().expect("the archive file is known");
-        assert_eq!(holder, original_document.id, "{copy:?} is a copy of another document");
+        assert!(
+            copy.is_file() && original.is_file(),
+            "{copy:?}: a copy or its original is gone"
+        );
+        assert!(
+            index.document_by_path(copy).unwrap().is_none(),
+            "{copy:?} became a document"
+        );
+        let holder =
+            copy_of(&index, copy).unwrap_or_else(|| panic!("{copy:?} is not noted as a copy"));
+        let original_document = index
+            .document_by_path(original)
+            .unwrap()
+            .expect("the archive file is known");
+        assert_eq!(
+            holder, original_document.id,
+            "{copy:?} is a copy of another document"
+        );
         assert!(index.open_review_of(holder).unwrap().is_none());
     }
     expect("clashes", &paths(&world.inbox.clashes), &taken);
@@ -269,13 +314,17 @@ pub fn check_phase_a(world: &World) {
     expect("no rule", &world.inbox.no_rule, &|reason| {
         *reason == ReviewReason::NoMatchingRule
     });
-    expect("no rule, known neighbours", &world.inbox.unsure_sender, &|reason| {
-        *reason == ReviewReason::NoMatchingRule
-    });
+    expect(
+        "no rule, known neighbours",
+        &world.inbox.unsure_sender,
+        &|reason| *reason == ReviewReason::NoMatchingRule,
+    );
     expect("unconfirmed", &world.inbox.unconfirmed, &|reason| {
         *reason == ReviewReason::UnconfirmedRule
     });
-    expect("unsure sender", &world.inbox.unsure_sender_marked, &|reason| {
-        *reason == ReviewReason::LowConfidence(Field::Sender)
-    });
+    expect(
+        "unsure sender",
+        &world.inbox.unsure_sender_marked,
+        &|reason| *reason == ReviewReason::LowConfidence(Field::Sender),
+    );
 }

@@ -26,7 +26,12 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
         "the activity page never loaded"
     );
     assert!(
-        session.app.activity_page_for_test().unwrap().problem().is_none(),
+        session
+            .app
+            .activity_page_for_test()
+            .unwrap()
+            .problem()
+            .is_none(),
         "the activity page failed"
     );
 
@@ -41,11 +46,13 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     for (question, group_size) in [
         (Question::TargetTaken, world.inbox.clashes.len()),
         (Question::Date, world.inbox.no_date.len()),
-        (Question::Missing(ncrs_index::Field::Amount), world.inbox.no_amount.len()),
+        (
+            Question::Missing(ncrs_index::Field::Amount),
+            world.inbox.no_amount.len(),
+        ),
         (
             Question::NoRule,
-            world.inbox.no_rule.len()
-                + world.inbox.unsure_sender.len(),
+            world.inbox.no_rule.len() + world.inbox.unsure_sender.len(),
         ),
         (Question::RuleUnconfirmed, world.inbox.unconfirmed.len()),
         (Question::Sender, world.inbox.unsure_sender_marked.len()),
@@ -73,7 +80,10 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     for (question, name) in [
         (Question::TargetTaken, "reviews-taken"),
         (Question::Date, "reviews-date"),
-        (Question::Missing(ncrs_index::Field::Amount), "reviews-amount"),
+        (
+            Question::Missing(ncrs_index::Field::Amount),
+            "reviews-amount",
+        ),
         (Question::RuleUnconfirmed, "reviews-rule"),
         (Question::NoRule, "reviews-no-rule"),
         (Question::Sender, "reviews-sender"),
@@ -86,15 +96,20 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
 
 /// The sidebar at the laptop size, scrolled as far as the app scrolled it.
 fn sidebar_picture<P: Live>(session: &Session<P>, scrolled: f32) {
-    shoot_sized(&session.app, (SHOT_FOLDER, "settings-sidebar"), WINDOW, |simulator| {
-        if scrolled > 0.0 {
-            simulator.point_at(iced::Point::new(60.0, 300.0));
-            simulator.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
-                delta: iced::mouse::ScrollDelta::Pixels {
-                    x: 0.0,
-                    y: -scrolled,
-                },
-            })]);
-        }
-    });
+    shoot_sized(
+        &session.app,
+        (SHOT_FOLDER, "settings-sidebar"),
+        WINDOW,
+        |simulator| {
+            if scrolled > 0.0 {
+                simulator.point_at(iced::Point::new(60.0, 300.0));
+                simulator.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+                    delta: iced::mouse::ScrollDelta::Pixels {
+                        x: 0.0,
+                        y: -scrolled,
+                    },
+                })]);
+            }
+        },
+    );
 }

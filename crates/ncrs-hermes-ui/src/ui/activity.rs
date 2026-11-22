@@ -48,7 +48,11 @@ fn now_row<'a>(
     palette: &Palette,
 ) -> SettingRow<'a, Message> {
     let Some(known) = status else {
-        return said(lang.text(Msg::ActivityPageOff).to_owned(), Vec::new(), palette);
+        return said(
+            lang.text(Msg::ActivityPageOff).to_owned(),
+            Vec::new(),
+            palette,
+        );
     };
     let link = |template: Msg, count: usize, message: ActivityMessage| {
         (count > 0).then(|| {

@@ -49,6 +49,6 @@ pub use update::{
     update_saved_queries, update_tags, Outcome, SavedFilingApplies,
 };
 pub use view::{
-    confirm_again_dialog, dialogs, filing_badge, hermes_line, hermes_status,
-    overview_facts, page_content, page_keys, FilingBadge, ViewCtx,
+    confirm_again_dialog, dialogs, filing_badge, hermes_line, hermes_status, overview_facts,
+    page_content, page_keys, FilingBadge, ViewCtx,
 };

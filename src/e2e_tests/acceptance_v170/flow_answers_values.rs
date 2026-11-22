@@ -37,9 +37,11 @@ fn chat_is_about<P: Live>(session: &Session<P>, path: &Path) {
     assert!(chat.open, "the chat did not open");
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
     let said = chat.thread().last().map(entry_text).unwrap_or_default();
-    assert!(said.contains(&name), "the chat does not ask about {name}: {said:?}");
+    assert!(
+        said.contains(&name),
+        "the chat does not ask about {name}: {said:?}"
+    );
 }
-
 
 fn dates<P: Live>(world: &World, session: &mut Session<P>) {
     let files = world.inbox.no_date.clone();
@@ -54,11 +56,18 @@ fn dates<P: Live>(world: &World, session: &mut Session<P>) {
     let landed = drive::journal_moved(world, typed).expect("no journal item for the typed date");
     assert!(landed.is_file(), "{landed:?} is not there");
     assert!(
-        landed.file_name().unwrap().to_string_lossy().contains("2025-03-07"),
+        landed
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("2025-03-07"),
         "the typed date is not in the name: {landed:?}"
     );
     let stored = world.index().document(id).unwrap().unwrap();
-    assert_eq!(stored.fields.date, chrono::NaiveDate::from_ymd_opt(2025, 3, 7));
+    assert_eq!(
+        stored.fields.date,
+        chrono::NaiveDate::from_ymd_opt(2025, 3, 7)
+    );
     assert!(!drive::has_open_review(world, typed));
     drive::config_intact(world);
 
@@ -76,13 +85,14 @@ fn dates<P: Live>(world: &World, session: &mut Session<P>) {
         "'Ohne Datum ablegen' is offered without a place: {offered:?}"
     );
     assert!(
-        files[2..].iter().all(|path| path.exists() && drive::has_open_review(world, path)),
+        files[2..]
+            .iter()
+            .all(|path| path.exists() && drive::has_open_review(world, path)),
         "a file without a place was moved"
     );
     drive::config_intact(world);
     drive::shot(session, "reviews-after-date");
 }
-
 
 fn amounts<P: Live>(world: &World, session: &mut Session<P>) {
     let question = Question::Missing(Field::Amount);
@@ -101,7 +111,11 @@ fn amounts<P: Live>(world: &World, session: &mut Session<P>) {
     assert!(!drive::has_open_review(world, ignored));
 
     let handled = drive::answer_group(session, question, Answer::Accept);
-    assert_eq!(handled, files.len() - 1, "the group button counts the files it handles");
+    assert_eq!(
+        handled,
+        files.len() - 1,
+        "the group button counts the files it handles"
+    );
     // The one asked about in the chat still has its review, so the button takes it too.
     for path in std::iter::once(chat).chain(&files[2..]) {
         assert!(!path.exists(), "{path:?} was not filed without an amount");
@@ -122,7 +136,11 @@ fn rules<P: Live>(world: &World, session: &mut Session<P>) {
     drive::answer_file(session, &files[0], Answer::Accept);
     assert!(!files[0].exists());
     assert!(drive::journal_moved(world, &files[0]).is_some_and(|landed| landed.is_file()));
-    assert_eq!(world.index().rules().unwrap().len(), rules_before, "a rule was made");
+    assert_eq!(
+        world.index().rules().unwrap().len(),
+        rules_before,
+        "a rule was made"
+    );
 
     let text = drive::text_of(&files[1]);
     drive::answer_file(session, &files[1], Answer::Exclude);
@@ -143,15 +161,24 @@ fn rules<P: Live>(world: &World, session: &mut Session<P>) {
     drive::show_reviews(session);
     drive::reload(session);
     let left: Vec<&PathBuf> = files[2..].iter().filter(|path| path.exists()).collect();
-    println!("after the rule: {} of {} files still wait", left.len(), files.len() - 2);
+    println!(
+        "after the rule: {} of {} files still wait",
+        left.len(),
+        files.len() - 2
+    );
 
     // What is left of the group, with its button.
-    let waiting = drive::page(session).members(Question::RuleUnconfirmed).len();
+    let waiting = drive::page(session)
+        .members(Question::RuleUnconfirmed)
+        .len();
     if waiting > 0 {
         let handled = drive::answer_group(session, Question::RuleUnconfirmed, Answer::Accept);
         assert_eq!(handled, waiting);
     }
-    assert!(files[2..].iter().all(|path| !path.exists()), "files of the group are left");
+    assert!(
+        files[2..].iter().all(|path| !path.exists()),
+        "files of the group are left"
+    );
     drive::config_intact(world);
 }
 
@@ -171,7 +198,14 @@ fn senders<P: Live>(world: &World, session: &mut Session<P>) {
         "the typed sender is not in {typed:?}"
     );
     assert_eq!(
-        world.index().document(id).unwrap().unwrap().fields.sender.as_deref(),
+        world
+            .index()
+            .document(id)
+            .unwrap()
+            .unwrap()
+            .fields
+            .sender
+            .as_deref(),
         Some("Anderer Verlag GmbH")
     );
 
@@ -187,7 +221,10 @@ fn senders<P: Live>(world: &World, session: &mut Session<P>) {
     for path in &files[2..] {
         assert!(!path.exists());
         let landed = drive::journal_moved(world, path).expect("no journal item");
-        assert!(landed.to_string_lossy().contains(archive_sender()), "{landed:?}");
+        assert!(
+            landed.to_string_lossy().contains(archive_sender()),
+            "{landed:?}"
+        );
     }
     drive::config_intact(world);
 }

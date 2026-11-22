@@ -17,7 +17,10 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     let name = file.file_name().unwrap().to_owned();
     let document = {
         let index = world.index();
-        let document = index.document_by_path(&file).unwrap().expect("a known document");
+        let document = index
+            .document_by_path(&file)
+            .unwrap()
+            .expect("a known document");
         assert!(index.open_review_of(document.id).unwrap().is_some());
         document.id
     };

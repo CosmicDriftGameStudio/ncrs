@@ -133,7 +133,6 @@ pub fn vertical_rule<'a, M: 'a>(color: Color) -> Element<'a, M> {
         .into()
 }
 
-
 /// The mode field at the left end of the status bar: names the active panel.
 /// Filled with the "on" role, like every other thing that is switched on.
 pub fn mode_field(palette: &Palette) -> impl Fn(&Theme) -> container::Style {

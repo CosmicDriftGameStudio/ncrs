@@ -228,7 +228,8 @@ impl Category {
             self.sender,
             self.pattern,
             true,
-            self.amount_rule.then(|| r"Betrag: ([\d.,]+) EUR".to_owned()),
+            self.amount_rule
+                .then(|| r"Betrag: ([\d.,]+) EUR".to_owned()),
         )
     }
 }
@@ -316,7 +317,10 @@ pub struct ArchiveFile {
 pub fn write_archive(root: &Path) -> Vec<ArchiveFile> {
     let mut written = Vec::new();
     for category in &CATEGORIES {
-        for serial in 0..scaled(category.in_archive, category.in_archive.checked_div(10).unwrap_or(0)) {
+        for serial in 0..scaled(
+            category.in_archive,
+            category.in_archive.checked_div(10).unwrap_or(0),
+        ) {
             let date = day(serial + category.number_base as usize);
             let amount = category.amount_rule.then(|| money(serial));
             let text = category.letter(Some(date), serial, amount.as_deref());
@@ -379,7 +383,10 @@ pub fn write_inbox(inbox: &Path, archive_root: &Path, archive: &[ArchiveFile]) -
                 &inbox.join(&name),
                 &category.letter(Some(date), serial, amount.as_deref()),
             );
-            found.sure.push((inbox.join(name), archive_root.join(category.target(date, serial))));
+            found.sure.push((
+                inbox.join(name),
+                archive_root.join(category.target(date, serial)),
+            ));
         }
     }
     let strom = by_key("strom");

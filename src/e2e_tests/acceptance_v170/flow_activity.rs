@@ -23,7 +23,10 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     let batches = page.batches();
     assert!(!batches.is_empty());
     assert!(
-        batches.windows(2).all(|pair| pair.first().zip(pair.get(1)).is_some_and(|(newer, older)| newer.at >= older.at)),
+        batches.windows(2).all(|pair| pair
+            .first()
+            .zip(pair.get(1))
+            .is_some_and(|(newer, older)| newer.at >= older.at)),
         "the runs are not newest first"
     );
     // The last answer that moved a file: a folder picked for a document
@@ -32,12 +35,16 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     let position = batches
         .iter()
         .position(|batch| batch.moves.iter().any(|(from, _)| from == last));
-    assert!(position.is_some(), "the folder pick is not listed among {} runs", batches.len());
-    let sender_run = world
-        .inbox
-        .unsure_sender_marked
-        .last()
-        .and_then(|file| batches.iter().position(|batch| batch.moves.iter().any(|(from, _)| from == file)));
+    assert!(
+        position.is_some(),
+        "the folder pick is not listed among {} runs",
+        batches.len()
+    );
+    let sender_run = world.inbox.unsure_sender_marked.last().and_then(|file| {
+        batches
+            .iter()
+            .position(|batch| batch.moves.iter().any(|(from, _)| from == file))
+    });
     assert!(
         sender_run.is_some_and(|older| older >= position.unwrap()),
         "the answer to the senders is not listed after the folder pick: {sender_run:?} / {position:?}"

@@ -16,7 +16,6 @@ use crate::e2e_tests::Session;
 
 const TAKEN: Question = Question::TargetTaken;
 
-
 pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     drive::show_reviews(session);
     let clashes = world.inbox.clashes.clone();
@@ -25,12 +24,30 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     for (incoming, target) in &clashes {
         let (_, item) = drive::item(session, incoming);
         let taken = drive::page(session).taken_by(item.document_id);
-        let places: Vec<_> = drive::page(session).taken_to_compare().into_iter().filter(|(document, _, _)| *document == item.document_id).collect();
-        assert_eq!(taken, TakenBy::OtherContent, "{incoming:?} vs {target:?}, places {places:?}, target exists {}", target.exists());
+        let places: Vec<_> = drive::page(session)
+            .taken_to_compare()
+            .into_iter()
+            .filter(|(document, _, _)| *document == item.document_id)
+            .collect();
+        assert_eq!(
+            taken,
+            TakenBy::OtherContent,
+            "{incoming:?} vs {target:?}, places {places:?}, target exists {}",
+            target.exists()
+        );
     }
     let offered = drive::page(session).group_answers(TAKEN);
-    let count_of = |answer| offered.iter().find(|(known, _)| *known == answer).map(|(_, n)| *n);
-    assert_eq!(count_of(Answer::DeleteDuplicate), None, "no review holds the same content");
+    let count_of = |answer| {
+        offered
+            .iter()
+            .find(|(known, _)| *known == answer)
+            .map(|(_, n)| *n)
+    };
+    assert_eq!(
+        count_of(Answer::DeleteDuplicate),
+        None,
+        "no review holds the same content"
+    );
     assert_eq!(count_of(Answer::Overwrite), Some(clashes.len()));
     assert_eq!(count_of(Answer::KeepBoth), Some(clashes.len()));
     assert_eq!(count_of(Answer::Accept), None, "nothing is free yet");
@@ -60,22 +77,40 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     drive::config_intact(world);
 }
 
-fn overwrite<P: Live>(world: &World, session: &mut Session<P>, (incoming, target): &(PathBuf, PathBuf)) {
+fn overwrite<P: Live>(
+    world: &World,
+    session: &mut Session<P>,
+    (incoming, target): &(PathBuf, PathBuf),
+) {
     let (old, new) = (drive::text_of(target), drive::text_of(incoming));
     assert_ne!(old, new);
     drive::answer_file(session, incoming, Answer::Overwrite);
     assert!(!incoming.exists());
-    assert_eq!(drive::text_of(target), new, "the new file did not take the place");
-    assert!(drive::trash_holds(world, &old), "the old file is not in the trash");
+    assert_eq!(
+        drive::text_of(target),
+        new,
+        "the new file did not take the place"
+    );
     assert!(
-        drive::batch_names(world).iter().flatten().any(|name| name == "Replace files"),
+        drive::trash_holds(world, &old),
+        "the old file is not in the trash"
+    );
+    assert!(
+        drive::batch_names(world)
+            .iter()
+            .flatten()
+            .any(|name| name == "Replace files"),
         "no journal run for the replaced file: {:?}",
         drive::batch_names(world)
     );
     assert!(!drive::has_open_review(world, incoming));
 }
 
-fn keep_both<P: Live>(world: &World, session: &mut Session<P>, (incoming, target): &(PathBuf, PathBuf)) {
+fn keep_both<P: Live>(
+    world: &World,
+    session: &mut Session<P>,
+    (incoming, target): &(PathBuf, PathBuf),
+) {
     let (old, new) = (drive::text_of(target), drive::text_of(incoming));
     let folder = target.parent().unwrap();
     let before = drive::files_below(folder).len();
@@ -83,48 +118,86 @@ fn keep_both<P: Live>(world: &World, session: &mut Session<P>, (incoming, target
     assert!(!incoming.exists());
     assert_eq!(drive::text_of(target), old, "the old file changed");
     let files = drive::files_below(folder);
-    assert_eq!(files.len(), before + 1, "no second file next to the old one");
+    assert_eq!(
+        files.len(),
+        before + 1,
+        "no second file next to the old one"
+    );
     let other: Vec<&PathBuf> = files
         .iter()
         .filter(|path| path.as_path() != target && drive::text_of(path) == new)
         .collect();
     assert_eq!(other.len(), 1, "the new file is not next to the old one");
     assert!(
-        other[0].file_name().unwrap().to_string_lossy().contains("(2)"),
+        other[0]
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("(2)"),
         "{other:?} has no number"
     );
     assert!(!drive::has_open_review(world, incoming));
 }
 
-fn ignore<P: Live>(world: &World, session: &mut Session<P>, (incoming, target): &(PathBuf, PathBuf)) {
+fn ignore<P: Live>(
+    world: &World,
+    session: &mut Session<P>,
+    (incoming, target): &(PathBuf, PathBuf),
+) {
     let (text, old) = (drive::text_of(incoming), drive::text_of(target));
     drive::answer_file(session, incoming, Answer::Exclude);
-    assert_eq!(drive::text_of(incoming), text, "the ignored file was touched");
+    assert_eq!(
+        drive::text_of(incoming),
+        text,
+        "the ignored file was touched"
+    );
     assert_eq!(drive::text_of(target), old);
-    assert!(!drive::has_open_review(world, incoming), "an ignored file keeps its review");
-    assert!(world.index().is_excluded(incoming).unwrap(), "the file is not left alone for good");
+    assert!(
+        !drive::has_open_review(world, incoming),
+        "an ignored file keeps its review"
+    );
+    assert!(
+        world.index().is_excluded(incoming).unwrap(),
+        "the file is not left alone for good"
+    );
 
     // Another run of the continuous filing must not pick it up.
     let (arrival, landed) = archive::write_rule_arrival(&world.inbox_dir, &world.archive_dir, 8900);
     assert!(
-        wait_until(session, Duration::from_secs(120), |_| !arrival.exists() && landed.is_file()),
+        wait_until(session, Duration::from_secs(120), |_| !arrival.exists()
+            && landed.is_file()),
         "the continuous filing did not file {arrival:?}"
     );
-    assert_eq!(drive::text_of(incoming), text, "a later run moved the ignored file");
+    assert_eq!(
+        drive::text_of(incoming),
+        text,
+        "a later run moved the ignored file"
+    );
     assert!(!drive::has_open_review(world, incoming));
     drive::config_intact(world);
 }
 
 /// The place becomes free while the page is open; the page reads again and
 /// offers "Ablegen".
-fn file_into_free_place<P: Live>(world: &World, session: &mut Session<P>, (incoming, target): &(PathBuf, PathBuf)) {
+fn file_into_free_place<P: Live>(
+    world: &World,
+    session: &mut Session<P>,
+    (incoming, target): &(PathBuf, PathBuf),
+) {
     let text = drive::text_of(incoming);
     std::fs::remove_file(target).unwrap();
     drive::reload(session);
     let (_, item) = drive::item(session, incoming);
-    assert_eq!(drive::page(session).taken_by(item.document_id), TakenBy::Free);
+    assert_eq!(
+        drive::page(session).taken_by(item.document_id),
+        TakenBy::Free
+    );
     drive::answer_file(session, incoming, Answer::Accept);
     assert!(!incoming.exists());
-    assert_eq!(drive::text_of(target), text, "the file did not land in the free place");
+    assert_eq!(
+        drive::text_of(target),
+        text,
+        "the file did not land in the free place"
+    );
     assert!(!drive::has_open_review(world, incoming));
 }

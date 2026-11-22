@@ -1,8 +1,8 @@
 //! What the flows share: acting on the reviews page through its messages, and
 //! looking at what an answer left on disk, in the index and in the config.
 
-use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::advanced::widget::operation::Outcome;
@@ -62,7 +62,9 @@ pub fn show_reviews<P: Live>(session: &mut Session<P>) {
 
 /// Reads the list again, as it does after every answer.
 pub fn reload<P: Live>(session: &mut Session<P>) {
-    session.send(Message::Reviews(ReviewsMessage::Filed(AcceptSummary::default())));
+    session.send(Message::Reviews(ReviewsMessage::Filed(
+        AcceptSummary::default(),
+    )));
     page_ready(session);
 }
 
@@ -102,7 +104,11 @@ pub fn answer_file<P: Live>(session: &mut Session<P>, path: &Path, answer: Answe
 }
 
 /// Presses the group button; the count on it is what it must handle.
-pub fn answer_group<P: Live>(session: &mut Session<P>, question: Question, answer: Answer) -> usize {
+pub fn answer_group<P: Live>(
+    session: &mut Session<P>,
+    question: Question,
+    answer: Answer,
+) -> usize {
     let offered = page(session).group_answers(question);
     let count = offered
         .iter()
@@ -216,7 +222,8 @@ pub struct SidebarLook {
 
 impl SidebarLook {
     pub fn scrolled(&self) -> f32 {
-        self.viewport.map_or(0.0, |(_, _, translation)| translation.y)
+        self.viewport
+            .map_or(0.0, |(_, _, translation)| translation.y)
     }
 
     pub fn row_in_view(&self) -> Option<bool> {

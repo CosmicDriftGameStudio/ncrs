@@ -193,7 +193,10 @@ fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> T
 /// is missing.
 fn open_chat_from_menu(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
     let menu = hermes.quick_fix.take();
-    actions.push(menu.as_ref().map_or(Action::OpenChat, QuickFix::chat_action));
+    actions.push(
+        menu.as_ref()
+            .map_or(Action::OpenChat, QuickFix::chat_action),
+    );
     Task::none()
 }
 

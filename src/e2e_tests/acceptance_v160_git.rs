@@ -483,6 +483,19 @@ fn open_git_view_from_the_context_menu<P: Live>(session: &mut Session<P>) {
     session.settle();
 }
 
+fn assert_local_changes_sit_in_the_sidebar(view: &ncrs_git_view::State) {
+    assert!(
+        !view.has_working_row(),
+        "the local changes sit in the sidebar, not in the log"
+    );
+    let local = view
+        .actions
+        .local
+        .as_ref()
+        .expect("the local changes were read");
+    assert_eq!(local.staged.len() + local.unstaged.len(), 3);
+}
+
 #[test]
 fn the_git_view_shows_the_graph_details_diff_and_filter() {
     let world = World::new("git-view", "");
@@ -506,13 +519,13 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
     assert_eq!((linked.ahead, linked.behind), (2, 0), "against main");
     let current = view.current_worktree().expect("the opened worktree");
     assert_eq!(current.wip, 3);
-    assert!(view.has_working_row());
+    assert_local_changes_sit_in_the_sidebar(view);
     let log = view.log.clone().expect("the log was read");
     assert!(log.commits.len() >= 33, "{} commits", log.commits.len());
     shoot(&session.app, "20-git-ansicht");
 
     // The merge commit, then a normal one.
-    let working_row = 1;
+    let working_row = 0;
     let merge_row = working_row
         + log
             .commits

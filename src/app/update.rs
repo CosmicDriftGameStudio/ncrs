@@ -44,6 +44,9 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::FileOnce
+            | HermesFileMessage::FileContinuously
+            | HermesFileMessage::StopContinuous
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -96,6 +99,9 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::FileOnce
+            | HermesFileMessage::FileContinuously
+            | HermesFileMessage::StopContinuous
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
