@@ -48,11 +48,7 @@ fn now_row<'a>(
     palette: &Palette,
 ) -> SettingRow<'a, Message> {
     let Some(known) = status else {
-        return SettingRow::adding(
-            Some(lang.text(Msg::ActivityPageOff).to_owned()),
-            None,
-            Vec::new(),
-        );
+        return said(lang.text(Msg::ActivityPageOff).to_owned(), Vec::new(), palette);
     };
     let link = |template: Msg, count: usize, message: ActivityMessage| {
         (count > 0).then(|| {
@@ -81,7 +77,20 @@ fn now_row<'a>(
     .into_iter()
     .flatten()
     .collect();
-    SettingRow::adding_buttons(Some(known.line(lang)), None, links, palette)
+    said(known.line(lang), links, palette)
+}
+
+/// A row that is its `line` and the `links`; the line stands as the label, so
+/// no empty label line is left above it.
+fn said<'a>(
+    line: String,
+    links: Vec<RowButton<Message>>,
+    palette: &Palette,
+) -> SettingRow<'a, Message> {
+    SettingRow {
+        label: line,
+        ..SettingRow::adding_buttons(None, None, links, palette)
+    }
 }
 
 fn journal_rows<'a>(
@@ -188,5 +197,47 @@ fn kind_text(kind: BatchKind) -> Msg {
         BatchKind::Filing => Msg::ActivityPageKindFiling,
         BatchKind::Hermes => Msg::ActivityPageKindHermes,
         BatchKind::Reorganisation => Msg::ActivityPageKindReorganisation,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hermes_status::StateWord;
+
+    fn idle() -> HermesStatus {
+        HermesStatus {
+            word: StateWord::Idle,
+            working: 0,
+            open: 0,
+            to_review: 0,
+            failed: 0,
+            pdf_library_missing: false,
+            stuck: false,
+        }
+    }
+
+    fn now_rows(status: Option<HermesStatus>) -> Vec<SettingRow<'static, Message>> {
+        let page = ActivityPage::new();
+        groups(&page, status, Language::German, &Palette::default())
+            .into_iter()
+            .next()
+            .unwrap()
+            .rows
+    }
+
+    #[test]
+    fn an_idle_hermes_says_its_word_and_leaves_no_empty_row() {
+        let rows = now_rows(Some(idle()));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].label, "ruht");
+        assert!(rows[0].description.is_none());
+    }
+
+    #[test]
+    fn a_hermes_that_is_off_says_so_in_the_label() {
+        let rows = now_rows(None);
+        assert_eq!(rows[0].label, Language::German.text(Msg::ActivityPageOff));
+        assert!(rows[0].description.is_none());
     }
 }

@@ -13,9 +13,6 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use ncrs_i18n::{Language, Msg};
 
-/// The width of an input field in front of the buttons of a listed row.
-const LIST_FIELD_WIDTH: f32 = 180.0;
-
 /// How much of the cursor ink a hint keeps on the cursor fill.
 const HINT_ON_CURSOR_ALPHA: f32 = 0.7;
 
@@ -317,7 +314,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         palette: &Palette,
     ) -> Self {
         let build = |marked| {
-            let boxed = container(field()).width(LIST_FIELD_WIDTH).into();
+            let boxed = container(field()).width(size::FIELD_WIDE).into();
             button_row(Some(boxed), &buttons, marked, palette)
         };
         Self {

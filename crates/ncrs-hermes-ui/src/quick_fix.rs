@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use iced::{Point, Size};
 use ncrs_index::Kinds;
 
+use crate::action::Action;
 use crate::rule_form::RulePrefill;
 use ncrs_filing::review_work::ReviewItem;
 use ncrs_intake::choose_pattern;
@@ -295,6 +296,25 @@ impl QuickFix {
         self.items.iter().map(|item| item.path.clone()).collect()
     }
 
+    /// The chat opened on the documents without a suggestion, like "Im Chat
+    /// klären" of the reviews; on the first document when all have one; the
+    /// plain chat while no document is known.
+    pub fn chat_action(&self) -> Action {
+        let mut documents: Vec<ReviewItem> = self
+            .without
+            .iter()
+            .filter_map(|&position| self.items.get(position).cloned())
+            .collect();
+        if documents.is_empty() {
+            documents.extend(self.item_to_fix().cloned());
+        }
+        if documents.is_empty() {
+            Action::OpenChat
+        } else {
+            Action::OpenChatAbout(documents)
+        }
+    }
+
     /// The item to open the review page on, with the field to fill in.
     pub fn item_to_fix(&self) -> Option<&ReviewItem> {
         let position = self.without.first().copied().unwrap_or(0);
@@ -446,6 +466,23 @@ pub mod tests {
         item.proposed_pattern = None;
         let menu = menu_of(vec![item]);
         assert_eq!(menu.selected_action(), Some(QuickFixAction::SetFields));
+    }
+
+    #[test]
+    fn the_chat_opens_on_the_documents_without_a_suggestion() {
+        let menu = menu_of(items());
+        let Action::OpenChatAbout(documents) = menu.chat_action() else {
+            panic!("the chat did not open on a document");
+        };
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].path, PathBuf::from("inbox/scan-1.pdf"));
+        assert!(documents[0].proposed_pattern.is_none());
+    }
+
+    #[test]
+    fn the_chat_opens_plain_when_no_document_is_known() {
+        let menu = menu_of(Vec::new());
+        assert!(matches!(menu.chat_action(), Action::OpenChat));
     }
 
     #[test]

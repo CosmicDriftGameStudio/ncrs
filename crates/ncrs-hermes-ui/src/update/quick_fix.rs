@@ -192,8 +192,8 @@ fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> T
 /// Hands the documents without a suggestion to the chat, which asks for what
 /// is missing.
 fn open_chat_from_menu(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
-    hermes.quick_fix = None;
-    actions.push(Action::OpenChat);
+    let menu = hermes.quick_fix.take();
+    actions.push(menu.as_ref().map_or(Action::OpenChat, QuickFix::chat_action));
     Task::none()
 }
 
