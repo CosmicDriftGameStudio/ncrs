@@ -196,7 +196,7 @@ fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
     type_into_palette(&mut app, "filing status");
     drop(app.update(palette_message(CommandPaletteMessage::Run)));
     assert!(app.command_palette_for_test().is_none());
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
     assert!(!app.prompt_key_state().command_palette);
 }
 
@@ -207,7 +207,7 @@ fn a_click_on_an_entry_runs_it() {
     type_into_palette(&mut app, "filing status");
     drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
     assert!(app.command_palette_for_test().is_none());
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
 }
 
 #[test]

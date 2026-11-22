@@ -30,7 +30,7 @@ fn named(template: Msg, field: Field, lang: Language) -> String {
     )
 }
 
-pub(super) fn field_name(field: Field) -> Msg {
+pub(in crate::ui) fn field_name(field: Field) -> Msg {
     match field {
         Field::Sender => Msg::ReviewListFieldSender,
         Field::Recipient => Msg::ReviewListFieldRecipient,

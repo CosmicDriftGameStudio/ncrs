@@ -311,7 +311,13 @@ pub fn day_in(time: Option<SystemTime>, lang: Language) -> String {
         return String::new();
     };
     let mut written = String::new();
-    if write!(written, "{}", at.format(lang.text(Msg::FormatDateShortWithYear))).is_err() {
+    if write!(
+        written,
+        "{}",
+        at.format(lang.text(Msg::FormatDateShortWithYear))
+    )
+    .is_err()
+    {
         return at.format("%Y-%m-%d").to_string();
     }
     written

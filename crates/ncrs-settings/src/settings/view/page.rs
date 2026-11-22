@@ -87,7 +87,6 @@ pub fn nav<'a>(
                 ..Padding::ZERO
             }),
             entries,
-            container("").height(Length::Fill),
             container(footer).padding(spacing::M),
         ]
         .height(Length::Fill),

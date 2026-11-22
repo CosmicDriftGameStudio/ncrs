@@ -140,7 +140,11 @@ impl ReviewAccess {
 
     /// The path below the archive the item's suggestion gives, and the file
     /// that would be there.
-    fn suggested_place(&self, item: &ReviewItem, kinds: &Kinds) -> Result<(PathBuf, PathBuf), String> {
+    fn suggested_place(
+        &self,
+        item: &ReviewItem,
+        kinds: &Kinds,
+    ) -> Result<(PathBuf, PathBuf), String> {
         let pattern = item
             .proposed_pattern
             .as_deref()

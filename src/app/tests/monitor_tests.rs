@@ -91,7 +91,7 @@ fn a_config_that_gives_copy_the_key_f12_keeps_working_and_f12_copies() {
 async fn the_filing_status_the_rules_and_the_saved_queries_open_from_the_page() {
     let chord = Modifiers::COMMAND | Modifiers::SHIFT;
     for (letter, action, page) in [
-        ("d", KeyAction::FilingStatus, HermesPage::Inspection),
+        ("d", KeyAction::FilingStatus, HermesPage::Activity),
         ("b", KeyAction::Rules, HermesPage::Rules),
         ("a", KeyAction::SavedQueries, HermesPage::SavedQueries),
     ] {

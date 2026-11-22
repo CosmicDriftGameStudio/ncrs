@@ -186,8 +186,8 @@ fn reviews_app_open(size: iced::Size, open: Question) -> App {
         .into_iter()
         .enumerate()
         .map(|(position, (document, _, _))| {
-            let facts = |size: u64, day: u64| FileFacts {
-                size,
+            let facts = |bytes: u64, day: u64| FileFacts {
+                size: bytes,
                 modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(day * 86_400)),
             };
             let same_content = position % 3 != 1;
@@ -347,7 +347,7 @@ fn a_group_answers_its_question_with_one_button_and_unfolds_to_its_files() {
             .collect();
         assert_eq!(messages, [Message::Reviews(expected)]);
     }
-    assert!(simulator_in(&app, WINDOW).find("Datei zeigen").is_err());
+    simulator_in(&app, WINDOW).find("Datei zeigen").unwrap_err();
 }
 
 #[test]

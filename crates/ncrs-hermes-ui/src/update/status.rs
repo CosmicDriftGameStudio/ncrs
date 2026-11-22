@@ -128,7 +128,7 @@ fn filing_status_step(
 ) -> Task<Message> {
     match message {
         FilingStatusMessage::Open => {
-            actions.push(Action::ShowPage(HermesPage::Inspection));
+            actions.push(Action::ShowPage(HermesPage::Activity));
             Task::none()
         }
         FilingStatusMessage::Restarted(generation) => {

@@ -342,8 +342,9 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
-            Ask::PickReviewFolder(start_in) => (self.pick_folder)(&start_in)
-                .map(|folder| Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder))),
+            Ask::PickReviewFolder(start_in) => (self.pick_folder)(&start_in).map(|folder| {
+                Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder))
+            }),
             Ask::PreviewFile(path) => {
                 let left = self.leave_settings_page();
                 let opened = self.open_in_viewer(path);
