@@ -21,7 +21,7 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{Message, ReviewsMessage};
 use crate::quick_fix::rule_prefill_of;
-use crate::reviews_page::{Answer, Question, ReviewsPage};
+use crate::reviews_page::{Answer, Question, ReviewsLoad, ReviewsPage};
 use crate::rule_form::RuleForm;
 use crate::state::Hermes;
 
@@ -48,7 +48,7 @@ fn request(hermes: &mut Hermes) -> Task<Message> {
         return Task::none();
     };
     Task::perform(
-        tokio::task::spawn_blocking(move || access.load()),
+        tokio::task::spawn_blocking(move || read_all(&access)),
         move |joined| {
             Message::Reviews(ReviewsMessage::Loaded {
                 generation,
@@ -56,6 +56,13 @@ fn request(hermes: &mut Hermes) -> Task<Message> {
             })
         },
     )
+}
+
+fn read_all(access: &ReviewAccess) -> Result<ReviewsLoad, String> {
+    Ok(ReviewsLoad {
+        items: access.load()?,
+        already_filed: access.load_already_filed()?,
+    })
 }
 
 /// Looks at the files in the taken places on a blocking thread: hashing is
@@ -111,8 +118,9 @@ pub fn update(
                 return Task::none();
             };
             match result {
-                Ok(items) => {
-                    page.loaded(items, ctx.kinds);
+                Ok(load) => {
+                    page.loaded(load.items, ctx.kinds);
+                    page.already_filed_loaded(load.already_filed);
                     compare_taken(hermes)
                 }
                 Err(detail) => {
@@ -140,6 +148,9 @@ pub fn update(
         }
         ReviewsMessage::AnswerFile(question, answer, document) => {
             answer_question(hermes, (question, answer), Some(document), ctx, actions)
+        }
+        ReviewsMessage::AnswerRepeat(answer, path) => {
+            answer_already_filed(hermes, answer, Some(path), ctx, actions)
         }
         ReviewsMessage::InputChanged(document, text) => {
             if let Some(page) = hermes.reviews.as_mut() {
@@ -187,6 +198,9 @@ fn answer_question(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
+    if question == Question::AlreadyFiled {
+        return answer_already_filed(hermes, answer, None, ctx, actions);
+    }
     let Some(page) = hermes.reviews.as_mut() else {
         return Task::none();
     };
@@ -269,6 +283,34 @@ fn answer_question(
     }
 }
 
+/// Carries out what the user chose for the inbox files the archive already
+/// holds: all of the group, or the one at `path`. Deleting is the journaled
+/// trash run of the duplicates; ignoring is the same as in the other groups.
+fn answer_already_filed(
+    hermes: &mut Hermes,
+    answer: Answer,
+    path: Option<PathBuf>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(page) = hermes.reviews.as_mut() else {
+        return Task::none();
+    };
+    let files = page.answer_already_filed(path.as_deref());
+    match answer {
+        Answer::DeleteDuplicate => {
+            let work = move |access: &ReviewAccess| access.delete_already_filed(&files);
+            run_with(hermes, ctx, actions, work)
+        }
+        Answer::Exclude => {
+            let paths: Vec<PathBuf> = files.into_iter().map(|found| found.path).collect();
+            page.remove_already_filed(&paths);
+            exclude_from_hermes(hermes, paths, actions)
+        }
+        _ => Task::none(),
+    }
+}
+
 /// Runs `work` on the documents, one after the other: each can fail on its
 /// own, and the summary says how it went for all.
 fn run(
@@ -281,13 +323,22 @@ fn run(
     if items.is_empty() {
         return Task::none();
     }
+    run_with(hermes, ctx, actions, move |access| work(access, &items))
+}
+
+fn run_with(
+    hermes: &Hermes,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+    work: impl FnOnce(&ReviewAccess) -> AcceptSummary + Send + 'static,
+) -> Task<Message> {
     let Some(bare_access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
     let access = bare_access.with_trash(Arc::clone(&ctx.trash.0));
     Task::perform(
-        tokio::task::spawn_blocking(move || work(&access, &items)),
+        tokio::task::spawn_blocking(move || work(&access)),
         |joined| {
             Message::Reviews(ReviewsMessage::Filed(joined.unwrap_or_else(|err| {
                 AcceptSummary {

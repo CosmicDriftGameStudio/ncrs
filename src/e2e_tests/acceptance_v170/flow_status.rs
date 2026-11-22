@@ -42,7 +42,15 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     let open = drive::open_reviews(world);
     assert!(open > 0);
     let page = drive::page(session);
-    assert_eq!(page.total(), open, "the page lists what the index holds");
+    assert_eq!(
+        page.total(),
+        open + page.already_filed().len(),
+        "the page lists what the index holds and the copies of archive files"
+    );
+    assert!(
+        page.already_filed().len() >= world.inbox.duplicates.len(),
+        "the copies of archive files are not asked about"
+    );
     for (question, group_size) in [
         (Question::TargetTaken, world.inbox.clashes.len()),
         (Question::Date, world.inbox.no_date.len()),

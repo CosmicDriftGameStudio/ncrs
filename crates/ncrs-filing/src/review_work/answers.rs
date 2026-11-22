@@ -75,7 +75,7 @@ pub fn compare_files(incoming: &Path, existing: &Path) -> Option<TargetCompariso
 }
 
 impl AcceptSummary {
-    fn fail(&mut self, detail: String) {
+    pub(super) fn fail(&mut self, detail: String) {
         self.failed += 1;
         self.first_failure.get_or_insert(detail);
     }
@@ -170,6 +170,25 @@ impl ReviewAccess {
     /// the same content. Each file is checked again, so a file that differs
     /// from the one in the target stays.
     pub fn delete_duplicates(&self, items: &[ReviewItem]) -> AcceptSummary {
+        self.trash_duplicates(
+            items,
+            |item, kinds| {
+                self.still_describes(item)?;
+                let (_, target) = self.suggested_place(item, kinds)?;
+                self.duplicate_to_trash(&item.path, target)
+            },
+            |item, summary| self.settle_removed(item, summary),
+        )
+    }
+
+    /// Trashes each of `items` that `prepare` accepts, one journaled run per
+    /// location, and lets `settle` close the question of every one that went.
+    pub(super) fn trash_duplicates<T>(
+        &self,
+        items: &[T],
+        prepare: impl Fn(&T, &Kinds) -> Result<(PathBuf, TrashItem), String>,
+        settle: impl Fn(&T, &mut AcceptSummary),
+    ) -> AcceptSummary {
         let _running = self.index_work.begin();
         let mut summary = AcceptSummary::default();
         let prepared = self.kinds().and_then(|kinds| Ok((kinds, self.bin()?)));
@@ -180,9 +199,9 @@ impl ReviewAccess {
                 return summary;
             }
         };
-        let mut runs: Vec<(PathBuf, Vec<TrashItem>, Vec<&ReviewItem>)> = Vec::new();
+        let mut runs: Vec<(PathBuf, Vec<TrashItem>, Vec<&T>)> = Vec::new();
         for item in items {
-            match self.duplicate_to_trash(item, &kinds) {
+            match prepare(item, &kinds) {
                 Ok((root, trash_item)) => match runs.iter_mut().find(|run| run.0 == root) {
                     Some(run) => {
                         run.1.push(trash_item);
@@ -200,47 +219,43 @@ impl ReviewAccess {
             match ran {
                 Ok(_) => members
                     .into_iter()
-                    .for_each(|item| self.settle_removed(item, &mut summary)),
+                    .for_each(|item| settle(item, &mut summary)),
                 Err(detail) => members.iter().for_each(|_| summary.fail(detail.clone())),
             }
         }
         summary
     }
 
-    fn duplicate_to_trash(
+    /// The run and the trash entry for `path` if `keeper` holds the same
+    /// content.
+    pub(super) fn duplicate_to_trash(
         &self,
-        item: &ReviewItem,
-        kinds: &Kinds,
+        path: &Path,
+        keeper: PathBuf,
     ) -> Result<(PathBuf, TrashItem), String> {
-        self.still_describes(item)?;
-        let (_, target) = self.suggested_place(item, kinds)?;
-        if self
-            .copy_roots
-            .iter()
-            .any(|copy| lies_within(&item.path, copy))
-        {
+        if self.copy_roots.iter().any(|copy| lies_within(path, copy)) {
             return Err(IN_COPIED_FOLDER.to_owned());
         }
         let root = self
             .location_roots
             .iter()
             .chain(std::iter::once(&self.target_root))
-            .find(|root| lies_within(&item.path, root))
+            .find(|root| lies_within(path, root))
             .ok_or_else(|| NOT_IN_A_LOCATION.to_owned())?
             .clone();
-        if !exists(&target) {
+        if !exists(&keeper) {
             return Err(TARGET_GONE.to_owned());
         }
-        let expected_hash = hash_path(&item.path).map_err(|err| err.to_string())?;
-        if hash_path(&target).map_err(|err| err.to_string())? != expected_hash {
+        let expected_hash = hash_path(path).map_err(|err| err.to_string())?;
+        if hash_path(&keeper).map_err(|err| err.to_string())? != expected_hash {
             return Err(NOT_A_DUPLICATE.to_owned());
         }
         Ok((
             root,
             TrashItem {
-                path: item.path.clone(),
+                path: path.to_path_buf(),
                 expected_hash,
-                keeper: target,
+                keeper,
             },
         ))
     }

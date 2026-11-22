@@ -279,9 +279,10 @@ pub fn check_phase_a(world: &World) {
             .map(|(from, _)| from.clone())
             .collect::<Vec<_>>()
     };
-    // An exact copy of an indexed archive file is no question: it stays in the
-    // inbox, with no review, and the index only notes it as a repeat of the
-    // archive document.
+    // An exact copy of an indexed archive file is no document and has no
+    // review entry: it stays in the inbox and the index notes it as a repeat
+    // of the archive document, which the group "Liegt schon in der Ablage"
+    // asks about.
     assert!(world.inbox.duplicates.len() >= 3);
     for (copy, original) in &world.inbox.duplicates {
         assert!(

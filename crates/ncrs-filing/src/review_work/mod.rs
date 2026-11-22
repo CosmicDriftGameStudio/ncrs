@@ -29,6 +29,9 @@ use ncrs_fs::transfer::{Counting, Move, Source};
 
 pub use ncrs_index::{amount_digits, amount_text};
 
+mod already_filed;
+pub use already_filed::AlreadyFiled;
+
 mod answers;
 pub use answers::{compare_files, FileFacts, TargetComparison};
 

@@ -3271,6 +3271,24 @@
       "de": "Im Ziel liegt schon eine Datei."
     },
     {
+      "key": "reviews_page.question_already_filed",
+      "context": "Title of a group on the reviews page: scanned files in the inbox whose content the archive already holds, so they are copies of a filed document.",
+      "en": "Already in the archive.",
+      "de": "Liegt schon in der Ablage."
+    },
+    {
+      "key": "reviews_page.hint_already_filed",
+      "context": "Line under the group of inbox files whose content is already in the archive. Nothing is deleted for good: removed files go to the trash; ignoring leaves the files in the inbox.",
+      "en": "Delete the copies or ignore them. Removed files go to the trash.",
+      "de": "Kopien löschen oder ignorieren. Entfernte Dateien liegen im Papierkorb."
+    },
+    {
+      "key": "reviews_page.already_filed_line",
+      "context": "Line under an inbox file on the reviews page: where the same content already lies in the archive. {path} is the path of that archive file.",
+      "en": "Already in the archive: {path}",
+      "de": "Liegt schon in der Ablage: {path}"
+    },
+    {
       "key": "reviews_page.hint_target_taken",
       "context": "Line under the group whose target is taken on the reviews page. Nothing is deleted for good: removed files go to the trash.",
       "en": "Delete the duplicate, overwrite or keep both. Removed files go to the trash.",

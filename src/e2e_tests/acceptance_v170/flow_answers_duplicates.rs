@@ -1,9 +1,11 @@
-//! Flow 3, the places that are taken by other content: overwrite, keep both,
-//! file where the place became free, ignore, and the group buttons. An exact
-//! copy is no question (see `flow_continuous`), so "Doppelte löschen" is not
-//! offered here.
+//! Flow 3, the exact copies and the places that are taken by other content.
+//! A copy of an archive file is the question "Liegt schon in der Ablage":
+//! delete one, ignore one, delete the rest with the group button. Then the
+//! places taken by other content: overwrite, keep both, file where the place
+//! became free, ignore, and the group buttons. A taken place whose file has
+//! other content never offers "Doppelte löschen".
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ncrs_hermes_ui::reviews_page::{Answer, Question, TakenBy};
@@ -15,9 +17,118 @@ use crate::e2e_tests::acceptance_v160::Live;
 use crate::e2e_tests::Session;
 
 const TAKEN: Question = Question::TargetTaken;
+const REPEATS: Question = Question::AlreadyFiled;
+
+/// The identical scans that arrived while the folder filed by itself.
+fn identical_scans(world: &World) -> Vec<PathBuf> {
+    let mut scans: Vec<PathBuf> = drive::files_below(&world.inbox_dir)
+        .into_iter()
+        .filter(|path| path.to_string_lossy().contains("Scan nochmal"))
+        .collect();
+    scans.sort();
+    scans
+}
+
+fn already_filed<P: Live>(world: &World, session: &mut Session<P>) {
+    let scans = identical_scans(world);
+    assert!(scans.len() >= 3, "the identical scans are gone: {scans:?}");
+    let mut copies: Vec<PathBuf> = world
+        .inbox
+        .duplicates
+        .iter()
+        .map(|(copy, _)| copy.clone())
+        .chain(scans.iter().cloned())
+        .collect();
+    copies.sort();
+
+    let mut asked = drive::already_filed(session);
+    asked.sort();
+    let asked_paths: Vec<PathBuf> = asked.iter().map(|(path, _)| path.clone()).collect();
+    assert_eq!(asked_paths, copies, "the group does not hold the copies");
+    for (copy, keeper) in &asked {
+        assert!(keeper.starts_with(&world.archive_dir), "{keeper:?}");
+        assert_eq!(drive::text_of(copy), drive::text_of(keeper));
+    }
+    let count = copies.len();
+    assert_eq!(
+        drive::page(session).group_answers(REPEATS),
+        [(Answer::DeleteDuplicate, count), (Answer::Exclude, count)]
+    );
+    drive::unfold(session, REPEATS);
+    drive::shot(session, "reviews-already-filed");
+
+    // One row: the copy goes to the trash through the journaled run.
+    let (deleted, keeper) = asked
+        .iter()
+        .find(|(path, _)| *path == world.inbox.duplicates[0].0)
+        .cloned()
+        .expect("the first copy is asked about");
+    let text = drive::text_of(&deleted);
+    drive::answer_repeat(session, &deleted, Answer::DeleteDuplicate);
+    assert!(!deleted.exists(), "{deleted:?} is still in the inbox");
+    assert_eq!(drive::text_of(&keeper), text, "the archive file changed");
+    assert!(
+        drive::trash_holds(world, &text),
+        "the copy is not in the trash"
+    );
+    assert!(
+        drive::batch_names(world)
+            .iter()
+            .flatten()
+            .any(|name| name == "Remove duplicates"),
+        "no run in the activity: {:?}",
+        drive::batch_names(world)
+    );
+    assert!(drive::journal_moved(world, &deleted).is_some());
+    assert!(!is_asked(session, &deleted));
+
+    // One copy that arrived by itself is left alone: it stays, the question
+    // is gone and a new reading does not ask again.
+    let ignored = scans[0].clone();
+    let kept_text = drive::text_of(&ignored);
+    drive::answer_repeat(session, &ignored, Answer::Exclude);
+    assert_eq!(drive::text_of(&ignored), kept_text);
+    assert!(world.index().is_excluded(&ignored).unwrap());
+    assert!(!is_asked(session, &ignored));
+    drive::reload(session);
+    assert!(
+        !is_asked(session, &ignored),
+        "an ignored copy is asked again"
+    );
+
+    // The rest with one button.
+    let rest: Vec<PathBuf> = copies
+        .iter()
+        .filter(|copy| **copy != deleted && **copy != ignored)
+        .cloned()
+        .collect();
+    let handled = drive::answer_group(session, REPEATS, Answer::DeleteDuplicate);
+    assert_eq!(handled, rest.len());
+    for copy in &rest {
+        assert!(!copy.exists(), "{copy:?} is still in the inbox");
+    }
+    assert!(ignored.is_file(), "the ignored copy was touched");
+    for (_, original) in &world.inbox.duplicates {
+        assert!(original.is_file(), "{original:?} was touched");
+    }
+    assert!(
+        !drive::page(session)
+            .questions()
+            .any(|question| question == REPEATS),
+        "the group is still there"
+    );
+    drive::config_intact(world);
+}
+
+fn is_asked<P: Live>(session: &Session<P>, path: &Path) -> bool {
+    drive::already_filed(session)
+        .iter()
+        .any(|(asked, _)| asked == path)
+}
 
 pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     drive::show_reviews(session);
+    already_filed(world, session);
     let clashes = world.inbox.clashes.clone();
     assert!(clashes.len() >= 6);
 

@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use ncrs_filing::review_work::{ReviewItem, TargetComparison};
+use ncrs_filing::review_work::{AlreadyFiled, ReviewItem, TargetComparison};
 use ncrs_index::{DocumentId, Field, Kinds, ReviewReason};
 
 /// What Hermes asks about a document. Documents with the same question are
@@ -22,6 +22,9 @@ pub enum Question {
     RuleUnconfirmed,
     /// No rule fits.
     NoRule,
+    /// An inbox file whose content the archive already holds; it is no
+    /// document, so it has no review entry.
+    AlreadyFiled,
     Missing(Field),
     Unsure(Field),
 }
@@ -82,7 +85,13 @@ impl Question {
             ],
             Self::RuleUnconfirmed => &[Answer::CreateRule, Answer::Accept, Answer::Exclude],
             Self::NoRule => &[Answer::PickFolder, Answer::SetFields, Answer::Exclude],
+            Self::AlreadyFiled => &[Answer::DeleteDuplicate, Answer::Exclude],
         }
+    }
+
+    /// The answers of one file of the group "already filed".
+    pub fn repeat_answers(self) -> &'static [Answer] {
+        self.group_answers()
     }
 
     /// The answers of one file: a date or a sender is typed in the row.
@@ -144,6 +153,13 @@ struct QuestionGroup {
     members: Vec<usize>,
 }
 
+/// What one reading of the reviews brings.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviewsLoad {
+    pub items: Vec<ReviewItem>,
+    pub already_filed: Vec<AlreadyFiled>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReviewsPage {
     reading: Reading,
@@ -151,6 +167,8 @@ pub struct ReviewsPage {
     /// Where each item would be filed, parallel to the items.
     targets: Vec<Option<PathBuf>>,
     groups: Vec<QuestionGroup>,
+    /// The inbox files the archive already holds; their own group.
+    already_filed: Vec<AlreadyFiled>,
     unfolded: HashSet<Question>,
     /// The files in the places of the documents whose place is taken. A
     /// document with `None` has nothing in its place any more.
@@ -168,6 +186,7 @@ impl ReviewsPage {
             items: Vec::new(),
             targets: Vec::new(),
             groups: Vec::new(),
+            already_filed: Vec::new(),
             unfolded: HashSet::new(),
             comparisons: HashMap::new(),
             awaiting_folder: Vec::new(),
@@ -192,6 +211,30 @@ impl ReviewsPage {
         self.reading = Reading::Loaded;
     }
 
+    pub fn already_filed_loaded(&mut self, already_filed: Vec<AlreadyFiled>) {
+        self.already_filed = already_filed;
+    }
+
+    /// The inbox files of the group "already filed".
+    pub fn already_filed(&self) -> &[AlreadyFiled] {
+        &self.already_filed
+    }
+
+    /// The files an answer acts on: all of the group, or the one at `path`.
+    pub fn answer_already_filed(&self, path: Option<&Path>) -> Vec<AlreadyFiled> {
+        self.already_filed
+            .iter()
+            .filter(|found| path.is_none_or(|wanted| wanted == found.path))
+            .cloned()
+            .collect()
+    }
+
+    /// The files left the list: Hermes leaves them alone from now on.
+    pub fn remove_already_filed(&mut self, paths: &[PathBuf]) {
+        self.already_filed
+            .retain(|found| !paths.contains(&found.path));
+    }
+
     pub fn failed(&mut self, detail: String) {
         self.reading = Reading::Failed(detail);
     }
@@ -208,12 +251,28 @@ impl ReviewsPage {
     }
 
     pub fn total(&self) -> usize {
-        self.items.len()
+        self.items.len() + self.already_filed.len()
     }
 
     /// The questions to show: most documents first, "no rule fits" last.
     pub fn questions(&self) -> impl Iterator<Item = Question> + '_ {
-        self.groups.iter().map(|group| group.question)
+        let mut questions: Vec<Question> = self.groups.iter().map(|group| group.question).collect();
+        if !self.already_filed.is_empty() {
+            let before_no_rule = questions
+                .iter()
+                .position(|question| *question == Question::NoRule)
+                .unwrap_or(questions.len());
+            questions.insert(before_no_rule, Question::AlreadyFiled);
+        }
+        questions.into_iter()
+    }
+
+    /// How many files wait under `question`.
+    pub fn group_size(&self, question: Question) -> usize {
+        match question {
+            Question::AlreadyFiled => self.already_filed.len(),
+            _ => self.positions(question).len(),
+        }
     }
 
     fn positions(&self, question: Question) -> &[usize] {
@@ -300,6 +359,15 @@ impl ReviewsPage {
     /// The answers of a group with how many of its files each one fits; those
     /// that fit no file are left out.
     pub fn group_answers(&self, question: Question) -> Vec<(Answer, usize)> {
+        if question == Question::AlreadyFiled {
+            let size = self.already_filed.len();
+            return question
+                .group_answers()
+                .iter()
+                .map(|&answer| (answer, size))
+                .filter(|(_, fits)| *fits > 0)
+                .collect();
+        }
         let members = self.members_with_target(question);
         question
             .group_answers()
@@ -566,6 +634,39 @@ mod tests {
         assert_eq!(typed.fields.sender.as_deref(), Some("Agency B"));
         page.type_into(document, "  ".to_owned());
         assert!(page.typed_for(Question::Sender, document).is_none());
+    }
+
+    fn repeats(count: usize, keeper: DocumentId) -> Vec<AlreadyFiled> {
+        (1..=count)
+            .map(|number| AlreadyFiled {
+                path: PathBuf::from(format!("inbox/scan-{number}.pdf")),
+                keeper,
+                keeper_path: PathBuf::from(format!("archive/doc-{number}.pdf")),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn files_the_archive_already_holds_form_their_own_group_with_two_answers() {
+        let items = items_of(ReviewReason::NoMatchingRule, 1);
+        let keeper = items[0].document_id;
+        let mut page = page_of(items);
+        page.already_filed_loaded(repeats(3, keeper));
+
+        assert_eq!(page.total(), 4);
+        let questions: Vec<_> = page.questions().collect();
+        assert_eq!(questions, [Question::AlreadyFiled, Question::NoRule]);
+        assert_eq!(page.group_size(Question::AlreadyFiled), 3);
+        assert_eq!(
+            page.group_answers(Question::AlreadyFiled),
+            [(Answer::DeleteDuplicate, 3), (Answer::Exclude, 3)]
+        );
+        let one = page.answer_already_filed(Some(Path::new("inbox/scan-2.pdf")));
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].keeper_path, PathBuf::from("archive/doc-2.pdf"));
+
+        page.remove_already_filed(&[PathBuf::from("inbox/scan-2.pdf")]);
+        assert_eq!(page.group_size(Question::AlreadyFiled), 2);
     }
 
     #[test]

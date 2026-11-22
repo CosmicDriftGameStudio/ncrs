@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use ncrs_config::palette::Palette;
-use ncrs_filing::review_work::ReviewItem;
+use ncrs_filing::review_work::{AlreadyFiled, ReviewItem};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::DocumentId;
 use ncrs_ui_kit::format;
@@ -85,7 +85,7 @@ fn group_row<'a>(
     SettingRow::listed_buttons(
         question_text(question, lang),
         Some(detail_text(state, question, lang)),
-        Some(format::files_counted(state.members(question).len(), lang)),
+        Some(format::files_counted(state.group_size(question), lang)),
         std::iter::once(fold).chain(answers).collect(),
         palette,
     )
@@ -100,7 +100,7 @@ fn answer_buttons(
     document: Option<DocumentId>,
     lang: Language,
 ) -> Vec<RowButton<Message>> {
-    let members = state.members(question).len();
+    let members = state.group_size(question);
     let offered: Vec<(Answer, usize)> = match document {
         Some(row_document) => state
             .file_answers(question, row_document)
@@ -156,6 +156,7 @@ fn question_text(question: Question, lang: Language) -> String {
         Question::TargetTaken => lang.text(Msg::ReviewsPageQuestionTargetTaken).to_owned(),
         Question::RuleUnconfirmed => lang.text(Msg::ReviewsPageQuestionRule).to_owned(),
         Question::NoRule => lang.text(Msg::ReviewsPageQuestionNoRule).to_owned(),
+        Question::AlreadyFiled => lang.text(Msg::ReviewsPageQuestionAlreadyFiled).to_owned(),
         Question::Missing(field) => field_text(field, Msg::ReviewsPageQuestionMissing, lang),
         Question::Unsure(field) => field_text(field, Msg::ReviewsPageQuestionUnsure, lang),
     }
@@ -200,6 +201,7 @@ fn detail_text(state: &ReviewsPage, question: Question, lang: Language) -> Strin
         Question::TargetTaken => lang.text(Msg::ReviewsPageHintTargetTaken).to_owned(),
         Question::RuleUnconfirmed => lang.text(Msg::ReviewsPageHintRule).to_owned(),
         Question::NoRule => lang.text(Msg::ReviewsPageHintNoRule).to_owned(),
+        Question::AlreadyFiled => lang.text(Msg::ReviewsPageHintAlreadyFiled).to_owned(),
         Question::Missing(field) => field_text(field, Msg::ReviewsPageHintMissing, lang),
         Question::Unsure(field) => field_text(field, Msg::ReviewsPageHintUnsure, lang),
     }
@@ -287,6 +289,9 @@ fn file_rows<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Vec<SettingRow<'a, Message>> {
+    if question == Question::AlreadyFiled {
+        return already_filed_rows(state, lang, palette);
+    }
     let members = state.members_with_target(question);
     let mut rows: Vec<SettingRow<'a, Message>> = members
         .iter()
@@ -320,6 +325,72 @@ fn file_rows<'a>(
         );
     }
     rows
+}
+
+/// The inbox files the archive already holds: the line under each says where
+/// the same content lies.
+fn already_filed_rows<'a>(
+    state: &ReviewsPage,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<SettingRow<'a, Message>> {
+    let found = state.already_filed();
+    let mut rows: Vec<SettingRow<'a, Message>> = found
+        .iter()
+        .take(MAX_FILES_SHOWN)
+        .map(|file| {
+            let line = already_filed_line(file, lang);
+            let buttons = Question::AlreadyFiled
+                .repeat_answers()
+                .iter()
+                .enumerate()
+                .map(|(position, &answer)| {
+                    RowButton::new(
+                        answer_text(Question::AlreadyFiled, answer, lang),
+                        Some(send(ReviewsMessage::AnswerRepeat(
+                            answer,
+                            file.path.clone(),
+                        ))),
+                        if position == 0 {
+                            Tone::Primary
+                        } else {
+                            Tone::Secondary
+                        },
+                    )
+                })
+                .collect();
+            SettingRow::listed_buttons(file_name(&file.path), Some(line), None, buttons, palette)
+                .with_label_action(send(ReviewsMessage::OpenFile(file.path.clone())))
+                .indented()
+        })
+        .collect();
+    if found.len() > MAX_FILES_SHOWN {
+        rows.push(
+            SettingRow::adding(
+                Some(fill_template(
+                    lang.text(Msg::HermesPagesMoreFiles),
+                    &[(
+                        "{count}",
+                        &format::grouped((found.len() - MAX_FILES_SHOWN) as u64),
+                    )],
+                )),
+                None,
+                Vec::new(),
+            )
+            .indented(),
+        );
+    }
+    rows
+}
+
+fn already_filed_line(file: &AlreadyFiled, lang: Language) -> String {
+    fill_template(
+        lang.text(Msg::ReviewsPageAlreadyFiledLine),
+        &[(
+            "{path}",
+            &format::ellipsize_middle(&file.keeper_path.display().to_string(), PATH_CHARS),
+        )],
+    )
 }
 
 pub(in crate::ui) fn file_name(path: &Path) -> String {

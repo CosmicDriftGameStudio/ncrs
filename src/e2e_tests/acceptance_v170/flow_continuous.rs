@@ -104,9 +104,9 @@ fn write_identical_scans(world: &World) -> Vec<(PathBuf, PathBuf)> {
         .collect()
 }
 
-/// What a person gets from such a scan: nothing. It stays in the inbox, is no
-/// document, has no review and no entry in the activity, and the index only
-/// notes it as a repeat of the archive document.
+/// What such a scan becomes: it stays in the inbox, is no document and has no
+/// review entry and no entry in the activity; the index notes it as a repeat of
+/// the archive document, which is what the group "Liegt schon in der Ablage" asks about.
 fn check_identical_scans(world: &World, scans: &[(PathBuf, PathBuf)]) {
     let index = world.index();
     for (scan, original) in scans {

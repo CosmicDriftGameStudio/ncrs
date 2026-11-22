@@ -19,7 +19,7 @@ use ncrs_pipeline::Load;
 use crate::condition_editor::ConditionEdit;
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
-use crate::reviews_page::{Answer, Question};
+use crate::reviews_page::{Answer, Question, ReviewsLoad};
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
@@ -335,7 +335,7 @@ pub enum ReviewsMessage {
     /// or opened again meanwhile.
     Loaded {
         generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
+        result: Result<ReviewsLoad, String>,
     },
     /// Folds or unfolds the group of a question.
     ToggleGroup(Question),
@@ -343,6 +343,9 @@ pub enum ReviewsMessage {
     Answer(Question, Answer),
     /// Answers the question for one document of the group.
     AnswerFile(Question, Answer, DocumentId),
+    /// Answers the question about the inbox file at the path, which is no
+    /// document.
+    AnswerRepeat(Answer, PathBuf),
     /// The name of a file: opens it in the viewer.
     OpenFile(PathBuf),
     /// The text of the input in the row of a document changed.

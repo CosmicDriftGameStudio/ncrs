@@ -120,6 +120,29 @@ pub fn answer_group<P: Live>(
     count
 }
 
+/// The inbox files the page asks about because the archive holds their
+/// content, with the archive file each repeats.
+pub fn already_filed<P: Live>(session: &Session<P>) -> Vec<(PathBuf, PathBuf)> {
+    page(session)
+        .already_filed()
+        .iter()
+        .map(|found| (found.path.clone(), found.keeper_path.clone()))
+        .collect()
+}
+
+pub fn answer_repeat<P: Live>(session: &mut Session<P>, path: &Path, answer: Answer) {
+    let asked = already_filed(session);
+    assert!(
+        asked.iter().any(|(asked_path, _)| asked_path == path),
+        "{path:?} is no question of the group: {asked:?}"
+    );
+    session.send(Message::Reviews(ReviewsMessage::AnswerRepeat(
+        answer,
+        path.to_path_buf(),
+    )));
+    page_ready(session);
+}
+
 pub fn type_into<P: Live>(session: &mut Session<P>, path: &Path, text: &str) {
     let document = document(session, path);
     session.send(Message::Reviews(ReviewsMessage::InputChanged(
