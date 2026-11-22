@@ -3,7 +3,9 @@
 //! phase: the state is filled by the caller, nothing here reads a repository.
 
 use iced::widget::text_editor;
-use ncrs_git::{ChangedFile, FileDiff};
+use ncrs_git::{ChangedFile, FileDiff, UndoRecord};
+
+use crate::job::Job;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeSide {
@@ -138,6 +140,43 @@ pub enum Notice {
         output: String,
         details_open: bool,
     },
+    /// The remote could not be reached.
+    NetworkFailed { output: String, details_open: bool },
+    /// A branch with commits no other branch has; deleting it needs a second go.
+    BranchNotMerged { branch: String },
+    /// A pull on diverged branches: merge or rebase, the user decides.
+    NeedsPullStrategy,
+    NothingToCommit,
+    CommitTitleMissing,
+    UnresolvedConflicts { count: usize },
+    UndoNotSafe,
+    InvalidName { name: String },
+    /// Anything else git reported.
+    Other { output: String, details_open: bool },
+}
+
+/// What a button of the toolbar is busy with; further presses wait for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operation {
+    Stage,
+    Unstage,
+    Discard,
+    Commit,
+    Fetch,
+    Pull,
+    Push,
+    Stash,
+    Undo,
+    Branch,
+    Integrate,
+    Conflict,
+}
+
+/// Why the actions are not offered: the tab stays read only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unavailable {
+    GitMissing,
+    Sandbox,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,4 +198,18 @@ pub struct Actions {
     /// "Local changes" is chosen in the left list: the middle shows the diff of
     /// the chosen file and the right side the files and the commit message.
     pub changes_open: bool,
+    /// The operation running off-thread; presses wait for it.
+    pub busy: Option<Operation>,
+    /// Set when git is missing or the build runs no git actions.
+    pub unavailable: Option<Unavailable>,
+    /// How to take back the last undoable action.
+    pub undo: Option<UndoRecord>,
+    /// A rebase is in progress: "mine" is git's "theirs".
+    pub rebasing: bool,
+    /// The stash commits in the order of `stashes`.
+    pub stash_ids: Vec<String>,
+    /// What "try again" repeats.
+    pub retry: Option<Job>,
+    /// Every file that was in conflict during this merge, resolved ones too.
+    pub seen_conflicts: Vec<String>,
 }

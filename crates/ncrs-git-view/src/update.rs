@@ -15,6 +15,7 @@ use crate::action::Action;
 use crate::actions::{MenuTarget, OpenMenu};
 use crate::ctx::Ctx;
 use crate::diff_layout::rows_before;
+use crate::handlers;
 use crate::load;
 use crate::message::Message;
 use crate::state::{Area, ColumnDrag, Detail, DiffState, Fold, SidebarItem, State, Subject, PAGE};
@@ -23,9 +24,9 @@ use crate::view::{DIFF_ID, FILTER_ID};
 /// Lines an arrow key scrolls the diff by.
 const SCROLL_LINES: f32 = 3.0;
 
-type Outcome = (Task<Message>, Option<Action>);
+pub type Outcome = (Task<Message>, Option<Action>);
 
-fn quiet(task: Task<Message>) -> Outcome {
+pub fn quiet(task: Task<Message>) -> Outcome {
     (task, None)
 }
 
@@ -45,7 +46,7 @@ pub fn open(state: &mut State, root: PathBuf, name: String, ctx: &Ctx) -> Task<M
             .collect();
     }
     state.problem = None;
-    Task::batch([load::refs(state), load::log(state)])
+    load::everything(state)
 }
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
@@ -57,6 +58,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             match *result {
                 Ok(overview) => {
                     state.overview = Some(overview);
+                    handlers::refresh_sync(state, ctx);
                     state.sidebar_cursor = state
                         .sidebar_cursor
                         .min(state.sidebar_items().len().saturating_sub(1));
@@ -260,6 +262,9 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.close();
             (Task::none(), Some(Action::Close))
         }
+        Message::OpenMenu(_) | Message::OpenMenuKey if state.actions.unavailable.is_some() => {
+            quiet(Task::none())
+        }
         Message::OpenMenu(target) => {
             state.actions.menu = Some(OpenMenu { target });
             quiet(Task::none())
@@ -278,10 +283,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Refresh => {
             state.problem = None;
-            quiet(Task::batch([load::refs(state), load::log(state)]))
+            quiet(load::everything(state))
         }
-        // ponytail: backend after design approval
-        Message::SelectChange(..)
+        forwarded @ (Message::ActionsLoaded(..)
+        | Message::JobDone(_)
+        | Message::SelectChange(..)
         | Message::Stage(_)
         | Message::Unstage(_)
         | Message::StageAll
@@ -312,13 +318,15 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::ConflictPressed(..)
         | Message::ConflictShortcut(_)
         | Message::PullFirst
+        | Message::PullWith(_)
+        | Message::DeleteBranchAnyway
         | Message::Retry
         | Message::ToggleNoticeDetails
-        | Message::DismissNotice => quiet(Task::none()),
+        | Message::DismissNotice) => handlers::act(state, forwarded, ctx),
     }
 }
 
-fn failed(state: &mut State, ctx: &Ctx, reason: &str) -> Outcome {
+pub fn failed(state: &mut State, ctx: &Ctx, reason: &str) -> Outcome {
     state.problem = Some(fill_template(
         ctx.lang.text(Msg::GitViewReadFailed),
         &[("{reason}", reason)],
@@ -327,7 +335,7 @@ fn failed(state: &mut State, ctx: &Ctx, reason: &str) -> Outcome {
 }
 
 /// Reads the detail of the row under the cursor unless it is the one shown.
-fn ensure_detail(state: &mut State) -> Task<Message> {
+pub fn ensure_detail(state: &mut State) -> Task<Message> {
     let row = state.commit_cursor.min(state.row_count().saturating_sub(1));
     state.commit_cursor = row;
     let Some(subject) = state.subject_at(row) else {

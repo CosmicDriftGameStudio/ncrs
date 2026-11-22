@@ -13409,6 +13409,210 @@
       "context": "Git tab: status line while a merge with conflicts is shown. The placeholders are keys as the platform spells them. Keep the other key names.",
       "en": "↑↓ choose file · {mine} mine · {theirs} theirs · {both} both · {editor} editor · {resolved} resolved · {menu} actions",
       "de": "↑↓ Datei wählen · {mine} meine · {theirs} ihre · {both} beide · {editor} Editor · {resolved} gelöst · {menu} Aktionen"
+    },
+    {
+      "key": "git_view.hint_git_missing",
+      "context": "Git tab: quiet line under the header when the actions are off because git is not installed. git is the name of the program and stays lowercase.",
+      "en": "Git actions need git to be installed",
+      "de": "Git-Aktionen brauchen ein installiertes git"
+    },
+    {
+      "key": "git_view.hint_sandbox",
+      "context": "Git tab: quiet line under the header in the App Store version, which runs no git actions. Homebrew is the name of a package manager and stays.",
+      "en": "Git actions are only in the Homebrew version",
+      "de": "Git-Aktionen gibt es in der Homebrew-Version"
+    },
+    {
+      "key": "git_view.stash_message",
+      "context": "Git tab: the name of a stash made with the stash button, which asks for none. {branch} is the branch that is checked out.",
+      "en": "Stashed from {branch}",
+      "de": "Zwischenstand von {branch}"
+    },
+    {
+      "key": "git_view.undo_staged_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". One file was staged (put into the next commit). Lowercase, no full stop.",
+      "en": "staged one file",
+      "de": "eine Datei vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_staged_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". {count} files were staged (put into the next commit). Lowercase, no full stop.",
+      "en": "staged {count} files",
+      "de": "{count} Dateien vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_staged_all",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". All changes were staged at once. Lowercase, no full stop.",
+      "en": "staged all changes",
+      "de": "alle Änderungen vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_unstaged_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". One file was taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged one file",
+      "de": "eine Datei zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_unstaged_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". {count} files were taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged {count} files",
+      "de": "{count} Dateien zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_unstaged_all",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". All staged changes were taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged all changes",
+      "de": "alle Änderungen zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_discarded_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". The changes of one file were thrown away. Lowercase, no full stop.",
+      "en": "discarded one file",
+      "de": "eine Datei verworfen"
+    },
+    {
+      "key": "git_view.undo_discarded_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". The changes of {count} files were thrown away. Lowercase, no full stop.",
+      "en": "discarded {count} files",
+      "de": "{count} Dateien verworfen"
+    },
+    {
+      "key": "git_view.undo_committed",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A commit was made. {title} is its title. Commit is the Git word and stays.",
+      "en": "committed “{title}”",
+      "de": "Commit „{title}“ angelegt"
+    },
+    {
+      "key": "git_view.undo_deleted_branch",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A branch was deleted. {name} is its name. Branch is the Git word and stays.",
+      "en": "deleted branch {name}",
+      "de": "Branch {name} gelöscht"
+    },
+    {
+      "key": "git_view.branch_not_merged",
+      "context": "Git tab: headline of the notice when a branch cannot be deleted because it has commits that are in no other branch.",
+      "en": "Branch not merged",
+      "de": "Branch nicht gemergt"
+    },
+    {
+      "key": "git_view.branch_not_merged_text",
+      "context": "Git tab: explanation of the notice about a branch that is not merged. {branch} is its name. The question is answered by the buttons.",
+      "en": "{branch} has commits that are in no other branch. Delete it anyway?",
+      "de": "{branch} hat Commits, die in keinem anderen Branch sind. Trotzdem löschen?"
+    },
+    {
+      "key": "git_view.branch_not_merged_action",
+      "context": "Git tab: button of the notice about a branch that is not merged; deletes it anyway. Short.",
+      "en": "Delete anyway",
+      "de": "Trotzdem löschen"
+    },
+    {
+      "key": "git_view.needs_strategy",
+      "context": "Git tab: headline of the notice when a pull needs a decision because the local branch and the remote both have new commits.",
+      "en": "Pull needs a decision",
+      "de": "Pull braucht eine Entscheidung"
+    },
+    {
+      "key": "git_view.needs_strategy_text",
+      "context": "Git tab: explanation of the notice about a pull on diverged branches. Merge and rebase are Git words and stay; the buttons answer the question.",
+      "en": "Your branch and the remote both have new commits. Merge them, or put your commits on top of the remote ones (rebase)?",
+      "de": "Dein Branch und der Remote haben beide neue Commits. Zusammenführen (Merge) oder deine Commits obendrauf setzen (Rebase)?"
+    },
+    {
+      "key": "git_view.needs_strategy_merge",
+      "context": "Git tab: button of the pull decision notice that joins the branches with a merge. Merge is the Git word; the German form is a verb. Short.",
+      "en": "Merge",
+      "de": "Mergen"
+    },
+    {
+      "key": "git_view.needs_strategy_rebase",
+      "context": "Git tab: button of the pull decision notice that puts the own commits on top of the remote ones. Rebase is the Git word; the German form is a verb. Short.",
+      "en": "Rebase",
+      "de": "Rebasen"
+    },
+    {
+      "key": "git_view.nothing_to_commit",
+      "context": "Git tab: headline of the notice when a commit was asked for but nothing is staged.",
+      "en": "Nothing to commit",
+      "de": "Nichts zu committen"
+    },
+    {
+      "key": "git_view.nothing_to_commit_text",
+      "context": "Git tab: explanation of the notice about a commit with nothing staged. Staging means putting changes into the next commit.",
+      "en": "Stage some changes first, then commit.",
+      "de": "Merke zuerst Änderungen vor, dann committe."
+    },
+    {
+      "key": "git_view.commit_title_missing",
+      "context": "Git tab: headline of the notice when a commit was asked for but its title is empty.",
+      "en": "The commit needs a title",
+      "de": "Der Commit braucht einen Titel"
+    },
+    {
+      "key": "git_view.commit_title_missing_text",
+      "context": "Git tab: explanation of the notice about a commit without a title.",
+      "en": "Write a short title for the commit first.",
+      "de": "Schreibe zuerst einen kurzen Titel für den Commit."
+    },
+    {
+      "key": "git_view.unresolved_conflicts",
+      "context": "Git tab: headline of the notice when a merge was to be finished while places are still in conflict.",
+      "en": "Conflicts still open",
+      "de": "Konflikte noch offen"
+    },
+    {
+      "key": "git_view.unresolved_conflicts_text",
+      "context": "Git tab: explanation of the notice about conflicts still open. {count} is the number of conflicts left.",
+      "en": "{count} conflicts are still open. Resolve them first, then continue.",
+      "de": "Noch {count} Konflikte sind offen. Löse sie zuerst, dann mach weiter."
+    },
+    {
+      "key": "git_view.undo_not_safe",
+      "context": "Git tab: headline of the notice when the undo was refused.",
+      "en": "Cannot undo that",
+      "de": "Rückgängig nicht möglich"
+    },
+    {
+      "key": "git_view.undo_not_safe_text",
+      "context": "Git tab: explanation of the refused undo.",
+      "en": "Something has changed since then, and undoing it now would lose newer work.",
+      "de": "Seitdem hat sich etwas geändert, und Rückgängig würde neuere Arbeit verlieren."
+    },
+    {
+      "key": "git_view.invalid_name",
+      "context": "Git tab: headline of the notice when git does not take a branch name.",
+      "en": "Name not allowed",
+      "de": "Name nicht erlaubt"
+    },
+    {
+      "key": "git_view.invalid_name_text",
+      "context": "Git tab: explanation of a branch name git does not take, also shown under the name field of the new branch dialog. {name} is what the user typed.",
+      "en": "“{name}” is not a name git accepts for a branch.",
+      "de": "„{name}“ ist kein Name, den git für einen Branch annimmt."
+    },
+    {
+      "key": "git_view.network_failed",
+      "context": "Git tab: headline of the notice when the remote could not be reached.",
+      "en": "No connection",
+      "de": "Keine Verbindung"
+    },
+    {
+      "key": "git_view.network_failed_text",
+      "context": "Git tab: explanation of a remote that could not be reached.",
+      "en": "The remote could not be reached. Check your network, then try again.",
+      "de": "Der Remote war nicht erreichbar. Prüfe dein Netzwerk und versuche es noch einmal."
+    },
+    {
+      "key": "git_view.other_failed",
+      "context": "Git tab: headline of the notice for an error git reported that has no notice of its own.",
+      "en": "Git could not do that",
+      "de": "Git konnte das nicht ausführen"
+    },
+    {
+      "key": "git_view.other_failed_text",
+      "context": "Git tab: explanation of an error git reported; the Details button shows what git printed.",
+      "en": "Git reported an error. The details show what it said.",
+      "de": "Git hat einen Fehler gemeldet. Die Details zeigen, was es geschrieben hat."
     }
   ]
 }

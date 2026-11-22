@@ -3,6 +3,7 @@
 
 use iced::widget::{column, stack};
 use iced::{Element, Point};
+use ncrs_git::PullStrategy;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::{banner, BannerTone};
 use ncrs_ui_kit::frame::{DialogSize, Frame};
@@ -332,9 +333,119 @@ pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Me
                 ),
             ],
         ),
+        Notice::NetworkFailed {
+            output,
+            details_open,
+        } => (
+            lang.text(Msg::GitViewNetworkFailed).to_owned(),
+            lang.text(Msg::GitViewNetworkFailedText).to_owned(),
+            details_open.then(|| output.clone()),
+            vec![
+                button(
+                    lang.text(Msg::GitViewNoticeDetails),
+                    Some(Message::ToggleNoticeDetails),
+                    Tone::Secondary,
+                    palette,
+                ),
+                button(
+                    lang.text(Msg::GitViewAuthFailedRetry),
+                    Some(Message::Retry),
+                    Tone::Primary,
+                    palette,
+                ),
+            ],
+        ),
+        Notice::BranchNotMerged { branch } => (
+            lang.text(Msg::GitViewBranchNotMerged).to_owned(),
+            fill_template(
+                lang.text(Msg::GitViewBranchNotMergedText),
+                &[("{branch}", branch)],
+            ),
+            None,
+            vec![button(
+                lang.text(Msg::GitViewBranchNotMergedAction),
+                Some(Message::DeleteBranchAnyway),
+                Tone::Danger,
+                palette,
+            )],
+        ),
+        Notice::NeedsPullStrategy => (
+            lang.text(Msg::GitViewNeedsStrategy).to_owned(),
+            lang.text(Msg::GitViewNeedsStrategyText).to_owned(),
+            None,
+            vec![
+                button(
+                    lang.text(Msg::GitViewNeedsStrategyMerge),
+                    Some(Message::PullWith(PullStrategy::Merge)),
+                    Tone::Secondary,
+                    palette,
+                ),
+                button(
+                    lang.text(Msg::GitViewNeedsStrategyRebase),
+                    Some(Message::PullWith(PullStrategy::Rebase)),
+                    Tone::Primary,
+                    palette,
+                ),
+            ],
+        ),
+        Notice::NothingToCommit => (
+            lang.text(Msg::GitViewNothingToCommit).to_owned(),
+            lang.text(Msg::GitViewNothingToCommitText).to_owned(),
+            None,
+            Vec::new(),
+        ),
+        Notice::CommitTitleMissing => (
+            lang.text(Msg::GitViewCommitTitleMissing).to_owned(),
+            lang.text(Msg::GitViewCommitTitleMissingText).to_owned(),
+            None,
+            Vec::new(),
+        ),
+        Notice::UnresolvedConflicts { count } => (
+            lang.text(Msg::GitViewUnresolvedConflicts).to_owned(),
+            fill_template(
+                lang.text(Msg::GitViewUnresolvedConflictsText),
+                &[("{count}", &count.to_string())],
+            ),
+            None,
+            Vec::new(),
+        ),
+        Notice::UndoNotSafe => (
+            lang.text(Msg::GitViewUndoNotSafe).to_owned(),
+            lang.text(Msg::GitViewUndoNotSafeText).to_owned(),
+            None,
+            Vec::new(),
+        ),
+        Notice::InvalidName { name } => (
+            lang.text(Msg::GitViewInvalidName).to_owned(),
+            fill_template(lang.text(Msg::GitViewInvalidNameText), &[("{name}", name)]),
+            None,
+            Vec::new(),
+        ),
+        Notice::Other {
+            output,
+            details_open,
+        } => (
+            lang.text(Msg::GitViewOtherFailed).to_owned(),
+            lang.text(Msg::GitViewOtherFailedText).to_owned(),
+            details_open.then(|| output.clone()),
+            vec![button(
+                lang.text(Msg::GitViewNoticeDetails),
+                Some(Message::ToggleNoticeDetails),
+                Tone::Secondary,
+                palette,
+            )],
+        ),
     };
+    let asks = matches!(
+        notice,
+        Notice::BranchNotMerged { .. } | Notice::NeedsPullStrategy
+    );
     let mut buttons = vec![button(
-        lang.text(Msg::GitViewNoticeDismiss),
+        lang.text(if asks {
+            Msg::GitViewDialogCancel
+        } else {
+            Msg::GitViewNoticeDismiss
+        }),
         Some(Message::DismissNotice),
         Tone::Secondary,
         palette,

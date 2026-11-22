@@ -20,6 +20,7 @@ use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLin
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
+use crate::actions::Unavailable;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
@@ -86,6 +87,22 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     ]
     .width(Length::Fill)
     .height(Length::Fill);
+    if let Some(reason) = state.actions.unavailable {
+        let text = match reason {
+            Unavailable::GitMissing => Msg::GitViewHintGitMissing,
+            Unavailable::Sandbox => Msg::GitViewHintSandbox,
+        };
+        top = top.push(
+            container(page_line(
+                ctx.lang.text(text),
+                font_size::SMALL,
+                palette.dim_text,
+            ))
+            .padding([0.0, spacing::XXL])
+            .height(size::ROW)
+            .center_y(size::ROW),
+        );
+    }
     if let Some(merge) = &state.actions.merge {
         top = top.push(merge::banner_view(merge, ctx));
     }
@@ -135,6 +152,11 @@ fn body_top(state: &State) -> f32 {
     let banner = |present: bool| if present { BANNER_HEIGHT } else { 0.0 };
     size::HEADER
         + spacing::BORDER_WIDTH
+        + if state.actions.unavailable.is_some() {
+            size::ROW
+        } else {
+            0.0
+        }
         + banner(state.actions.merge.is_some())
         + banner(state.actions.notice.is_some())
 }
@@ -255,7 +277,7 @@ fn header<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     .spacing(spacing::L)
     .align_y(alignment::Vertical::Center);
     if let Some(sync) = &state.actions.sync {
-        line = line.push(toolbar::view(sync, ctx));
+        line = line.push(toolbar::view(sync, state.actions.busy, ctx));
     }
     container(
         line.push(Space::new().width(Length::Fill))

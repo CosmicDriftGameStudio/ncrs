@@ -212,6 +212,7 @@ pub struct Loads {
     pub log: Slot,
     pub detail: Slot,
     pub diff: Slot,
+    pub actions: Slot,
 }
 
 #[derive(Debug, Default)]
@@ -250,6 +251,7 @@ impl State {
         self.loads.log.cancel();
         self.loads.detail.cancel();
         self.loads.diff.cancel();
+        self.loads.actions.cancel();
         *self = Self::default();
     }
 
@@ -259,6 +261,7 @@ impl State {
         self.loads.log.cancel();
         self.loads.detail.cancel();
         self.loads.diff.cancel();
+        self.loads.actions.cancel();
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {

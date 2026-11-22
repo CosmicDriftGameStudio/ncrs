@@ -1,10 +1,14 @@
 //! What happens in the Git tab.
 
-use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, RefsOverview};
+use ncrs_git::{
+    ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefsOverview,
+};
 
 use ncrs_ui_kit::git_rows::CommitColumn;
 
 use crate::actions::{ChangeSide, ConflictAction, MenuAction, MenuTarget, Side};
+use crate::job::Finished;
+use crate::snapshot::Snapshot;
 use crate::state::Fold;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +19,10 @@ pub enum Message {
     DetailLoaded(u64, Box<Result<CommitDetail, String>>),
     WorkingLoaded(u64, Result<Vec<ChangedFile>, String>),
     DiffLoaded(u64, Box<Result<FileDiff, String>>),
+    /// What the actions show, read anew; the error says why there are none.
+    ActionsLoaded(u64, Box<Result<Snapshot, ActionError>>),
+    /// A call to git that was started by an action has ended.
+    JobDone(Box<Finished>),
     FilterChanged(String),
     FocusFilter,
     /// Enter in the filter field: back to the list.
@@ -51,7 +59,7 @@ pub enum Message {
     Escape,
     Close,
     Refresh,
-    // The actions of #338. The handlers do nothing yet.
+    // The actions of #338.
     SelectChange(ChangeSide, usize),
     Stage(usize),
     Unstage(usize),
@@ -91,6 +99,10 @@ pub enum Message {
     /// The key of an action: it acts on the chosen file.
     ConflictShortcut(ConflictAction),
     PullFirst,
+    /// The answer of the notice "pull needs a decision".
+    PullWith(PullStrategy),
+    /// The answer of the notice "branch not merged".
+    DeleteBranchAnyway,
     Retry,
     ToggleNoticeDetails,
     DismissNotice,
