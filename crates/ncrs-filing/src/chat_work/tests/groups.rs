@@ -332,7 +332,7 @@ fn an_unsure_file_names_the_kind_only_when_the_catalog_knows_it() {
 }
 
 #[test]
-fn a_mail_text_beside_its_eml_is_not_a_document_of_its_own() {
+fn a_mail_and_its_text_are_no_documents_but_the_attachment_is() {
     let setup = Setup::new();
     setup.write("in/mail/email.eml", "From: a@b.c");
     setup.write("in/mail/Body.TXT", "the mail text");
@@ -348,11 +348,7 @@ fn a_mail_text_beside_its_eml_is_not_a_document_of_its_own() {
 
     assert_eq!(
         paths,
-        [
-            Path::new("loose/body.txt"),
-            Path::new("mail/a.pdf"),
-            Path::new("mail/email.eml")
-        ]
+        [Path::new("loose/body.txt"), Path::new("mail/a.pdf")]
     );
 }
 

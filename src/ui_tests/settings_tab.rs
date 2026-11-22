@@ -19,6 +19,7 @@ fn hermes_config() -> Filing {
                 images: true,
                 is_target: false,
                 transfer: Default::default(),
+                continuous: false,
             },
             FilingLocation {
                 path: PathBuf::from("/home/test/Documents/Filed"),
@@ -26,6 +27,7 @@ fn hermes_config() -> Filing {
                 images: false,
                 is_target: true,
                 transfer: Default::default(),
+                continuous: false,
             },
         ],
         load: Default::default(),

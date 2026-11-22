@@ -888,6 +888,7 @@ pub fn chosen(path: &Path, mode: LocationMode, images: bool, is_target: bool) ->
         images,
         is_target,
         transfer: Default::default(),
+        continuous: false,
     }
 }
 

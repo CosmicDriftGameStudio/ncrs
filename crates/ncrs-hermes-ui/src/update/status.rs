@@ -7,7 +7,7 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_pipeline::{Load, Runner, RunnerState, Snapshot};
 
 use super::column::{refresh_hermes_column, settle_reading_again};
-use super::{filing_job, Outcome};
+use super::{continuous, filing_job, Outcome};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
@@ -198,6 +198,8 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     if let Some(snapshot) = idle_pipeline {
         actions.push(Action::ReadingSettled(snapshot.left_pipeline));
     }
+    continuous::sync_continuous_roots(hermes);
+    continuous::run_continuous(hermes, ctx, actions);
     let counts = if hermes.live_pipeline().is_some() && hermes.filing_status.tick_wants_counts() {
         request_hermes_counts(hermes)
     } else {

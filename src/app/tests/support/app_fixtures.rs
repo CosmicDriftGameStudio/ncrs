@@ -273,6 +273,7 @@ impl App {
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: false,
         };
         let mut app = Self::with_fixed_panels();
         app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));

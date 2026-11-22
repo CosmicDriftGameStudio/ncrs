@@ -74,6 +74,9 @@ pub fn update(
         SettingsMessage::RemoveFolder(path) => {
             change_locations(settings, ctx, |list| folders::removed(list, &path))
         }
+        SettingsMessage::StopContinuous(path) => change_locations(settings, ctx, |list| {
+            folders::continuous_stopped(list, &path)
+        }),
         SettingsMessage::EditFolder(path) => {
             page_flag(settings, |state| state.folder_dialog = path)
         }

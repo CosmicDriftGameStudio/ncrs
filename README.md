@@ -605,7 +605,8 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `next_tab`, `previous_tab`,
 `grant_folder_access`, `connect_server`, `disconnect_server`,
 `file_list_tags_toggle`, `file_list_tags_choose`, and for Hermes `rules`,
 `saved_queries`, `hermes_quick_fix`, `hermes_hand_to_inbox`,
-`hermes_process_again`, `hermes_set_inbox`,
+`hermes_process_again`, `hermes_file_once`, `hermes_file_continuously`,
+`hermes_stop_continuous`, `hermes_set_inbox`,
 `hermes_set_filing_location`, `hermes_set_archive`, `hermes_exclude`,
 `hermes_inspect`. Their default keys are in [Keyboard shortcuts](#keyboard-shortcuts)
 and, for the filing pages, in [Filing](#filing).

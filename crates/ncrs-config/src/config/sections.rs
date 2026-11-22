@@ -393,6 +393,8 @@ pub struct LocationEntry {
     pub target: Option<Spanned<bool>>,
     #[serde(default)]
     pub transfer: Option<LocationTransfer>,
+    #[serde(default)]
+    pub continuous: bool,
 }
 
 /// What Hermes does with a file it takes from a read folder.
@@ -476,6 +478,8 @@ pub struct FilingLocation {
     pub images: bool,
     pub is_target: bool,
     pub transfer: LocationTransfer,
+    /// Hermes files the new files of a read folder by itself, with `transfer`.
+    pub continuous: bool,
 }
 
 /// A text and its ground in the `[theme]` palette whose contrast is low.

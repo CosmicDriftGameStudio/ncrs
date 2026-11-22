@@ -21,6 +21,7 @@ use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFile};
 
 mod change;
+mod continuous;
 mod folder_list;
 mod groups;
 mod live;
@@ -37,13 +38,14 @@ mod words;
 mod tests;
 
 pub use change::{branch_example, segments};
+pub use continuous::{file_new, open_in, ContinuousReport};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
 };
 pub use live::{
-    apply_overrides, classify, mark_files, plan_live, run_plan, tally, LiveFile, LivePlan, LiveRun,
-    LiveState, LiveTags, Override, Tally,
+    apply_overrides, classify, mark_files, plan_listed, plan_live, run_plan, tally, LiveFile,
+    LivePlan, LiveRun, LiveState, LiveTags, Override, Tally,
 };
 pub use pattern::PatternLevel;
 pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
@@ -51,7 +53,8 @@ pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use snapshots::Snapshots;
 pub use trial::{
-    ModelScope, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE,
+    ModelScope, PlacedBy, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan,
+    MODEL_FIRST_PAGE,
 };
 pub use waiting::WaitingGroup;
 pub use words::{normalize_word, same_word, word_within};

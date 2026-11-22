@@ -11,9 +11,9 @@ use ncrs_index::{ContentHash, Transfer};
 
 use super::groups::numbered_name;
 use super::picks::ask_until_done;
-use super::reading::{list_files, read_folder};
+use super::reading::{list_files, read_folder, read_folder_only};
 use super::trial::{
-    PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, FOLDER_PICK_VERSION,
+    PlacedBy, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, FOLDER_PICK_VERSION,
 };
 use super::{ChatAccess, FolderReading, ModelScope, ReadProgress, RunItem, RunPlan};
 
@@ -122,9 +122,87 @@ pub fn plan_live(
     tags: &LiveTags,
     run: &LiveRun,
 ) -> Result<(), PlanFailure> {
+    let mut last = None;
+    let asked = plan_from(
+        access,
+        source,
+        target,
+        PlanScope {
+            listed: None,
+            tags: Some(tags),
+        },
+        model,
+        run,
+        &mut last,
+    );
+    // Files the model did not answer for are still looking, and `mark_files`
+    // leaves those alone, so a failed model tags nothing it did not decide.
+    if let Some(planned) = last {
+        let marked = mark_files(access, &planned, tags);
+        if planned.done {
+            run.publish(planned);
+        }
+        marked?;
+    }
+    asked
+}
+
+/// `plan_live` for the files in `listed` only, by their path relative to
+/// `source`; nothing is tagged. The model is asked in the background lane,
+/// once. Returns the plan, `None` when the run was stopped before the first
+/// round.
+pub fn plan_listed(
+    access: &ChatAccess,
+    source: &Path,
+    target: &Path,
+    listed: &[PathBuf],
+    model: &dyn ChatModel,
+    run: &LiveRun,
+) -> Result<Option<LivePlan>, String> {
+    let mut last = None;
+    plan_from(
+        access,
+        source,
+        target,
+        PlanScope {
+            listed: Some(listed),
+            tags: None,
+        },
+        model,
+        run,
+        &mut last,
+    )
+    .map_err(|failure| failure.to_string())?;
+    if let Some(planned) = last.as_ref().filter(|planned| planned.done) {
+        run.publish(planned.clone());
+    }
+    Ok(last)
+}
+
+/// What a planning run covers: all files of the source, or only `listed`.
+/// Only a run with `tags` is the filing tab's, which clears stale answers.
+struct PlanScope<'a> {
+    listed: Option<&'a [PathBuf]>,
+    tags: Option<&'a LiveTags>,
+}
+
+/// Plans into `last`; whatever it holds is good even when the run failed.
+fn plan_from(
+    access: &ChatAccess,
+    source: &Path,
+    target: &Path,
+    covered: PlanScope<'_>,
+    model: &dyn ChatModel,
+    run: &LiveRun,
+    last: &mut Option<LivePlan>,
+) -> Result<(), PlanFailure> {
+    let PlanScope { listed, tags } = covered;
+    let wanted: Option<BTreeSet<&PathBuf>> = listed.map(|files| files.iter().collect());
+    let is_wanted = |relative: &PathBuf| wanted.as_ref().is_none_or(|set| set.contains(relative));
     let waiting: Vec<LiveFile> = list_files(source)
         .map_err(read_failed)?
         .into_iter()
+        .filter(is_wanted)
         .map(|from| LiveFile {
             from,
             hash: None,
@@ -142,23 +220,32 @@ pub fn plan_live(
 
     // A "none fits" answer stored before the model could choose folders is not
     // an answer, and the tag it put on the file is not true.
-    access
-        .with_index(|index| {
-            index
-                .forget_empty_picks_before(FOLDER_PICK_VERSION, &tags.no_folder_in_every_language)
-                .map_err(|err| err.to_string())
-        })
-        .map_err(PlanFailure::Other)?;
-    let source_reading = read_folder(access, source, &run.progress, None).map_err(read_failed)?;
+    if let Some(clearing) = tags {
+        access
+            .with_index(|index| {
+                index
+                    .forget_empty_picks_before(
+                        FOLDER_PICK_VERSION,
+                        &clearing.no_folder_in_every_language,
+                    )
+                    .map_err(|err| err.to_string())
+            })
+            .map_err(PlanFailure::Other)?;
+    }
+    let source_reading = read_folder_only(access, source, &run.progress, None, wanted.as_ref())
+        .map_err(read_failed)?;
     let target_reading =
         read_folder(access, target, &ReadProgress::default(), None).map_err(read_failed)?;
-    let mut last: Option<LivePlan> = None;
-    let asked = ask_until_done(
+    let scope = match listed {
+        Some(files) => ModelScope::Only(files.iter().map(|path| source.join(path)).collect()),
+        None => ModelScope::FirstPage,
+    };
+    ask_until_done(
         access,
         &source_reading,
         &target_reading,
         model,
-        &ModelScope::FirstPage,
+        &scope,
         Some(&run.stop),
         &mut |trial_plan| {
             let mut live = classify(trial_plan, &source_reading);
@@ -177,19 +264,9 @@ pub fn plan_live(
                 done: false,
                 ..live.clone()
             });
-            last = Some(live);
+            *last = Some(live);
         },
-    );
-    // Files the model did not answer for are still looking, and `mark_files`
-    // leaves those alone, so a failed model tags nothing it did not decide.
-    if let Some(planned) = last {
-        let marked = mark_files(access, &planned, tags);
-        if planned.done {
-            run.publish(planned);
-        }
-        marked?;
-    }
-    asked
+    )
 }
 
 /// Tags the unreadable and folderless files of `plan` and takes both tags off
@@ -278,7 +355,7 @@ fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf
             LiveState::Filed {
                 folder,
                 name,
-                unsure: false,
+                unsure: !entry.placed_by.is_none_or(PlacedBy::is_sure),
             }
         }
         TrialOutcome::Unsure {

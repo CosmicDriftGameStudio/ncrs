@@ -1,7 +1,7 @@
 //! Reading a folder for the chat: what is in it, which order it follows and
 //! which files are duplicates that can go. Writes nothing.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io;
 use std::num::NonZeroUsize;
@@ -145,7 +145,7 @@ fn walk(
         let path = relative.join(&name);
         if file_type.is_dir() {
             walk(base, &path, found, progress)?;
-        } else if !file_type.is_symlink() && !is_mail_body(&name, has_eml) {
+        } else if !file_type.is_symlink() && !is_eml_file(&name) && !is_mail_body(&name, has_eml) {
             // A file that cannot be stat'ed cannot be read or filed either.
             let Some(stamp) = dir_entry.metadata().ok().and_then(|metadata| {
                 Some(FileStamp {
@@ -257,7 +257,22 @@ pub fn read_folder(
     progress: &ReadProgress,
     stop: Option<&AtomicBool>,
 ) -> Result<FolderReading, ReadError> {
-    let walked = walk_sorted(folder, progress)?;
+    read_folder_only(access, folder, progress, stop, None)
+}
+
+/// [`read_folder`] for the listed files (paths below `folder`) alone: the
+/// others are neither looked up in the index nor hashed.
+pub fn read_folder_only(
+    access: &ChatAccess,
+    folder: &Path,
+    progress: &ReadProgress,
+    stop: Option<&AtomicBool>,
+    only: Option<&BTreeSet<&PathBuf>>,
+) -> Result<FolderReading, ReadError> {
+    let mut walked = walk_sorted(folder, progress)?;
+    if let Some(listed) = only {
+        walked.retain(|file| listed.contains(&file.relative));
+    }
     progress.total.store(walked.len(), Ordering::Relaxed);
 
     // Whatever the index has under the folder with the same size and mtime is

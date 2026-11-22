@@ -37,6 +37,7 @@ pub fn added(locations: &[FilingLocation], path: PathBuf, kind: AddAs) -> Vec<Fi
         images: false,
         is_target,
         transfer: LocationTransfer::default(),
+        continuous: false,
     });
     list
 }
@@ -61,6 +62,17 @@ pub fn removed(locations: &[FilingLocation], path: &Path) -> Vec<FilingLocation>
         }
     }
     list
+}
+
+/// `path` stays in the list and no longer files its new files by itself.
+pub fn continuous_stopped(locations: &[FilingLocation], path: &Path) -> Vec<FilingLocation> {
+    locations
+        .iter()
+        .map(|known| FilingLocation {
+            continuous: known.continuous && known.path != path,
+            ..known.clone()
+        })
+        .collect()
 }
 
 /// The location with the path of `edited` takes its values.
@@ -88,6 +100,7 @@ mod tests {
             images: false,
             is_target,
             transfer: LocationTransfer::Move,
+            continuous: false,
         }
     }
 
@@ -170,6 +183,23 @@ mod tests {
         assert_eq!(
             replaced(&list, edited.clone()),
             vec![edited, location("/other", LocationMode::Inbox, false)]
+        );
+    }
+
+    #[test]
+    fn stopping_continuous_filing_changes_only_that_folder_and_keeps_its_role() {
+        let continuous = |path: &str| FilingLocation {
+            continuous: true,
+            ..location(path, LocationMode::Inbox, false)
+        };
+        let list = vec![continuous("/in"), continuous("/other")];
+
+        assert_eq!(
+            continuous_stopped(&list, Path::new("/in")),
+            vec![
+                location("/in", LocationMode::Inbox, false),
+                continuous("/other")
+            ]
         );
     }
 }

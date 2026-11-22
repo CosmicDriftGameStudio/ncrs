@@ -14,7 +14,12 @@ pub struct CursorRoles {
     /// The path lies outside the inbox, so it can be handed to it.
     pub can_be_handed_to_inbox: bool,
     pub lies_in_a_filing_location: bool,
-    pub inbox_role_is_free: bool,
+    /// The path is the folder the files are filed into.
+    pub is_write_folder: bool,
+    /// The path lies below the write folder.
+    pub lies_in_write_folder: bool,
+    /// The path is a read folder that files its new files by itself.
+    pub is_continuous: bool,
     pub filing_location_role_is_free: bool,
     pub archive_role_is_free: bool,
 }
@@ -24,12 +29,18 @@ impl Hermes {
         let locations = &self.filing_config.locations;
         let role_free = |role| role_of(path, locations) != Some(role);
         let inbox = self.inbox_location();
+        let write_folder = self.write_folder();
         CursorRoles {
             can_be_handed_to_inbox: inbox.is_some_and(|inbox_path| !path.starts_with(inbox_path)),
             lies_in_a_filing_location: locations
                 .iter()
                 .any(|location| path.starts_with(&location.path)),
-            inbox_role_is_free: role_free(FolderRole::Inbox),
+            is_write_folder: write_folder == Some(path),
+            lies_in_write_folder: write_folder
+                .is_some_and(|folder| path != folder && path.starts_with(folder)),
+            is_continuous: locations
+                .iter()
+                .any(|location| location.path == path && location.continuous),
             filing_location_role_is_free: role_free(FolderRole::FilingLocation),
             archive_role_is_free: role_free(FolderRole::Archive),
         }
@@ -41,6 +52,15 @@ impl Hermes {
             .locations
             .iter()
             .find(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.as_path())
+    }
+
+    /// The folder the files are filed into, if one is configured.
+    pub fn write_folder(&self) -> Option<&Path> {
+        self.filing_config
+            .locations
+            .iter()
+            .find(|location| location.is_target)
             .map(|location| location.path.as_path())
     }
 

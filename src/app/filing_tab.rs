@@ -57,7 +57,7 @@ impl App {
         Task::batch([task.map(Message::FilingView), action_task])
     }
 
-    fn run_filing_action(&mut self, action: Ask) -> Task<Message> {
+    pub(in crate::app) fn run_filing_action(&mut self, action: Ask) -> Task<Message> {
         match action {
             Ask::Close => Task::none(),
             Ask::PickFolder { start } => (self.pick_folder)(&start)
@@ -68,8 +68,19 @@ impl App {
                 filed,
                 left,
                 batch,
+                then_continuous,
             } => {
-                self.filing_finished(source, transfer, filed, left.len(), batch);
+                self.filing_finished(source.clone(), transfer, filed, left.len(), batch);
+                if then_continuous && filed > 0 {
+                    return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                        ncrs_hermes_ui::set_continuous_filing(
+                            hermes,
+                            &source,
+                            Some(location_transfer_of(transfer)),
+                            ctx,
+                        )
+                    });
+                }
                 Task::none()
             }
         }
@@ -97,5 +108,15 @@ impl App {
                 batch,
             },
         );
+    }
+}
+
+/// How a run carried the files, as the setting of a read folder.
+fn location_transfer_of(transfer: ncrs_index::Transfer) -> ncrs_config::config::LocationTransfer {
+    match transfer {
+        ncrs_index::Transfer::Copy => ncrs_config::config::LocationTransfer::Copy,
+        ncrs_index::Transfer::Move | ncrs_index::Transfer::Trash => {
+            ncrs_config::config::LocationTransfer::Move
+        }
     }
 }

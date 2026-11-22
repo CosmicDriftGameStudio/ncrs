@@ -202,6 +202,8 @@ pub enum SettingsMessage {
         result: Result<(), String>,
     },
     RemoveFolder(PathBuf),
+    /// The read folder stays but no longer files its new files by itself.
+    StopContinuous(PathBuf),
     /// Opens the dialog of this read folder, or closes it.
     EditFolder(Option<PathBuf>),
     /// The folder with this path takes the values of the location.

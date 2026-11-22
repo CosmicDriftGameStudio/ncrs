@@ -528,6 +528,7 @@ fn filed(state: &mut State, result: Result<FiledReport, String>) -> Step {
     match result {
         Ok(report) => {
             let source = session.source.clone();
+            let then_continuous = session.then_continuous;
             state.session = None;
             (
                 Task::none(),
@@ -537,6 +538,7 @@ fn filed(state: &mut State, result: Result<FiledReport, String>) -> Step {
                     filed: report.done,
                     left: report.left,
                     batch: report.batch,
+                    then_continuous,
                 }),
             )
         }

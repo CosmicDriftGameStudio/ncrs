@@ -35,6 +35,8 @@ pub struct HermesFacts {
     pub active: bool,
     pub has_inquiry_paths: bool,
     pub has_live_pipeline: bool,
+    /// A write folder is configured.
+    pub has_write_folder: bool,
     pub cursor: Option<HermesCursor>,
 }
 
@@ -47,7 +49,10 @@ pub struct HermesCursor {
     /// An inbox is set and the file does not lie in it.
     pub can_be_handed_to_inbox: bool,
     pub lies_in_a_filing_location: bool,
-    pub inbox_role_is_free: bool,
+    pub is_write_folder: bool,
+    pub lies_in_write_folder: bool,
+    /// The folder files its new files by itself.
+    pub is_continuous: bool,
     pub filing_location_role_is_free: bool,
     pub archive_role_is_free: bool,
 }
@@ -152,13 +157,22 @@ impl MenuFacts {
 }
 
 impl HermesFacts {
+    /// A folder outside the write folder, which a write folder exists to take
+    /// the files of.
+    fn can_file_from(&self, cursor: HermesCursor) -> bool {
+        self.has_write_folder
+            && cursor.is_dir
+            && !cursor.is_write_folder
+            && !cursor.lies_in_write_folder
+    }
+
     pub fn action_enabled(&self, action: HermesAction) -> bool {
         let Some(cursor) = self.cursor else {
             return false;
         };
         let needs_locations = !matches!(
             action,
-            HermesAction::SetInbox | HermesAction::SetFilingLocation | HermesAction::SetArchive
+            HermesAction::SetFilingLocation | HermesAction::SetArchive
         );
         if needs_locations && !self.active {
             return false;
@@ -169,7 +183,9 @@ impl HermesFacts {
             HermesAction::ProcessAgain => {
                 self.has_live_pipeline && !cursor.excluded && cursor.lies_in_a_filing_location
             }
-            HermesAction::SetInbox => cursor.is_dir && cursor.inbox_role_is_free,
+            HermesAction::FileOnce => self.can_file_from(cursor),
+            HermesAction::FileContinuously => self.can_file_from(cursor) && !cursor.is_continuous,
+            HermesAction::StopContinuous => cursor.is_dir && cursor.is_continuous,
             HermesAction::SetFilingLocation => cursor.is_dir && cursor.filing_location_role_is_free,
             HermesAction::SetArchive => cursor.is_dir && cursor.archive_role_is_free,
             HermesAction::Exclude | HermesAction::Include | HermesAction::Inspect => true,
@@ -327,5 +343,86 @@ impl Panels {
             })
         };
         chosen.into_iter().collect()
+    }
+}
+
+#[cfg(test)]
+mod hermes_folder_entry_tests {
+    use super::*;
+
+    fn facts(cursor: HermesCursor, has_write_folder: bool) -> HermesFacts {
+        HermesFacts {
+            ready: true,
+            active: true,
+            has_write_folder,
+            cursor: Some(cursor),
+            ..HermesFacts::default()
+        }
+    }
+
+    fn folder() -> HermesCursor {
+        HermesCursor {
+            is_dir: true,
+            ..HermesCursor::default()
+        }
+    }
+
+    fn filing_entries(facts: &HermesFacts) -> [bool; 3] {
+        [
+            facts.action_enabled(HermesAction::FileOnce),
+            facts.action_enabled(HermesAction::FileContinuously),
+            facts.action_enabled(HermesAction::StopContinuous),
+        ]
+    }
+
+    #[test]
+    fn a_plain_folder_can_be_filed_once_or_continuously_but_not_stopped() {
+        assert_eq!(filing_entries(&facts(folder(), true)), [true, true, false]);
+    }
+
+    #[test]
+    fn without_a_write_folder_nothing_can_be_filed() {
+        assert_eq!(filing_entries(&facts(folder(), false)), [false; 3]);
+    }
+
+    #[test]
+    fn the_write_folder_and_what_lies_in_it_are_no_source() {
+        for cursor in [
+            HermesCursor {
+                is_write_folder: true,
+                ..folder()
+            },
+            HermesCursor {
+                lies_in_write_folder: true,
+                ..folder()
+            },
+        ] {
+            assert_eq!(filing_entries(&facts(cursor, true)), [false; 3]);
+        }
+    }
+
+    #[test]
+    fn a_continuous_folder_can_be_filed_once_and_stopped_but_not_started_again() {
+        let cursor = HermesCursor {
+            is_continuous: true,
+            ..folder()
+        };
+        assert_eq!(filing_entries(&facts(cursor, true)), [true, false, true]);
+    }
+
+    #[test]
+    fn a_file_gets_none_of_the_folder_entries() {
+        let file = HermesCursor {
+            is_continuous: true,
+            ..HermesCursor::default()
+        };
+        assert_eq!(filing_entries(&facts(file, true)), [false; 3]);
+    }
+
+    #[test]
+    fn with_hermes_off_the_folder_entries_are_greyed() {
+        let mut off = facts(folder(), true);
+        off.active = false;
+        assert_eq!(filing_entries(&off), [false; 3]);
     }
 }

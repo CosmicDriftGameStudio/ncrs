@@ -459,7 +459,9 @@ impl App {
             Message::ShowAiSettings => {
                 self.show_setting(crate::messages::SettingsFeature::Ai, None)
             }
-            plain @ Message::DocumentsFiled(_) => self.update_hermes_plain(plain),
+            plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
+                self.update_hermes_plain(plain)
+            }
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),

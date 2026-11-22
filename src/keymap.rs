@@ -118,6 +118,11 @@ impl KeyActionMessage for KeyAction {
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            Self::HermesFileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
+            Self::HermesFileContinuously => {
+                Message::HermesFile(HermesFileMessage::FileContinuously)
+            }
+            Self::HermesStopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
             Self::HermesSetInbox => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
             }

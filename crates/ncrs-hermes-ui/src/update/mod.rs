@@ -2,6 +2,7 @@
 //! as actions. Each page has its own entry; the app routes the messages.
 
 mod column;
+mod continuous;
 mod filing_job;
 mod hermes_file;
 mod lifecycle;
@@ -15,7 +16,7 @@ mod tags;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::FilingWriteError;
+use ncrs_config::config::{FilingWriteError, LocationTransfer};
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_ui_kit::focus::release_focus;
 
@@ -124,6 +125,7 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::SavedQueries(inner) => update_saved_queries(hermes, inner, ctx),
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
         Message::DocumentsFiled(result) => documents_filed(result, ctx),
+        Message::ContinuousFiled(result) => continuous_filed(result, ctx),
         Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
         Message::HermesFile(inner) => update_hermes_file(hermes, inner, ctx),
         Message::ToggleFileListTags => return None,
@@ -184,6 +186,12 @@ pub fn documents_filed(result: Result<FilingSummary, String>, ctx: &Ctx<'_>) -> 
     (Task::none(), actions)
 }
 
+pub fn continuous_filed(result: Result<Vec<(PathBuf, usize)>, String>, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    continuous::continuous_filed(result, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
 pub fn run_filing(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     filing_job::run_filing(hermes, ctx, &mut actions);
@@ -209,6 +217,19 @@ pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>)
 pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = hermes_file::set_folder_role(hermes, folder, role, ctx, &mut actions);
+    (task, actions)
+}
+
+/// Turns "file new files by itself" on for a read folder, with `transfer`, or
+/// off with `None`.
+pub fn set_continuous_filing(
+    hermes: &Hermes,
+    folder: &Path,
+    transfer: Option<LocationTransfer>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_file::set_continuous_filing(hermes, folder, transfer, ctx, &mut actions);
     (task, actions)
 }
 

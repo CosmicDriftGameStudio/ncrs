@@ -179,6 +179,49 @@ fn classify_maps_every_row_of_the_table() {
 }
 
 #[test]
+fn a_place_from_the_layout_alone_is_unsure_one_from_a_rule_or_neighbours_is_not() {
+    let source = reading(
+        "/inbox",
+        vec![
+            readable("a.pdf", 1),
+            readable("b.pdf", 2),
+            readable("c.pdf", 3),
+        ],
+    );
+    let placed = |name: &str, seed: u8, by: PlacedBy| TrialEntry {
+        placed_by: Some(by),
+        ..entry_for(
+            name,
+            seed,
+            TrialOutcome::Filed {
+                to: PathBuf::from(format!("Bank{seed}")).join(name),
+            },
+        )
+    };
+    let plan = classify(
+        &plan_of(vec![
+            placed("a.pdf", 1, PlacedBy::Rule),
+            placed("b.pdf", 2, PlacedBy::Neighbours),
+            placed("c.pdf", 3, PlacedBy::Layout),
+        ]),
+        &source,
+    );
+
+    assert_eq!(
+        state_of(&plan, "a.pdf"),
+        filed("Bank1", "Alfa AG.pdf", false)
+    );
+    assert_eq!(
+        state_of(&plan, "b.pdf"),
+        filed("Bank2", "Alfa AG.pdf", false)
+    );
+    assert_eq!(
+        state_of(&plan, "c.pdf"),
+        filed("Bank3", "Alfa AG.pdf", true)
+    );
+}
+
+#[test]
 fn the_tally_buckets_add_up_to_the_files() {
     let counted = tally(&classified());
 

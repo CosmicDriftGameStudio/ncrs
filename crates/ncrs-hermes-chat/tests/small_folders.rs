@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn always_on_a_source_the_app_already_watches_hands_over_and_changes_no_setting() {
+    fn always_on_a_source_the_app_already_watches_hands_over_with_the_continuous_mark() {
         let mut talk = small_talk();
         tidy_until_once(&mut talk);
         talk.press(&ChipReply::Always);
@@ -113,7 +113,7 @@ mod tests {
             matches!(
                 talk.actions.as_slice(),
                 [Action::OpenFiling {
-                    watch_source: false,
+                    watch_source: true,
                     ..
                 }]
             ),

@@ -31,6 +31,9 @@ pub enum Message {
     Tags(TagsMessage),
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
+    /// The background filing of new files is done: the read folders and how
+    /// many files each had filed.
+    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
     HermesColumn(HermesColumnMessage),
     HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings
@@ -209,6 +212,12 @@ pub enum HermesFileMessage {
     HandToInbox,
     ProcessAgain,
     SetRole(FolderRole),
+    /// Opens the filing tab for the folder under the cursor.
+    FileOnce,
+    /// The same, and the folder files continuously once the run is filed.
+    FileContinuously,
+    /// The folder under the cursor no longer files continuously.
+    StopContinuous,
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
     ShowInInspection,

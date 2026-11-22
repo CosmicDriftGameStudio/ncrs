@@ -219,6 +219,8 @@ pub enum Message {
     ShowAiSettings,
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
+    /// The background filing of new files is done.
+    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
@@ -388,6 +390,7 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),
             Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
+            Hermes::ContinuousFiled(result) => Self::ContinuousFiled(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::HermesFile(inner) => Self::HermesFile(inner),
             Hermes::ToggleFileListTags => Self::Settings(SettingsMessage::ToggleFileListTags),

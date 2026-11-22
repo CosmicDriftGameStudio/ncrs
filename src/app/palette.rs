@@ -39,6 +39,25 @@ impl App {
             .collect()
     }
 
+    /// The commands on a folder that the row under the cursor cannot take now.
+    fn commands_without_a_folder_to_file(&self) -> Vec<KeyAction> {
+        [
+            (KeyAction::HermesFileOnce, HermesAction::FileOnce),
+            (
+                KeyAction::HermesFileContinuously,
+                HermesAction::FileContinuously,
+            ),
+            (
+                KeyAction::HermesStopContinuous,
+                HermesAction::StopContinuous,
+            ),
+        ]
+        .into_iter()
+        .filter(|(_, action)| !self.hermes_action_enabled(*action))
+        .map(|(key, _)| key)
+        .collect()
+    }
+
     pub(in crate::app) fn resize_command_palette(&mut self, window: Size) {
         command_list::resize(&mut self.command_palette, window);
     }
@@ -76,7 +95,9 @@ impl App {
             scope,
             hermes,
             unavailable: if opening && !blocked && scope == KeyScope::Panel {
-                self.commands_the_panel_refuses()
+                let mut refused = self.commands_the_panel_refuses();
+                refused.extend(self.commands_without_a_folder_to_file());
+                refused
             } else {
                 Vec::new()
             },

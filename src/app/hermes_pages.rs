@@ -53,6 +53,7 @@ impl App {
             Message::SavedQueries(inner) => Page::SavedQueries(inner),
             Message::Tags(inner) => Page::Tags(inner),
             Message::DocumentsFiled(result) => Page::DocumentsFiled(result),
+            Message::ContinuousFiled(result) => Page::ContinuousFiled(result),
             Message::HermesColumn(inner) => Page::HermesColumn(inner),
             _ => return Task::none(),
         };

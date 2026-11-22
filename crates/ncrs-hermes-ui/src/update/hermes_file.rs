@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::{Filing, FilingWriteError};
+use ncrs_config::config::{Filing, FilingLocation, FilingWriteError, LocationTransfer};
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::{fill_template, Msg};
@@ -180,26 +180,74 @@ pub fn set_folder_role(
         ));
         return Task::none();
     };
-    let chosen =
-        match filing_setup::locations_with_role(&hermes.filing_config.locations, folder, role) {
-            Ok(chosen) => chosen,
-            Err(refused) => {
-                let text = match refused.problem {
-                    SetupProblem::NoDocumentFolder => ctx
-                        .lang
-                        .text(Msg::StatusHermesRoleNeedsFilingLocation)
-                        .to_owned(),
-                    problem => filing_setup_ui::problem_sentence(
-                        problem,
-                        &refused.chosen,
-                        ctx.lang,
-                        ctx.home,
-                    ),
-                };
-                actions.push(Action::ShowError(text));
-                return Task::none();
-            }
+    match locations_with_role_or_say(hermes, folder, role, ctx, actions) {
+        Some(chosen) => save_locations(config_path, chosen),
+        None => Task::none(),
+    }
+}
+
+fn locations_with_role_or_say(
+    hermes: &Hermes,
+    folder: &Path,
+    role: FolderRole,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Option<Vec<FilingLocation>> {
+    match filing_setup::locations_with_role(&hermes.filing_config.locations, folder, role) {
+        Ok(chosen) => Some(chosen),
+        Err(refused) => {
+            let text = match refused.problem {
+                SetupProblem::NoDocumentFolder => ctx
+                    .lang
+                    .text(Msg::StatusHermesRoleNeedsFilingLocation)
+                    .to_owned(),
+                problem => {
+                    filing_setup_ui::problem_sentence(problem, &refused.chosen, ctx.lang, ctx.home)
+                }
+            };
+            actions.push(Action::ShowError(text));
+            None
+        }
+    }
+}
+
+/// `folder` files its new files by itself with `transfer`, or, with `None`,
+/// no longer. Switching on makes a folder that is no read folder one, in the
+/// same write.
+pub fn set_continuous_filing(
+    hermes: &Hermes,
+    folder: &Path,
+    transfer: Option<LocationTransfer>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(config_path) = ctx.config_path.map(Path::to_path_buf) else {
+        actions.push(Action::ShowNotice(
+            ctx.lang.text(Msg::FilingSetupNoConfigPath).to_owned(),
+        ));
+        return Task::none();
+    };
+    let configured = &hermes.filing_config.locations;
+    let is_read_folder = configured
+        .iter()
+        .any(|location| location.path == folder && location.mode == LocationMode::Inbox);
+    let base = if transfer.is_none() || is_read_folder {
+        configured.clone()
+    } else {
+        let Some(with_role) =
+            locations_with_role_or_say(hermes, folder, FolderRole::Inbox, ctx, actions)
+        else {
+            return Task::none();
         };
+        with_role
+    };
+    match filing_setup::locations_with_continuous(&base, folder, transfer) {
+        Some(chosen) => save_locations(config_path, chosen),
+        None => Task::none(),
+    }
+}
+
+fn save_locations(config_path: PathBuf, chosen: Vec<FilingLocation>) -> Task<Message> {
     let written_path = config_path.clone();
     Task::perform(
         tokio::task::spawn_blocking(move || filing_setup::write_locations(&written_path, &chosen)),
@@ -360,6 +408,9 @@ pub fn update(
         HermesFileMessage::HandToInbox
         | HermesFileMessage::ProcessAgain
         | HermesFileMessage::SetRole(_)
+        | HermesFileMessage::FileOnce
+        | HermesFileMessage::FileContinuously
+        | HermesFileMessage::StopContinuous
         | HermesFileMessage::ToggleExclusion
         | HermesFileMessage::ShowInInspection => {}
     }
@@ -390,6 +441,9 @@ pub fn update(
         HermesFileMessage::SetRole(role) if is_dir => {
             set_folder_role(hermes, path, role, ctx, actions)
         }
+        HermesFileMessage::StopContinuous if is_dir => {
+            set_continuous_filing(hermes, path, None, ctx, actions)
+        }
         HermesFileMessage::ToggleExclusion => {
             let excluded = hermes.cursor_is_excluded(path, is_dir);
             toggle_hermes_exclusion(hermes, path.to_path_buf(), excluded, actions)
@@ -398,7 +452,11 @@ pub fn update(
             show_in_inspection(actions);
             Task::none()
         }
+        // Opening the filing tab is the app's: it owns the tab.
         HermesFileMessage::SetRole(_)
+        | HermesFileMessage::StopContinuous
+        | HermesFileMessage::FileOnce
+        | HermesFileMessage::FileContinuously
         | HermesFileMessage::RoleSaved(_)
         | HermesFileMessage::ProcessAgainFound(_)
         | HermesFileMessage::TextlessFound(_)

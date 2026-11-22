@@ -210,6 +210,7 @@ pub fn update(
         | SettingsMessage::FolderPicked { .. }
         | SettingsMessage::FolderGranted { .. }
         | SettingsMessage::RemoveFolder(_)
+        | SettingsMessage::StopContinuous(_)
         | SettingsMessage::EditFolder(_)
         | SettingsMessage::ReplaceFolder(_)
         | SettingsMessage::AddOwnDetail(_)

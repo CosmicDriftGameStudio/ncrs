@@ -29,6 +29,7 @@ fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         images: false,
         is_target,
         transfer: Default::default(),
+        continuous: false,
     }
 }
 

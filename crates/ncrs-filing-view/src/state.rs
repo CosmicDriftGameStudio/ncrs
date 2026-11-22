@@ -57,6 +57,9 @@ pub struct Session {
     pub shown: Option<LivePlan>,
     /// The version of the run's plan that `plan` holds.
     pub seen_version: u64,
+    /// The source is to be filed continuously once this run is filed; closing
+    /// the tab without filing drops the wish with the session.
+    pub then_continuous: bool,
 }
 
 impl Session {
@@ -83,6 +86,7 @@ impl Session {
             listing: false,
             shown: None,
             seen_version: 0,
+            then_continuous: false,
         }
     }
 
@@ -110,6 +114,12 @@ impl Session {
     pub fn set_override(&mut self, from: PathBuf, change: Override) {
         self.overrides.insert(from, change);
         self.refresh_shown();
+    }
+
+    /// The tab still plans or files its folder; a finished plan that waits
+    /// for the user does not hold the background filing back.
+    pub fn is_working(&self) -> bool {
+        self.filing || !self.plan_is_done()
     }
 
     pub fn plan_is_done(&self) -> bool {

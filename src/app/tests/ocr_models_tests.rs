@@ -253,6 +253,7 @@ async fn the_documents_found_without_text_are_queued_without_a_question() {
         images: false,
         is_target: false,
         transfer: Default::default(),
+        continuous: false,
     }];
     let found = (0..3)
         .map(|n| PathBuf::from(format!("/home/test/Scans/scan{n}.pdf")))

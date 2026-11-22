@@ -141,6 +141,7 @@ fn panel_app(language: Language) -> App {
         images: false,
         is_target,
         transfer: Default::default(),
+        continuous: false,
     };
     let hermes = [
         folder("Public", ncrs_intake::LocationMode::Inbox, false),

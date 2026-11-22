@@ -2569,6 +2569,12 @@
       "de": "{filed} abgelegt, {reviewed} brauchen einen Blick"
     },
     {
+      "key": "status.continuous_filed",
+      "context": "Status bar message after Hermes filed new files of a read folder by itself, because filing continuously is on for it. {count} is the number of files, {folder} the name of the read folder.",
+      "en": "Hermes filed {count} files from {folder}.",
+      "de": "Hermes hat {count} Dateien aus {folder} einsortiert."
+    },
+    {
       "key": "action.download_ai_model",
       "context": "Entry of the command palette that runs the key action download_ai_model, which opens the card asking whether to download the AI model that reads documents the rules could not read. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a card with a question follows.",
       "en": "Download AI model…",
@@ -4465,10 +4471,22 @@
       "de": "Erneut verarbeiten"
     },
     {
-      "key": "hermes_menu.set_inbox",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder a read folder of Hermes.",
-      "en": "Set as read folder",
-      "de": "Als Lesen-Ordner festlegen"
+      "key": "hermes_menu.file_once",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the Ablegen tab, which files the folder's files into the write folder once. The ellipsis says a tab with a plan follows.",
+      "en": "File…",
+      "de": "Einsortieren…"
+    },
+    {
+      "key": "hermes_menu.file_continuously",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the Ablegen tab; once the run is filed, Hermes files new files of the folder by itself when it is sure. The ellipsis says a tab with a plan follows.",
+      "en": "File continuously…",
+      "de": "Laufend einsortieren…"
+    },
+    {
+      "key": "hermes_menu.stop_continuous",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor that Hermes files continuously. Stops that; the folder stays a read folder.",
+      "en": "Stop filing continuously",
+      "de": "Laufend einsortieren beenden"
     },
     {
       "key": "hermes_menu.set_filing_location",
@@ -4643,6 +4661,24 @@
       "context": "Entry of the command list and the menu that runs the key action hermes_process_again: runs the file under the cursor through the Hermes steps again.",
       "en": "Process again",
       "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "action.hermes_file_once",
+      "context": "Entry of the command list that runs the key action hermes_file_once: opens the Ablegen tab for the folder under the cursor, which files its files into the write folder once.",
+      "en": "File folder…",
+      "de": "Ordner einsortieren…"
+    },
+    {
+      "key": "action.hermes_file_continuously",
+      "context": "Entry of the command list that runs the key action hermes_file_continuously: opens the Ablegen tab for the folder under the cursor; once the run is filed, Hermes files new files of the folder by itself when it is sure.",
+      "en": "File folder continuously…",
+      "de": "Ordner laufend einsortieren…"
+    },
+    {
+      "key": "action.hermes_stop_continuous",
+      "context": "Entry of the command list that runs the key action hermes_stop_continuous: the folder under the cursor is no longer filed continuously.",
+      "en": "Stop filing continuously",
+      "de": "Laufend einsortieren beenden"
     },
     {
       "key": "action.hermes_set_inbox",
@@ -7951,6 +7987,12 @@
       "de": "{folder} aufräumen"
     },
     {
+      "key": "hermes_chat.run_name_continuous",
+      "context": "Hermes (filing continuously): Name of the run in the undo history that Hermes made by itself for new files of a read folder. {folder} is the read folder name.",
+      "en": "{folder} filed continuously",
+      "de": "{folder} laufend einsortiert"
+    },
+    {
       "key": "hermes_chat.trash_run_name",
       "context": "Hermes chat (F2): Name of a trash run in the undo history. {folder} is the folder name.",
       "en": "Duplicates cleared from {folder}",
@@ -8414,7 +8456,13 @@
     },
     {
       "key": "hermes_chat.always_set",
-      "context": "Hermes chat (F2): Hermes says what the answer Always does: it watches the folder, files at once what a confirmed rule of the user matches, and leaves everything else waiting for the user's OK. {folder} is the watched folder.",
+      "context": "Hermes chat (F2): Hermes says what the answer Always does: it files the folder once in the Filing tab now, and after that files new files by itself when it is sure and shows the rest in that tab. Nothing is switched on before the run in the tab is filed. {folder} is the folder.",
+      "en": "Understood: I'll file {folder} once in the Filing tab now. After that I file new files myself when I'm sure, and show you the rest there.",
+      "de": "Verstanden: Ich sortiere {folder} jetzt einmal im Tab Ablegen ein. Danach lege ich neue Dateien selbst ab, wenn ich mir sicher bin; den Rest zeige ich dir dort."
+    },
+    {
+      "key": "hermes_chat.always_set_deciding",
+      "context": "Hermes chat (F2): Hermes says what the answer Always does while the user decides file by file in the chat: it watches the folder, files at once what a confirmed rule of the user matches, and leaves everything else waiting for the user's OK. {folder} is the watched folder.",
       "en": "Understood: I'm watching {folder}. What one of your rules matches I file; everything else waits for your OK.",
       "de": "Verstanden: ich beobachte {folder}. Was eine deiner Regeln trifft, lege ich ab; alles andere wartet auf dein OK."
     },
@@ -8891,6 +8939,18 @@
       "context": "Part of the status text of a read folder on the Hermes page: files are copied and the originals stay in the folder. Lower case verb.",
       "en": "copy",
       "de": "kopieren"
+    },
+    {
+      "key": "settings.hermes_status_continuous",
+      "context": "Part of the status text of a read folder on the Hermes page: Hermes files new files of the folder by itself when it is sure. Lower case, one word.",
+      "en": "continuous",
+      "de": "laufend"
+    },
+    {
+      "key": "settings.hermes_stop_continuous",
+      "context": "Button in the row of a read folder on the Hermes page that Hermes files continuously: Hermes stops filing its new files by itself; the folder stays a read folder.",
+      "en": "Stop filing continuously",
+      "de": "Laufend einsortieren beenden"
     },
     {
       "key": "settings.hermes_status_images",

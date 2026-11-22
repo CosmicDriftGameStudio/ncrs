@@ -38,7 +38,9 @@ use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
-use crate::hermes_column::{ColumnView, FolderRole, HermesFileState};
+#[cfg(test)]
+use crate::hermes_column::FolderRole;
+use crate::hermes_column::{ColumnView, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};

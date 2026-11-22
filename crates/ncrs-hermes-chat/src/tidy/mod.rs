@@ -233,11 +233,11 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
         .as_ref()
         .and_then(|proposal| proposal.transfer);
     let (source, chosen_target) = (tidy.source.clone(), tidy.target.clone());
-    let watch_source = always && !ctx.sources.contains(&source);
+    let is_new_source = !ctx.sources.contains(&source);
     let deciding = state.session.deciding.is_some();
     if always {
         state.session.keeps_filing = true;
-        if deciding && watch_source {
+        if deciding && is_new_source {
             state.queued_action = Some(Action::SetFolderRole {
                 folder: tidy.source.clone(),
                 role: FolderRole::Inbox,
@@ -246,7 +246,15 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
         let shown = folder_name(ctx, &tidy.source);
         say(
             state,
-            fill(ctx.lang, Msg::HermesChatAlwaysSet, &[("folder", &shown)]),
+            fill(
+                ctx.lang,
+                if deciding {
+                    Msg::HermesChatAlwaysSetDeciding
+                } else {
+                    Msg::HermesChatAlwaysSet
+                },
+                &[("folder", &shown)],
+            ),
             Vec::new(),
         );
     }
@@ -267,7 +275,7 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
     state.queued_action = Some(Action::OpenFiling {
         source,
         target,
-        watch_source,
+        watch_source: always,
     });
 }
 

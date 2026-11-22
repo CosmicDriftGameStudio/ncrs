@@ -51,7 +51,9 @@ impl App {
                 excluded: self.hermes.cursor_is_excluded(&entry.path, entry.is_dir),
                 can_be_handed_to_inbox: roles.can_be_handed_to_inbox,
                 lies_in_a_filing_location: roles.lies_in_a_filing_location,
-                inbox_role_is_free: roles.inbox_role_is_free,
+                is_write_folder: roles.is_write_folder,
+                lies_in_write_folder: roles.lies_in_write_folder,
+                is_continuous: roles.is_continuous,
                 filing_location_role_is_free: roles.filing_location_role_is_free,
                 archive_role_is_free: roles.archive_role_is_free,
             }
@@ -61,6 +63,7 @@ impl App {
             active: self.hermes.is_active(),
             has_inquiry_paths: !self.inquiry_paths().is_empty(),
             has_live_pipeline: self.hermes.live_pipeline().is_some(),
+            has_write_folder: self.hermes.write_folder().is_some(),
             cursor,
         }
     }
@@ -73,6 +76,9 @@ impl App {
         &mut self,
         message: HermesFileMessage,
     ) -> Task<Message> {
+        if let HermesFileMessage::FileOnce | HermesFileMessage::FileContinuously = message {
+            return self.file_folder_in_the_tab(message == HermesFileMessage::FileContinuously);
+        }
         let action_sources = if matches!(message, HermesFileMessage::ProcessAgain) {
             self.action_sources()
         } else {
@@ -89,6 +95,47 @@ impl App {
         drop(ctx);
         self.hermes = hermes;
         asked.map_or_else(Task::none, |outcome| self.run_hermes_outcome(outcome))
+    }
+
+    /// Opens the filing tab for the folder under the cursor, into the write
+    /// folder; `continuously` keeps the folder filing by itself once the run
+    /// is filed.
+    fn file_folder_in_the_tab(&mut self, continuously: bool) -> Task<Message> {
+        let action = if continuously {
+            HermesAction::FileContinuously
+        } else {
+            HermesAction::FileOnce
+        };
+        if !self.hermes_action_enabled(action) {
+            return Task::none();
+        }
+        let Some(source) = self.hermes_cursor_entry().map(|entry| entry.path.clone()) else {
+            return Task::none();
+        };
+        let Some(target) = self.hermes.write_folder().map(Path::to_path_buf) else {
+            return Task::none();
+        };
+        let task = self.open_filing(source, target);
+        if let Some(session) = self.filing_view.session.as_mut() {
+            session.then_continuous = continuously;
+        }
+        task
+    }
+
+    /// The handle and the model of the background filing, when Hermes is
+    /// ready and its AI is on.
+    pub(in crate::app) fn continuous_tools(&self) -> Option<ncrs_hermes_ui::ContinuousTools> {
+        let model = self
+            .chat_ai_on()
+            .then(|| self.chat_model.clone())
+            .flatten()?;
+        match self.chat_availability() {
+            ncrs_hermes_chat::Availability::Ready(ready) => Some(ncrs_hermes_ui::ContinuousTools {
+                access: (*ready).with_model(Some(Arc::clone(&model))),
+                model,
+            }),
+            _ => None,
+        }
     }
 
     fn hermes_ctx(
@@ -119,6 +166,13 @@ impl App {
             chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
+            continuous: self.continuous_tools(),
+            filing_tab_source: self
+                .filing_view
+                .session
+                .as_ref()
+                .filter(|session| session.is_working())
+                .map(|session| session.source.as_path()),
             window_size: self.window_size,
             config_path: self.config_path.as_deref(),
             home: &self.home,

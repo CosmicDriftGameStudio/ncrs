@@ -56,6 +56,15 @@ fn state_with(files: Vec<LiveFile>, done: bool) -> State {
     }
 }
 
+#[test]
+fn only_a_tab_that_plans_or_files_is_working() {
+    assert!(session(&simple(false)).is_working());
+    assert!(!session(&simple(true)).is_working());
+    let mut filing = simple(true);
+    filing.session.as_mut().unwrap().filing = true;
+    assert!(session(&filing).is_working());
+}
+
 fn session(state: &State) -> &Session {
     state.session.as_ref().unwrap()
 }

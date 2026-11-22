@@ -91,6 +91,9 @@ fn folder_status(location: &FilingLocation, lang: Language) -> String {
             LocationTransfer::Copy => Msg::SettingsHermesStatusCopy,
         }),
     ];
+    if location.continuous {
+        parts.push(lang.text(Msg::SettingsHermesStatusContinuous));
+    }
     if location.images {
         parts.push(lang.text(Msg::SettingsHermesStatusImages));
     }
@@ -111,11 +114,20 @@ fn read_folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                 Some(SettingsMessage::EditFolder(Some(location.path.clone()))),
                 Tone::Secondary,
             );
+            let mut buttons = vec![change];
+            if location.continuous {
+                buttons.push(RowButton::new(
+                    lang.text(Msg::SettingsHermesStopContinuous),
+                    Some(SettingsMessage::StopContinuous(location.path.clone())),
+                    Tone::Secondary,
+                ));
+            }
+            buttons.push(remove_folder_button(location, view));
             folder_row(
                 location,
                 Some(folder_status(location, lang)),
                 None,
-                vec![change, remove_folder_button(location, view)],
+                buttons,
                 view,
             )
         })

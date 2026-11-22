@@ -254,7 +254,11 @@ pub enum HermesAction {
     ShowSuggestion,
     HandToInbox,
     ProcessAgain,
-    SetInbox,
+    /// Opens the filing tab for the folder under the cursor, once.
+    FileOnce,
+    /// The same, and the folder files its new files by itself after the run.
+    FileContinuously,
+    StopContinuous,
     SetFilingLocation,
     SetArchive,
     Exclude,
@@ -264,11 +268,13 @@ pub enum HermesAction {
 
 impl HermesAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [HermesAction; 9] = [
+    pub const ALL: [HermesAction; 11] = [
         HermesAction::ShowSuggestion,
         HermesAction::HandToInbox,
         HermesAction::ProcessAgain,
-        HermesAction::SetInbox,
+        HermesAction::FileOnce,
+        HermesAction::FileContinuously,
+        HermesAction::StopContinuous,
         HermesAction::SetFilingLocation,
         HermesAction::SetArchive,
         HermesAction::Exclude,
@@ -283,7 +289,9 @@ impl HermesAction {
             HermesAction::ShowSuggestion
             | HermesAction::HandToInbox
             | HermesAction::ProcessAgain
-            | HermesAction::SetInbox
+            | HermesAction::FileOnce
+            | HermesAction::FileContinuously
+            | HermesAction::StopContinuous
             | HermesAction::SetFilingLocation
             | HermesAction::SetArchive
             | HermesAction::Exclude
@@ -298,7 +306,9 @@ impl HermesAction {
             HermesAction::ShowSuggestion
             | HermesAction::HandToInbox
             | HermesAction::ProcessAgain
-            | HermesAction::SetInbox
+            | HermesAction::FileOnce
+            | HermesAction::FileContinuously
+            | HermesAction::StopContinuous
             | HermesAction::SetFilingLocation
             | HermesAction::SetArchive
             | HermesAction::Exclude
@@ -312,7 +322,9 @@ impl HermesAction {
             HermesAction::ShowSuggestion => Msg::HermesMenuShowSuggestion,
             HermesAction::HandToInbox => Msg::HermesMenuHandToInbox,
             HermesAction::ProcessAgain => Msg::HermesMenuProcessAgain,
-            HermesAction::SetInbox => Msg::HermesMenuSetInbox,
+            HermesAction::FileOnce => Msg::HermesMenuFileOnce,
+            HermesAction::FileContinuously => Msg::HermesMenuFileContinuously,
+            HermesAction::StopContinuous => Msg::HermesMenuStopContinuous,
             HermesAction::SetFilingLocation => Msg::HermesMenuSetFilingLocation,
             HermesAction::SetArchive => Msg::HermesMenuSetArchive,
             HermesAction::Exclude => Msg::HermesMenuExclude,
@@ -328,7 +340,9 @@ impl HermesAction {
             HermesAction::SetArchive => Some(Msg::HermesMenuNoteReadOnly),
             HermesAction::ShowSuggestion
             | HermesAction::ProcessAgain
-            | HermesAction::SetInbox
+            | HermesAction::FileOnce
+            | HermesAction::FileContinuously
+            | HermesAction::StopContinuous
             | HermesAction::SetFilingLocation
             | HermesAction::Exclude
             | HermesAction::Include
@@ -371,15 +385,16 @@ struct Submenu {
     open: bool,
 }
 
-fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 4] {
+fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 5] {
     [
         vec![HermesAction::ShowSuggestion],
         vec![HermesAction::HandToInbox, HermesAction::ProcessAgain],
         vec![
-            HermesAction::SetInbox,
-            HermesAction::SetFilingLocation,
-            HermesAction::SetArchive,
+            HermesAction::FileOnce,
+            HermesAction::FileContinuously,
+            HermesAction::StopContinuous,
         ],
+        vec![HermesAction::SetFilingLocation, HermesAction::SetArchive],
         vec![
             if excluded {
                 HermesAction::Include

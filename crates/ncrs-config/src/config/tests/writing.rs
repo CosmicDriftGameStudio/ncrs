@@ -932,6 +932,7 @@ fn the_same_folder_in_another_case_overlaps_where_the_file_system_ignores_case()
             images: false,
             is_target: false,
             transfer: Default::default(),
+            continuous: false,
         },
         FilingLocation {
             path: PathBuf::from("/home/user/archive"),
@@ -939,6 +940,7 @@ fn the_same_folder_in_another_case_overlaps_where_the_file_system_ignores_case()
             images: false,
             is_target: true,
             transfer: Default::default(),
+            continuous: false,
         },
     ];
     let expected = if cfg!(any(windows, target_os = "macos")) {
