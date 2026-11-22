@@ -47,6 +47,11 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
         open + page.already_filed().len(),
         "the page lists what the index holds and the copies of archive files"
     );
+    assert_eq!(
+        world.index().hermes_counts().unwrap().open_reviews,
+        page.total() as u64,
+        "the sidebar and the status badge count what the page lists"
+    );
     assert!(
         page.already_filed().len() >= world.inbox.duplicates.len(),
         "the copies of archive files are not asked about"

@@ -40,6 +40,19 @@ pub struct ChangeLists {
     pub staged: Vec<ChangedFile>,
 }
 
+/// A relative path with no `..` and no `.git` component: what a status line may
+/// name before the actions read, write or delete it.
+fn is_path_inside_working_copy(path: &str) -> bool {
+    let parsed = std::path::Path::new(path);
+    !path.is_empty()
+        && !parsed.is_absolute()
+        && parsed.components().all(|part| match part {
+            std::path::Component::Normal(name) => !name.eq_ignore_ascii_case(".git"),
+            std::path::Component::CurDir => true,
+            _ => false,
+        })
+}
+
 fn kind_of_letter(letter: char) -> ChangeKind {
     match letter {
         'A' | 'C' | '?' => ChangeKind::Added,
@@ -105,6 +118,9 @@ impl Git {
             };
             if matches!(index, 'R' | 'C') || matches!(worktree, 'R' | 'C') {
                 fields.next();
+            }
+            if !is_path_inside_working_copy(chars.as_str()) {
+                continue;
             }
             entries.push(PorcelainEntry {
                 index,
@@ -213,5 +229,27 @@ pub fn discard_record(saved: Vec<SavedFile>) -> UndoRecord {
         summary: UndoSummary::Discard { files },
         description: format!("Discard {files} file(s)"),
         action: UndoAction::RestoreFiles { saved },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_path_inside_working_copy;
+
+    #[test]
+    fn paths_leaving_the_working_copy_or_naming_git_are_not_accepted() {
+        for path in [
+            "/etc/passwd",
+            "../x",
+            "a/../../x",
+            ".git/config",
+            "a/.git/hooks/x",
+            "",
+        ] {
+            assert!(!is_path_inside_working_copy(path), "{path:?}");
+        }
+        for path in ["a.txt", "dir/sub/b.rs", ".gitignore", "x/.github/y"] {
+            assert!(is_path_inside_working_copy(path), "{path:?}");
+        }
     }
 }

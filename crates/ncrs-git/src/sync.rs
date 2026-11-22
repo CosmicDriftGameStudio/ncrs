@@ -57,6 +57,7 @@ impl Git {
 
     /// Pushes a local branch, checked out or not, and sets its upstream when it has none.
     pub fn push_branch(&self, branch: &str, requested: Option<&str>) -> Result<(), ActionError> {
+        plain_ref(branch)?;
         let configured = self.branch_setting(branch, "remote");
         let remote_name = match requested.map(str::to_string).or_else(|| configured.clone()) {
             Some(found) => found,
@@ -81,7 +82,7 @@ impl Git {
                     target.trim_start_matches("refs/heads/")
                 );
                 let behind = self
-                    .try_text(&["rev-list", "--count", &tracking])
+                    .try_text(&["rev-list", "--count", &tracking, "--"])
                     .and_then(|count| count.parse().ok())
                     .unwrap_or(0);
                 Err(ActionError::Rejected { behind })

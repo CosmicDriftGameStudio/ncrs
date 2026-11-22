@@ -17,7 +17,7 @@ impl Git {
     }
 
     pub fn checkout(&self, branch: &str) -> Result<(), ActionError> {
-        self.ok(&["checkout", plain_ref(branch)?])?;
+        self.ok(&["checkout", plain_ref(branch)?, "--"])?;
         Ok(())
     }
 

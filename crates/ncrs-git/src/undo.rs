@@ -8,6 +8,8 @@ use crate::cli::Git;
 use crate::ActionError;
 
 const KEPT_BACKUP_FOLDERS: usize = 10;
+/// The width of the zero-padded nanosecond stamp that names a backup folder.
+const BACKUP_NAME_DIGITS: usize = 30;
 
 /// What the toolbar names for the undo; the view turns it into its own text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +132,15 @@ impl Git {
 
     fn new_backup_folder(&self) -> Result<PathBuf, ActionError> {
         let parent = self.git_dir()?.join("ncrs-undo");
-        fs::create_dir_all(&parent).map_err(io_error)?;
+        match fs::symlink_metadata(&parent) {
+            Ok(found) if found.is_dir() => {}
+            Ok(_) => {
+                return Err(ActionError::Io(
+                    "the undo folder in .git is not a plain folder".to_string(),
+                ))
+            }
+            Err(_) => fs::create_dir_all(&parent).map_err(io_error)?,
+        }
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
@@ -190,6 +200,7 @@ impl Git {
 
     fn restore_files(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
         for file in saved {
+            refuse_symlinks(self.root(), &file.path)?;
             if hash_of_file(&self.root().join(&file.path)) != file.after_hash {
                 return Err(ActionError::UndoNotSafe(format!(
                     "{} changed since the discard",
@@ -217,12 +228,42 @@ impl Git {
     }
 }
 
+/// Refuses a path that is, or runs through, a symlink inside `root`: a write
+/// or a read there would leave the working copy.
+pub fn refuse_symlinks(root: &Path, relative: &str) -> Result<(), ActionError> {
+    let mut current = root.to_path_buf();
+    for part in Path::new(relative).components() {
+        current.push(part);
+        match fs::symlink_metadata(&current) {
+            Ok(found) if found.file_type().is_symlink() => {
+                return Err(ActionError::Io(format!(
+                    "{relative} is or runs through a symlink"
+                )))
+            }
+            Ok(_) => {}
+            Err(_) => return Ok(()),
+        }
+    }
+    Ok(())
+}
+
+fn is_backup_folder_name(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|text| {
+        text.len() == BACKUP_NAME_DIGITS && text.bytes().all(|b| b.is_ascii_digit())
+    })
+}
+
 fn prune_backups(parent: &Path) {
     let Ok(entries) = fs::read_dir(parent) else {
         return;
     };
     let mut folders: Vec<PathBuf> = entries
-        .filter_map(|entry| entry.ok().map(|found| found.path()))
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_type().is_ok_and(|kind| kind.is_dir())
+                && is_backup_folder_name(&entry.file_name())
+        })
+        .map(|entry| entry.path())
         .collect();
     folders.sort();
     let surplus = folders.len().saturating_sub(KEPT_BACKUP_FOLDERS);

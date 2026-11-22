@@ -138,7 +138,7 @@ fn integration_of(
 /// Reads everything the actions show. Fails with `GitNotFound` or
 /// `DisabledInSandbox` where there are no actions.
 pub fn read(root: &Path, want: &Want) -> Result<Snapshot, ActionError> {
-    let git = Git::open(root)?;
+    let git = Git::open_reading(root)?;
     let changes = git.changes()?;
     let selected = resolve_selection(&changes, want.change.as_ref());
     let diff = selected.and_then(|(side, index)| {

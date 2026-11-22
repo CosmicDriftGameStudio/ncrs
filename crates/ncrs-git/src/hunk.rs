@@ -35,7 +35,7 @@ impl Git {
             format!("Stage a change in {path}"),
             || {
                 let (old, new) = self.sides(path, HunkSide::Unstaged)?;
-                let patch = patch_of(path, hunk, &old, &new);
+                let patch = patch_of(path, hunk, &old, &new)?;
                 self.ok_with_input(
                     &["apply", "--cached", "--whitespace=nowarn", "-"],
                     Some(&patch),
@@ -55,7 +55,7 @@ impl Git {
             format!("Unstage a change in {path}"),
             || {
                 let (old, new) = self.sides(path, HunkSide::Staged)?;
-                let patch = patch_of(path, hunk, &old, &new);
+                let patch = patch_of(path, hunk, &old, &new)?;
                 self.ok_with_input(
                     &["apply", "--cached", "-R", "--whitespace=nowarn", "-"],
                     Some(&patch),
@@ -68,7 +68,7 @@ impl Git {
     /// Throws the hunk away in the working copy; the whole file is saved first.
     pub fn discard_hunk(&self, path: &str, hunk: &DiffHunk) -> Result<UndoRecord, ActionError> {
         let (old, new) = self.sides(path, HunkSide::Unstaged)?;
-        let patch = patch_of(path, hunk, &old, &new);
+        let patch = patch_of(path, hunk, &old, &new)?;
         let mut saved = self.save_files(&[path.to_string()])?;
         self.ok_with_input(&["apply", "-R", "--whitespace=nowarn", "-"], Some(&patch))?;
         self.mark_discarded(&mut saved);
@@ -108,7 +108,14 @@ impl Git {
 
 /// A unified diff of the one hunk, with the lines taken verbatim from the files
 /// (line endings and a missing final newline included), so `git apply` matches.
-fn patch_of(path: &str, hunk: &DiffHunk, old: &[u8], new: &[u8]) -> Vec<u8> {
+fn patch_of(path: &str, hunk: &DiffHunk, old: &[u8], new: &[u8]) -> Result<Vec<u8>, ActionError> {
+    if path.contains(['\n', '\t', '"']) {
+        return Err(ActionError::Other {
+            git_output: format!(
+                "{path:?} has a character a patch cannot carry: use the whole-file action"
+            ),
+        });
+    }
     let old_lines: Vec<&[u8]> = old.split_inclusive(|byte| *byte == b'\n').collect();
     let new_lines: Vec<&[u8]> = new.split_inclusive(|byte| *byte == b'\n').collect();
     let mut body: Vec<u8> = Vec::new();
@@ -154,5 +161,5 @@ fn patch_of(path: &str, hunk: &DiffHunk, old: &[u8], new: &[u8]) -> Vec<u8> {
     )
     .into_bytes();
     patch.extend_from_slice(&body);
-    patch
+    Ok(patch)
 }

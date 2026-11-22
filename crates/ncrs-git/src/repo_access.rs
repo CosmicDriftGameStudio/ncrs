@@ -16,22 +16,48 @@ pub fn open(root: &Path) -> Result<gix::Repository, GitError> {
     Ok(repository)
 }
 
+fn is_repository_driver_section(section: &gix::config::file::SectionRef<'_>, kind: &[u8]) -> bool {
+    let header = section.header();
+    section.meta().source.kind() == gix::config::source::Kind::Repository
+        && header.subsection_name().is_some()
+        && header.name().eq_ignore_ascii_case(kind)
+}
+
 fn drop_repository_command_drivers(repository: &mut gix::Repository) {
     let mut snapshot = repository.config_snapshot_mut();
     let drivers: Vec<_> = snapshot
         .sections_and_ids()
         .filter(|(section, _)| {
-            let header = section.header();
-            let name = header.name();
-            section.meta().source.kind() == gix::config::source::Kind::Repository
-                && header.subsection_name().is_some()
-                && (name.eq_ignore_ascii_case(b"filter") || name.eq_ignore_ascii_case(b"diff"))
+            is_repository_driver_section(section, b"filter")
+                || is_repository_driver_section(section, b"diff")
         })
         .map(|(_, id)| id)
         .collect();
     for id in drivers {
         snapshot.remove_section_by_id(id);
     }
+}
+
+/// The names of the filter drivers the repository's own config defines: the
+/// ones a `git` call for reading has to switch off.
+pub fn repository_filter_names(root: &Path) -> Vec<String> {
+    let Ok(mut repository) = gix::open(root) else {
+        return Vec::new();
+    };
+    let snapshot = repository.config_snapshot_mut();
+    let mut names: Vec<String> = snapshot
+        .sections_and_ids()
+        .filter(|(section, _)| is_repository_driver_section(section, b"filter"))
+        .filter_map(|(section, _)| {
+            section
+                .header()
+                .subsection_name()
+                .map(|name| name.to_string())
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 pub fn short_hash(id: &ObjectId) -> String {

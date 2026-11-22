@@ -80,7 +80,7 @@ fn candidates() -> Vec<PathBuf> {
         ]
     };
     found.extend(fixed.iter().map(PathBuf::from));
-    found.retain(|candidate| candidate.is_file());
+    found.retain(|candidate| candidate.is_absolute() && candidate.is_file());
     found
 }
 
@@ -145,8 +145,31 @@ impl Output {
     pub fn combined(&self) -> String {
         let out = String::from_utf8_lossy(&self.stdout);
         let both = format!("{}\n{}", self.stderr.trim_end(), out.trim_end());
-        both.trim().to_string()
+        redact_credentials(both.trim())
     }
+}
+
+/// `https://user:pass@host` becomes `https://***@host`: git echoes remote URLs
+/// in its messages, and those end up on screen and in logs.
+fn redact_credentials(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(position) = rest.find("://") {
+        let (before, after) = rest.split_at(position + 3);
+        result.push_str(before);
+        let authority_end = after
+            .find(|letter: char| letter == '/' || letter.is_whitespace())
+            .unwrap_or(after.len());
+        match after[..authority_end].rfind('@') {
+            Some(at) => {
+                result.push_str("***");
+                rest = &after[at..];
+            }
+            None => rest = after,
+        }
+    }
+    result.push_str(rest);
+    result
 }
 
 /// One repository and the git that writes to it. Every call blocks.
@@ -154,7 +177,15 @@ impl Output {
 pub struct Git {
     exe: PathBuf,
     root: PathBuf,
+    /// Filter drivers of the repository's own config to switch off; set only
+    /// for a `Git` that reads (see `open_reading`).
+    reading_without: Option<Vec<String>>,
 }
+
+#[cfg(windows)]
+const NULL_DEVICE: &str = "NUL";
+#[cfg(not(windows))]
+const NULL_DEVICE: &str = "/dev/null";
 
 impl Git {
     pub fn open(root: &Path) -> Result<Self, ActionError> {
@@ -165,9 +196,19 @@ impl Git {
             GitCli::Available(exe) => Ok(Self {
                 exe: exe.clone(),
                 root: root.to_path_buf(),
+                reading_without: None,
             }),
             GitCli::NotFound => Err(ActionError::GitNotFound),
         }
+    }
+
+    /// Like `open`, for calls that only read: no hooks, no optional index
+    /// refresh and none of the filter commands the repository's own config
+    /// names, so showing a folder never runs what a downloaded `.git/config` says.
+    pub fn open_reading(root: &Path) -> Result<Self, ActionError> {
+        let mut git = Self::open(root)?;
+        git.reading_without = Some(crate::repo_access::repository_filter_names(root));
+        Ok(git)
     }
 
     pub fn root(&self) -> &Path {
@@ -181,6 +222,16 @@ impl Git {
             .arg(&self.root)
             // A repository from a download must not make every call start a watcher it names.
             .args(["-c", "core.fsmonitor=false"]);
+        if let Some(filters) = &self.reading_without {
+            command
+                .env("GIT_OPTIONAL_LOCKS", "0")
+                .args(["-c", &format!("core.hooksPath={NULL_DEVICE}")]);
+            for name in filters {
+                for key in ["clean", "smudge", "process"] {
+                    command.args(["-c", &format!("filter.{name}.{key}=")]);
+                }
+            }
+        }
         // File names from the view are literal, never patterns. Not for every
         // command: `stash --include-untracked` builds pathspecs itself and
         // silently leaves the untracked files in place under this flag.
@@ -278,6 +329,22 @@ impl Git {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credentials_in_urls_are_redacted_from_git_messages() {
+        assert_eq!(
+            redact_credentials("fatal: unable to access 'https://user:pw@host.example/r.git/': x"),
+            "fatal: unable to access 'https://***@host.example/r.git/': x"
+        );
+        assert_eq!(
+            redact_credentials("ssh://git@host/r and https://a:b@c/d"),
+            "ssh://***@host/r and https://***@c/d"
+        );
+        assert_eq!(
+            redact_credentials("see https://host/path@x"),
+            "see https://host/path@x"
+        );
+    }
 
     #[test]
     fn the_mac_stub_is_not_started_without_the_command_line_tools() {

@@ -3291,8 +3291,8 @@
     {
       "key": "reviews_page.hint_target_taken",
       "context": "Line under the group whose target is taken on the reviews page. Nothing is deleted for good: removed files go to the trash.",
-      "en": "Delete the duplicate, overwrite or keep both. Removed files go to the trash.",
-      "de": "Doppelte löschen, überschreiben oder beide behalten. Entfernte Dateien liegen im Papierkorb."
+      "en": "Overwrite or keep both. Removed files go to the trash.",
+      "de": "Überschreiben oder beide behalten. Entfernte Dateien liegen im Papierkorb."
     },
     {
       "key": "reviews_page.question_rule",

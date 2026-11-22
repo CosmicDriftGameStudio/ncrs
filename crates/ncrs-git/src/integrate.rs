@@ -182,6 +182,13 @@ impl Git {
         block: usize,
         choice: ConflictChoice,
     ) -> Result<(), ActionError> {
+        if !self
+            .conflicts()?
+            .iter()
+            .any(|conflict| conflict.path == path)
+        {
+            return Err(other(format!("{path} is not in conflict")));
+        }
         self.rewrite_conflicts(path, Some(block), choice)
     }
 
@@ -304,6 +311,7 @@ impl Git {
         block: Option<usize>,
         choice: ConflictChoice,
     ) -> Result<(), ActionError> {
+        crate::undo::refuse_symlinks(self.root(), path)?;
         let file = self.root().join(path);
         let bytes = fs::read(&file).map_err(io_error)?;
         let text = String::from_utf8(bytes)
