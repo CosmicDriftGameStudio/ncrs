@@ -795,7 +795,7 @@ mod acceptance_v150;
 mod acceptance_v160;
 
 #[cfg(test)]
-mod acceptance_v160_git;
+pub mod acceptance_v160_git;
 
 #[cfg(test)]
 mod acceptance_v160_notes_chats;

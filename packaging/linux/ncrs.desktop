@@ -2,7 +2,7 @@
 Type=Application
 Name=ncrs
 GenericName=File Manager
-Comment=A fast, keyboard-first dual-panel file manager, built with iced
+Comment=Keyboard-first dual-panel file manager with Git, SFTP, archives and AI document filing
 Exec=ncrs %U
 Icon=ncrs
 Terminal=false

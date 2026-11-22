@@ -1,4 +1,4 @@
-# NC-rs
+# ncrs
 
 [![CI](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml/badge.svg)](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/CosmicDriftGameStudio/ncrs?label=release)](https://github.com/CosmicDriftGameStudio/ncrs/releases/latest)
@@ -7,8 +7,11 @@
 
 A fast, keyboard-first **dual-panel file manager**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
+It has Git in the panels, folder compare, batch rename, encrypted notes, archives
+and SFTP, and its assistant Hermes files letters and invoices into your own
+folders with a language model that runs on your machine.
 
-![NC-rs with two panels](docs/screenshots/main.png)
+![ncrs with two panels](docs/screenshots/main.png)
 
 The architecture follows the principles of editors like Zed: async I/O, message-driven
 state, pure views, and a strict separation between UI components, filesystem layer and
@@ -26,6 +29,7 @@ network and what it stores is in [PRIVACY.md](PRIVACY.md).
 | System | Command |
 | --- | --- |
 | macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs`, after adding the tap below |
+| macOS (App Store) | [Mac App Store](https://apps.apple.com/app/id6828066808), paid, runs in Apple's sandbox |
 | Debian, Ubuntu | `sudo apt install ncrs`, after adding the repository below |
 | Fedora | `sudo dnf install ncrs`, after adding the repository below |
 | openSUSE | `sudo zypper install ncrs`, after adding the repository below |

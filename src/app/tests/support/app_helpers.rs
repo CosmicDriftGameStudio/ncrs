@@ -144,7 +144,16 @@ impl App {
         query: &str,
         hits_below: impl FnOnce(&Path) -> SearchFilters,
     ) -> Self {
-        let mut app = Self::with_fixed_panels();
+        Self::with_fixed_panels().searching_filters_for_test(query, hits_below)
+    }
+
+    /// `with_search_filters` on an app that is already set up.
+    pub fn searching_filters_for_test(
+        mut self,
+        query: &str,
+        hits_below: impl FnOnce(&Path) -> SearchFilters,
+    ) -> Self {
+        let app = &mut self;
         // The home the README screenshots use, so the search shows the same paths.
         app.panels.left.path = PathBuf::from("/Users/alex/Documents");
         drop(app.update(Message::OpenSearch));
@@ -157,7 +166,7 @@ impl App {
             view.filters = Some(hits_below(&root));
             view.mirror_index(rows);
         }
-        app
+        self
     }
 
     pub fn search_rows_for_test(&self) -> usize {

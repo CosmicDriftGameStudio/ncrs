@@ -27,6 +27,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if state.row_count() == 0 {
         return notice(ctx, Msg::GitViewNoCommits);
     }
+    let show_sha = !super::is_narrow(ctx);
     let lanes = log.lane_count.max(1);
     let graph_width = LANE_WIDTH * lanes as f32;
     let working = state.has_working_row().then(|| {
@@ -48,6 +49,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 author: String::new(),
                 date: String::new(),
                 sha: String::new(),
+                show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
                 dimmed: false,
                 on_press: Message::CommitPressed(0),
@@ -70,6 +72,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 author: commit.author.clone(),
                 date: date_of(commit, ctx),
                 sha: commit.short.clone(),
+                show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == row,
                 dimmed: commit.is_merge,
                 on_press: Message::CommitPressed(row),
@@ -99,6 +102,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             ctx.lang.text(Msg::GitViewColumnDate),
             ctx.lang.text(Msg::GitViewColumnSha),
         ],
+        show_sha,
         palette,
     );
     column![

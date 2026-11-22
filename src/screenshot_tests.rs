@@ -16,6 +16,7 @@ use crate::messages::{
     BatchRenameMessage, FavouritesBarMessage, MenuMessage, Message, PanelMessage, PanelSide,
     SettingField, SettingsFeature, SettingsMessage,
 };
+use crate::screenshot_scenes::{dense_document_search, filing_tab, monitor, Scenes};
 use crate::shot_file::write_screenshot_to;
 use ncrs_core::CompareMark;
 use ncrs_search::engine::LineMatch;
@@ -259,8 +260,22 @@ fn compare_app() -> App {
 fn batch_rename_app() -> App {
     let mut app = showcase_app();
     app.activate_panel_for_test(PanelSide::Right);
-    for name in ["holiday-001.jpg", "holiday-002.jpg", "holiday-003.jpg"] {
-        app.panel_mut_for_test(PanelSide::Right)
+    let photos: Vec<String> = (1..=12)
+        .map(|number| format!("holiday-{number:03}.jpg"))
+        .collect();
+    let downloads = app.panel_mut_for_test(PanelSide::Right);
+    let last = position_of(&downloads.entries, "holiday-003.jpg");
+    let Some(template) = downloads.entries.get(last).cloned() else {
+        return app;
+    };
+    for (offset, name) in photos.iter().skip(3).enumerate() {
+        let mut photo = template.clone();
+        photo.name = OsString::from(name);
+        photo.path = PathBuf::from(DOWNLOADS_DIRECTORY).join(name);
+        downloads.entries.insert(last + 1 + offset, photo);
+    }
+    for name in &photos {
+        downloads
             .selection
             .toggle(&PathBuf::from(DOWNLOADS_DIRECTORY).join(name));
     }
@@ -351,6 +366,7 @@ fn write_screenshot(app: &App, file_name: &str) {
     write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -413,42 +429,89 @@ mod tests {
             FILING_WINDOW_SIZE,
             "own-server.png",
         );
+
+        let pages = Scenes::new();
+        let page_app = || showcase_app().with_window_size_for_test(FILING_WINDOW_SIZE);
+        let page = |shown: &App, file_name: &str| {
+            write_screenshot_to(shown, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, file_name);
+        };
+        page(&page_app().showing_git_for_test(pages.git()), "git.png");
+        page(
+            &page_app().showing_notes_for_test(pages.notes()),
+            "notes.png",
+        );
+        page(
+            &page_app().showing_monitor_for_test(monitor(FILING_WINDOW_SIZE)),
+            "monitor.png",
+        );
+        page(
+            &page_app().showing_filing_for_test(filing_tab(34, false)),
+            "filing-tab.png",
+        );
     }
 
     #[test]
     #[ignore = "writes docs/store-screenshots; run with `cargo test -p ncrs --features media-tools store_screenshots -- --ignored`"]
     fn store_screenshots() {
+        let pages = Scenes::new();
         for (file_prefix, language) in [("en", Language::English), ("de", Language::German)] {
             let showcase = || showcase_app().in_language(language);
+            let paged = |app: App| {
+                app.in_language(language)
+                    .with_window_size_for_test(STORE_WINDOW_SIZE)
+            };
 
-            let main = showcase();
-
-            let mut search = showcase();
-            search.show_search_results_for_test("hello", showcase_search_results());
-
-            let mut context = showcase();
-            context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
-            drop(context.update(Message::Files(MenuMessage::ContextMenuAt {
-                side: PanelSide::Left,
-                index: 5,
-            })));
-
-            let mut menu = showcase();
-            menu.open_volume_menu_for_test(PanelSide::Left, drives());
-
-            let mut delete = showcase();
-            drop(delete.update(Message::Delete { permanent: false }));
-
-            let scenes = [
-                ("1-main", main),
-                ("2-search", search),
-                ("3-context-menu", context),
-                ("4-drive-menu", menu),
-                ("5-delete", delete),
+            type Scene<'a> = (&'static str, Box<dyn Fn() -> App + 'a>);
+            let scenes: [Scene<'_>; 10] = [
+                ("1-main", Box::new(showcase)),
+                (
+                    "2-git",
+                    Box::new(|| paged(showcase_app()).showing_git_for_test(pages.git())),
+                ),
+                (
+                    "3-filing",
+                    Box::new(|| {
+                        paged(showcase_app()).showing_filing_for_test(filing_tab(34, false))
+                    }),
+                ),
+                (
+                    "4-document-search",
+                    Box::new(|| dense_document_search(showcase_app()).in_language(language)),
+                ),
+                (
+                    "5-compare",
+                    Box::new(|| compare_app().in_language(language)),
+                ),
+                (
+                    "6-batch-rename",
+                    Box::new(|| batch_rename_app().in_language(language)),
+                ),
+                (
+                    "7-notes",
+                    Box::new(|| paged(showcase_app()).showing_notes_for_test(pages.notes())),
+                ),
+                (
+                    "8-search",
+                    Box::new(|| {
+                        let mut search = showcase();
+                        search.show_search_results_for_test("hello", showcase_search_results());
+                        search
+                    }),
+                ),
+                (
+                    "9-monitor",
+                    Box::new(|| {
+                        paged(showcase_app()).showing_monitor_for_test(monitor(STORE_WINDOW_SIZE))
+                    }),
+                ),
+                (
+                    "10-viewer",
+                    Box::new(|| paged(showcase_app()).showing_viewer_for_test(pages.viewer())),
+                ),
             ];
-            for (name, app) in scenes {
+            for (name, build) in scenes {
                 write_screenshot_to(
-                    &app,
+                    &build(),
                     STORE_DIRECTORY,
                     STORE_WINDOW_SIZE,
                     &format!("{file_prefix}-{name}.png"),

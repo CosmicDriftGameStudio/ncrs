@@ -1,4 +1,4 @@
-//! NC-rs – a fast, keyboard-first dual-panel file manager.
+//! ncrs – a fast, keyboard-first dual-panel file manager.
 //!
 //! The async runtime is tokio: iced's `tokio` feature makes the iced executor
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
@@ -14,6 +14,8 @@ mod e2e_tests;
 mod hermes_protocol;
 // The generators of the README, store and trailer pictures: they assert
 // nothing, so the normal test build leaves them out.
+#[cfg(all(test, feature = "media-tools"))]
+mod screenshot_scenes;
 #[cfg(all(test, feature = "media-tools"))]
 mod screenshot_tests;
 #[cfg(test)]

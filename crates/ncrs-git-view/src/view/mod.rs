@@ -24,6 +24,14 @@ pub const DIFF_ID: &str = "git-diff";
 const COMMITS_ID: &str = "git-commits";
 const DETAIL_ID: &str = "git-detail";
 const SIDEBAR_ID: &str = "git-sidebar";
+/// Below this window width the detail pane is as wide as the sidebar and the
+/// commit list drops its SHA column, so the message keeps its room. Windows of
+/// 1400 and more keep the full layout.
+const NARROW_WIDTH: f32 = 1400.0;
+
+fn is_narrow(ctx: ViewCtx<'_>) -> bool {
+    ctx.window.width < NARROW_WIDTH
+}
 
 /// The title of the tab, `None` while the tab is not open.
 pub fn tab_title(state: &State, lang: Language) -> Option<String> {
@@ -60,7 +68,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             theme::vertical_rule(palette.border_inactive),
             container(commits::view(state, ctx)).width(Length::Fill),
             theme::vertical_rule(palette.border_inactive),
-            container(detail::view(state, ctx)).width(size::SIDE_PANE * 1.5),
+            container(detail::view(state, ctx)).width(if is_narrow(ctx) {
+                size::SIDE_PANE
+            } else {
+                size::SIDE_PANE * 1.5
+            }),
         ]
         .height(Length::Fill)
         .into(),

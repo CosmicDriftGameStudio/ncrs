@@ -9,7 +9,7 @@ PackageName: ncrs
 PackageUrl: https://github.com/CosmicDriftGameStudio/ncrs
 License: MIT
 LicenseUrl: https://github.com/CosmicDriftGameStudio/ncrs/blob/main/LICENSE
-ShortDescription: A fast, keyboard-first dual-panel file manager, built with iced
+ShortDescription: Keyboard-first dual-panel file manager with Git, SFTP, archives and AI document filing
 Moniker: ncrs
 Tags:
   - file-manager
