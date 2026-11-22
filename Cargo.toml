@@ -189,7 +189,7 @@ local-ai = ["ncrs-ai/llama", "ncrs-settings/local-ai", "ncrs-filing/local-ai"]
 # grants, the keychain entry and the trash work differently. Off by default, and
 # without the feature nothing of it is compiled in. On other systems the feature
 # builds but changes nothing, since only macOS has the sandbox.
-sandbox = ["ncrs-fs/sandbox", "ncrs-monitor/sandbox", "ncrs-updates/sandbox"]
+sandbox = ["ncrs-fs/sandbox", "ncrs-git/sandbox", "ncrs-monitor/sandbox", "ncrs-updates/sandbox"]
 
 # Software rasterisation only: no GPU or driver needed, works on CI runners and
 # VMs, but slow on high-resolution displays.
