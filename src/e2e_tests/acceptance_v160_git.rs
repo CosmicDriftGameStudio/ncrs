@@ -24,7 +24,7 @@ const AUTHORS: [(&str, &str); 3] = [
 
 const FIRST_TICK: u64 = 1_790_000_000;
 
-fn run_git(dir: &Path, tick: u64, author: usize, args: &[&str]) -> String {
+pub(in crate::e2e_tests) fn run_git(dir: &Path, tick: u64, author: usize, args: &[&str]) -> String {
     let (name, email) = AUTHORS[author % AUTHORS.len()];
     let date = format!("{} +0000", FIRST_TICK + tick * 5_400);
     let output = Command::new("git")
@@ -111,11 +111,11 @@ fn engine_source() -> String {
         .collect()
 }
 
-fn write(root: &Path, relative: &str, text: &str) {
+pub(in crate::e2e_tests) fn write(root: &Path, relative: &str, text: &str) {
     super::write(&root.join(relative), text);
 }
 
-fn append(root: &Path, relative: &str, line: &str) {
+pub(in crate::e2e_tests) fn append(root: &Path, relative: &str, line: &str) {
     let path = root.join(relative);
     let mut text = std::fs::read_to_string(&path).unwrap_or_default();
     text.push_str(line);
@@ -123,7 +123,7 @@ fn append(root: &Path, relative: &str, line: &str) {
     super::write(&path, &text);
 }
 
-fn commit_all(root: &Path, tick: u64, author: usize, summary: &str) {
+pub(in crate::e2e_tests) fn commit_all(root: &Path, tick: u64, author: usize, summary: &str) {
     run_git(root, tick, author, &["add", "-A"]);
     run_git(root, tick, author, &["commit", "-q", "-m", summary]);
 }

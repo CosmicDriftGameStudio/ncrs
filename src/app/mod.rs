@@ -144,7 +144,7 @@ use ncrs_ops::{restore_one, Restoration};
 use ncrs_ops::{Deletion, Extracting, PendingConflict};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
-    HermesCommands, RECENT_LIMIT,
+    GitCommandEntry, HermesCommands, RECENT_LIMIT,
 };
 #[cfg(test)]
 use ncrs_pipeline::Load;
@@ -575,6 +575,8 @@ pub struct PromptKeyState {
     pub git_filter: bool,
     /// A diff is shown in the Git tab.
     pub git_diff: bool,
+    /// A dialog is over the Git tab: it takes the keys.
+    pub git_dialog: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -656,6 +658,7 @@ impl Default for PromptKeyState {
             git: None,
             git_filter: false,
             git_diff: false,
+            git_dialog: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             quit_dialog: false,

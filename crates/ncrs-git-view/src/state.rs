@@ -8,6 +8,8 @@ use std::sync::Arc;
 use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, LogCommit, RefsOverview, WorktreeInfo};
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
+use crate::actions::Actions;
+
 /// Commits asked for at once; the next page asks for this many more.
 pub const PAGE: usize = 200;
 
@@ -114,12 +116,15 @@ pub fn remote_groups(overview: &RefsOverview) -> Vec<RemoteGroup<'_>> {
 /// remote header into [`remote_groups`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarItem {
+    /// The local changes, above the groups; only while there are actions to show them.
+    Changes,
     Header(Section),
     Local(usize),
     RemoteHeader(usize),
     Remote(usize),
     Tag(usize),
     Worktree(usize),
+    Stash(usize),
 }
 
 /// A commit column whose width is being dragged.
@@ -207,6 +212,7 @@ pub struct Loads {
     pub log: Slot,
     pub detail: Slot,
     pub diff: Slot,
+    pub actions: Slot,
 }
 
 #[derive(Debug, Default)]
@@ -230,6 +236,8 @@ pub struct State {
     pub diff: Option<DiffState>,
     /// Ready to show: why a read failed.
     pub problem: Option<String>,
+    /// The actions of #338, filled by the caller while the design is open.
+    pub actions: Actions,
     pub loads: Loads,
 }
 
@@ -243,6 +251,7 @@ impl State {
         self.loads.log.cancel();
         self.loads.detail.cancel();
         self.loads.diff.cancel();
+        self.loads.actions.cancel();
         *self = Self::default();
     }
 
@@ -252,6 +261,7 @@ impl State {
         self.loads.log.cancel();
         self.loads.detail.cancel();
         self.loads.diff.cancel();
+        self.loads.actions.cancel();
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
@@ -259,7 +269,11 @@ impl State {
             return Vec::new();
         };
         let is_folded = |section: Section| self.collapsed.contains(&Fold::Section(section));
-        let mut items = vec![SidebarItem::Header(Section::Local)];
+        let mut items = Vec::new();
+        if self.actions.local.is_some() {
+            items.push(SidebarItem::Changes);
+        }
+        items.push(SidebarItem::Header(Section::Local));
         if !is_folded(Section::Local) {
             items.extend((0..overview.local.len()).map(SidebarItem::Local));
         }
@@ -285,6 +299,9 @@ impl State {
             items.extend((0..overview.tags.len()).map(SidebarItem::Tag));
         }
         items.push(SidebarItem::Header(Section::Stashes));
+        if !is_folded(Section::Stashes) {
+            items.extend((0..self.actions.stashes.len()).map(SidebarItem::Stash));
+        }
         items.push(SidebarItem::Header(Section::Worktrees));
         if !is_folded(Section::Worktrees) {
             items.extend((0..overview.worktrees.len()).map(SidebarItem::Worktree));
@@ -321,7 +338,7 @@ impl State {
             Section::Local => overview.local.len(),
             Section::Remotes => overview.remote.len(),
             Section::Tags => overview.tags.len(),
-            Section::Stashes => overview.stashes,
+            Section::Stashes => overview.stashes.max(self.actions.stashes.len()),
             Section::Worktrees => overview.worktrees.len(),
         }
     }
@@ -342,8 +359,10 @@ impl State {
 
     /// The first row of the list stands for the changes of the working copy.
     pub fn has_working_row(&self) -> bool {
-        self.current_worktree()
-            .is_some_and(|worktree| worktree.wip > 0)
+        self.actions.local.is_none()
+            && self
+                .current_worktree()
+                .is_some_and(|worktree| worktree.wip > 0)
     }
 
     pub fn row_count(&self) -> usize {

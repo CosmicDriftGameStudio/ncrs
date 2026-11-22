@@ -12861,8 +12861,8 @@
     {
       "key": "git_view.working_copy",
       "context": "Git tab: the first line of the commit list when the folder has changes that are not committed yet. {count} is the number of changed files.",
-      "en": "Working copy ({count} changes)",
-      "de": "Arbeitskopie ({count} Änderungen)"
+      "en": "Local changes ({count})",
+      "de": "Lokale Änderungen ({count})"
     },
     {
       "key": "git_view.column_message",
@@ -12989,6 +12989,792 @@
       "context": "Git tab: status line while a diff is shown. n and p are keys, ⌘↑ and ⌘↓ are Cmd or Ctrl with the arrows, F3 is the function key. Keep all key names.",
       "en": "↑↓ scroll · n/p next/previous change · ⌘↑/⌘↓ other file · F3 view file · Esc back",
       "de": "↑↓ scrollen · n/p nächste/vorige Änderung · ⌘↑/⌘↓ andere Datei · F3 Datei ansehen · Esc zurück"
+    },
+    {
+      "key": "git_view.changes_unstaged",
+      "context": "Git tab, local changes: heading of the list of changed files that are not staged yet. The number follows in brackets.",
+      "en": "Not staged",
+      "de": "Nicht vorgemerkt"
+    },
+    {
+      "key": "git_view.changes_staged",
+      "context": "Git tab, local changes: heading of the list of files that go into the next commit. The number follows in brackets.",
+      "en": "Staged",
+      "de": "Vorgemerkt"
+    },
+    {
+      "key": "git_view.stage_all",
+      "context": "Git tab, local changes: tooltip of the icon button that stages every changed file. Short.",
+      "en": "Stage all",
+      "de": "Alle vormerken"
+    },
+    {
+      "key": "git_view.unstage_all",
+      "context": "Git tab, local changes: tooltip of the icon button that takes every staged file out of the next commit. Short.",
+      "en": "Unstage all",
+      "de": "Alle zurücknehmen"
+    },
+    {
+      "key": "git_view.stage",
+      "context": "Git tab, local changes: tooltip of the icon button at the end of a file row that stages the file. Short.",
+      "en": "Stage",
+      "de": "Vormerken"
+    },
+    {
+      "key": "git_view.unstage",
+      "context": "Git tab, local changes: tooltip of the icon button at the end of a staged file row that takes it out of the next commit. Short.",
+      "en": "Unstage",
+      "de": "Zurücknehmen"
+    },
+    {
+      "key": "git_view.hunk_stage",
+      "context": "Git tab, local changes: tooltip of the icon button of one hunk of a diff that stages only this hunk. Short.",
+      "en": "Stage hunk",
+      "de": "Abschnitt vormerken"
+    },
+    {
+      "key": "git_view.hunk_discard",
+      "context": "Git tab, local changes: tooltip of the icon button of one hunk of a diff that throws the change of this hunk away for good. Short.",
+      "en": "Discard hunk",
+      "de": "Abschnitt verwerfen"
+    },
+    {
+      "key": "git_view.commit_title_placeholder",
+      "context": "Git tab, local changes: placeholder of the one-line title of the commit message.",
+      "en": "Title of the change",
+      "de": "Titel der Änderung"
+    },
+    {
+      "key": "git_view.commit_body_label",
+      "context": "Git tab, local changes: label above the longer text of the commit message, which may stay empty.",
+      "en": "Description (optional)",
+      "de": "Beschreibung (optional)"
+    },
+    {
+      "key": "git_view.commit_amend",
+      "context": "Git tab, local changes: checkbox that puts the staged files into the last commit instead of a new one. amend is the Git word and stays.",
+      "en": "Change the last commit (amend)",
+      "de": "Letzten Commit ändern (amend)"
+    },
+    {
+      "key": "git_view.commit_one",
+      "context": "Git tab, local changes: button that commits exactly one staged file.",
+      "en": "Commit (1 file)",
+      "de": "Commit (1 Datei)"
+    },
+    {
+      "key": "git_view.commit_many",
+      "context": "Git tab, local changes: button that commits the staged files. {count} is the number of staged files, 0 or 2 and more.",
+      "en": "Commit ({count} files)",
+      "de": "Commit ({count} Dateien)"
+    },
+    {
+      "key": "git_view.toolbar_fetch",
+      "context": "Git tab, toolbar: tooltip of the icon button that asks the remote what is new without changing anything. Short.",
+      "en": "Fetch",
+      "de": "Holen"
+    },
+    {
+      "key": "git_view.toolbar_pull",
+      "context": "Git tab, toolbar: tooltip of the icon button that brings the commits of the remote into the branch. Pull is the Git word and stays. Short.",
+      "en": "Pull",
+      "de": "Pull"
+    },
+    {
+      "key": "git_view.toolbar_push",
+      "context": "Git tab, toolbar: tooltip of the icon button that sends the local commits to the remote. Push is the Git word and stays. Short.",
+      "en": "Push",
+      "de": "Push"
+    },
+    {
+      "key": "git_view.toolbar_stash",
+      "context": "Git tab, toolbar: tooltip of the icon button that shelves the local changes. Stash is the Git word and stays. Short.",
+      "en": "Stash",
+      "de": "Stash"
+    },
+    {
+      "key": "git_view.toolbar_undo",
+      "context": "Git tab, toolbar: tooltip of the icon button that takes back the last local action. {what} says what it would take back, for example a commit with its title.",
+      "en": "Undo: {what}",
+      "de": "Rückgängig: {what}"
+    },
+    {
+      "key": "git_view.menu_checkout",
+      "context": "Git tab, context menu of a local branch: switch the folder to this branch.",
+      "en": "Check out",
+      "de": "Auschecken"
+    },
+    {
+      "key": "git_view.menu_new_branch_from",
+      "context": "Git tab, context menu of a branch: opens the dialog that creates a new branch starting here.",
+      "en": "New branch from here…",
+      "de": "Neuer Branch von hier…"
+    },
+    {
+      "key": "git_view.menu_rename",
+      "context": "Git tab, context menu of a branch: opens the dialog that renames it.",
+      "en": "Rename…",
+      "de": "Umbenennen…"
+    },
+    {
+      "key": "git_view.menu_delete",
+      "context": "Git tab, context menu: delete the branch or the stash after a question.",
+      "en": "Delete…",
+      "de": "Löschen…"
+    },
+    {
+      "key": "git_view.menu_merge_into",
+      "context": "Git tab, context menu of a branch: merge this branch into the branch that is checked out. {branch} is the checked-out branch.",
+      "en": "Merge into “{branch}”",
+      "de": "In „{branch}“ mergen"
+    },
+    {
+      "key": "git_view.menu_rebase_onto",
+      "context": "Git tab, context menu of a branch: replay the checked-out branch on top of this branch. {branch} is the checked-out branch.",
+      "en": "Rebase “{branch}” onto it",
+      "de": "„{branch}“ darauf rebasen"
+    },
+    {
+      "key": "git_view.menu_checkout_as_local",
+      "context": "Git tab, context menu of a remote branch: create a local branch that follows it and switch to it.",
+      "en": "Check out as local branch",
+      "de": "Auschecken als lokaler Branch"
+    },
+    {
+      "key": "git_view.menu_delete_on_remote",
+      "context": "Git tab, context menu of a remote branch: delete the branch on the server after a question.",
+      "en": "Delete on remote…",
+      "de": "Löschen auf Remote…"
+    },
+    {
+      "key": "git_view.menu_stash_apply",
+      "context": "Git tab, context menu of a stash: put the shelved changes back and keep the stash.",
+      "en": "Apply",
+      "de": "Anwenden"
+    },
+    {
+      "key": "git_view.menu_stash_apply_drop",
+      "context": "Git tab, context menu of a stash: put the shelved changes back and delete the stash.",
+      "en": "Apply and delete",
+      "de": "Anwenden und löschen"
+    },
+    {
+      "key": "git_view.new_branch_title",
+      "context": "Git tab, dialog title: create a branch.",
+      "en": "New branch",
+      "de": "Neuer Branch"
+    },
+    {
+      "key": "git_view.new_branch_name",
+      "context": "Git tab, new branch dialog: label of the name field.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "git_view.new_branch_name_placeholder",
+      "context": "Git tab, new branch dialog: placeholder of the name field, an example name.",
+      "en": "e.g. feature/search",
+      "de": "z. B. feature/suche"
+    },
+    {
+      "key": "git_view.new_branch_from",
+      "context": "Git tab, new branch dialog: says where the branch starts. {from} is a branch name or a short commit id with its title.",
+      "en": "From: {from}",
+      "de": "Von: {from}"
+    },
+    {
+      "key": "git_view.new_branch_checkout",
+      "context": "Git tab, new branch dialog: checkbox that switches to the new branch right away.",
+      "en": "Check it out right away",
+      "de": "Gleich auschecken"
+    },
+    {
+      "key": "git_view.new_branch_create",
+      "context": "Git tab, new branch dialog: the button that creates the branch.",
+      "en": "Create",
+      "de": "Erstellen"
+    },
+    {
+      "key": "git_view.new_branch_spaces",
+      "context": "Git tab, new branch dialog: problem shown when the name has a space in it.",
+      "en": "The name must not contain spaces.",
+      "de": "Der Name darf keine Leerzeichen enthalten."
+    },
+    {
+      "key": "git_view.dialog_cancel",
+      "context": "Git tab, dialogs: button that closes the dialog without doing anything.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "git_view.merge_banner",
+      "context": "Git tab: banner while a merge is stopped by conflicts. {from} is the merged branch, {into} the checked-out branch, {count} the number of files still in conflict.",
+      "en": "Merge of {from} into {into}: {count} conflicts",
+      "de": "Merge von {from} in {into}: {count} Konflikte"
+    },
+    {
+      "key": "git_view.merge_banner_one",
+      "context": "Git tab: banner while a merge is stopped by exactly one conflict. {from} is the merged branch, {into} the checked-out branch.",
+      "en": "Merge of {from} into {into}: 1 conflict",
+      "de": "Merge von {from} in {into}: 1 Konflikt"
+    },
+    {
+      "key": "git_view.merge_banner_done",
+      "context": "Git tab: banner of a merge whose conflicts are all resolved. {from} is the merged branch, {into} the checked-out branch.",
+      "en": "Merge of {from} into {into}: all conflicts resolved",
+      "de": "Merge von {from} in {into}: alle Konflikte gelöst"
+    },
+    {
+      "key": "git_view.merge_hint",
+      "context": "Git tab: second line of the merge banner, says what to do.",
+      "en": "Resolve every file, then continue. Abort puts everything back as it was before the merge.",
+      "de": "Löse jede Datei, dann fortsetzen. Abbrechen stellt alles wie vor dem Merge wieder her."
+    },
+    {
+      "key": "git_view.rebase_banner",
+      "context": "Git tab: banner while a rebase is stopped by conflicts. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased, {count} the number of files still in conflict.",
+      "en": "Rebase of {into} onto {from}: {count} conflicts",
+      "de": "Rebase von {into} auf {from}: {count} Konflikte"
+    },
+    {
+      "key": "git_view.rebase_banner_one",
+      "context": "Git tab: banner while a rebase is stopped by exactly one conflict. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased.",
+      "en": "Rebase of {into} onto {from}: 1 conflict",
+      "de": "Rebase von {into} auf {from}: 1 Konflikt"
+    },
+    {
+      "key": "git_view.rebase_banner_done",
+      "context": "Git tab: banner of a rebase whose conflicts are all resolved. {from} is the branch the commits are replayed onto, {into} the checked-out branch being rebased.",
+      "en": "Rebase of {into} onto {from}: all conflicts resolved",
+      "de": "Rebase von {into} auf {from}: alle Konflikte gelöst"
+    },
+    {
+      "key": "git_view.rebase_hint",
+      "context": "Git tab: second line of the rebase banner, says what to do.",
+      "en": "Resolve every file, then continue. Abort puts everything back as it was before the rebase.",
+      "de": "Löse jede Datei, dann fortsetzen. Abbrechen stellt alles wie vor dem Rebase wieder her."
+    },
+    {
+      "key": "git_view.merge_abort",
+      "context": "Git tab: button of the merge banner that cancels the merge. Short.",
+      "en": "Abort",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "git_view.merge_continue",
+      "context": "Git tab: button of the merge banner that finishes the merge. Short.",
+      "en": "Continue",
+      "de": "Fortsetzen"
+    },
+    {
+      "key": "git_view.conflict_take_mine",
+      "context": "Git tab, conflict list: tooltip of the icon button that keeps the version of the checked-out branch for the whole file. Short. Also the entry of the conflict menu.",
+      "en": "Take mine",
+      "de": "Meine nehmen"
+    },
+    {
+      "key": "git_view.conflict_take_theirs",
+      "context": "Git tab, conflict list: tooltip of the icon button that keeps the version of the merged branch for the whole file. Short. Also the entry of the conflict menu.",
+      "en": "Take theirs",
+      "de": "Ihre nehmen"
+    },
+    {
+      "key": "git_view.conflict_open_editor",
+      "context": "Git tab, conflict list: button that opens the file in the editor to resolve it by hand.",
+      "en": "Open in editor",
+      "de": "Im Editor öffnen"
+    },
+    {
+      "key": "git_view.conflict_places",
+      "context": "Git tab, conflict list: how many places of a file are in conflict. {count} is 2 or more.",
+      "en": "{count} places",
+      "de": "{count} Stellen"
+    },
+    {
+      "key": "git_view.conflict_place_one",
+      "context": "Git tab, conflict list: a file with exactly one place in conflict.",
+      "en": "1 place",
+      "de": "1 Stelle"
+    },
+    {
+      "key": "git_view.conflict_resolved",
+      "context": "Git tab, conflict list: shown after a file that is resolved.",
+      "en": "resolved",
+      "de": "gelöst"
+    },
+    {
+      "key": "git_view.conflict_mine",
+      "context": "Git tab, diff of a conflict: line above the lines of the checked-out branch. {branch} is its name.",
+      "en": "Mine ({branch})",
+      "de": "Meine Version ({branch})"
+    },
+    {
+      "key": "git_view.conflict_theirs",
+      "context": "Git tab, diff of a conflict: line above the lines of the merged branch. {branch} is its name.",
+      "en": "Theirs ({branch})",
+      "de": "Ihre Version ({branch})"
+    },
+    {
+      "key": "git_view.conflict_end",
+      "context": "Git tab, diff of a conflict: line that ends the conflicting place.",
+      "en": "End of the conflict",
+      "de": "Ende des Konflikts"
+    },
+    {
+      "key": "git_view.notice_dismiss",
+      "context": "Git tab: button that closes a notice. Short.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "git_view.push_rejected",
+      "context": "Git tab: headline of the notice after a push the remote turned down.",
+      "en": "Push rejected",
+      "de": "Push abgelehnt"
+    },
+    {
+      "key": "git_view.push_rejected_text",
+      "context": "Git tab: explanation of a rejected push. {branch} is the branch, {count} the number of commits on the remote it lacks.",
+      "en": "The remote has {count} commits on {branch} that you do not have yet. Fetch them with a pull first, then push again.",
+      "de": "Auf dem Remote liegen {count} Commits auf {branch}, die du noch nicht hast. Hol sie zuerst mit einem Pull, dann pushe noch einmal."
+    },
+    {
+      "key": "git_view.push_rejected_action",
+      "context": "Git tab: button of the rejected push notice that does a pull. Short.",
+      "en": "Pull first",
+      "de": "Erst Pull"
+    },
+    {
+      "key": "git_view.auth_failed",
+      "context": "Git tab: headline of the notice when the remote does not let the user in. {remote} is the name of the remote.",
+      "en": "No access to {remote}",
+      "de": "Kein Zugang zu {remote}"
+    },
+    {
+      "key": "git_view.auth_failed_text",
+      "context": "Git tab: explanation of a failed login to a remote.",
+      "en": "The server turned down the login. Check your SSH key or the saved password, then try again.",
+      "de": "Der Server hat die Anmeldung abgelehnt. Prüfe deinen SSH-Schlüssel oder das gespeicherte Passwort und versuche es noch einmal."
+    },
+    {
+      "key": "git_view.auth_failed_retry",
+      "context": "Git tab: button of the failed login notice that tries the push or pull again. Short.",
+      "en": "Try again",
+      "de": "Erneut versuchen"
+    },
+    {
+      "key": "git_view.discard_file",
+      "context": "Git tab, local changes: tooltip of the icon button of a not staged file that throws its changes away for good after a question. Short, the dots say a question follows.",
+      "en": "Discard…",
+      "de": "Verwerfen…"
+    },
+    {
+      "key": "git_view.discard_all",
+      "context": "Git tab, local changes: tooltip of the icon button that throws all not staged changes away for good after a question. Short.",
+      "en": "Discard all…",
+      "de": "Alle verwerfen…"
+    },
+    {
+      "key": "git_view.hunk_unstage",
+      "context": "Git tab, local changes: tooltip of the icon button of one hunk of a staged file that takes only this hunk out of the next commit. Short.",
+      "en": "Unstage hunk",
+      "de": "Abschnitt zurücknehmen"
+    },
+    {
+      "key": "git_view.conflict_take_both",
+      "context": "Git tab, conflict list: tooltip of the icon button that keeps both versions of the file, mine first. Short. Also the entry of the conflict menu.",
+      "en": "Take both",
+      "de": "Beide nehmen"
+    },
+    {
+      "key": "git_view.conflict_mark_resolved",
+      "context": "Git tab, conflict list: button of a file that was edited by hand, says the file is fine now. Short.",
+      "en": "Mark as resolved",
+      "de": "Als gelöst markieren"
+    },
+    {
+      "key": "git_view.conflict_reset",
+      "context": "Git tab, conflict list: button of a resolved file that brings the conflict back. Short.",
+      "en": "Reset",
+      "de": "Zurücksetzen"
+    },
+    {
+      "key": "git_view.conflict_edited",
+      "context": "Git tab, conflict list: shown after a file that was changed in the editor but is not marked as resolved yet.",
+      "en": "edited",
+      "de": "bearbeitet"
+    },
+    {
+      "key": "git_view.menu_push",
+      "context": "Git tab, context menu of a local branch that has commits the remote lacks: send them. Short.",
+      "en": "Push",
+      "de": "Pushen"
+    },
+    {
+      "key": "git_view.notice_details",
+      "context": "Git tab: button of a notice that shows the message git printed. Short.",
+      "en": "Details",
+      "de": "Details"
+    },
+    {
+      "key": "git_view.status_sidebar_actions",
+      "context": "Git tab: status line while the left list has the keys and the actions are on. {menu} opens the menu of the row, {new_branch} starts a new branch; both are keys as the platform spells them. Keep the other key names as they are on the keyboard.",
+      "en": "↑↓ choose · ←→ fold · Enter shows the worktree · {menu} actions · {new_branch} new branch · Tab next area · Esc closes",
+      "de": "↑↓ wählen · ←→ falten · Enter zeigt den Worktree · {menu} Aktionen · {new_branch} Neuer Branch · Tab nächster Bereich · Esc schließt"
+    },
+    {
+      "key": "git_view.status_changes",
+      "context": "Git tab: status line while the local changes are shown and have the keyboard. {stage_all}, {unstage_all} and {commit} are keys as the platform spells them. Keep the other key names.",
+      "en": "↑↓ choose · {stage_all} stage all · {unstage_all} unstage all · {commit} commit · Tab next area · Esc closes",
+      "de": "↑↓ wählen · {stage_all} alle vormerken · {unstage_all} alle zurücknehmen · {commit} Commit · Tab nächster Bereich · Esc schließt"
+    },
+    {
+      "key": "git_view.status_merge",
+      "context": "Git tab: status line while a merge with conflicts is shown. The placeholders are keys as the platform spells them. Keep the other key names.",
+      "en": "↑↓ choose file · {mine} mine · {theirs} theirs · {both} both · {editor} editor · {resolved} resolved · {menu} actions",
+      "de": "↑↓ Datei wählen · {mine} meine · {theirs} ihre · {both} beide · {editor} Editor · {resolved} gelöst · {menu} Aktionen"
+    },
+    {
+      "key": "git_view.hint_git_missing",
+      "context": "Git tab: quiet line under the header when the actions are off because git is not installed. git is the name of the program and stays lowercase.",
+      "en": "Git actions need git to be installed",
+      "de": "Git-Aktionen brauchen ein installiertes git"
+    },
+    {
+      "key": "git_view.hint_sandbox",
+      "context": "Git tab: quiet line under the header in the App Store version, which runs no git actions. Homebrew is the name of a package manager and stays.",
+      "en": "Git actions are only in the Homebrew version",
+      "de": "Git-Aktionen gibt es in der Homebrew-Version"
+    },
+    {
+      "key": "git_view.stash_message",
+      "context": "Git tab: the name of a stash made with the stash button, which asks for none. {branch} is the branch that is checked out.",
+      "en": "Stashed from {branch}",
+      "de": "Zwischenstand von {branch}"
+    },
+    {
+      "key": "git_view.undo_staged_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". One file was staged (put into the next commit). Lowercase, no full stop.",
+      "en": "staged one file",
+      "de": "eine Datei vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_staged_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". {count} files were staged (put into the next commit). Lowercase, no full stop.",
+      "en": "staged {count} files",
+      "de": "{count} Dateien vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_staged_all",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". All changes were staged at once. Lowercase, no full stop.",
+      "en": "staged all changes",
+      "de": "alle Änderungen vorgemerkt"
+    },
+    {
+      "key": "git_view.undo_unstaged_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". One file was taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged one file",
+      "de": "eine Datei zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_unstaged_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". {count} files were taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged {count} files",
+      "de": "{count} Dateien zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_unstaged_all",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". All staged changes were taken out of the next commit again. Lowercase, no full stop.",
+      "en": "unstaged all changes",
+      "de": "alle Änderungen zurückgenommen"
+    },
+    {
+      "key": "git_view.undo_discarded_one",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". The changes of one file were thrown away. Lowercase, no full stop.",
+      "en": "discarded one file",
+      "de": "eine Datei verworfen"
+    },
+    {
+      "key": "git_view.undo_discarded_many",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". The changes of {count} files were thrown away. Lowercase, no full stop.",
+      "en": "discarded {count} files",
+      "de": "{count} Dateien verworfen"
+    },
+    {
+      "key": "git_view.undo_committed",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A commit was made. {title} is its title. Commit is the Git word and stays.",
+      "en": "committed “{title}”",
+      "de": "Commit „{title}“ angelegt"
+    },
+    {
+      "key": "git_view.undo_deleted_branch",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A branch was deleted. {name} is its name. Branch is the Git word and stays.",
+      "en": "deleted branch {name}",
+      "de": "Branch {name} gelöscht"
+    },
+    {
+      "key": "git_view.branch_not_merged",
+      "context": "Git tab: headline of the notice when a branch cannot be deleted because it has commits that are in no other branch.",
+      "en": "Branch not merged",
+      "de": "Branch nicht gemergt"
+    },
+    {
+      "key": "git_view.branch_not_merged_text",
+      "context": "Git tab: explanation of the notice about a branch that is not merged. {branch} is its name. The question is answered by the buttons.",
+      "en": "{branch} has commits that are in no other branch. Delete it anyway?",
+      "de": "{branch} hat Commits, die in keinem anderen Branch sind. Trotzdem löschen?"
+    },
+    {
+      "key": "git_view.branch_not_merged_action",
+      "context": "Git tab: button of the notice about a branch that is not merged; deletes it anyway. Short.",
+      "en": "Delete anyway",
+      "de": "Trotzdem löschen"
+    },
+    {
+      "key": "git_view.needs_strategy",
+      "context": "Git tab: headline of the notice when a pull needs a decision because the local branch and the remote both have new commits.",
+      "en": "Pull needs a decision",
+      "de": "Pull braucht eine Entscheidung"
+    },
+    {
+      "key": "git_view.needs_strategy_text",
+      "context": "Git tab: explanation of the notice about a pull on diverged branches. Merge and rebase are Git words and stay; the buttons answer the question.",
+      "en": "Your branch and the remote both have new commits. Merge them, or put your commits on top of the remote ones (rebase)?",
+      "de": "Dein Branch und der Remote haben beide neue Commits. Zusammenführen (Merge) oder deine Commits obendrauf setzen (Rebase)?"
+    },
+    {
+      "key": "git_view.needs_strategy_merge",
+      "context": "Git tab: button of the pull decision notice that joins the branches with a merge. Merge is the Git word; the German form is a verb. Short.",
+      "en": "Merge",
+      "de": "Mergen"
+    },
+    {
+      "key": "git_view.needs_strategy_rebase",
+      "context": "Git tab: button of the pull decision notice that puts the own commits on top of the remote ones. Rebase is the Git word; the German form is a verb. Short.",
+      "en": "Rebase",
+      "de": "Rebasen"
+    },
+    {
+      "key": "git_view.nothing_to_commit",
+      "context": "Git tab: headline of the notice when a commit was asked for but nothing is staged.",
+      "en": "Nothing to commit",
+      "de": "Nichts zu committen"
+    },
+    {
+      "key": "git_view.nothing_to_commit_text",
+      "context": "Git tab: explanation of the notice about a commit with nothing staged. Staging means putting changes into the next commit.",
+      "en": "Stage some changes first, then commit.",
+      "de": "Merke zuerst Änderungen vor, dann committe."
+    },
+    {
+      "key": "git_view.commit_title_missing",
+      "context": "Git tab: headline of the notice when a commit was asked for but its title is empty.",
+      "en": "The commit needs a title",
+      "de": "Der Commit braucht einen Titel"
+    },
+    {
+      "key": "git_view.commit_title_missing_text",
+      "context": "Git tab: explanation of the notice about a commit without a title.",
+      "en": "Write a short title for the commit first.",
+      "de": "Schreibe zuerst einen kurzen Titel für den Commit."
+    },
+    {
+      "key": "git_view.unresolved_conflicts",
+      "context": "Git tab: headline of the notice when a merge was to be finished while places are still in conflict.",
+      "en": "Conflicts still open",
+      "de": "Konflikte noch offen"
+    },
+    {
+      "key": "git_view.unresolved_conflicts_text",
+      "context": "Git tab: explanation of the notice about conflicts still open. {count} is the number of conflicts left.",
+      "en": "{count} conflicts are still open. Resolve them first, then continue.",
+      "de": "Noch {count} Konflikte sind offen. Löse sie zuerst, dann mach weiter."
+    },
+    {
+      "key": "git_view.undo_not_safe",
+      "context": "Git tab: headline of the notice when the undo was refused.",
+      "en": "Cannot undo that",
+      "de": "Rückgängig nicht möglich"
+    },
+    {
+      "key": "git_view.undo_not_safe_text",
+      "context": "Git tab: explanation of the refused undo.",
+      "en": "Something has changed since then, and undoing it now would lose newer work.",
+      "de": "Seitdem hat sich etwas geändert, und Rückgängig würde neuere Arbeit verlieren."
+    },
+    {
+      "key": "git_view.invalid_name",
+      "context": "Git tab: headline of the notice when git does not take a branch name.",
+      "en": "Name not allowed",
+      "de": "Name nicht erlaubt"
+    },
+    {
+      "key": "git_view.invalid_name_text",
+      "context": "Git tab: explanation of a branch name git does not take, also shown under the name field of the new branch dialog. {name} is what the user typed.",
+      "en": "“{name}” is not a name git accepts for a branch.",
+      "de": "„{name}“ ist kein Name, den git für einen Branch annimmt."
+    },
+    {
+      "key": "git_view.network_failed",
+      "context": "Git tab: headline of the notice when the remote could not be reached.",
+      "en": "No connection",
+      "de": "Keine Verbindung"
+    },
+    {
+      "key": "git_view.network_failed_text",
+      "context": "Git tab: explanation of a remote that could not be reached.",
+      "en": "The remote could not be reached. Check your network, then try again.",
+      "de": "Der Remote war nicht erreichbar. Prüfe dein Netzwerk und versuche es noch einmal."
+    },
+    {
+      "key": "git_view.other_failed",
+      "context": "Git tab: headline of the notice for an error git reported that has no notice of its own.",
+      "en": "Git could not do that",
+      "de": "Git konnte das nicht ausführen"
+    },
+    {
+      "key": "git_view.other_failed_text",
+      "context": "Git tab: explanation of an error git reported; the Details button shows what git printed.",
+      "en": "Git reported an error. The details show what it said.",
+      "de": "Git hat einen Fehler gemeldet. Die Details zeigen, was es geschrieben hat."
+    },
+    {
+      "key": "git_view.ask_discard_file_title",
+      "context": "Git tab, question dialog before one file of the local changes is discarded: title.",
+      "en": "Discard changes",
+      "de": "Änderungen verwerfen"
+    },
+    {
+      "key": "git_view.ask_discard_file_text",
+      "context": "Git tab, question dialog before one file of the local changes is discarded. {name} is the path of the file. Says what is lost and that Undo brings it back; Undo is the name of the toolbar button.",
+      "en": "The changes in “{name}” are thrown away. Undo can bring them back.",
+      "de": "Die Änderungen in „{name}“ werden verworfen. Rückgängig kann sie zurückholen."
+    },
+    {
+      "key": "git_view.ask_discard_all_title",
+      "context": "Git tab, question dialog before all not staged local changes are discarded: title.",
+      "en": "Discard all changes",
+      "de": "Alle Änderungen verwerfen"
+    },
+    {
+      "key": "git_view.ask_discard_all_text",
+      "context": "Git tab, question dialog before all not staged local changes are discarded. {count} is the number of files; new files that git does not track yet are deleted too. Undo is the name of the toolbar button.",
+      "en": "The changes in {count} files are thrown away, new files are deleted. Undo can bring them back.",
+      "de": "Die Änderungen in {count} Dateien werden verworfen, neue Dateien gelöscht. Rückgängig kann sie zurückholen."
+    },
+    {
+      "key": "git_view.ask_delete_branch_title",
+      "context": "Git tab, question dialog before a local branch is deleted: title.",
+      "en": "Delete branch",
+      "de": "Branch löschen"
+    },
+    {
+      "key": "git_view.ask_delete_branch_text",
+      "context": "Git tab, question dialog before a local branch is deleted. {name} is the branch. Undo is the name of the toolbar button.",
+      "en": "The branch “{name}” is deleted. Undo can bring it back.",
+      "de": "Der Branch „{name}“ wird gelöscht. Rückgängig kann ihn zurückholen."
+    },
+    {
+      "key": "git_view.ask_delete_remote_title",
+      "context": "Git tab, question dialog before a branch is deleted on the remote server: title.",
+      "en": "Delete on remote",
+      "de": "Auf Remote löschen"
+    },
+    {
+      "key": "git_view.ask_delete_remote_text",
+      "context": "Git tab, question dialog before a branch is deleted on the remote server. {branch} is the branch, {remote} the remote. Warns that it cannot be undone. Undo is the name of the toolbar button.",
+      "en": "The branch “{branch}” is deleted on “{remote}” for everyone who uses it. Undo cannot bring it back.",
+      "de": "Der Branch „{branch}“ wird auf „{remote}“ für alle gelöscht, die ihn nutzen. Rückgängig kann ihn nicht zurückholen."
+    },
+    {
+      "key": "git_view.ask_drop_stash_title",
+      "context": "Git tab, question dialog before a stash is deleted: title. A stash is a set of changes put aside.",
+      "en": "Delete stash",
+      "de": "Stash löschen"
+    },
+    {
+      "key": "git_view.ask_drop_stash_text",
+      "context": "Git tab, question dialog before a stash is deleted. {name} is the message of the stash. Warns that it cannot be undone. Undo is the name of the toolbar button.",
+      "en": "The stash “{name}” and the changes in it are lost. Undo cannot bring it back.",
+      "de": "Der Stash „{name}“ und die Änderungen darin gehen verloren. Rückgängig kann ihn nicht zurückholen."
+    },
+    {
+      "key": "git_view.ask_discard_button",
+      "context": "Git tab, confirm button of the discard questions. Short.",
+      "en": "Discard",
+      "de": "Verwerfen"
+    },
+    {
+      "key": "git_view.ask_delete_button",
+      "context": "Git tab, confirm button of the delete questions (branch, branch on the remote, stash). Short.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "git_view.rename_title",
+      "context": "Git tab, dialog that renames a local branch: title.",
+      "en": "Rename branch",
+      "de": "Branch umbenennen"
+    },
+    {
+      "key": "git_view.rename_label",
+      "context": "Git tab, rename dialog: label above the field with the new name of the branch.",
+      "en": "New name",
+      "de": "Neuer Name"
+    },
+    {
+      "key": "git_view.rename_button",
+      "context": "Git tab, rename dialog: confirm button. Short.",
+      "en": "Rename",
+      "de": "Umbenennen"
+    },
+    {
+      "key": "git_view.palette_group",
+      "context": "Command list: heading of the Git commands, offered while a Git tab is shown. git is the name of the program.",
+      "en": "Git",
+      "de": "Git"
+    },
+    {
+      "key": "git_view.command_undo",
+      "context": "Command list, Git group: takes back the last local Git action of the tab.",
+      "en": "Undo the last Git action",
+      "de": "Letzte Git-Aktion rückgängig machen"
+    },
+    {
+      "key": "git_view.command_commit",
+      "context": "Command list, Git group: commits the staged files with the message typed in the tab.",
+      "en": "Commit the staged files",
+      "de": "Vorgemerkte Dateien committen"
+    },
+    {
+      "key": "git_view.command_merge",
+      "context": "Command list, Git group: merges the branch chosen in the left list into the current branch.",
+      "en": "Merge the chosen branch into the current one",
+      "de": "Gewählten Branch in den aktuellen mergen"
+    },
+    {
+      "key": "git_view.command_rebase",
+      "context": "Command list, Git group: rebases the current branch onto the branch chosen in the left list.",
+      "en": "Rebase the current branch onto the chosen one",
+      "de": "Aktuellen Branch auf den gewählten rebasen"
+    },
+    {
+      "key": "git_view.command_stash_apply",
+      "context": "Command list, Git group: applies the stash chosen in the left list and keeps it. A stash is a set of changes put aside.",
+      "en": "Apply the chosen stash",
+      "de": "Gewählten Stash anwenden"
+    },
+    {
+      "key": "git_view.command_stash_pop",
+      "context": "Command list, Git group: applies the stash chosen in the left list and deletes it.",
+      "en": "Apply the chosen stash and delete it",
+      "de": "Gewählten Stash anwenden und löschen"
+    },
+    {
+      "key": "git_view.command_conflict_reset",
+      "context": "Command list, Git group: brings the conflict markers of the chosen file back and throws its resolution away.",
+      "en": "Reset the resolution of the chosen file",
+      "de": "Lösung der gewählten Datei zurücksetzen"
     }
   ]
 }

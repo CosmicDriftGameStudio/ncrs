@@ -235,3 +235,43 @@ pub fn segmented<'a, M: Clone + 'a>(
         .style(theme::segment_group(palette))
         .into()
 }
+
+/// A button with an icon instead of a word, and the tooltip that names what it
+/// does. `count` stays next to the icon (the commits a pull or push moves).
+/// `on_press` of `None` disables it.
+pub fn icon_button<'a, M: Clone + 'a>(
+    shown: super::Icon,
+    count: Option<String>,
+    tooltip_label: &str,
+    on_press: Option<M>,
+    tone: Tone,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ink = if on_press.is_none() {
+        palette.dim_text
+    } else {
+        match tone {
+            Tone::Primary => palette.primary_button().1,
+            Tone::Secondary => palette.text,
+            Tone::Danger => palette.cursor_text,
+        }
+    };
+    let mut content = Row::new()
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .push(super::icon(shown, ink));
+    if let Some(number) = count {
+        content = content.push(
+            text(number)
+                .size(font_size::BODY)
+                .color(ink)
+                .wrapping(Wrapping::None),
+        );
+    }
+    super::tooltip(
+        sized_button(content.into(), on_press, tone, palette),
+        tooltip_label.to_owned(),
+        iced::widget::tooltip::Position::Bottom,
+        palette,
+    )
+}

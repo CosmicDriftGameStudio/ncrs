@@ -1,9 +1,12 @@
 //! What happens in the Git tab.
 
-use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, RefsOverview};
+use ncrs_git::{ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefsOverview};
 
 use ncrs_ui_kit::git_rows::CommitColumn;
 
+use crate::actions::{ChangeSide, ConflictAction, MenuAction, MenuTarget, Side};
+use crate::job::Finished;
+use crate::snapshot::Snapshot;
 use crate::state::Fold;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +17,10 @@ pub enum Message {
     DetailLoaded(u64, Box<Result<CommitDetail, String>>),
     WorkingLoaded(u64, Result<Vec<ChangedFile>, String>),
     DiffLoaded(u64, Box<Result<FileDiff, String>>),
+    /// What the actions show, read anew; the error says why there are none.
+    ActionsLoaded(u64, Box<Result<Snapshot, ActionError>>),
+    /// A call to git that was started by an action has ended.
+    JobDone(Box<Finished>),
     FilterChanged(String),
     FocusFilter,
     /// Enter in the filter field: back to the list.
@@ -50,4 +57,54 @@ pub enum Message {
     Escape,
     Close,
     Refresh,
+    // The actions of #338.
+    SelectChange(ChangeSide, usize),
+    Stage(usize),
+    Unstage(usize),
+    StageAll,
+    UnstageAll,
+    StageHunk(usize),
+    DiscardHunk(usize),
+    UnstageHunk(usize),
+    DiscardFile(usize),
+    DiscardAll,
+    CommitTitleChanged(String),
+    CommitBodyEdited(iced::widget::text_editor::Action),
+    ToggleAmend,
+    Commit,
+    Fetch,
+    Pull,
+    Push,
+    Stash,
+    Undo,
+    /// A right press on a row of the left list.
+    OpenMenu(MenuTarget),
+    /// The menu key: opens the menu of the row the cursor is on.
+    OpenMenuKey,
+    CloseMenu,
+    MenuPressed(MenuAction),
+    NewBranchNameChanged(String),
+    ToggleNewBranchCheckout,
+    CreateBranch,
+    CloseDialog,
+    /// Enter or the confirm button of a question or the rename dialog.
+    ConfirmDialog,
+    RenameNameChanged(String),
+    MergeAbort,
+    MergeContinue,
+    SelectConflict(usize),
+    /// A choice for one block of the chosen file: the number of the block.
+    TakeBlock(usize, Side),
+    /// An action of the menu of a file in conflict.
+    ConflictPressed(usize, ConflictAction),
+    /// The key of an action: it acts on the chosen file.
+    ConflictShortcut(ConflictAction),
+    PullFirst,
+    /// The answer of the notice "pull needs a decision".
+    PullWith(PullStrategy),
+    /// The answer of the notice "branch not merged".
+    DeleteBranchAnyway,
+    Retry,
+    ToggleNoticeDetails,
+    DismissNotice,
 }

@@ -45,6 +45,16 @@ pub(in crate::e2e_tests) fn shoot_with(
     shoot_sized(app, (SHOT_DIR, name), SHOT_SIZE, touch);
 }
 
+/// [`shoot_with`] into the folder `dir`.
+pub(in crate::e2e_tests) fn shoot_into(
+    dir: &str,
+    app: &App,
+    name: &str,
+    touch: impl FnOnce(&mut Simulator<'_, Message>),
+) {
+    shoot_sized(app, (dir, name), SHOT_SIZE, touch);
+}
+
 /// As [`shoot_with`] for `(folder, name)`, in a window of `size`.
 pub(in crate::e2e_tests) fn shoot_sized(
     app: &App,

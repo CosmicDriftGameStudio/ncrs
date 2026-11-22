@@ -28,6 +28,7 @@ pub const BUNDLED_FONTS: &[&[u8]] = if cfg!(target_os = "macos") {
 const BUNDLED_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono.ttf");
 const BUNDLED_BOLD: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono-Bold.ttf");
 
+pub mod action_rows;
 pub mod badge_dot;
 pub mod choice_rows;
 pub mod column_header;

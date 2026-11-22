@@ -633,7 +633,7 @@ fn setting_hits(palette: &CommandPalette) -> Vec<(SettingsFeature, Option<String
         .hits()
         .filter_map(|hit| match &palette.entry(hit).unwrap().target {
             Target::Setting { feature, row } => Some((*feature, row.clone())),
-            Target::Command(_) => None,
+            Target::Command(_) | Target::Git(_) => None,
         })
         .collect()
 }
