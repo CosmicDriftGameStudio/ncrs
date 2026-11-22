@@ -393,6 +393,10 @@ pub enum DiffTone {
     Context,
     Added,
     Removed,
+    /// A line of the checked-out side of a conflict.
+    Mine,
+    /// A line of the merged side of a conflict: the accent of the tags, not the red of a deletion.
+    Theirs,
     /// The other side has no line here.
     Empty,
 }
@@ -401,6 +405,8 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
     let base = match tone {
         DiffTone::Added => palette.success,
         DiffTone::Removed => palette.error,
+        DiffTone::Mine => palette.success,
+        DiffTone::Theirs => palette.tagged,
         DiffTone::Context | DiffTone::Empty => return None,
     };
     Some(Color {

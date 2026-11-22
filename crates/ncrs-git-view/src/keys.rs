@@ -4,6 +4,7 @@ use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
 use crate::message::Message;
+use crate::shortcuts::Shortcut;
 
 /// The message of a press. Escape is not here: the app sends
 /// [`Message::Escape`] whatever field took the key. While the filter has the
@@ -23,6 +24,9 @@ pub fn git_view_key(
     }
     if filter_focused {
         return None;
+    }
+    if let Some(shortcut) = Shortcut::pressed(key, modifiers) {
+        return Some(shortcut.message());
     }
     // "/" is a shifted key on some layouts.
     let slash_modifiers = modifiers.is_empty() || modifiers == Modifiers::SHIFT;

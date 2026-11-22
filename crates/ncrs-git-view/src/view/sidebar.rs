@@ -4,6 +4,7 @@ use iced::widget::column;
 use iced::Element;
 use ncrs_git::WorktreeInfo;
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_ui_kit::action_rows::context_area;
 use ncrs_ui_kit::format::{estimated_width, fit_end};
 use ncrs_ui_kit::git_rows::{worktree_row, WorktreeRow};
 use ncrs_ui_kit::theme::{font_size, size, spacing};
@@ -15,6 +16,7 @@ use super::SIDEBAR_ID;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::state::{remote_groups, Area, Fold, Section, SidebarItem, State};
+use crate::update::menu_target_of;
 
 /// Room the scroll bar of the list takes from a label.
 const SCROLL_BAR_ROOM: f32 = 12.0;
@@ -42,7 +44,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into_iter()
         .enumerate()
         .map(|(index, item)| {
-            let chosen = state.area == Area::Sidebar && index == state.sidebar_cursor;
+            let chosen = state.area == Area::Sidebar && index == state.sidebar_cursor
+                || item == SidebarItem::Changes && state.actions.changes_open;
             if let (SidebarItem::Worktree(which), Some(overview)) = (item, &state.overview) {
                 if let Some(worktree) = overview.worktrees.get(which) {
                     return worktree_row_of(
@@ -65,6 +68,22 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     ),
                     String::new(),
                 ),
+                SidebarItem::Changes => {
+                    let count = state
+                        .actions
+                        .local
+                        .as_ref()
+                        .map_or(0, |local| local.unstaged.len() + local.staged.len());
+                    (
+                        0,
+                        None,
+                        fill_template(
+                            ctx.lang.text(Msg::GitViewWorkingCopy),
+                            &[("{count}", &count.to_string())],
+                        ),
+                        String::new(),
+                    )
+                }
                 SidebarItem::RemoteHeader(position) => {
                     let (name, count) = remote_label(state, position);
                     let folded = state.collapsed.contains(&Fold::Remote(name.clone()));
@@ -85,7 +104,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 }
             };
             let fitted = fit_end(&label, label_budget(depth, &trail), font_size::BODY);
-            tree_row(
+            let menu_target = menu_target_of(item);
+            let row = tree_row(
                 TreeRow {
                     depth,
                     open,
@@ -101,7 +121,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     on_press: Message::SidebarPressed(index),
                 },
                 ctx.palette,
-            )
+            );
+            match menu_target {
+                Some(target) => context_area(row, Message::OpenMenu(target)),
+                None => row,
+            }
         });
     tree_scroll(SIDEBAR_ID, column(rows).into())
 }
@@ -158,9 +182,16 @@ fn child_label(state: &State, item: SidebarItem) -> (String, String) {
             overview.tags.get(index).cloned().unwrap_or_default(),
             String::new(),
         ),
-        SidebarItem::Worktree(_) | SidebarItem::Header(_) | SidebarItem::RemoteHeader(_) => {
-            (String::new(), String::new())
-        }
+        SidebarItem::Stash(index) => state
+            .actions
+            .stashes
+            .get(index)
+            .map(|stash| (stash.message.clone(), stash.origin.clone()))
+            .unwrap_or_default(),
+        SidebarItem::Worktree(_)
+        | SidebarItem::Header(_)
+        | SidebarItem::RemoteHeader(_)
+        | SidebarItem::Changes => (String::new(), String::new()),
     }
 }
 

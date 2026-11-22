@@ -34,7 +34,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let lanes = log.lane_count.max(1);
     let graph_width = LANE_WIDTH * lanes as f32;
     let message_width = commit_message_width(
-        super::commits_pane_width(ctx),
+        super::commits_pane_width(state, ctx),
         graph_width,
         columns,
         show_sha,

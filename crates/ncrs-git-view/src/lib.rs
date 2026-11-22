@@ -2,11 +2,13 @@
 //! repository, with its state, messages, `update` and `view`. Read only.
 
 pub mod action;
+pub mod actions;
 pub mod ctx;
 mod diff_layout;
 pub mod keys;
 mod load;
 pub mod message;
+pub mod shortcuts;
 pub mod state;
 pub mod update;
 pub mod view;

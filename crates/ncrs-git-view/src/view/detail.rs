@@ -6,7 +6,7 @@ use ncrs_git::ChangeKind;
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::kit::segmented;
 use ncrs_ui_kit::page_text::{page_heading_wrapped, page_line, page_paragraph};
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::theme::{self, font_size, spacing};
 use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
 
 use super::commits::moment;
@@ -118,6 +118,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let list = column(files).width(Length::Fill);
     column![
         container(head).padding(spacing::M),
+        theme::horizontal_rule(palette.border_inactive),
         container(
             row![
                 toggle,
@@ -127,7 +128,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             .spacing(spacing::M)
             .align_y(iced::alignment::Vertical::Center)
         )
-        .padding([0.0, spacing::M]),
+        .padding(spacing::M),
         tree_scroll(DETAIL_ID, list.into()),
     ]
     .into()

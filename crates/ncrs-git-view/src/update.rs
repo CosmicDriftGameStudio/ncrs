@@ -12,6 +12,7 @@ use ncrs_ui_kit::page_scroll::scroll_page_by;
 use ncrs_ui_kit::theme::size;
 
 use crate::action::Action;
+use crate::actions::{MenuTarget, OpenMenu};
 use crate::ctx::Ctx;
 use crate::diff_layout::rows_before;
 use crate::load;
@@ -259,10 +260,61 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.close();
             (Task::none(), Some(Action::Close))
         }
+        Message::OpenMenu(target) => {
+            state.actions.menu = Some(OpenMenu { target });
+            quiet(Task::none())
+        }
+        Message::OpenMenuKey => {
+            let target = state
+                .sidebar_items()
+                .get(state.sidebar_cursor)
+                .and_then(|item| menu_target_of(*item));
+            state.actions.menu = target.map(|chosen| OpenMenu { target: chosen });
+            quiet(Task::none())
+        }
+        Message::CloseMenu => {
+            state.actions.menu = None;
+            quiet(Task::none())
+        }
         Message::Refresh => {
             state.problem = None;
             quiet(Task::batch([load::refs(state), load::log(state)]))
         }
+        // ponytail: backend after design approval
+        Message::SelectChange(..)
+        | Message::Stage(_)
+        | Message::Unstage(_)
+        | Message::StageAll
+        | Message::UnstageAll
+        | Message::StageHunk(_)
+        | Message::DiscardHunk(_)
+        | Message::UnstageHunk(_)
+        | Message::DiscardFile(_)
+        | Message::DiscardAll
+        | Message::CommitTitleChanged(_)
+        | Message::CommitBodyEdited(_)
+        | Message::ToggleAmend
+        | Message::Commit
+        | Message::Fetch
+        | Message::Pull
+        | Message::Push
+        | Message::Stash
+        | Message::Undo
+        | Message::MenuPressed(_)
+        | Message::NewBranchNameChanged(_)
+        | Message::ToggleNewBranchCheckout
+        | Message::CreateBranch
+        | Message::CloseDialog
+        | Message::MergeAbort
+        | Message::MergeContinue
+        | Message::SelectConflict(_)
+        | Message::TakeBlock(..)
+        | Message::ConflictPressed(..)
+        | Message::ConflictShortcut(_)
+        | Message::PullFirst
+        | Message::Retry
+        | Message::ToggleNoticeDetails
+        | Message::DismissNotice => quiet(Task::none()),
     }
 }
 
@@ -332,11 +384,23 @@ fn fold_at_cursor(state: &mut State, collapse: bool) -> Option<Action> {
     toggle_fold(state, fold)
 }
 
+/// What a menu on this row of the left list is about.
+pub fn menu_target_of(item: SidebarItem) -> Option<MenuTarget> {
+    match item {
+        SidebarItem::Local(branch) => Some(MenuTarget::LocalBranch(branch)),
+        SidebarItem::Remote(branch) => Some(MenuTarget::RemoteBranch(branch)),
+        SidebarItem::Stash(stash) => Some(MenuTarget::Stash(stash)),
+        _ => None,
+    }
+}
+
 fn activate_sidebar(state: &mut State, index: usize) -> Outcome {
     let item = state.sidebar_items().get(index).copied();
     if let Some(fold) = item.and_then(|row| state.fold_of(row)) {
         return (Task::none(), toggle_fold(state, fold));
     }
+    state.actions.changes_open =
+        state.actions.local.is_some() && item == Some(SidebarItem::Changes);
     match item {
         Some(SidebarItem::Worktree(position)) => {
             let path = state

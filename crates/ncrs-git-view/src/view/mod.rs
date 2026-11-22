@@ -1,14 +1,19 @@
 //! The Git tab: header with the filter, sidebar, commit list and detail pane,
 //! or the diff of one file in their place.
 
+mod changes;
 mod commits;
 mod detail;
 mod diff;
+mod merge;
+mod overlay;
 mod sidebar;
+mod toolbar;
 
 use iced::widget::{column, container, row, stack, Space};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::action_rows::BANNER_HEIGHT;
 use ncrs_ui_kit::git_rows::drag_capture;
 use ncrs_ui_kit::kit::text_field;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
@@ -17,6 +22,7 @@ use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
 use crate::ctx::ViewCtx;
 use crate::message::Message;
+use crate::shortcuts::Shortcut;
 use crate::state::{Area, State};
 
 /// The ids of the fields and scroll areas, for the focus and scroll tasks.
@@ -46,11 +52,11 @@ pub fn tab_title(state: &State, lang: Language) -> Option<String> {
 
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    let hint = ctx.lang.text(hint_of(state));
+    let hint = hint_line(state, ctx);
     let line = state
         .problem
         .as_deref()
-        .map_or(PageStatusLine::Hint(hint), PageStatusLine::Failure);
+        .map_or(PageStatusLine::Hint(&hint), PageStatusLine::Failure);
     let loaded = state.log.as_ref().map(|log| {
         fill_template(
             ctx.lang.text(Msg::GitViewStatusLoaded),
@@ -67,21 +73,26 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         None => row![
             container(sidebar::view(state, ctx)).width(size::SIDE_PANE),
             theme::vertical_rule(palette.border_inactive),
-            container(commits::view(state, ctx)).width(Length::Fill),
+            container(middle_pane(state, ctx)).width(Length::Fill),
             theme::vertical_rule(palette.border_inactive),
-            container(detail::view(state, ctx)).width(detail_width(ctx)),
+            container(detail_pane(state, ctx)).width(detail_width(state, ctx)),
         ]
         .height(Length::Fill)
         .into(),
     };
-    let page = column![
+    let mut top = column![
         header(state, ctx),
         theme::horizontal_rule(palette.border_inactive),
-        body,
-        page_status_bar(bar, palette),
     ]
     .width(Length::Fill)
     .height(Length::Fill);
+    if let Some(merge) = &state.actions.merge {
+        top = top.push(merge::banner_view(merge, ctx));
+    }
+    if let Some(notice) = &state.actions.notice {
+        top = top.push(overlay::notice_banner(notice, ctx));
+    }
+    let page = top.push(body).push(page_status_bar(bar, palette));
     if state.column_drag.is_some() {
         return stack![
             page,
@@ -89,10 +100,57 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ]
         .into();
     }
-    page.into()
+    overlay::over(page.into(), state, ctx)
 }
 
-fn detail_width(ctx: ViewCtx<'_>) -> f32 {
+/// What the right side shows: the commit, the local changes or a merge.
+enum Pane {
+    Commit,
+    Changes,
+    Merge,
+}
+
+fn pane_of(state: &State) -> Pane {
+    if state.actions.merge.is_some() {
+        return Pane::Merge;
+    }
+    if state.actions.local.is_some() && state.actions.changes_open {
+        return Pane::Changes;
+    }
+    Pane::Commit
+}
+
+/// The middle: the commit list, or the diff of the chosen file while the
+/// changes or a merge are the subject.
+fn middle_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    match (pane_of(state), &state.actions.merge, &state.actions.local) {
+        (Pane::Merge, Some(merge), _) => merge::diff_view(merge, ctx),
+        (Pane::Changes, _, Some(local)) => changes::diff_view(local, ctx),
+        _ => commits::view(state, ctx),
+    }
+}
+
+/// How far down the body starts: the header, its rule and the banners.
+fn body_top(state: &State) -> f32 {
+    let banner = |present: bool| if present { BANNER_HEIGHT } else { 0.0 };
+    size::HEADER
+        + spacing::BORDER_WIDTH
+        + banner(state.actions.merge.is_some())
+        + banner(state.actions.notice.is_some())
+}
+
+fn detail_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    match (pane_of(state), &state.actions.merge, &state.actions.local) {
+        (Pane::Merge, Some(merge), _) => merge::view(merge, ctx),
+        (Pane::Changes, _, Some(local)) => changes::view(local, ctx),
+        _ => detail::view(state, ctx),
+    }
+}
+
+fn detail_width(state: &State, ctx: ViewCtx<'_>) -> f32 {
+    if !matches!(pane_of(state), Pane::Commit) {
+        return size::SIDE_PANE * 1.5;
+    }
     if is_narrow(ctx) {
         size::SIDE_PANE
     } else {
@@ -101,8 +159,47 @@ fn detail_width(ctx: ViewCtx<'_>) -> f32 {
 }
 
 /// How wide the commit list is: what the sidebar, the detail pane and the rules between leave.
-fn commits_pane_width(ctx: ViewCtx<'_>) -> f32 {
-    ctx.window.width - size::SIDE_PANE - detail_width(ctx) - 2.0 * spacing::BORDER_WIDTH
+fn commits_pane_width(state: &State, ctx: ViewCtx<'_>) -> f32 {
+    ctx.window.width - size::SIDE_PANE - detail_width(state, ctx) - 2.0 * spacing::BORDER_WIDTH
+}
+
+/// The keys of the focus; with the actions on, the keys of the actions too.
+fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
+    let key = |shortcut: Shortcut| shortcut.label();
+    let acting = state.actions.sync.is_some() && state.diff.is_none() && !state.filter_focused;
+    if acting && state.actions.merge.is_some() && state.area != Area::Sidebar {
+        return fill_template(
+            ctx.lang.text(Msg::GitViewStatusMerge),
+            &[
+                ("{mine}", &key(Shortcut::TakeMine)),
+                ("{theirs}", &key(Shortcut::TakeTheirs)),
+                ("{both}", &key(Shortcut::TakeBoth)),
+                ("{editor}", &key(Shortcut::OpenEditor)),
+                ("{resolved}", &key(Shortcut::MarkResolved)),
+                ("{menu}", &key(Shortcut::OpenMenu)),
+            ],
+        );
+    }
+    if acting && matches!(pane_of(state), Pane::Changes) && state.area != Area::Sidebar {
+        return fill_template(
+            ctx.lang.text(Msg::GitViewStatusChanges),
+            &[
+                ("{stage_all}", &key(Shortcut::StageAll)),
+                ("{unstage_all}", &key(Shortcut::UnstageAll)),
+                ("{commit}", &key(Shortcut::Commit)),
+            ],
+        );
+    }
+    if acting && state.area == Area::Sidebar {
+        return fill_template(
+            ctx.lang.text(Msg::GitViewStatusSidebarActions),
+            &[
+                ("{menu}", &key(Shortcut::OpenMenu)),
+                ("{new_branch}", &key(Shortcut::NewBranch)),
+            ],
+        );
+    }
+    ctx.lang.text(hint_of(state)).to_owned()
 }
 
 fn hint_of(state: &State) -> Msg {
@@ -151,15 +248,18 @@ fn header<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         Message::FilterSubmit,
         palette,
     );
+    let mut line = row![
+        page_heading(&state.name, palette),
+        page_line(branch, font_size::BODY, palette.dim_text),
+    ]
+    .spacing(spacing::L)
+    .align_y(alignment::Vertical::Center);
+    if let Some(sync) = &state.actions.sync {
+        line = line.push(toolbar::view(sync, ctx));
+    }
     container(
-        row![
-            page_heading(&state.name, palette),
-            page_line(branch, font_size::BODY, palette.dim_text),
-            Space::new().width(Length::Fill),
-            container(filter).width(size::FIELD_WIDE),
-        ]
-        .spacing(spacing::L)
-        .align_y(alignment::Vertical::Center),
+        line.push(Space::new().width(Length::Fill))
+            .push(container(filter).width(size::FIELD_WIDE)),
     )
     .padding([0.0, spacing::XXL])
     .height(size::HEADER)

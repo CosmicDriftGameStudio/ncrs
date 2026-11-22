@@ -17,10 +17,21 @@ pub enum Icon {
     Ban,
     ChevronRight,
     CircleArrowRight,
+    Plus,
+    Minus,
+    Trash,
+    Undo,
+    Download,
+    ArrowDownToLine,
+    ArrowUpFromLine,
+    Archive,
+    ArrowUp,
+    ArrowDown,
+    ArrowUpDown,
 }
 
 impl Icon {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 19] = [
         Self::Clock,
         Self::Loader,
         Self::CircleCheck,
@@ -29,6 +40,17 @@ impl Icon {
         Self::Ban,
         Self::ChevronRight,
         Self::CircleArrowRight,
+        Self::Plus,
+        Self::Minus,
+        Self::Trash,
+        Self::Undo,
+        Self::Download,
+        Self::ArrowDownToLine,
+        Self::ArrowUpFromLine,
+        Self::Archive,
+        Self::ArrowUp,
+        Self::ArrowDown,
+        Self::ArrowUpDown,
     ];
 
     pub(super) const fn bytes(self) -> &'static [u8] {
@@ -43,13 +65,28 @@ impl Icon {
             Self::CircleArrowRight => {
                 include_bytes!("../../../../assets/icons/circle-arrow-right.svg")
             }
+            Self::Plus => include_bytes!("../../../../assets/icons/plus.svg"),
+            Self::Minus => include_bytes!("../../../../assets/icons/minus.svg"),
+            Self::Trash => include_bytes!("../../../../assets/icons/trash-2.svg"),
+            Self::Undo => include_bytes!("../../../../assets/icons/undo-2.svg"),
+            Self::Download => include_bytes!("../../../../assets/icons/download.svg"),
+            Self::ArrowDownToLine => {
+                include_bytes!("../../../../assets/icons/arrow-down-to-line.svg")
+            }
+            Self::ArrowUpFromLine => {
+                include_bytes!("../../../../assets/icons/arrow-up-from-line.svg")
+            }
+            Self::Archive => include_bytes!("../../../../assets/icons/archive.svg"),
+            Self::ArrowUp => include_bytes!("../../../../assets/icons/arrow-up.svg"),
+            Self::ArrowDown => include_bytes!("../../../../assets/icons/arrow-down.svg"),
+            Self::ArrowUpDown => include_bytes!("../../../../assets/icons/arrow-up-down.svg"),
         }
     }
 
     /// Built once: the handle's id is what the renderer caches the parsed
     /// vector by, so a new handle per frame would parse the file every frame.
     pub(super) fn handle(self) -> svg::Handle {
-        static HANDLES: LazyLock<[svg::Handle; 8]> =
+        static HANDLES: LazyLock<[svg::Handle; Icon::ALL.len()]> =
             LazyLock::new(|| Icon::ALL.map(|icon| svg::Handle::from_memory(icon.bytes())));
         HANDLES
             .get(self as usize)

@@ -1,0 +1,162 @@
+//! What the Git tab shows of the actions of #338: local changes, the toolbar,
+//! menus, the new-branch dialog, a merge with conflicts and notices. Design
+//! phase: the state is filled by the caller, nothing here reads a repository.
+
+use iced::widget::text_editor;
+use ncrs_git::{ChangedFile, FileDiff};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeSide {
+    Unstaged,
+    Staged,
+}
+
+#[derive(Debug, Default)]
+pub struct LocalChanges {
+    pub unstaged: Vec<ChangedFile>,
+    pub staged: Vec<ChangedFile>,
+    pub selected: Option<(ChangeSide, usize)>,
+    /// The diff of the selected file.
+    pub diff: Option<FileDiff>,
+    pub title: String,
+    pub body: text_editor::Content,
+    pub amend: bool,
+}
+
+/// What the toolbar of the header shows.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SyncBar {
+    pub ahead: u32,
+    pub behind: u32,
+    /// What "undo" would take back, ready to show; `None`: nothing to undo.
+    pub undo: Option<String>,
+}
+
+/// What a menu is opened on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuTarget {
+    LocalBranch(usize),
+    /// The index into the remote branches of the overview.
+    RemoteBranch(usize),
+    Stash(usize),
+    /// The index into the conflicts of the merge.
+    Conflict(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    Checkout,
+    NewBranchFrom,
+    Rename,
+    Delete,
+    MergeInto,
+    RebaseOnto,
+    Push,
+    CheckoutAsLocal,
+    DeleteOnRemote,
+    StashApply,
+    StashApplyAndDrop,
+    StashDrop,
+}
+
+/// The menu that is open: it hangs at the row of its target in the left list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenMenu {
+    pub target: MenuTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewBranch {
+    pub name: String,
+    /// The branch or commit the new one starts at, ready to show.
+    pub from: String,
+    pub checkout: bool,
+    /// Why the name does not work, ready to show.
+    pub problem: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conflict {
+    pub path: String,
+    /// The number of places in the file.
+    pub places: u32,
+    /// Changed in the editor, but not marked as resolved yet.
+    pub edited: bool,
+    pub resolved: bool,
+}
+
+/// Which side of a conflict is kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Mine,
+    Theirs,
+    Both,
+}
+
+/// What can be done with a whole file in conflict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictAction {
+    Take(Side),
+    OpenEditor,
+    MarkResolved,
+    Reset,
+}
+
+/// A line of a file with conflict markers, as the diff shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConflictLine {
+    Shared(u32, String),
+    Mine(String),
+    Theirs(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeInProgress {
+    pub from: String,
+    pub into: String,
+    pub conflicts: Vec<Conflict>,
+    pub selected: usize,
+    /// The file of `selected`, with its markers.
+    pub preview: Vec<ConflictLine>,
+}
+
+impl MergeInProgress {
+    pub fn open_count(&self) -> usize {
+        self.conflicts.iter().filter(|c| !c.resolved).count()
+    }
+}
+
+/// A push or pull that did not work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// The remote has commits the local branch lacks.
+    PushRejected { branch: String, behind: u32 },
+    /// The remote did not let us in.
+    AuthFailed {
+        remote: String,
+        /// What git printed, shown when the user asks for the details.
+        output: String,
+        details_open: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StashEntry {
+    pub message: String,
+    /// The branch it was made on and how long ago, ready to show.
+    pub origin: String,
+}
+
+#[derive(Debug, Default)]
+pub struct Actions {
+    pub local: Option<LocalChanges>,
+    pub sync: Option<SyncBar>,
+    pub menu: Option<OpenMenu>,
+    pub new_branch: Option<NewBranch>,
+    pub merge: Option<MergeInProgress>,
+    pub notice: Option<Notice>,
+    pub stashes: Vec<StashEntry>,
+    /// "Local changes" is chosen in the left list: the middle shows the diff of
+    /// the chosen file and the right side the files and the commit message.
+    pub changes_open: bool,
+}

@@ -4,6 +4,7 @@ use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, RefsOverview};
 
 use ncrs_ui_kit::git_rows::CommitColumn;
 
+use crate::actions::{ChangeSide, ConflictAction, MenuAction, MenuTarget, Side};
 use crate::state::Fold;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,4 +51,47 @@ pub enum Message {
     Escape,
     Close,
     Refresh,
+    // The actions of #338. The handlers do nothing yet.
+    SelectChange(ChangeSide, usize),
+    Stage(usize),
+    Unstage(usize),
+    StageAll,
+    UnstageAll,
+    StageHunk(usize),
+    DiscardHunk(usize),
+    UnstageHunk(usize),
+    DiscardFile(usize),
+    DiscardAll,
+    CommitTitleChanged(String),
+    CommitBodyEdited(iced::widget::text_editor::Action),
+    ToggleAmend,
+    Commit,
+    Fetch,
+    Pull,
+    Push,
+    Stash,
+    Undo,
+    /// A right press on a row of the left list.
+    OpenMenu(MenuTarget),
+    /// The menu key: opens the menu of the row the cursor is on.
+    OpenMenuKey,
+    CloseMenu,
+    MenuPressed(MenuAction),
+    NewBranchNameChanged(String),
+    ToggleNewBranchCheckout,
+    CreateBranch,
+    CloseDialog,
+    MergeAbort,
+    MergeContinue,
+    SelectConflict(usize),
+    /// A choice for one block of the chosen file: the number of the block.
+    TakeBlock(usize, Side),
+    /// An action of the menu of a file in conflict.
+    ConflictPressed(usize, ConflictAction),
+    /// The key of an action: it acts on the chosen file.
+    ConflictShortcut(ConflictAction),
+    PullFirst,
+    Retry,
+    ToggleNoticeDetails,
+    DismissNotice,
 }

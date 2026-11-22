@@ -156,3 +156,54 @@ pub fn popup_menu<'a, M: Clone + 'a>(
     });
     menu_box(items, POPUP_MENU_WIDTH, origin, palette)
 }
+
+/// A line of a menu that has separators between its groups.
+#[derive(Debug, Clone)]
+pub enum MenuRow<M> {
+    Entry(PopupEntry<M>),
+    Separator,
+}
+
+/// A row of a menu: the label, the key at the right end if there is one.
+fn entry_item<'a, M: Clone + 'a>(entry: PopupEntry<M>, palette: &Palette) -> Element<'a, M> {
+    let (label_color, key_color) =
+        menu_entry_colors(palette, entry.on_press.is_some(), entry.is_selected);
+    let content = row![
+        text(entry.label)
+            .size(font_size::ROW)
+            .color(label_color)
+            .width(Length::Fill)
+            .wrapping(Wrapping::None),
+        text(entry.key.unwrap_or_default())
+            .size(font_size::STATUS)
+            .color(key_color)
+            .wrapping(Wrapping::None),
+    ]
+    .align_y(alignment::Vertical::Center);
+    menu_item(
+        content,
+        entry.is_selected,
+        entry.on_press,
+        entry.on_hover,
+        palette,
+    )
+}
+
+/// The height of a menu with `entries` entries and `separators` separators.
+pub fn popup_rows_height(entries: usize, separators: usize) -> f32 {
+    popup_menu_height(entries) + separators as f32 * MENU_SEPARATOR_HEIGHT
+}
+
+/// A menu of `width` with groups: like [`popup_menu`], with a line between them.
+pub fn popup_menu_rows<'a, M: Clone + 'a>(
+    rows: Vec<MenuRow<M>>,
+    width: f32,
+    origin: Point,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let items = rows.into_iter().map(|line| match line {
+        MenuRow::Entry(entry) => entry_item(entry, palette),
+        MenuRow::Separator => menu_separator(palette),
+    });
+    menu_box(items, width, origin, palette)
+}
