@@ -374,8 +374,13 @@ mod tests {
                 | Msg::BatchRenameTokenName
                 | Msg::BatchRenameStart
                 | Msg::BatchRenameColumnProblem
-                // The git command name, kept as is in German too.
+                // Git command names, kept as is in German too.
                 | Msg::GitViewToolbarPull
+                | Msg::GitViewToolbarPush
+                | Msg::GitViewToolbarStash
+                // The same word in German: Name, Details.
+                | Msg::GitViewNewBranchName
+                | Msg::GitViewNoticeDetails
                 // A name and a placeholder for an already translated sentence.
                 | Msg::TitleBarHermesServerProblem
                 // The same word, in a field that asks for a piece of text.
