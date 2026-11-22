@@ -440,9 +440,11 @@ impl App {
             }
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
-            plain @ (Message::Rules(_) | Message::SavedQueries(_) | Message::Tags(_)) => {
-                self.update_hermes_plain(plain)
-            }
+            plain @ (Message::Rules(_)
+            | Message::SavedQueries(_)
+            | Message::Tags(_)
+            | Message::Reviews(_)
+            | Message::Activity(_)) => self.update_hermes_plain(plain),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),

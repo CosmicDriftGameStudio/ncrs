@@ -6,11 +6,13 @@ use ncrs_config::config::Filing;
 use ncrs_filing::filing::{FilingModule, Phase};
 use ncrs_index::KeyStore;
 
+use crate::activity_page::ActivityPage;
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
+use crate::reviews_page::ReviewsPage;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::tags_page::TagsPage;
@@ -32,6 +34,10 @@ pub struct Hermes {
     pub saved_queries_generation: u64,
     pub tags: Option<TagsPage>,
     pub tags_generation: u64,
+    pub reviews: Option<ReviewsPage>,
+    pub reviews_generation: u64,
+    pub activity: Option<ActivityPage>,
+    pub activity_generation: u64,
     /// The planned documents wait for a free queue; the next tick asks again.
     pub filing_due: bool,
     /// What the filing status page and the status bar show of the pipeline.
@@ -124,6 +130,10 @@ impl Hermes {
             Some(HermesPage::Rules)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
+        } else if self.reviews.is_some() {
+            Some(HermesPage::Reviews)
+        } else if self.activity.is_some() {
+            Some(HermesPage::Activity)
         } else if self.filing_status.page_open() {
             Some(HermesPage::Inspection)
         } else {
@@ -135,6 +145,8 @@ impl Hermes {
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
+        self.reviews = None;
+        self.activity = None;
         self.filing_status.close_page();
     }
 }

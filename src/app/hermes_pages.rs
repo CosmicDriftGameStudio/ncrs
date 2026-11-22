@@ -52,6 +52,8 @@ impl App {
             Message::Rules(inner) => Page::Rules(inner),
             Message::SavedQueries(inner) => Page::SavedQueries(inner),
             Message::Tags(inner) => Page::Tags(inner),
+            Message::Reviews(inner) => Page::Reviews(inner),
+            Message::Activity(inner) => Page::Activity(inner),
             Message::DocumentsFiled(result) => Page::DocumentsFiled(result),
             Message::ContinuousFiled(result) => Page::ContinuousFiled(result),
             Message::HermesColumn(inner) => Page::HermesColumn(inner),
@@ -93,6 +95,8 @@ fn settings_feature_of(page: HermesPage) -> crate::messages::SettingsFeature {
         HermesPage::SavedQueries => SettingsFeature::Reports,
         HermesPage::Tags => SettingsFeature::Tags,
         HermesPage::Inspection => SettingsFeature::ReadErrors,
+        HermesPage::Reviews => SettingsFeature::Reviews,
+        HermesPage::Activity => SettingsFeature::Activity,
     }
 }
 
@@ -105,6 +109,8 @@ pub(in crate::app) fn hermes_page_of(
         SettingsFeature::Reports => Some(HermesPage::SavedQueries),
         SettingsFeature::Tags => Some(HermesPage::Tags),
         SettingsFeature::ReadErrors => Some(HermesPage::Inspection),
+        SettingsFeature::Reviews => Some(HermesPage::Reviews),
+        SettingsFeature::Activity => Some(HermesPage::Activity),
         _ => None,
     }
 }

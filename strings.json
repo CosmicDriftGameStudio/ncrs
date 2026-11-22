@@ -3205,6 +3205,258 @@
       "de": "Dateien, die ncrs nicht lesen konnte, und warum. Erneut verarbeiten versucht es noch einmal."
     },
     {
+      "key": "settings.feature_reviews",
+      "context": "Entry of the feature list on the settings tab and title of its page: the documents that wait for the user's decision, because Hermes could not file them by itself.",
+      "en": "Reviews",
+      "de": "Rückfragen"
+    },
+    {
+      "key": "settings.feature_reviews_intro",
+      "context": "Line under the heading of the reviews page on the settings tab. The page groups the documents that wait for a decision by the question Hermes asks.",
+      "en": "The questions Hermes asks before it files a document. Answer a group at once, or open it to see its files.",
+      "de": "Die Fragen, die Hermes stellt, bevor es ein Dokument ablegt. Beantworte eine Gruppe auf einmal oder öffne sie, um die Dateien zu sehen."
+    },
+    {
+      "key": "settings.feature_activity",
+      "context": "Entry of the feature list on the settings tab and title of its page: what Hermes does right now and what it has filed lately.",
+      "en": "Activity",
+      "de": "Aktivität"
+    },
+    {
+      "key": "settings.feature_activity_intro",
+      "context": "Line under the heading of the activity page on the settings tab. The page shows the state of Hermes and the runs that moved files, newest first.",
+      "en": "What Hermes does now, and the latest runs that moved files, newest first.",
+      "de": "Was Hermes gerade tut, und die letzten Läufe, die Dateien bewegt haben, neueste zuerst."
+    },
+    {
+      "key": "hermes_pages.loading",
+      "context": "Line on the reviews and the activity page of the settings while the index is being read.",
+      "en": "Reading …",
+      "de": "Lese …"
+    },
+    {
+      "key": "hermes_pages.more_files",
+      "context": "Last line of a group on the reviews and activity pages that lists only the first files. {count} is how many more files the group has, 1 or more.",
+      "en": "+ {count} more",
+      "de": "+ {count} weitere"
+    },
+    {
+      "key": "hermes_pages.show_file",
+      "context": "Button on a file row of the reviews and activity pages. Shows the file in the file list of the active panel.",
+      "en": "Show file",
+      "de": "Datei zeigen"
+    },
+    {
+      "key": "reviews_page.none",
+      "context": "Line on the reviews page of the settings when no document waits for a decision.",
+      "en": "Nothing waits for a decision.",
+      "de": "Nichts wartet auf eine Entscheidung."
+    },
+    {
+      "key": "reviews_page.waiting",
+      "context": "Title of the list on the reviews page of the settings. {count} is the number of documents that wait for a decision, 1 or more.",
+      "en": "Waiting for a decision: {count}",
+      "de": "Warten auf eine Entscheidung: {count}"
+    },
+    {
+      "key": "reviews_page.question_sender",
+      "context": "Title of a group on the reviews page: Hermes asks whether the sender it read from these documents is right.",
+      "en": "Is the sender right?",
+      "de": "Ist der Absender richtig?"
+    },
+    {
+      "key": "reviews_page.hint_sender",
+      "context": "Line under the sender question of a group on the reviews page when the documents have different senders or no suggestion.",
+      "en": "Hermes is not sure who sent these.",
+      "de": "Hermes ist sich beim Absender nicht sicher."
+    },
+    {
+      "key": "reviews_page.detail_sender",
+      "context": "Line under the sender question of a group on the reviews page. {sender} is the sender Hermes read from all documents of the group, {folder} the folder it would file them in.",
+      "en": "Read: {sender} · Suggestion: {folder}",
+      "de": "Gelesen: {sender} · Vorschlag: {folder}"
+    },
+    {
+      "key": "reviews_page.question_date",
+      "context": "Title of a group on the reviews page: the documents have no date Hermes could read. It asks when they are from.",
+      "en": "When is this from?",
+      "de": "Von wann ist das?"
+    },
+    {
+      "key": "reviews_page.hint_date",
+      "context": "Line under the date question of a group on the reviews page.",
+      "en": "Hermes finds no date in these.",
+      "de": "Hermes findet kein Datum."
+    },
+    {
+      "key": "reviews_page.question_target_taken",
+      "context": "Title of a group on the reviews page: the place where the documents would go already holds an equal file.",
+      "en": "A file like this is already there.",
+      "de": "Im Ziel liegt schon eine gleiche Datei."
+    },
+    {
+      "key": "reviews_page.hint_target_taken",
+      "context": "Line under the group whose target is taken on the reviews page. Nothing is overwritten.",
+      "en": "Nothing is overwritten. Exclude them from Hermes or decide later.",
+      "de": "Es wird nichts überschrieben. Lass Hermes sie in Ruhe oder entscheide später."
+    },
+    {
+      "key": "reviews_page.question_rule",
+      "context": "Title of a group on the reviews page: a rule would file the documents, but the user has not confirmed that rule yet. Hermes asks whether it should always work like this.",
+      "en": "Should this always work this way?",
+      "de": "Soll das immer so laufen?"
+    },
+    {
+      "key": "reviews_page.hint_rule",
+      "context": "Line under the rule question of a group on the reviews page when the documents have different senders or no suggestion.",
+      "en": "A rule suggests a folder, but you have not confirmed it yet.",
+      "de": "Eine Regel schlägt einen Ordner vor, du hast sie noch nicht bestätigt."
+    },
+    {
+      "key": "reviews_page.detail_rule",
+      "context": "Line under the rule question of a group on the reviews page. {sender} is the sender of all documents, {folder} the folder the rule files them in.",
+      "en": "Rule: {sender} → {folder}",
+      "de": "Regel: {sender} → {folder}"
+    },
+    {
+      "key": "reviews_page.question_no_rule",
+      "context": "Title of the last group on the reviews page: no rule fits the documents, Hermes asks where they belong.",
+      "en": "Where do these belong?",
+      "de": "Wohin gehören diese?"
+    },
+    {
+      "key": "reviews_page.hint_no_rule",
+      "context": "Line under the group where no rule fits on the reviews page.",
+      "en": "No rule fits.",
+      "de": "Keine Regel passt."
+    },
+    {
+      "key": "reviews_page.question_missing",
+      "context": "Title of a group on the reviews page: one field of the documents is missing. {field} is its name, for example date or sender.",
+      "en": "What is the {field}?",
+      "de": "Was steht bei {field}?"
+    },
+    {
+      "key": "reviews_page.hint_missing",
+      "context": "Line under a group whose documents lack a field on the reviews page. {field} is its name.",
+      "en": "Hermes finds no {field} in these.",
+      "de": "Hermes findet bei {field} nichts."
+    },
+    {
+      "key": "reviews_page.question_unsure",
+      "context": "Title of a group on the reviews page: Hermes is not sure about one field. {field} is its name.",
+      "en": "Is the {field} right?",
+      "de": "Stimmt {field}?"
+    },
+    {
+      "key": "reviews_page.hint_unsure",
+      "context": "Line under a group where Hermes is unsure about a field on the reviews page. {field} is its name.",
+      "en": "Hermes is not sure about the {field}.",
+      "de": "Hermes ist sich bei {field} nicht sicher."
+    },
+    {
+      "key": "reviews_page.other_targets",
+      "context": "Added to the line of a group on the reviews page when its documents would be filed in several folders. {count} is how many other folders there are, 1 or more.",
+      "en": "+ {count} other folders",
+      "de": "+ {count} andere Ziele"
+    },
+    {
+      "key": "reviews_page.answer_accept",
+      "context": "Button of a group on the reviews page: files the documents that have a suggestion where Hermes suggests.",
+      "en": "Yes, file them",
+      "de": "Ja, ablegen"
+    },
+    {
+      "key": "reviews_page.answer_once",
+      "context": "Button of the rule question on the reviews page: files the documents this once without confirming the rule.",
+      "en": "Just this time",
+      "de": "Nur diesmal"
+    },
+    {
+      "key": "reviews_page.answer_other_sender",
+      "context": "Button of the sender question on the reviews page: opens the chat to give another sender.",
+      "en": "Other sender …",
+      "de": "Anderer Absender …"
+    },
+    {
+      "key": "reviews_page.answer_enter_date",
+      "context": "Button of the date question on the reviews page: opens the chat to give the date.",
+      "en": "Enter date …",
+      "de": "Datum eingeben …"
+    },
+    {
+      "key": "reviews_page.answer_create_rule",
+      "context": "Button of the rule question on the reviews page: opens the rule form with what Hermes read from the first document of the group.",
+      "en": "Use rule",
+      "de": "Regel übernehmen"
+    },
+    {
+      "key": "reviews_page.ask_chat",
+      "context": "Button on a group of the reviews page whose documents have no suggestion: opens the chat, which asks for what is missing.",
+      "en": "Clarify in chat",
+      "de": "Im Chat klären"
+    },
+    {
+      "key": "activity_page.group_now",
+      "context": "Title of the first section of the activity page: what Hermes does at this moment.",
+      "en": "Now",
+      "de": "Jetzt"
+    },
+    {
+      "key": "activity_page.group_journal",
+      "context": "Title of the second section of the activity page: the runs that moved files, newest first.",
+      "en": "Journal",
+      "de": "Verlauf"
+    },
+    {
+      "key": "activity_page.off",
+      "context": "Line on the activity page when Hermes is not running.",
+      "en": "Hermes is not running.",
+      "de": "Hermes läuft nicht."
+    },
+    {
+      "key": "activity_page.link_reviews",
+      "context": "Button on the activity page that opens the reviews page. {count} is the number of documents that wait for a decision.",
+      "en": "Reviews ({count})",
+      "de": "Rückfragen ({count})"
+    },
+    {
+      "key": "activity_page.link_errors",
+      "context": "Button on the activity page that opens the read errors page. {count} is the number of files that could not be read.",
+      "en": "Read errors ({count})",
+      "de": "Lesefehler ({count})"
+    },
+    {
+      "key": "activity_page.none",
+      "context": "Line on the activity page when Hermes has not moved any file yet.",
+      "en": "No file has been moved yet.",
+      "de": "Noch keine Datei wurde bewegt."
+    },
+    {
+      "key": "activity_page.kind_filing",
+      "context": "Title of a run on the activity page: Hermes filed documents into the archive.",
+      "en": "Filed",
+      "de": "Einsortiert"
+    },
+    {
+      "key": "activity_page.kind_hermes",
+      "context": "Title of a run on the activity page: a run the user started in the chat.",
+      "en": "Done in the chat",
+      "de": "Im Chat ausgeführt"
+    },
+    {
+      "key": "activity_page.kind_reorganisation",
+      "context": "Title of a run on the activity page: the files of a folder were rearranged.",
+      "en": "Rearranged",
+      "de": "Umgeräumt"
+    },
+    {
+      "key": "activity_page.undone",
+      "context": "Added after the time of a run on the activity page when the user took the run back.",
+      "en": "undone",
+      "de": "rückgängig gemacht"
+    },
+    {
       "key": "settings.feature_usage",
       "context": "Entry of the feature list on the settings tab and title of its page: what Hermes used on the own AI server, in requests, tokens and money.",
       "en": "Usage",

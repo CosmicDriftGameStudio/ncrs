@@ -260,7 +260,12 @@ fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<S
 
 /// The documents of a group were filed from the menu: the column asks again
 /// and the panels read their folders.
-fn filed(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+pub(super) fn filed(
+    hermes: &mut Hermes,
+    summary: &AcceptSummary,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) {
     hermes.hermes_column.invalidate_all();
     hermes.hermes_failed_reads.clear();
     hermes.hermes_detail_reads.clear();

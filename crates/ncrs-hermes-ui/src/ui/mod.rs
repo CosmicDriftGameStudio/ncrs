@@ -1,5 +1,6 @@
 //! The views of the Hermes pages.
 
+pub mod activity;
 pub mod condition_editor;
 pub mod confirm_again;
 pub mod filing;
@@ -9,6 +10,7 @@ pub mod filing_status;
 pub mod hermes_overview;
 pub mod quick_fix;
 pub mod review_reason;
+pub mod reviews;
 pub mod rules;
 pub mod saved_queries;
 pub mod tags;

@@ -9,6 +9,7 @@ pub mod ctx;
 pub mod cursor_roles;
 pub mod documents_facts;
 pub use ncrs_intake::filing_pieces;
+pub mod activity_page;
 pub mod filing_setup;
 pub mod filing_status;
 pub mod hermes_column;
@@ -18,6 +19,7 @@ pub mod keys;
 pub mod message;
 pub mod quick_fix;
 pub mod reading_again;
+pub mod reviews_page;
 pub mod rule_form;
 pub mod rules_page;
 pub mod saved_queries;
@@ -31,8 +33,9 @@ pub use action::{Action, ProgressJobBuilder, ProtectionStep, StartProgressJob};
 pub use ctx::{ContinuousTools, Ctx};
 pub use cursor_roles::CursorRoles;
 pub use message::{
-    FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    Message, QuickFixMessage, RuleFormMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
+    HermesOverviewMessage, HermesPage, Message, QuickFixMessage, ReviewsMessage, RuleFormMessage,
+    RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 pub use state::{Hermes, KeyStoreHandle};
 pub use update::{
@@ -41,8 +44,8 @@ pub use update::{
     leave_pages, open_filing_status_page, read_paths_again, refresh_hermes_column,
     request_hermes_column, request_hermes_counts, restart_hermes_module, role_save_failed,
     run_filing, run_filing_work, run_filing_work_after, set_continuous_filing, set_folder_role,
-    show_page, start_filing_module, update, update_filing, update_filing_status,
-    update_hermes_column, update_hermes_overview, update_quick_fix, update_rules,
+    show_page, start_filing_module, update, update_activity, update_filing, update_filing_status,
+    update_hermes_column, update_hermes_overview, update_quick_fix, update_reviews, update_rules,
     update_saved_queries, update_tags, Outcome, SavedFilingApplies,
 };
 pub use view::{

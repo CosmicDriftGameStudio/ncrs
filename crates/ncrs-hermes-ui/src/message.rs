@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
+use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
@@ -18,6 +19,7 @@ use ncrs_pipeline::Load;
 use crate::condition_editor::ConditionEdit;
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
+use crate::reviews_page::{Answer, Question};
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +31,8 @@ pub enum Message {
     QuickFix(QuickFixMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
+    Reviews(ReviewsMessage),
+    Activity(ActivityMessage),
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
     /// The background filing of new files is done: the read folders and how
@@ -111,6 +115,8 @@ pub enum HermesPage {
     SavedQueries,
     Tags,
     Inspection,
+    Reviews,
+    Activity,
 }
 
 /// Everything the saved queries page sends.
@@ -320,4 +326,34 @@ pub enum RuleFormMessage {
         generation: u64,
         result: Result<RuleId, String>,
     },
+}
+
+/// Everything the reviews page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewsMessage {
+    /// The open reviews of the generation. Dropped when the page was closed
+    /// or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    },
+    /// Folds or unfolds the group of a question.
+    ToggleGroup(Question),
+    /// Answers the question of a group for all its documents.
+    Answer(Question, Answer),
+    ShowFile(PathBuf),
+    /// The sequential filing of a group is done.
+    Filed(AcceptSummary),
+}
+
+/// Everything the activity page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActivityMessage {
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ActivityBatch>, String>,
+    },
+    ShowFile(PathBuf),
+    OpenReviews,
+    OpenReadErrors,
 }

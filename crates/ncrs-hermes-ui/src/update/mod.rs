@@ -1,6 +1,7 @@
 //! The state changes of the Hermes pages. What reaches outside them comes back
 //! as actions. Each page has its own entry; the app routes the messages.
 
+mod activity;
 mod column;
 mod continuous;
 mod filing_job;
@@ -8,6 +9,7 @@ mod hermes_file;
 mod lifecycle;
 mod overview;
 mod quick_fix;
+mod reviews;
 mod rules;
 mod saved_queries;
 mod status;
@@ -24,8 +26,8 @@ use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
-    HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage, Message,
-    QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    ActivityMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
+    Message, QuickFixMessage, ReviewsMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 use crate::rule_form::RuleForm;
 use crate::rules_page::RulesPage;
@@ -51,6 +53,8 @@ pub fn show_page(hermes: &mut Hermes, page: HermesPage, ctx: &Ctx<'_>) -> Outcom
         HermesPage::SavedQueries => saved_queries::open(hermes, ctx, &mut actions),
         HermesPage::Rules => rules::open(hermes, ctx, &mut actions),
         HermesPage::Tags => tags::open(hermes, ctx, &mut actions),
+        HermesPage::Reviews => reviews::open(hermes, &mut actions),
+        HermesPage::Activity => activity::open(hermes, &mut actions),
         HermesPage::Inspection => {
             let (task, opened) = open_filing_status_page(hermes, ctx);
             actions.extend(opened);
@@ -124,6 +128,8 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::QuickFix(inner) => update_quick_fix(hermes, inner, ctx),
         Message::SavedQueries(inner) => update_saved_queries(hermes, inner, ctx),
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
+        Message::Reviews(inner) => update_reviews(hermes, inner, ctx),
+        Message::Activity(inner) => update_activity(hermes, inner),
         Message::DocumentsFiled(result) => documents_filed(result, ctx),
         Message::ContinuousFiled(result) => continuous_filed(result, ctx),
         Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
@@ -165,6 +171,18 @@ pub fn update_saved_queries(
 ) -> Outcome {
     let mut actions = Vec::new();
     let task = saved_queries::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_reviews(hermes: &mut Hermes, message: ReviewsMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = reviews::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_activity(hermes: &mut Hermes, message: ActivityMessage) -> Outcome {
+    let mut actions = Vec::new();
+    let task = activity::update(hermes, message, &mut actions);
     (task, actions)
 }
 

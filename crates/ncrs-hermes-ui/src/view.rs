@@ -20,8 +20,8 @@ use crate::hermes_status::HermesStatus;
 use crate::message::{HermesPage, Message};
 use crate::state::Hermes;
 use crate::ui::{
-    confirm_again as confirm_again_ui, filing_status as filing_status_ui, rules as rules_ui,
-    saved_queries as saved_queries_ui, tags as tags_ui,
+    activity as activity_ui, confirm_again as confirm_again_ui, filing_status as filing_status_ui,
+    reviews as reviews_ui, rules as rules_ui, saved_queries as saved_queries_ui, tags as tags_ui,
 };
 
 /// What drawing the Hermes pages reads from the app.
@@ -154,6 +154,14 @@ fn page_groups<'a>(
             .tags
             .as_ref()
             .map(|state| tags_ui::groups(state, ctx.file_list_tags, lang, palette)),
+        HermesPage::Reviews => hermes
+            .reviews
+            .as_ref()
+            .map(|state| reviews_ui::groups(state, lang, palette)),
+        HermesPage::Activity => hermes
+            .activity
+            .as_ref()
+            .map(|state| activity_ui::groups(state, hermes_status(hermes), lang, palette)),
         HermesPage::Inspection => Some(filing_status_ui::groups(
             &hermes.filing_status,
             lang,
