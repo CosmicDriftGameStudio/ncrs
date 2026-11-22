@@ -1,5 +1,7 @@
-//! Flow 3, the places that are taken: delete the duplicate, overwrite, keep
-//! both, file where the place became free, ignore, and the group buttons.
+//! Flow 3, the places that are taken by other content: overwrite, keep both,
+//! file where the place became free, ignore, and the group buttons. An exact
+//! copy is no question (see `flow_continuous`), so "Doppelte löschen" is not
+//! offered here.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -17,14 +19,9 @@ const TAKEN: Question = Question::TargetTaken;
 
 pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     drive::show_reviews(session);
-    let duplicates = world.inbox.duplicates.clone();
     let clashes = world.inbox.clashes.clone();
-    assert!(duplicates.len() >= 3 && clashes.len() >= 6);
+    assert!(clashes.len() >= 6);
 
-    for (incoming, _) in &duplicates {
-        let (_, item) = drive::item(session, incoming);
-        assert_eq!(drive::page(session).taken_by(item.document_id), TakenBy::SameContent);
-    }
     for (incoming, target) in &clashes {
         let (_, item) = drive::item(session, incoming);
         let taken = drive::page(session).taken_by(item.document_id);
@@ -33,17 +30,16 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     }
     let offered = drive::page(session).group_answers(TAKEN);
     let count_of = |answer| offered.iter().find(|(known, _)| *known == answer).map(|(_, n)| *n);
-    assert_eq!(count_of(Answer::DeleteDuplicate), Some(duplicates.len()));
+    assert_eq!(count_of(Answer::DeleteDuplicate), None, "no review holds the same content");
     assert_eq!(count_of(Answer::Overwrite), Some(clashes.len()));
     assert_eq!(count_of(Answer::KeepBoth), Some(clashes.len()));
     assert_eq!(count_of(Answer::Accept), None, "nothing is free yet");
     assert_eq!(
         count_of(Answer::Exclude),
-        Some(duplicates.len() + clashes.len()),
+        Some(clashes.len()),
         "ignoring is always offered"
     );
 
-    delete_duplicates(world, session, &duplicates);
     overwrite(world, session, &clashes[0]);
     keep_both(world, session, &clashes[1]);
     ignore(world, session, &clashes[2]);
@@ -62,39 +58,6 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     }
     drive::shot(session, "reviews-after-group");
     drive::config_intact(world);
-}
-
-/// One by hand, the others with the group button: every incoming copy goes to
-/// the trash with a journal item, and the archive stays as it is.
-fn delete_duplicates<P: Live>(world: &World, session: &mut Session<P>, duplicates: &[(PathBuf, PathBuf)]) {
-    let (incoming, target) = &duplicates[0];
-    let text = drive::text_of(incoming);
-    let trashed_before = drive::trashed(world).len();
-    drive::answer_file(session, incoming, Answer::DeleteDuplicate);
-    assert!(!incoming.exists(), "the copy is still in the inbox");
-    assert_eq!(drive::text_of(target), text, "the archive file changed");
-    assert_eq!(drive::trashed(world).len(), trashed_before + 1);
-    assert!(drive::trash_holds(world, &text), "the copy is not in the trash");
-    assert!(
-        drive::journal_moved(world, incoming).is_some(),
-        "no journal item for the removed copy"
-    );
-    assert!(!drive::has_open_review(world, incoming));
-    drive::config_intact(world);
-
-    let rest = &duplicates[1..];
-    let handled = drive::answer_group(session, TAKEN, Answer::DeleteDuplicate);
-    assert_eq!(handled, rest.len(), "the button counts its members");
-    for (copy, original) in rest {
-        assert!(!copy.exists(), "{copy:?} is still in the inbox");
-        assert!(original.is_file());
-    }
-    assert_eq!(drive::trashed(world).len(), trashed_before + duplicates.len());
-    assert!(
-        drive::batch_names(world).iter().flatten().any(|name| name == "Remove duplicates"),
-        "no journal run for the removed copies: {:?}",
-        drive::batch_names(world)
-    );
 }
 
 fn overwrite<P: Live>(world: &World, session: &mut Session<P>, (incoming, target): &(PathBuf, PathBuf)) {

@@ -47,8 +47,7 @@ impl World {
             index.create_rule(&spec).unwrap();
         }
         drop(index);
-        std::fs::write(root.join("config.toml"), Self::config(&inbox_dir, &archive_dir, false))
-            .unwrap();
+        std::fs::write(root.join("config.toml"), Self::archive_only_config(&archive_dir)).unwrap();
         Self {
             root,
             dir,
@@ -57,6 +56,22 @@ impl World {
             store,
             inbox,
         }
+    }
+
+    /// The first start reads the archive alone, so that every inbox file meets
+    /// an archive that is already indexed; [`World::add_inbox_to_config`] follows.
+    fn archive_only_config(archive: &Path) -> String {
+        format!(
+            "{CONFIG_HEAD}[[modules.filing.locations]]\npath = {archive:?}\nmode = \"archive\"\ntarget = true\n"
+        )
+    }
+
+    pub fn add_inbox_to_config(&self) {
+        std::fs::write(
+            self.root.join("config.toml"),
+            Self::config(&self.inbox_dir, &self.archive_dir, false),
+        )
+        .unwrap();
     }
 
     pub fn config(inbox: &Path, archive: &Path, continuous: bool) -> String {
@@ -81,6 +96,34 @@ impl World {
         });
         boot_with(&self.root, Arc::clone(&self.store), saved)
     }
+}
+
+/// Every file of the archive is in the index.
+pub fn archive_indexed(world: &World) -> bool {
+    let indexed = world.index().documents_beneath(&world.archive_dir).unwrap().len();
+    indexed >= super::drive::files_below(&world.archive_dir).len()
+}
+
+/// The archive document an inbox file is noted to repeat, while the file is
+/// unchanged: what the intake records for an exact copy of a filed document.
+pub fn copy_of(index: &Index, copy: &Path) -> Option<ncrs_index::DocumentId> {
+    let meta = std::fs::metadata(copy).ok()?;
+    let stamp = ncrs_index::FileStamp {
+        size: meta.len(),
+        mtime: meta.modified().ok()?,
+    };
+    index.filed_document_for_inbox_path(copy, stamp).unwrap()
+}
+
+/// The inbox copies of archive files that the index has noted as copies.
+pub fn copies_recorded(world: &World) -> usize {
+    let index = world.index();
+    world
+        .inbox
+        .duplicates
+        .iter()
+        .filter(|(copy, _)| copy_of(&index, copy).is_some())
+        .count()
 }
 
 pub fn files_in(folder: &Path) -> usize {
@@ -203,7 +246,19 @@ pub fn check_phase_a(world: &World) {
     };
     let taken = |reason: &ReviewReason| *reason == ReviewReason::TargetExists;
     let paths = |pairs: &[(PathBuf, PathBuf)]| pairs.iter().map(|(from, _)| from.clone()).collect::<Vec<_>>();
-    expect("duplicates", &paths(&world.inbox.duplicates), &taken);
+    // An exact copy of an indexed archive file is no question: it stays in the
+    // inbox, with no review, and the index only notes it as a repeat of the
+    // archive document.
+    assert!(world.inbox.duplicates.len() >= 3);
+    for (copy, original) in &world.inbox.duplicates {
+        assert!(copy.is_file() && original.is_file(), "{copy:?}: a copy or its original is gone");
+        assert!(index.document_by_path(copy).unwrap().is_none(), "{copy:?} became a document");
+        let holder = copy_of(&index, copy)
+            .unwrap_or_else(|| panic!("{copy:?} is not noted as a copy"));
+        let original_document = index.document_by_path(original).unwrap().expect("the archive file is known");
+        assert_eq!(holder, original_document.id, "{copy:?} is a copy of another document");
+        assert!(index.open_review_of(holder).unwrap().is_none());
+    }
     expect("clashes", &paths(&world.inbox.clashes), &taken);
     expect("no date", &world.inbox.no_date, &|reason| {
         *reason == ReviewReason::MissingField(Field::Date)

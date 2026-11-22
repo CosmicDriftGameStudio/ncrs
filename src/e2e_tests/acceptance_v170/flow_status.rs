@@ -39,7 +39,7 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
     let page = drive::page(session);
     assert_eq!(page.total(), open, "the page lists what the index holds");
     for (question, group_size) in [
-        (Question::TargetTaken, world.inbox.duplicates.len() + world.inbox.clashes.len()),
+        (Question::TargetTaken, world.inbox.clashes.len()),
         (Question::Date, world.inbox.no_date.len()),
         (Question::Missing(ncrs_index::Field::Amount), world.inbox.no_amount.len()),
         (

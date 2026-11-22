@@ -35,17 +35,26 @@ fn acceptance_v170() {
     let started = Instant::now();
     let step = |label: &str| println!("[{:>4} s] {label}", started.elapsed().as_secs());
     let world = World::new("v170");
-    let mut session = world.boot(WINDOW);
-    session.app.set_chat_model_for_test(Arc::new(ScriptedChatModel::new(
-        LocalModelStatus::NotDownloaded,
-        [],
-    )));
+    let limit = if archive::full_scale() { LIMIT } else { Duration::from_secs(90) };
+    let scripted_model = || Arc::new(ScriptedChatModel::new(LocalModelStatus::NotDownloaded, []));
 
-    // Phase A: the pipeline reads the inbox; what it cannot place gets a review.
+    // Phase A: the archive is read to the end first, so that every inbox file
+    // meets an indexed archive. Then the pipeline reads the inbox; what it
+    // cannot place gets a review, and an exact copy of an archive file is only
+    // recorded as a copy.
+    let mut archive_session = world.boot(WINDOW);
+    archive_session.app.set_chat_model_for_test(scripted_model());
+    let archive_read = wait_quiet_and(&mut archive_session, limit, |_| probe::archive_indexed(&world));
+    assert!(archive_read, "the archive was not read");
+    drop(archive_session);
+    world.add_inbox_to_config();
+    let mut session = world.boot(WINDOW);
+    session.app.set_chat_model_for_test(scripted_model());
     let reviewed = |_: &mut crate::e2e_tests::Session<_>| {
-        files_in(&world.inbox_dir) == world.index().open_reviews().unwrap().len()
+        files_in(&world.inbox_dir) == world.index().open_reviews().unwrap().len() + world.inbox.duplicates.len()
+            && probe::copies_recorded(&world) == world.inbox.duplicates.len()
     };
-    let settled = wait_quiet_and(&mut session, if archive::full_scale() { LIMIT } else { Duration::from_secs(90) }, reviewed);
+    let settled = wait_quiet_and(&mut session, limit, reviewed);
     if !settled {
         describe(&world);
     }
