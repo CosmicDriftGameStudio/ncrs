@@ -11,21 +11,40 @@ pub enum ActionError {
     DisabledInSandbox,
     /// The remote has commits this branch lacks (non-fast-forward). `behind` is
     /// counted against the local remote-tracking ref, so 0 when it is stale or missing.
-    Rejected { behind: u32 },
-    AuthFailed { remote: String, git_output: String },
-    NetworkFailed { git_output: String },
+    Rejected {
+        behind: u32,
+    },
+    AuthFailed {
+        remote: String,
+        git_output: String,
+    },
+    NetworkFailed {
+        git_output: String,
+    },
     /// `branch -d` refused: offer a forced delete.
-    BranchNotMerged { branch: String },
+    BranchNotMerged {
+        branch: String,
+    },
     NothingToCommit,
+    /// A branch or ref name git does not take: empty, starting with "-" or not a valid ref name.
+    InvalidName {
+        name: String,
+    },
     /// Pull on diverged branches with no `pull.rebase` / `pull.ff` in the user's config.
-    NeedsPullStrategy { git_output: String },
+    NeedsPullStrategy {
+        git_output: String,
+    },
     /// Files are still in conflict, or blocks inside a file.
-    UnresolvedConflicts { count: usize },
+    UnresolvedConflicts {
+        count: usize,
+    },
     /// The undo would overwrite or lose something newer.
     UndoNotSafe(String),
     Io(String),
     Read(GitError),
-    Other { git_output: String },
+    Other {
+        git_output: String,
+    },
 }
 
 impl From<GitError> for ActionError {
@@ -48,6 +67,7 @@ impl fmt::Display for ActionError {
             Self::NetworkFailed { git_output } => write!(f, "network failure: {git_output}"),
             Self::BranchNotMerged { branch } => write!(f, "branch {branch} is not merged"),
             Self::NothingToCommit => f.write_str("nothing to commit"),
+            Self::InvalidName { name } => write!(f, "\"{name}\" is not a valid name"),
             Self::NeedsPullStrategy { git_output } => {
                 write!(f, "pull needs a strategy: {git_output}")
             }
@@ -103,7 +123,10 @@ pub fn classify_sync_failure(git_output: &str, remote: &str) -> ActionError {
     if rejected {
         return ActionError::Rejected { behind: 0 };
     }
-    if AUTH_MARKERS.iter().any(|marker| git_output.contains(marker)) {
+    if AUTH_MARKERS
+        .iter()
+        .any(|marker| git_output.contains(marker))
+    {
         return ActionError::AuthFailed {
             remote: remote.to_string(),
             git_output: git_output.to_string(),
@@ -142,7 +165,8 @@ mod tests {
 
     #[test]
     fn fetch_first_is_rejected() {
-        let output = " ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs";
+        let output =
+            " ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs";
         assert!(matches!(
             classify_sync_failure(output, "origin"),
             ActionError::Rejected { .. }

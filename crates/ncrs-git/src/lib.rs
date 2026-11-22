@@ -17,6 +17,7 @@ mod graph;
 mod hunk;
 mod integrate;
 mod log;
+mod refname;
 mod refs;
 mod repo_access;
 mod repository;
@@ -27,19 +28,23 @@ mod sync;
 mod undo;
 
 pub use action_error::ActionError;
+pub use changes::ChangeLists;
 pub use cli::{write_actions_available, Git, GitCli, WRITE_ACTIONS_ENABLED};
 pub use commit::CommitMessage;
-pub use conflict::{parse_blocks, ConflictBlock, ConflictChoice};
+pub use conflict::{parse_blocks, preview_lines, ConflictBlock, ConflictChoice, PreviewLine};
 pub use detail::{commit_detail, working_changes, ChangeKind, ChangedFile, CommitDetail};
 pub use diff::{file_diff, DiffHunk, DiffRow, DiffTarget, FileDiff, RowKind};
 pub use error::GitError;
 pub use graph::{GraphRow, GraphSegment, SegmentHalf};
 pub use hunk::HunkSide;
-pub use integrate::{ConflictKind, ConflictedFile, IntegrateOutcome, Integration};
+pub use integrate::{
+    ConflictKind, ConflictedFile, IntegrateOutcome, Integration, IntegrationDetail,
+};
 pub use log::{log, Log, LogCommit};
 pub use refs::{refs, BranchInfo, RefKind, RefLabel, RefsOverview, WorktreeInfo};
 pub use repository::{is_repository_root, repository_root_of};
 pub use stash::StashEntry;
 pub use state::FileState;
 pub use status::{state_of_entry, status, RepoStatus};
+pub use sync::PullStrategy;
 pub use undo::{UndoRecord, UndoSummary};

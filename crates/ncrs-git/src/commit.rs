@@ -24,16 +24,18 @@ impl Git {
         let previous = self.head_sha();
         self.commit_with(&["commit", "-F", "-"], message)?;
         let head_now = self.head_sha();
-        Ok(previous.zip(head_now).map(|(previous_head, new_head)| UndoRecord {
-            summary: UndoSummary::Commit {
-                title: message.title.clone(),
-            },
-            description: format!("Commit \"{}\"", message.title.trim()),
-            action: UndoAction::ResetCommit {
-                new_head,
-                previous_head,
-            },
-        }))
+        Ok(previous
+            .zip(head_now)
+            .map(|(previous_head, new_head)| UndoRecord {
+                summary: UndoSummary::Commit {
+                    title: message.title.clone(),
+                },
+                description: format!("Commit \"{}\"", message.title.trim()),
+                action: UndoAction::ResetCommit {
+                    new_head,
+                    previous_head,
+                },
+            }))
     }
 
     /// Rewrites the last commit with what is staged, and with `message` when given.

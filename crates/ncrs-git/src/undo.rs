@@ -32,10 +32,21 @@ pub struct UndoRecord {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UndoAction {
     /// The index as a tree before and after the action.
-    Index { before: String, after: String },
-    ResetCommit { new_head: String, previous_head: String },
-    RestoreFiles { saved: Vec<SavedFile> },
-    RecreateBranch { name: String, sha: String },
+    Index {
+        before: String,
+        after: String,
+    },
+    ResetCommit {
+        new_head: String,
+        previous_head: String,
+    },
+    RestoreFiles {
+        saved: Vec<SavedFile>,
+    },
+    RecreateBranch {
+        name: String,
+        sha: String,
+    },
 }
 
 /// A file as the discard found it, kept under `.git/ncrs-undo`.
@@ -62,7 +73,8 @@ fn io_error(cause: std::io::Error) -> ActionError {
 impl Git {
     /// The index as a tree, `None` while there are conflicts (no tree can be written).
     pub(crate) fn index_tree(&self) -> Option<String> {
-        self.try_text(&["write-tree"]).filter(|tree| !tree.is_empty())
+        self.try_text(&["write-tree"])
+            .filter(|tree| !tree.is_empty())
     }
 
     /// Runs `change` and records how to take back what it did to the index.
@@ -133,7 +145,9 @@ impl Git {
         match &record.action {
             UndoAction::Index { before, after } => {
                 if self.index_tree().as_deref() != Some(after.as_str()) {
-                    return Err(ActionError::UndoNotSafe("the index changed since".to_string()));
+                    return Err(ActionError::UndoNotSafe(
+                        "the index changed since".to_string(),
+                    ));
                 }
                 self.ok(&["read-tree", before])?;
                 Ok(())

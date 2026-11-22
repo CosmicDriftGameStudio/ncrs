@@ -22,10 +22,16 @@ fn create_checkout_rename_and_delete_branches() {
     repo.git.checkout("side").unwrap();
     assert_eq!(repo.git.current_branch().as_deref(), Some("side"));
     repo.git.rename_branch("work", "job").unwrap();
-    assert_eq!(repo.sh(&["branch", "--format=%(refname:short)"]), "job\nmain\nside");
+    assert_eq!(
+        repo.sh(&["branch", "--format=%(refname:short)"]),
+        "job\nmain\nside"
+    );
     repo.git.checkout("main").unwrap();
     repo.git.delete_branch("job", false).unwrap();
-    assert_eq!(repo.sh(&["branch", "--format=%(refname:short)"]), "main\nside");
+    assert_eq!(
+        repo.sh(&["branch", "--format=%(refname:short)"]),
+        "main\nside"
+    );
 }
 
 #[test]
@@ -60,7 +66,10 @@ fn remote_branch_becomes_a_tracking_local_branch() {
     repo.git.fetch(Some("origin")).unwrap();
     repo.git.checkout_remote_branch("origin/feature").unwrap();
     assert_eq!(repo.git.current_branch().as_deref(), Some("feature"));
-    assert_eq!(repo.sh(&["rev-parse", "--abbrev-ref", "@{u}"]), "origin/feature");
+    assert_eq!(
+        repo.sh(&["rev-parse", "--abbrev-ref", "@{u}"]),
+        "origin/feature"
+    );
     assert_eq!(read(repo.path(), "f.txt"), "f\n");
 }
 
@@ -119,7 +128,7 @@ fn pull_fast_forwards_and_fetch_updates_the_tracking_ref() {
 
     repo.git.fetch(None).unwrap();
     assert_eq!(repo.sh(&["rev-list", "--count", "main..origin/main"]), "1");
-    assert_eq!(repo.git.pull().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(repo.git.pull(None).unwrap(), IntegrateOutcome::Completed);
     assert_eq!(read(repo.path(), "o.txt"), "o\n");
     repo.git.push().unwrap();
 }
@@ -132,14 +141,19 @@ fn pull_that_conflicts_comes_back_as_conflicts() {
     other.sh(&["push", "-q", "origin", "main"]);
     repo.commit_file("a.txt", "one\nmine\nthree\n", "mine");
 
-    let IntegrateOutcome::Conflicts(files) = repo.git.pull().unwrap() else {
+    let IntegrateOutcome::Conflicts(files) = repo.git.pull(None).unwrap() else {
         panic!("expected conflicts");
     };
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].path, "a.txt");
-    repo.git.resolve_file("a.txt", ConflictChoice::Both).unwrap();
+    repo.git
+        .resolve_file("a.txt", ConflictChoice::Both)
+        .unwrap();
     repo.git.mark_resolved("a.txt").unwrap();
-    assert_eq!(repo.git.continue_integration().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.continue_integration().unwrap(),
+        IntegrateOutcome::Completed
+    );
     assert_eq!(read(repo.path(), "a.txt"), "one\nmine\ntheirs\nthree\n");
 }
 

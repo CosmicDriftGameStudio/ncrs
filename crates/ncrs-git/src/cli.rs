@@ -28,8 +28,14 @@ impl GitCli {
     /// Finder-launched app does not have on its PATH) and remembers the answer.
     pub fn locate() -> &'static Self {
         LOCATED.get_or_init(|| {
+            let tools_installed = std::cell::OnceCell::new();
             candidates()
                 .into_iter()
+                .filter(|candidate| {
+                    may_run(candidate, cfg!(target_os = "macos"), || {
+                        *tools_installed.get_or_init(command_line_tools_installed)
+                    })
+                })
                 .find(|candidate| runs(candidate))
                 .map_or(Self::NotFound, Self::Available)
         })
@@ -76,6 +82,28 @@ fn candidates() -> Vec<PathBuf> {
     found.extend(fixed.iter().map(PathBuf::from));
     found.retain(|candidate| candidate.is_file());
     found
+}
+
+const MACOS_SHIM: &str = "/usr/bin/git";
+
+/// Without the Xcode command line tools `/usr/bin/git` on a Mac is a stub that
+/// opens an install dialog when it is run, even for `--version`.
+fn is_macos_shim(candidate: &Path, on_macos: bool) -> bool {
+    on_macos && candidate == Path::new(MACOS_SHIM)
+}
+
+/// Whether to start `candidate` to see if it is a git. The stub is never
+/// started unless the command line tools stand behind it.
+fn may_run(candidate: &Path, on_macos: bool, tools_installed: impl FnOnce() -> bool) -> bool {
+    !is_macos_shim(candidate, on_macos) || tools_installed()
+}
+
+fn command_line_tools_installed() -> bool {
+    Command::new("/usr/bin/xcode-select")
+        .arg("-p")
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 fn runs(exe: &Path) -> bool {
@@ -231,7 +259,9 @@ impl Git {
     }
 
     pub(crate) fn git_dir(&self) -> Result<PathBuf, ActionError> {
-        Ok(PathBuf::from(self.text(&["rev-parse", "--absolute-git-dir"])?))
+        Ok(PathBuf::from(
+            self.text(&["rev-parse", "--absolute-git-dir"])?,
+        ))
     }
 
     pub fn current_branch(&self) -> Option<String> {
@@ -242,5 +272,29 @@ impl Git {
     pub(crate) fn head_sha(&self) -> Option<String> {
         self.try_text(&["rev-parse", "--verify", "-q", "HEAD"])
             .filter(|sha| !sha.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_mac_stub_is_not_started_without_the_command_line_tools() {
+        let stub = Path::new("/usr/bin/git");
+        assert!(!may_run(stub, true, || false));
+        assert!(may_run(stub, true, || true));
+    }
+
+    #[test]
+    fn other_gits_and_other_systems_are_started_without_asking_for_the_tools() {
+        let asked = std::cell::Cell::new(false);
+        let ask = || {
+            asked.set(true);
+            false
+        };
+        assert!(may_run(Path::new("/opt/homebrew/bin/git"), true, ask));
+        assert!(may_run(Path::new("/usr/bin/git"), false, ask));
+        assert!(!asked.get());
     }
 }

@@ -105,6 +105,52 @@ pub fn parse_blocks(text: &str) -> Vec<ConflictBlock> {
     scan(&lines).into_iter().map(|found| found.block).collect()
 }
 
+/// One line of a file with conflict markers as a reader sees it: the markers
+/// are gone and each side of a block is its own run of lines.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PreviewLine {
+    /// The 1-based line number in the file and its text.
+    Shared(u32, String),
+    Ours(String),
+    Theirs(String),
+}
+
+fn without_newline(line: &str) -> String {
+    line.trim_end_matches(['\n', '\r']).to_string()
+}
+
+pub fn preview_lines(text: &str) -> Vec<PreviewLine> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut shown = Vec::new();
+    let mut cursor = 0;
+    let shared = |from: usize, to: usize, out: &mut Vec<PreviewLine>| {
+        for (offset, line) in lines.get(from..to).unwrap_or_default().iter().enumerate() {
+            let number = u32::try_from(from + offset + 1).unwrap_or(u32::MAX);
+            out.push(PreviewLine::Shared(number, without_newline(line)));
+        }
+    };
+    for found in scan(&lines) {
+        shared(cursor, found.lines.start, &mut shown);
+        shown.extend(
+            found
+                .block
+                .ours
+                .lines()
+                .map(|line| PreviewLine::Ours(line.to_string())),
+        );
+        shown.extend(
+            found
+                .block
+                .theirs
+                .lines()
+                .map(|line| PreviewLine::Theirs(line.to_string())),
+        );
+        cursor = found.lines.end;
+    }
+    shared(cursor, lines.len(), &mut shown);
+    shown
+}
+
 /// The text with block number `only` (or every block when `None`) replaced by the choice.
 /// `None` when there is no such block.
 pub fn resolve_blocks(text: &str, only: Option<usize>, choice: ConflictChoice) -> Option<String> {
@@ -143,6 +189,25 @@ mod tests {
     use super::*;
 
     const TWO: &str = "head\n<<<<<<< HEAD\nmine 1\n=======\ntheirs 1\n>>>>>>> feature\nmiddle\n<<<<<<< HEAD\nmine 2\n=======\ntheirs 2\n>>>>>>> feature\ntail\n";
+
+    #[test]
+    fn the_preview_drops_the_markers_and_numbers_the_shared_lines() {
+        let shown = preview_lines(TWO);
+        assert_eq!(
+            shown.first(),
+            Some(&PreviewLine::Shared(1, "head".to_string()))
+        );
+        assert_eq!(shown.get(1), Some(&PreviewLine::Ours("mine 1".to_string())));
+        assert_eq!(
+            shown.get(2),
+            Some(&PreviewLine::Theirs("theirs 1".to_string()))
+        );
+        assert_eq!(
+            shown.get(3),
+            Some(&PreviewLine::Shared(7, "middle".to_string()))
+        );
+        assert_eq!(shown.len(), 7);
+    }
 
     #[test]
     fn finds_both_blocks_with_labels_and_lines() {

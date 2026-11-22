@@ -25,15 +25,22 @@ impl Git {
         Ok(diff_bytes(path, &old, &new, false))
     }
 
-    pub fn stage_hunk(&self, path: &str, hunk: &DiffHunk) -> Result<Option<UndoRecord>, ActionError> {
+    pub fn stage_hunk(
+        &self,
+        path: &str,
+        hunk: &DiffHunk,
+    ) -> Result<Option<UndoRecord>, ActionError> {
         self.recording_index(
             UndoSummary::Stage { files: 1 },
             format!("Stage a change in {path}"),
             || {
                 let (old, new) = self.sides(path, HunkSide::Unstaged)?;
                 let patch = patch_of(path, hunk, &old, &new);
-                self.ok_with_input(&["apply", "--cached", "--whitespace=nowarn", "-"], Some(&patch))
-                    .map(|_| ())
+                self.ok_with_input(
+                    &["apply", "--cached", "--whitespace=nowarn", "-"],
+                    Some(&patch),
+                )
+                .map(|_| ())
             },
         )
     }
@@ -91,7 +98,7 @@ impl Git {
         }
     }
 
-    fn blob(&self, spec: &str) -> Option<Vec<u8>> {
+    pub(crate) fn blob(&self, spec: &str) -> Option<Vec<u8>> {
         self.run(&["cat-file", "blob", spec], None)
             .ok()
             .filter(|output| output.success)
@@ -132,8 +139,16 @@ fn patch_of(path: &str, hunk: &DiffHunk, old: &[u8], new: &[u8]) -> Vec<u8> {
         }
     }
     // An empty side is addressed as the line before the (non-existent) first one.
-    let old_start = if old_count == 0 { hunk.old_start.saturating_sub(1) } else { hunk.old_start };
-    let new_start = if new_count == 0 { hunk.new_start.saturating_sub(1) } else { hunk.new_start };
+    let old_start = if old_count == 0 {
+        hunk.old_start.saturating_sub(1)
+    } else {
+        hunk.old_start
+    };
+    let new_start = if new_count == 0 {
+        hunk.new_start.saturating_sub(1)
+    } else {
+        hunk.new_start
+    };
     let mut patch = format!(
         "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"
     )

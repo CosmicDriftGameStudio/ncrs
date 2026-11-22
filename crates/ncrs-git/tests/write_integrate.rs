@@ -10,9 +10,7 @@
 mod git_cli;
 
 use git_cli::{read, repo, write, Repo};
-use ncrs_git::{
-    ActionError, ConflictChoice, ConflictKind, IntegrateOutcome, Integration,
-};
+use ncrs_git::{ActionError, ConflictChoice, ConflictKind, IntegrateOutcome, Integration};
 
 fn lines(first: &str, last: &str) -> String {
     let middle: String = (2..=9).map(|n| format!("mid {n}\n")).collect();
@@ -70,17 +68,29 @@ fn merge_with_conflicts_resolved_per_block_then_continued() {
         Err(ActionError::UnresolvedConflicts { count: 2 })
     ));
 
-    repo.git.resolve_block("c.txt", 0, ConflictChoice::Ours).unwrap();
+    repo.git
+        .resolve_block("c.txt", 0, ConflictChoice::Ours)
+        .unwrap();
     let rest = conflicted_files(&repo);
     assert_eq!(rest[0].blocks.len(), 1);
-    repo.git.resolve_block("c.txt", 0, ConflictChoice::Theirs).unwrap();
+    repo.git
+        .resolve_block("c.txt", 0, ConflictChoice::Theirs)
+        .unwrap();
     repo.git.mark_resolved("c.txt").unwrap();
     assert!(conflicted_files(&repo).is_empty());
 
-    assert_eq!(repo.git.continue_integration().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.continue_integration().unwrap(),
+        IntegrateOutcome::Completed
+    );
     assert_eq!(repo.git.integration_in_progress(), None);
     assert_eq!(read(repo.path(), "c.txt"), lines("M1", "F10"));
-    assert_eq!(repo.sh(&["rev-list", "--parents", "-n", "1", "HEAD"]).split(' ').count(), 3);
+    assert_eq!(
+        repo.sh(&["rev-list", "--parents", "-n", "1", "HEAD"])
+            .split(' ')
+            .count(),
+        3
+    );
 }
 
 #[test]
@@ -90,10 +100,15 @@ fn diff3_style_conflicts_show_the_base() {
     repo.git.merge("feature").unwrap();
     let files = conflicted_files(&repo);
     assert_eq!(files[0].blocks[0].base.as_deref(), Some("start\n"));
-    repo.git.resolve_file("c.txt", ConflictChoice::Both).unwrap();
+    repo.git
+        .resolve_file("c.txt", ConflictChoice::Both)
+        .unwrap();
     assert_eq!(
         read(repo.path(), "c.txt"),
-        format!("M1\nF1\n{}M10\nF10\n", (2..=9).map(|n| format!("mid {n}\n")).collect::<String>())
+        format!(
+            "M1\nF1\n{}M10\nF10\n",
+            (2..=9).map(|n| format!("mid {n}\n")).collect::<String>()
+        )
     );
 }
 
@@ -101,7 +116,9 @@ fn diff3_style_conflicts_show_the_base() {
 fn resolve_whole_file_as_theirs_and_reset_brings_the_markers_back() {
     let repo = diverged();
     repo.git.merge("feature").unwrap();
-    repo.git.resolve_file("c.txt", ConflictChoice::Theirs).unwrap();
+    repo.git
+        .resolve_file("c.txt", ConflictChoice::Theirs)
+        .unwrap();
     assert_eq!(read(repo.path(), "c.txt"), lines("F1", "F10"));
     repo.git.mark_resolved("c.txt").unwrap();
     assert!(conflicted_files(&repo).is_empty());
@@ -130,7 +147,10 @@ fn rebase_with_conflicts_can_be_aborted() {
         panic!("expected conflicts");
     };
     assert_eq!(files[0].blocks.len(), 2);
-    assert_eq!(repo.git.integration_in_progress(), Some(Integration::Rebase));
+    assert_eq!(
+        repo.git.integration_in_progress(),
+        Some(Integration::Rebase)
+    );
 
     repo.git.abort_integration().unwrap();
     assert_eq!(repo.git.integration_in_progress(), None);
@@ -143,9 +163,14 @@ fn rebase_continues_after_resolving() {
     let repo = diverged();
     repo.git.checkout("feature").unwrap();
     repo.git.rebase("main").unwrap();
-    repo.git.resolve_file("c.txt", ConflictChoice::Both).unwrap();
+    repo.git
+        .resolve_file("c.txt", ConflictChoice::Both)
+        .unwrap();
     repo.git.mark_resolved("c.txt").unwrap();
-    assert_eq!(repo.git.continue_integration().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.continue_integration().unwrap(),
+        IntegrateOutcome::Completed
+    );
     assert_eq!(repo.git.integration_in_progress(), None);
     assert_eq!(repo.sh(&["rev-list", "--count", "main..feature"]), "1");
 }
@@ -165,27 +190,45 @@ fn delete_modify_conflicts_resolve_to_either_side() {
     assert_eq!(files[0].kind, ConflictKind::DeletedByUs);
     assert!(files[0].blocks.is_empty());
 
-    repo.git.resolve_file("d.txt", ConflictChoice::Theirs).unwrap();
+    repo.git
+        .resolve_file("d.txt", ConflictChoice::Theirs)
+        .unwrap();
     assert_eq!(read(repo.path(), "d.txt"), "d edited\n");
     assert!(conflicted_files(&repo).is_empty());
     repo.git.abort_integration().unwrap();
 
     repo.git.merge("edit").unwrap();
-    repo.git.resolve_file("d.txt", ConflictChoice::Ours).unwrap();
+    repo.git
+        .resolve_file("d.txt", ConflictChoice::Ours)
+        .unwrap();
     assert!(!repo.path().join("d.txt").exists());
-    assert_eq!(repo.git.continue_integration().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.continue_integration().unwrap(),
+        IntegrateOutcome::Completed
+    );
 }
 
 #[test]
 fn stash_is_addressed_by_sha_after_the_list_shifted() {
     let repo = repo();
     write(repo.path(), "a.txt", "first stash\n");
-    let first = repo.git.stash_push("first", false).unwrap().expect("stashed");
+    let first = repo
+        .git
+        .stash_push("first", false)
+        .unwrap()
+        .expect("stashed");
     assert_eq!(read(repo.path(), "a.txt"), "one\ntwo\nthree\n");
     write(repo.path(), "a.txt", "second stash\n");
-    repo.git.stash_push("second", false).unwrap().expect("stashed");
+    repo.git
+        .stash_push("second", false)
+        .unwrap()
+        .expect("stashed");
     write(repo.path(), "u.txt", "untracked\n");
-    let third = repo.git.stash_push("third", true).unwrap().expect("stashed");
+    let third = repo
+        .git
+        .stash_push("third", true)
+        .unwrap()
+        .expect("stashed");
     assert!(!repo.path().join("u.txt").exists());
 
     let listed = repo.git.stashes().unwrap();
@@ -198,12 +241,18 @@ fn stash_is_addressed_by_sha_after_the_list_shifted() {
     repo.git.stash_drop(&third.sha).unwrap();
     assert_eq!(repo.git.stashes().unwrap().len(), 2);
 
-    assert_eq!(repo.git.stash_apply(&first.sha).unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.stash_apply(&first.sha).unwrap(),
+        IntegrateOutcome::Completed
+    );
     assert_eq!(read(repo.path(), "a.txt"), "first stash\n");
     assert_eq!(repo.git.stashes().unwrap().len(), 2);
 
     repo.sh(&["checkout", "--", "."]);
-    assert_eq!(repo.git.stash_pop(&first.sha).unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.stash_pop(&first.sha).unwrap(),
+        IntegrateOutcome::Completed
+    );
     let left = repo.git.stashes().unwrap();
     assert_eq!(left.len(), 1);
     assert!(left[0].message.contains("second"));
@@ -223,7 +272,11 @@ fn stash_push_with_nothing_to_stash_is_none() {
 fn stash_pop_with_conflicts_keeps_the_stash() {
     let repo = repo();
     write(repo.path(), "a.txt", "one\nstashed\nthree\n");
-    let stash = repo.git.stash_push("work", false).unwrap().expect("stashed");
+    let stash = repo
+        .git
+        .stash_push("work", false)
+        .unwrap()
+        .expect("stashed");
     repo.commit_file("a.txt", "one\ncommitted\nthree\n", "meanwhile");
 
     let IntegrateOutcome::Conflicts(files) = repo.git.stash_pop(&stash.sha).unwrap() else {

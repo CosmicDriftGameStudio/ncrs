@@ -1,25 +1,46 @@
 use crate::cli::Git;
 use crate::integrate::IntegrateOutcome;
+use crate::refname::plain_ref;
 use crate::ActionError;
+
+/// How a pull on diverged branches joins them, for this one call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PullStrategy {
+    Merge,
+    Rebase,
+}
+
+impl PullStrategy {
+    fn setting(self) -> &'static str {
+        match self {
+            Self::Merge => "pull.rebase=false",
+            Self::Rebase => "pull.rebase=true",
+        }
+    }
+}
 
 impl Git {
     /// Fetches one remote, or all of them, and drops remote-tracking refs that are gone.
     pub fn fetch(&self, remote: Option<&str>) -> Result<(), ActionError> {
         match remote {
-            Some(name) => self.talk(&["fetch", "--prune", name], name)?,
+            Some(name) => self.talk(&["fetch", "--prune", "--", plain_ref(name)?], name)?,
             None => self.talk(&["fetch", "--prune", "--all"], "all remotes")?,
         };
         Ok(())
     }
 
-    /// Pull the way the user's git config says (fast-forward, merge or rebase);
-    /// conflicts come back as an outcome, not as an error.
-    pub fn pull(&self) -> Result<IntegrateOutcome, ActionError> {
+    /// Pull the way the user's git config says (fast-forward, merge or rebase),
+    /// or the way `strategy` says for this call; the config is never written.
+    /// Conflicts come back as an outcome, not as an error.
+    pub fn pull(&self, strategy: Option<PullStrategy>) -> Result<IntegrateOutcome, ActionError> {
         let remote = self
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
             .unwrap_or_else(|| "origin".to_string());
-        let output = self.run(&["pull"], None)?;
+        let output = match strategy {
+            Some(chosen) => self.run(&["-c", chosen.setting(), "pull"], None)?,
+            None => self.run(&["pull"], None)?,
+        };
         if output.success {
             return Ok(IntegrateOutcome::Completed);
         }
@@ -49,6 +70,7 @@ impl Git {
         if configured.is_none() {
             args.push("--set-upstream");
         }
+        args.push("--");
         args.push(&remote_name);
         args.push(&refspec);
         match self.talk(&args, &remote_name) {
@@ -70,7 +92,10 @@ impl Git {
 
     /// Deletes a branch on the remote.
     pub fn delete_remote_branch(&self, remote: &str, branch: &str) -> Result<(), ActionError> {
-        self.talk(&["push", remote, "--delete", branch], remote)?;
+        self.talk(
+            &["push", "--delete", "--", plain_ref(remote)?, branch],
+            remote,
+        )?;
         Ok(())
     }
 
@@ -81,9 +106,15 @@ impl Git {
 
     fn default_remote(&self) -> Result<String, ActionError> {
         let remotes = self.text(&["remote"])?;
-        let mut names = remotes.lines().map(str::trim).filter(|name| !name.is_empty());
+        let mut names = remotes
+            .lines()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
         let first = names.next();
-        let origin = remotes.lines().map(str::trim).find(|name| *name == "origin");
+        let origin = remotes
+            .lines()
+            .map(str::trim)
+            .find(|name| *name == "origin");
         origin
             .or(first)
             .map(str::to_string)

@@ -3,12 +3,25 @@ use std::fs;
 use crate::changes::PorcelainEntry;
 use crate::cli::{Git, Output};
 use crate::conflict::{parse_blocks, resolve_blocks, ConflictBlock, ConflictChoice};
+use crate::refname::plain_ref;
 use crate::ActionError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Integration {
     Merge,
     Rebase,
+}
+
+/// The two sides of a merge or rebase that stopped, as branch names. While
+/// rebasing, git's "ours" is `other` (what the commits are replayed onto) and
+/// "theirs" is `current` (the commits being replayed).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntegrationDetail {
+    pub kind: Integration,
+    /// The branch the user is on.
+    pub current: String,
+    /// The branch merged in, or the one the rebase goes onto.
+    pub other: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,12 +83,12 @@ fn other(text: String) -> ActionError {
 
 impl Git {
     pub fn merge(&self, reference: &str) -> Result<IntegrateOutcome, ActionError> {
-        let output = self.run(&["merge", "--no-edit", reference], None)?;
+        let output = self.run(&["merge", "--no-edit", "--", plain_ref(reference)?], None)?;
         self.finished_integration(&output)
     }
 
     pub fn rebase(&self, reference: &str) -> Result<IntegrateOutcome, ActionError> {
-        let output = self.run(&["rebase", reference], None)?;
+        let output = self.run(&["rebase", "--", plain_ref(reference)?], None)?;
         self.finished_integration(&output)
     }
 
@@ -89,6 +102,56 @@ impl Git {
         } else {
             None
         }
+    }
+
+    /// Which branches a merge or rebase in progress joins, as names to show.
+    pub fn integration_detail(&self) -> Option<IntegrationDetail> {
+        let kind = self.integration_in_progress()?;
+        let git_dir = self.git_dir().ok()?;
+        let read = |relative: &str| {
+            fs::read_to_string(git_dir.join(relative))
+                .ok()
+                .map(|text| text.trim().to_string())
+                .filter(|text| !text.is_empty())
+        };
+        let (current, other) = match kind {
+            Integration::Merge => {
+                let message = read("MERGE_MSG").unwrap_or_default();
+                let other = message
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split('\'').nth(1))
+                    .map(str::to_string)
+                    .or_else(|| self.name_of(&read("MERGE_HEAD")?))
+                    .unwrap_or_default();
+                (self.current_branch().unwrap_or_default(), other)
+            }
+            Integration::Rebase => {
+                let folder = if git_dir.join("rebase-merge").exists() {
+                    "rebase-merge"
+                } else {
+                    "rebase-apply"
+                };
+                let current = read(&format!("{folder}/head-name"))
+                    .map(|name| name.trim_start_matches("refs/heads/").to_string())
+                    .unwrap_or_default();
+                let other = read(&format!("{folder}/onto"))
+                    .and_then(|sha| self.name_of(&sha))
+                    .unwrap_or_default();
+                (current, other)
+            }
+        };
+        Some(IntegrationDetail {
+            kind,
+            current,
+            other,
+        })
+    }
+
+    fn name_of(&self, sha: &str) -> Option<String> {
+        let name = self.try_text(&["name-rev", "--name-only", "--no-undefined", "--", sha])?;
+        let short = name.split(['~', '^']).next().unwrap_or(&name);
+        Some(short.trim_start_matches("remotes/").to_string())
     }
 
     pub fn conflicts(&self) -> Result<Vec<ConflictedFile>, ActionError> {
@@ -238,8 +301,8 @@ impl Git {
     ) -> Result<(), ActionError> {
         let file = self.root().join(path);
         let bytes = fs::read(&file).map_err(io_error)?;
-        let text =
-            String::from_utf8(bytes).map_err(|cause| other(format!("{path} is not text: {cause}")))?;
+        let text = String::from_utf8(bytes)
+            .map_err(|cause| other(format!("{path} is not text: {cause}")))?;
         let resolved = resolve_blocks(&text, block, choice)
             .ok_or_else(|| other(format!("{path} has no such conflict block")))?;
         fs::write(&file, resolved).map_err(io_error)

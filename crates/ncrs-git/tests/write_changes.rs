@@ -30,11 +30,17 @@ fn stage_and_unstage_with_undo() {
     assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "");
 
     repo.git.stage_all().unwrap();
-    assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "a.txt\nnew.txt");
+    assert_eq!(
+        repo.sh(&["diff", "--cached", "--name-only"]),
+        "a.txt\nnew.txt"
+    );
     let unstaged = repo.git.unstage(&["a.txt"]).unwrap().expect("undo");
     assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "new.txt");
     repo.git.undo(&unstaged).unwrap();
-    assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "a.txt\nnew.txt");
+    assert_eq!(
+        repo.sh(&["diff", "--cached", "--name-only"]),
+        "a.txt\nnew.txt"
+    );
     repo.git.unstage_all().unwrap();
     assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "");
 }
@@ -55,8 +61,16 @@ fn stage_undo_is_refused_when_the_index_moved_on() {
 fn two_hunk_file(ending: &str) -> (String, String) {
     let original = numbered(20, ending);
     let changed = original
-        .replacen(&format!("line 2{ending}"), &format!("line 2 edited{ending}"), 1)
-        .replacen(&format!("line 18{ending}"), &format!("line 18 edited{ending}"), 1);
+        .replacen(
+            &format!("line 2{ending}"),
+            &format!("line 2 edited{ending}"),
+            1,
+        )
+        .replacen(
+            &format!("line 18{ending}"),
+            &format!("line 18 edited{ending}"),
+            1,
+        );
     (original, changed)
 }
 
@@ -206,7 +220,11 @@ fn commit_undo_is_refused_once_pushed() {
     let (_origin, repo) = git_cli::with_origin();
     write(repo.path(), "b.txt", "b\n");
     repo.git.stage(&["b.txt"]).unwrap();
-    let undo = repo.git.commit(&message("Add b", "")).unwrap().expect("undo");
+    let undo = repo
+        .git
+        .commit(&message("Add b", ""))
+        .unwrap()
+        .expect("undo");
     repo.git.push().unwrap();
     assert!(matches!(
         repo.git.undo(&undo),
@@ -217,7 +235,9 @@ fn commit_undo_is_refused_once_pushed() {
 #[test]
 fn amend_changes_message_or_content() {
     let repo = repo();
-    repo.git.amend(Some(&message("Better title", "With body"))).unwrap();
+    repo.git
+        .amend(Some(&message("Better title", "With body")))
+        .unwrap();
     assert_eq!(repo.sh(&["log", "-1", "--format=%s"]), "Better title");
     assert_eq!(repo.sh(&["rev-list", "--count", "HEAD"]), "1");
 
@@ -225,6 +245,9 @@ fn amend_changes_message_or_content() {
     repo.git.stage(&["c.txt"]).unwrap();
     repo.git.amend(None).unwrap();
     assert_eq!(repo.sh(&["log", "-1", "--format=%s"]), "Better title");
-    assert_eq!(repo.sh(&["show", "--name-only", "--format=", "HEAD"]), "a.txt\nc.txt");
+    assert_eq!(
+        repo.sh(&["show", "--name-only", "--format=", "HEAD"]),
+        "a.txt\nc.txt"
+    );
     assert_eq!(repo.sh(&["rev-list", "--count", "HEAD"]), "1");
 }

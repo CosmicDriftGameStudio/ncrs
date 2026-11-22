@@ -1,6 +1,8 @@
 use std::fs;
 
 use crate::cli::Git;
+use crate::detail::{ChangeKind, ChangedFile};
+use crate::diff::line_counts;
 use crate::undo::{SavedFile, UndoAction, UndoRecord, UndoSummary};
 use crate::ActionError;
 
@@ -29,7 +31,66 @@ impl PorcelainEntry {
     }
 }
 
+/// The changed files of a working copy, split the way the index splits them.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ChangeLists {
+    /// In the working copy only, untracked files included.
+    pub unstaged: Vec<ChangedFile>,
+    /// In the index, against HEAD.
+    pub staged: Vec<ChangedFile>,
+}
+
+fn kind_of_letter(letter: char) -> ChangeKind {
+    match letter {
+        'A' | 'C' | '?' => ChangeKind::Added,
+        'D' => ChangeKind::Deleted,
+        'R' => ChangeKind::Renamed,
+        _ => ChangeKind::Modified,
+    }
+}
+
+fn changed(path: &str, kind: ChangeKind, old: &[u8], new: &[u8]) -> ChangedFile {
+    let counts = line_counts(old, new);
+    ChangedFile {
+        path: path.to_string(),
+        old_path: None,
+        kind,
+        added: counts.map_or(0, |(added, _)| added),
+        removed: counts.map_or(0, |(_, removed)| removed),
+        binary: counts.is_none(),
+    }
+}
+
 impl Git {
+    /// The files not staged and the files staged, each with its line counts.
+    /// Files in conflict are in neither: see `conflicts`.
+    pub fn changes(&self) -> Result<ChangeLists, ActionError> {
+        let mut lists = ChangeLists::default();
+        for entry in self.porcelain()? {
+            if entry.is_unmerged() {
+                continue;
+            }
+            let path = entry.path.as_str();
+            if entry.index != ' ' && !entry.is_untracked() {
+                let old = self.blob(&format!("HEAD:{path}")).unwrap_or_default();
+                let new = self.blob(&format!(":{path}")).unwrap_or_default();
+                lists
+                    .staged
+                    .push(changed(path, kind_of_letter(entry.index), &old, &new));
+            }
+            if entry.is_untracked() || entry.has_unstaged_change() {
+                let old = self.blob(&format!(":{path}")).unwrap_or_default();
+                let new = fs::read(self.root().join(path)).unwrap_or_default();
+                lists
+                    .unstaged
+                    .push(changed(path, kind_of_letter(entry.worktree), &old, &new));
+            }
+        }
+        lists.staged.sort_by(|a, b| a.path.cmp(&b.path));
+        lists.unstaged.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(lists)
+    }
+
     pub(crate) fn porcelain(&self) -> Result<Vec<PorcelainEntry>, ActionError> {
         let output = self.ok(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
         let text = String::from_utf8_lossy(&output.stdout).to_string();
