@@ -52,6 +52,7 @@ impl App {
             home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
+            title_tabs_first: 0,
             state_path: None,
             session_scheduled: SessionState::default(),
             session_save_generation: 0,
@@ -250,6 +251,13 @@ impl App {
     /// The sample column with tags after the names, as the setting says.
     pub fn with_file_list_tags_for_test(mut self, setting: FileListTags) -> Self {
         self.file_list_tags = setting;
+        self
+    }
+
+    /// A Git tab filled by hand, opened and shown.
+    pub fn showing_git_for_test(mut self, git: ncrs_git_view::State) -> Self {
+        let id = self.git_tabs.adopt_for_test(git);
+        self.shown_tab = crate::messages::ShownTab::Git(id);
         self
     }
 

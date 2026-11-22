@@ -201,6 +201,8 @@ impl App {
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
             page_tabs: self.page_tabs(),
+            window_width: self.window_size.width,
+            first_tab: self.title_tabs_first,
             home: &self.home,
             hermes: self.hermes_chip(),
             hermes_switched_off: switched_off,
@@ -288,7 +290,7 @@ impl App {
         for (id, state) in self.git_tabs.iter() {
             if let Some(title) = ncrs_git_view::tab_title(state, self.lang) {
                 tabs.push(titlebar::PageTabState {
-                    page: titlebar::PageTab::Git(id, title),
+                    page: titlebar::PageTab::Git(id, title, state.name.clone()),
                     active: self.shown_tab == ShownTab::Git(id),
                 });
             }

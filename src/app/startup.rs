@@ -545,6 +545,7 @@ impl App {
             home,
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
+            title_tabs_first: 0,
             state_path: None,
             session_scheduled: SessionState::default(),
             session_save_generation: 0,

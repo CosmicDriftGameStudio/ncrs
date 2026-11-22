@@ -302,6 +302,8 @@ pub enum TitleBarMessage {
     /// maximize or restore elsewhere.
     ToggleMaximize,
     Minimize,
+    /// An arrow of the tab strip: the first tab that shows, while not all fit.
+    TabsFrom(usize),
     Resize(ResizeEdge),
 }
 

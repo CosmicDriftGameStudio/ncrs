@@ -156,7 +156,9 @@ fn gauge<'a>(level: MeterLevel, fraction: f32, palette: &Palette) -> Cell<'a> {
 
 /// One page of the settings sidebar; `dimmed` is the page having the keys.
 fn sidebar_item<'a>(chosen: bool, dimmed: bool, palette: &Palette) -> Cell<'a> {
-    nav_list::nav_list(
+    // The list scrolls and fills its sidebar; here it gets the room of one group.
+    const ONE_GROUP_HEIGHT: f32 = 64.0;
+    let list = nav_list::nav_list(
         vec![NavGroup {
             head: "Pages".to_owned(),
             mark: None,
@@ -169,7 +171,8 @@ fn sidebar_item<'a>(chosen: bool, dimmed: bool, palette: &Palette) -> Cell<'a> {
             }],
         }],
         palette,
-    )
+    );
+    container(list).height(ONE_GROUP_HEIGHT).into()
 }
 
 fn focus_ring<'a>(content: Cell<'a>, palette: &Palette) -> Cell<'a> {

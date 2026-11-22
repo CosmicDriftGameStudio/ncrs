@@ -167,6 +167,7 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
         TitleBarMessage::Drag => window.and_then(iced::window::drag),
         TitleBarMessage::ToggleMaximize => window.and_then(iced::window::toggle_maximize),
         TitleBarMessage::Minimize => window.and_then(|id| iced::window::minimize(id, true)),
+        TitleBarMessage::TabsFrom(_) => Task::none(),
         TitleBarMessage::Resize(edge) => {
             window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
         }
@@ -413,6 +414,10 @@ impl App {
                 Task::none()
             }
             Message::Panel(panel_message) => self.update_panel(panel_message),
+            Message::TitleBar(TitleBarMessage::TabsFrom(first)) => {
+                self.title_tabs_first = first;
+                Task::none()
+            }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::ComputeFolderSizes => {
                 let walk = self.panels.start_folder_size_run();

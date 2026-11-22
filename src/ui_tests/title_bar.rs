@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use ncrs_pipeline::{RunnerState, Snapshot};
 
 use super::*;
-use crate::messages::{FilingStatusMessage, HermesPage, PanelSide};
+use crate::messages::{FilingStatusMessage, HermesPage, PanelSide, SettingsMessage};
 use crate::ui::titlebar::{HERMES_CHIP_ID, LEFT_TAB_ID, RIGHT_TAB_ID};
 
 fn taken_at() -> SystemTime {
@@ -344,4 +344,73 @@ fn the_main_view_matches_its_snapshots() {
             "the main view does not match tests/snapshots/{name}.png"
         );
     }
+}
+
+/// Names that differ from the first letter on, as real repositories do.
+const REPOSITORY_NAMES: [&str; 15] = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
+    "kilo", "lima", "mike", "november", "oscar",
+];
+
+/// Settings, Monitor and `git_tabs` Git tabs in a window as wide as Marc's.
+fn crowded_title_bar(git_tabs: usize) -> App {
+    let size = iced::Size::new(1740.0, 1130.0);
+    let mut app = App::with_fixed_panels().with_window_size_for_test(size);
+    drop(app.update(Message::Settings(SettingsMessage::Toggle)));
+    drop(app.update(Message::Monitor(ncrs_monitor::MonitorMessage::Toggle)));
+    for listed in REPOSITORY_NAMES.iter().take(git_tabs) {
+        let name = (*listed).to_owned();
+        let mut git = ncrs_git_view::State::default();
+        drop(ncrs_git_view::open(
+            &mut git,
+            std::path::PathBuf::from(format!("/repo/{name}")),
+            name,
+            &ncrs_git_view::Ctx::new(Language::English),
+        ));
+        app = app.showing_git_for_test(git);
+    }
+    app
+}
+
+fn matches_title_bar_snapshot(app: &App, name: &str) {
+    let matches = Simulator::with_size(
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
+        iced::Size::new(1740.0, 1130.0),
+        app.view(),
+    )
+    .snapshot(&iced::Theme::Dark)
+    .unwrap()
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
+    .expect("snapshot comparison");
+    assert!(
+        matches,
+        "the title bar does not match tests/snapshots/{name}.png"
+    );
+}
+
+#[test]
+fn a_few_page_tabs_keep_the_full_tab_width() {
+    matches_title_bar_snapshot(&crowded_title_bar(3), "title_bar_tabs_five");
+}
+
+#[test]
+fn many_page_tabs_shrink_and_keep_the_active_one_in_view() {
+    matches_title_bar_snapshot(&crowded_title_bar(8), "title_bar_tabs_ten");
+}
+
+#[test]
+fn too_many_page_tabs_scroll_to_the_active_one() {
+    matches_title_bar_snapshot(&crowded_title_bar(15), "title_bar_tabs_scrolled_end");
+}
+
+#[test]
+fn a_tab_selected_by_the_keys_scrolls_into_view() {
+    let mut app = crowded_title_bar(15);
+    for _ in 0..13 {
+        drop(app.update(Message::PreviousTab));
+    }
+    matches_title_bar_snapshot(&app, "title_bar_tabs_scrolled_second");
 }
