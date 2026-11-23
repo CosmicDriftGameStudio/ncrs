@@ -63,9 +63,9 @@ SANDBOX_BUNDLE_ID=dev.cosmicdrift.ncrs.sandbox
 
 STORE_BUNDLE_ID=dev.cosmicdrift.ncrs
 STORE_TEAM_ID=2ZJ4C4D9SP
-# The store app is universal: 10.15 is the floor of the x86_64 slice, the
-# arm64 slice carries 11.0 in its own load command (the Xcode convention).
-STORE_MIN_MACOS=10.15
+# The store app is universal and needs macOS 13 in both slices: StoreKit 2
+# (AppTransaction) starts there.
+STORE_MIN_MACOS=13.0
 
 # Prints "<library file name> <subfolder of the fetch-pdfium output>".
 library_for() {

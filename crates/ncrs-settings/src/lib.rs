@@ -31,7 +31,7 @@ pub use ai_server::{check_ai_server, store_ai_key, AiCheckJob, AiCheckResult};
 pub use ctx::{Ctx, Services};
 pub use message::{
     AiModelMessage, FavouritesEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange,
-    SettingField, SettingsMessage, TerminalChoice, ThemeFetchMessage,
+    SettingField, SettingsMessage, StoreButton, TerminalChoice, ThemeFetchMessage,
 };
 pub use state::Settings;
 pub use update::{

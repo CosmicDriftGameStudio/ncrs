@@ -7,7 +7,7 @@ use ncrs_fs::OpenKind;
 
 use crate::facts::AreaFacts;
 use crate::folders::AddAs;
-use crate::message::{FavouritesEdit, SettingChange};
+use crate::message::{FavouritesEdit, SettingChange, StoreButton};
 
 /// What the settings ask of the app, which they cannot do themselves. The app
 /// runs the actions in order, right after `update`.
@@ -71,4 +71,6 @@ pub enum Action {
     /// A recovery key typed in on a computer that has none.
     NotesRestore(String),
     NotesSyncNow,
+    /// A button of the Full version page.
+    Store(StoreButton),
 }

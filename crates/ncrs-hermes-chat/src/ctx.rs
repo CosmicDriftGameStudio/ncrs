@@ -40,6 +40,9 @@ pub struct Ctx {
     pub ai_on: bool,
     /// Whether the text recognition models are installed.
     pub ocr_models_present: bool,
+    /// Whether the build may change files: a locked trial lets Hermes read but
+    /// not file, trash or undo.
+    pub changes_allowed: bool,
     /// `None` in a build without the local language model.
     pub model: Option<Arc<dyn ChatModel>>,
 }

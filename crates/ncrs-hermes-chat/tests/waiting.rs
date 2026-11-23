@@ -168,6 +168,22 @@ mod tests {
     }
 
     #[test]
+    fn a_locked_app_files_nothing_and_says_so_to_the_app() {
+        let mut talk = talk_with(3);
+        talk.open();
+        talk.press(&ChipReply::WaitingShow);
+        talk.ctx.changes_allowed = false;
+
+        talk.press(&ChipReply::WaitingFile);
+
+        assert!(talk.actions.contains(&Action::ChangesLocked));
+        assert!(talk.state.pending_work().is_none());
+        for day in 1..=3 {
+            assert!(talk.path(&format!("inbox/scan-{day}.pdf")).exists());
+        }
+    }
+
+    #[test]
     fn a_group_can_be_left_and_stays_waiting() {
         let mut talk = talk_with(2);
         talk.open();

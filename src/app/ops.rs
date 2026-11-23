@@ -525,6 +525,9 @@ impl App {
         kind: TransferKind,
         preset: Option<PathBuf>,
     ) -> Task<Message> {
+        if !self.changes_allowed() {
+            return self.refuse_locked_change();
+        }
         let (sources, source_side) = (self.action_sources(), self.source_side());
         self.with_ops_and_panels(|ops, ctx, panels| {
             let facts = selection_facts(panels, source_side, sources);
@@ -577,6 +580,9 @@ impl App {
         // The queue keeps only the description of a job, never its work: a job
         // queued behind a running one would be lost and would take the place
         // of the next one that is started.
+        if !self.changes_allowed() {
+            return self.refuse_locked_change();
+        }
         if self.jobs.is_busy() {
             return self.show_busy_notice();
         }
@@ -598,6 +604,9 @@ impl App {
         Message: From<M>,
         M: Send + 'static,
     {
+        if !self.changes_allowed() {
+            return self.refuse_locked_change();
+        }
         if self.jobs.is_busy() {
             return self.show_busy_notice();
         }

@@ -466,6 +466,7 @@ impl App {
             Message::HandoffPoll => self.poll_handoffs(),
             Message::HandedOver(requests) => self.open_handed_over(requests),
             Message::Updates(updates_message) => self.update_updates(updates_message),
+            Message::Store(store_message) => self.update_store(store_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
             plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
@@ -519,6 +520,9 @@ impl App {
 
     /// A panel inside an archive can be read and copied from, nothing else.
     pub(in crate::app) fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
+        if let Some(refused) = self.refuse_if_locked(&message) {
+            return refused;
+        }
         if asks_for_hermes(&message) {
             if self.hermes.is_restarting() {
                 let text = self.lang.text(Msg::StatusHermesRestarting).to_owned();

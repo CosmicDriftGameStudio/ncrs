@@ -118,6 +118,8 @@ mod open_file_tests;
 #[cfg(test)]
 mod remote_panel_tests;
 #[cfg(test)]
+mod store_tests;
+#[cfg(test)]
 mod terminal_tests;
 #[cfg(test)]
 mod updates_tests;

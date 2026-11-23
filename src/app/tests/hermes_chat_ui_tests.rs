@@ -54,6 +54,7 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
         sources: vec![PathBuf::from("/home/test/Downloads")],
         ai_on: true,
         ocr_models_present: true,
+        changes_allowed: true,
         model: None,
         favourites: Vec::new(),
         resolve_folder: |path| Ok(path.to_path_buf()),

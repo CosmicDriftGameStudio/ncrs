@@ -105,6 +105,7 @@ impl App {
                         _ => None,
                     }
                 }),
+            self.store_subscription(),
             // The clock of the notes: auto-lock and the timed sync.
             iced::time::every(NOTES_TICK_EVERY)
                 .map(|now| Message::Notes(ncrs_notes::Message::Tick(now))),

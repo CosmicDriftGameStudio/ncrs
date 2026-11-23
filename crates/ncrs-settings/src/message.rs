@@ -118,6 +118,14 @@ pub enum NotesEdit {
     SyncNow,
 }
 
+/// A button of the Full version page; the app talks to the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreButton {
+    StartTrial,
+    Buy,
+    Restore,
+}
+
 /// A text field of the settings tab. What is typed stays a draft until
 /// Enter, which checks it and writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -164,6 +172,7 @@ pub enum SettingsMessage {
     Columns(ColumnsEdit),
     Favourites(FavouritesEdit),
     Notes(NotesEdit),
+    Store(StoreButton),
     Edit {
         field: SettingField,
         text: String,

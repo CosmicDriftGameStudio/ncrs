@@ -125,6 +125,10 @@ impl App {
     /// The handle and the model of the background filing, when Hermes is
     /// ready and its AI is on.
     pub(in crate::app) fn continuous_tools(&self) -> Option<ncrs_hermes_ui::ContinuousTools> {
+        // Locked, the background filing waits without a word.
+        if !self.changes_allowed() {
+            return None;
+        }
         let model = self
             .chat_ai_on()
             .then(|| self.chat_model.clone())

@@ -2,6 +2,7 @@ mod ai_page;
 mod columns_page;
 mod favourites_page;
 mod font_rows;
+mod full_version_page;
 mod groups;
 mod hermes_page;
 mod index_page;
@@ -15,6 +16,7 @@ use ai_page::ai_groups;
 use columns_page::columns_groups;
 use favourites_page::favourites_groups;
 use font_rows::font_rows;
+use full_version_page::full_version_groups;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
@@ -89,6 +91,9 @@ pub struct SettingsView<'a> {
     /// Whether the Updates page is in the list; the App Store build makes no
     /// request and leaves it out.
     pub updates_listed: bool,
+    /// What the App Store build allows; the Full version page is listed only
+    /// while it is not `Unrestricted`.
+    pub entitlement: ncrs_store::Entitlement,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -171,6 +176,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Notes => Msg::SettingsFeatureNotes,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
+        SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersion,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Ai => Msg::SettingsFeatureAi,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
@@ -198,6 +204,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
+        | SettingsFeature::FullVersion
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -233,6 +240,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
+        | SettingsFeature::FullVersion
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -258,6 +266,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Notes
         | SettingsFeature::System
         | SettingsFeature::Updates
+        | SettingsFeature::FullVersion
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -281,6 +290,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Notes => Msg::SettingsFeatureNotesIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
+        SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersionIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Ai => Msg::SettingsFeatureAiIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
@@ -317,6 +327,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         | SettingsFeature::Reviews
         | SettingsFeature::Activity
         | SettingsFeature::Updates
+        | SettingsFeature::FullVersion
         | SettingsFeature::Usage => None,
     }
 }
@@ -381,6 +392,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::Notes => notes_groups(view),
         SettingsFeature::System => system_groups(view),
+        SettingsFeature::FullVersion => full_version_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Ai => ai_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
@@ -470,7 +482,11 @@ pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
 /// Every page is in the list but the Updates page of a build that makes no
 /// update check.
 fn is_listed(feature: SettingsFeature, view: &SettingsView<'_>) -> bool {
-    feature != SettingsFeature::Updates || view.updates_listed
+    match feature {
+        SettingsFeature::Updates => view.updates_listed,
+        SettingsFeature::FullVersion => view.entitlement != ncrs_store::Entitlement::Unrestricted,
+        _ => true,
+    }
 }
 
 /// The features the search leaves, in their order.

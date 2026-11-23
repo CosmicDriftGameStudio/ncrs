@@ -31,4 +31,7 @@ pub enum Action {
     },
     /// Opens the card that downloads the text recognition models.
     OpenOcrModels,
+    /// The work would have changed files while the trial does not allow it;
+    /// it did not run.
+    ChangesLocked,
 }

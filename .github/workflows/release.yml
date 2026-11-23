@@ -370,7 +370,7 @@ jobs:
             sandbox_binary="artifacts/sandbox-binary-$target/ncrs"
             test -f "$sandbox_binary" \
               || { echo "::error::no sandboxed binary for $target"; exit 1; }
-            scripts/package.sh sandbox-app "$dir" "$sandbox_binary" "$VERSION" "$min_macos" "$workdir/sandbox" \
+            scripts/package.sh sandbox-app "$dir" "$sandbox_binary" "$VERSION" 13.0 "$workdir/sandbox" \
               --licenses artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html
             sandbox_app="$workdir/sandbox/ncrs.app"
 

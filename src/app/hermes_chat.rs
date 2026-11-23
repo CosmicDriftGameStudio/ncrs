@@ -205,6 +205,7 @@ impl App {
             resolve_folder: self.resolve_folder,
             ai_on: self.chat_ai_on(),
             ocr_models_present: self.ocr_models_present(),
+            changes_allowed: self.changes_allowed(),
             model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
         }
     }
@@ -259,6 +260,7 @@ impl App {
                 self.update_ocr_models(OcrModelsMessage::Open)
             }
             ncrs_hermes_chat::Action::TurnOnHermes => self.turn_on_hermes(),
+            ncrs_hermes_chat::Action::ChangesLocked => self.refuse_locked_change(),
         }
     }
 

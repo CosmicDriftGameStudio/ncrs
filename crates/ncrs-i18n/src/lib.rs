@@ -454,6 +454,7 @@ mod tests {
                 | Msg::MonitorTitle
                 // The loanword, the same in both languages: the Updates page.
                 | Msg::SettingsFeatureUpdates
+                | Msg::StoreRowStatus
                 // The mode field of the Monitor page, in capitals like the one of Settings.
                 | Msg::MonitorMode
                 // Seconds, a sort column and units that German writes like English.
