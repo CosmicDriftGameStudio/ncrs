@@ -34,8 +34,11 @@ fn main() {
     println!("cargo:rustc-env=NCRS_DISPLAY_VERSION={display}");
     println!("cargo:rustc-env=NCRS_BUILD_KIND={kind}");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os == "windows" {
-        embed_windows_resources();
+    #[cfg(windows)]
+    {
+        if target_os == "windows" {
+            embed_windows_resources();
+        }
     }
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let with_local_ai = env::var_os("CARGO_FEATURE_LOCAL_AI").is_some();
@@ -109,6 +112,7 @@ fn display_version() -> String {
     clippy::expect_used,
     reason = "a build script reports a failure by panicking"
 )]
+#[cfg(windows)]
 fn embed_windows_resources() {
     use std::fmt::Write as _;
     use std::path::PathBuf;

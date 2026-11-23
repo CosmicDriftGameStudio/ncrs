@@ -40,11 +40,6 @@ license = "MIT"
 [lints]
 workspace = true
 
-[build-dependencies]
-# build.rs embeds the icon and the version info into ncrs.exe with the Windows
-# resource compiler (MIT).
-embed-resource = "3"
-
 [dependencies]
 # x11 and wayland are not optional in practice: iced_tiny_skia depends on
 # softbuffer, whose backend enum is generated from #[cfg] arms. Without these
@@ -147,6 +142,12 @@ arboard = { version = "3.6", default-features = false, features = ["image-data"]
 # a Wayland desktop that has no X11 clipboard (Cargo adds this to the feature
 # set above).
 arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
+
+[target.'cfg(windows)'.build-dependencies]
+# build.rs embeds the icon and the version info into ncrs.exe with the Windows
+# resource compiler (MIT). Target tables of build dependencies apply to the
+# host, and the resources are only embedded by the native Windows build.
+embed-resource = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux

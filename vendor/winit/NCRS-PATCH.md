@@ -1,6 +1,6 @@
 # ncrs patch to winit 0.30.13
 
-Copy of winit 0.30.13 from crates.io with one change: the private CoreGraphics
+Copy of winit 0.30.13 from crates.io with the changes below. The first: the private CoreGraphics
 functions `CGSMainConnectionID` and `CGSSetWindowBackgroundBlurRadius` are
 removed from `src/platform_impl/macos/ffi.rs` (with the two imports only they
 used), and `set_blur` in
@@ -23,3 +23,20 @@ for `openFiles:` before `applicationDidFinishLaunching:`, so a later method
 added from the app would be too late for a launch with a file. Winit has no
 event for it; upstream 0.30 only offers a custom delegate, which would replace
 winit's own.
+
+## Trimmed targets
+
+`Cargo.toml` has the dependency sections for `cfg(target_family = "wasm")`
+(including the `target_feature = "atomics"` and dev-dependency ones),
+`cfg(target_os = "android")`, `cfg(target_os = "redox")` and the iOS-only
+`objc2-foundation` and `objc2-ui-kit` removed, and so the features
+`android-game-activity` and `android-native-activity` and the `ndk/rwh_0x`
+entries of `rwh_04`, `rwh_05` and `rwh_06`. The sections for iOS and macOS
+together and all macOS ones are unchanged, and no file under `src` was touched.
+
+Why: ncrs builds for macOS, Linux and Windows only. Cargo.lock resolves every
+target, so those entries stood in the lock, and in every tool that reads the
+lock whole (Dependabot), although nothing of them is built. `cargo deny` never
+saw them: deny.toml limits its graph to the release targets.
+
+When this copy is compared with upstream, the cut has to go back in.
