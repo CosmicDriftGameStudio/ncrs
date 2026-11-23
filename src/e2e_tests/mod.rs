@@ -797,7 +797,7 @@ pub(in crate::e2e_tests) mod acceptance_v160;
 #[cfg(test)]
 pub mod acceptance_v160_git;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "sandbox")))]
 mod acceptance_v170_git;
 
 #[cfg(test)]

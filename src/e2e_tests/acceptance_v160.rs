@@ -46,6 +46,7 @@ pub(in crate::e2e_tests) fn shoot_with(
 }
 
 /// [`shoot_with`] into the folder `dir`.
+#[cfg(not(feature = "sandbox"))]
 pub(in crate::e2e_tests) fn shoot_into(
     dir: &str,
     app: &App,

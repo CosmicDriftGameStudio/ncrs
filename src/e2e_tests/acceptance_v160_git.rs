@@ -484,10 +484,14 @@ fn open_git_view_from_the_context_menu<P: Live>(session: &mut Session<P>) {
 }
 
 fn assert_local_changes_sit_in_the_sidebar(view: &ncrs_git_view::State) {
-    assert!(
-        !view.has_working_row(),
-        "the local changes sit in the sidebar, not in the log"
+    assert_eq!(
+        view.has_working_row(),
+        !ncrs_git::WRITE_ACTIONS_ENABLED,
+        "the local changes sit in the sidebar where actions exist, otherwise in the log"
     );
+    if !ncrs_git::WRITE_ACTIONS_ENABLED {
+        return;
+    }
     let local = view
         .actions
         .local
@@ -525,7 +529,7 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
     shoot(&session.app, "20-git-ansicht");
 
     // The merge commit, then a normal one.
-    let working_row = 0;
+    let working_row = usize::from(view.has_working_row());
     let merge_row = working_row
         + log
             .commits

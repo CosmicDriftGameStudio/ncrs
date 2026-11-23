@@ -123,9 +123,9 @@ fn base_command(exe: &Path) -> Command {
         .env("LC_ALL", "C");
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(CREATE_NO_WINDOW)
+    };
     command
 }
 
