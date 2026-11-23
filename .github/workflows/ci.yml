@@ -320,8 +320,12 @@ jobs:
           TZ: Europe/Berlin
         run: cargo test --workspace --no-fail-fast
 
+      # Below 13 the StoreKit bridge links Swift Concurrency through @rpath and
+      # the test binaries would not start.
       - name: Tests, App Store build (macOS)
         if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
       # The two tests that use the real operating system credential store are
@@ -758,7 +762,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
+          # StoreKit 2 (the trial and the purchase) needs macOS 13.
+          MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
           mkdir -p sandbox-binary
           cp target/${{ matrix.target }}/release/ncrs sandbox-binary/ncrs
 
@@ -769,11 +774,7 @@ jobs:
         shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          case "${{ matrix.target }}" in
-            aarch64-*) min_macos=11.0 ;;
-            *) min_macos=10.15 ;;
-          esac
-          scripts/package.sh sandbox-app ncrs-${{ matrix.target }} sandbox-binary/ncrs "$version" "$min_macos" target/package-sandbox-app
+          scripts/package.sh sandbox-app ncrs-${{ matrix.target }} sandbox-binary/ncrs "$version" 13.0 target/package-sandbox-app
           app=target/package-sandbox-app/ncrs.app
           codesign --force --sign - "$app/Contents/Frameworks/libpdfium.dylib"
           codesign --force --sign - --options runtime --entitlements packaging/macos/sandbox.entitlements "$app"

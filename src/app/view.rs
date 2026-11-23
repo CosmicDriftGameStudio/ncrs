@@ -191,6 +191,7 @@ impl App {
                             update: self.newer_version_text(),
                         }),
                         monitor: self.monitor_badge(),
+                        store: self.store_badge(),
                         test_folder: config::data_dir_override().map(|dir| {
                             ncrs_i18n::fill_template(
                                 self.lang.text(Msg::StatusTestFolder),

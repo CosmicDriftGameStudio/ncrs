@@ -39,6 +39,7 @@ impl App {
             palette: ThemePreset::Cosmic.palette(),
             job_error: None,
             job_error_press: None,
+            store: crate::app::store::StoreState::unrestricted(),
             quitting: false,
             notice: None,
             notice_generation: 0,
@@ -229,6 +230,12 @@ impl App {
             app.panels.refuse_rename(&path, refusal);
         }
         app
+    }
+
+    /// The same app with the trial in this state; nothing asks the store.
+    pub fn with_entitlement(mut self, entitlement: ncrs_store::Entitlement) -> Self {
+        self.store.set_entitlement(entitlement);
+        self
     }
 
     /// The same app, worded in `lang`.

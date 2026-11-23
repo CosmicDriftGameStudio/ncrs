@@ -43,6 +43,7 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
             home: Path::new("/home/test"),
             keys_changed: 0,
             updates_listed: true,
+            entitlement: ncrs_store::Entitlement::Unrestricted,
             facts: DocumentsFacts::default(),
             favourites: FavouritesFacts::default(),
             lang: Language::EnglishFuturama,
@@ -64,6 +65,44 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
 }
 
 #[test]
+fn the_full_version_page_is_nowhere_when_nothing_is_locked() {
+    let filing = Filing::default();
+    let palette = Palette::default();
+    let page = SettingsFeature::FullVersion;
+    for (entitlement, shown) in [
+        (ncrs_store::Entitlement::Unrestricted, false),
+        (ncrs_store::Entitlement::Expired, true),
+    ] {
+        let mut state = state_of("");
+        state.query = "Full version".to_owned();
+        let view = SettingsView {
+            state: &state,
+            preset: ThemePreset::Cosmic,
+            vscode_theme: None,
+            filing: &filing,
+            servers: &[],
+            protection: None,
+            home: Path::new("/home/test"),
+            keys_changed: 0,
+            updates_listed: true,
+            entitlement,
+            facts: DocumentsFacts::default(),
+            favourites: FavouritesFacts::default(),
+            lang: Language::English,
+            palette: &palette,
+        };
+        assert_eq!(listed_features(&view).contains(&page), shown);
+        assert_eq!(shown_feature(&view) == Some(page), shown);
+        assert_eq!(
+            search_targets(&view)
+                .iter()
+                .any(|target| target.feature == page),
+            shown
+        );
+    }
+}
+
+#[test]
 fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
     let state = state_of("");
     let filing = Filing::default();
@@ -78,6 +117,7 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
         home: Path::new("/home/test"),
         keys_changed: 0,
         updates_listed: true,
+        entitlement: ncrs_store::Entitlement::TrialNotStarted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
         lang: Language::English,
@@ -543,6 +583,7 @@ fn rows_of(feature: SettingsFeature, state: &SettingsState, lang: Language) -> V
         home: Path::new("/home/test"),
         keys_changed: 0,
         updates_listed: true,
+        entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
         lang,
@@ -609,6 +650,7 @@ fn ai_view<'a>(
         home: Path::new("/home/test"),
         keys_changed: 0,
         updates_listed: true,
+        entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
         lang,

@@ -234,6 +234,9 @@ impl App {
                 .map(ncrs_updates::file_beside)
                 .as_deref(),
         );
+        panels.store = super::store::StoreState::in_folder(
+            state_path.as_deref().and_then(std::path::Path::parent),
+        );
         panels.state_path = state_path;
         panels.trash = fs::system_trash(journal_path);
         panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
@@ -266,9 +269,16 @@ impl App {
         app.refresh_special_folders();
         let first_check = Task::done(Message::Updates(ncrs_updates::Message::CheckDue));
         let notes_start = app.start_notes();
+        let store_start = app.start_store();
         (
             app,
-            Task::batch([panel_loads, filing_start, first_check, notes_start]),
+            Task::batch([
+                panel_loads,
+                filing_start,
+                first_check,
+                notes_start,
+                store_start,
+            ]),
         )
     }
 
@@ -532,6 +542,7 @@ impl App {
             palette: Palette::default(),
             job_error: None,
             job_error_press: None,
+            store: super::store::StoreState::unrestricted(),
             quitting: false,
             notice: None,
             notice_generation: 0,

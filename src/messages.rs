@@ -192,6 +192,8 @@ pub enum Message {
     /// About card where the build has no update check.
     VersionPressed,
     HitList(HitListMessage),
+    // --- The trial and the purchase of the App Store build ---
+    Store(StoreMessage),
 
     // --- The Hermes chat (F2) ---
     HermesChat(HermesChatMessage),
@@ -272,13 +274,29 @@ pub enum Message {
 
 pub use ncrs_config::SettingsFeature;
 
-/// What the area under the title bar shows. Settings, the System page and the
-/// Hermes chat stay open while the panels are shown.
+/// The App Store build asks the store and reacts to what it says.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StoreMessage {
+    /// The minute clock: asks again when the store reported a change or an
+    /// hour has passed.
+    Tick,
+    /// What the store allows now.
+    Fetched(ncrs_store::Entitlement),
+    /// The hint of a refused action or of the status bar: opens the page.
+    OpenPage,
+    /// The trial or the purchase has been answered by the store.
+    PurchaseDone(ncrs_store::PurchaseOutcome),
+    /// "Restore purchase" has been answered.
+    Restored(ncrs_store::Entitlement),
+}
+
 /// Which of the open Git tabs a message or a tab stop belongs to; stays the
 /// same while other Git tabs open and close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct GitTabId(pub u32);
 
+/// What the area under the title bar shows. Settings, the System page and the
+/// Hermes chat stay open while the panels are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShownTab {
     #[default]

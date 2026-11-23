@@ -184,6 +184,7 @@ mod tests {
             resolve_folder: resolve,
             ai_on: true,
             ocr_models_present: true,
+            changes_allowed: true,
             model: with_model.then_some(model),
         }
     }

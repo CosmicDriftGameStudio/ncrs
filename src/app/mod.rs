@@ -190,6 +190,7 @@ mod session;
 mod settings;
 mod settings_facts;
 mod startup;
+mod store;
 mod subscription;
 mod tab_stops;
 mod update;
@@ -296,6 +297,8 @@ pub struct App {
     /// What a press on `job_error` sends. Only read while `job_error` is set, and
     /// every `Some` error goes through a setter that replaces it.
     job_error_press: Option<Message>,
+    /// The trial and the purchase of the App Store build.
+    store: store::StoreState,
     /// The app is on its way out: the window is hidden while the local model is
     /// freed. A second quit does nothing.
     quitting: bool,

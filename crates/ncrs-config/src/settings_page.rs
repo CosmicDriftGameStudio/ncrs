@@ -13,6 +13,8 @@ pub enum SettingsFeature {
     Notes,
     System,
     Updates,
+    /// The trial and the purchase of the App Store build.
+    FullVersion,
     Index,
     /// The one model of Hermes and the switch that turns him on.
     Ai,
@@ -38,12 +40,13 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Look,
         Self::Language,
         Self::Keys,
         Self::System,
         Self::Updates,
+        Self::FullVersion,
         Self::Programs,
         Self::Servers,
         Self::Columns,
@@ -78,9 +81,12 @@ impl SettingsFeature {
 
     pub fn group(self) -> SettingsGroup {
         match self {
-            Self::Look | Self::Language | Self::Keys | Self::System | Self::Updates => {
-                SettingsGroup::General
-            }
+            Self::Look
+            | Self::Language
+            | Self::Keys
+            | Self::System
+            | Self::Updates
+            | Self::FullVersion => SettingsGroup::General,
             Self::Programs | Self::Servers | Self::Columns | Self::Favourites | Self::Notes => {
                 SettingsGroup::Files
             }
@@ -116,8 +122,26 @@ mod tests {
         assert_eq!(
             SettingsFeature::ALL,
             [
-                Look, Language, Keys, System, Updates, Programs, Servers, Columns, Favourites,
-                Notes, Index, ReadErrors, Reports, Ai, Reviews, Activity, Hermes, Rules, Tags,
+                Look,
+                Language,
+                Keys,
+                System,
+                Updates,
+                FullVersion,
+                Programs,
+                Servers,
+                Columns,
+                Favourites,
+                Notes,
+                Index,
+                ReadErrors,
+                Reports,
+                Ai,
+                Reviews,
+                Activity,
+                Hermes,
+                Rules,
+                Tags,
                 Usage
             ]
         );
@@ -127,6 +151,7 @@ mod tests {
             (Keys, SettingsGroup::General),
             (System, SettingsGroup::General),
             (Updates, SettingsGroup::General),
+            (FullVersion, SettingsGroup::General),
             (Programs, SettingsGroup::Files),
             (Servers, SettingsGroup::Files),
             (Columns, SettingsGroup::Files),

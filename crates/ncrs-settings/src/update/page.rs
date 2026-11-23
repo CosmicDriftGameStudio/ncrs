@@ -240,6 +240,10 @@ pub fn update(
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
         SettingsMessage::Notes(edit) => notes::update(settings, edit, ctx, actions),
+        SettingsMessage::Store(button) => {
+            actions.push(Action::Store(button));
+            Task::none()
+        }
         SettingsMessage::Favourites(edit) => {
             actions.push(Action::EditFavourites(edit));
             Task::none()

@@ -170,6 +170,14 @@ pub struct MonitorBadge<M> {
     pub on_press: M,
 }
 
+/// The hint of the App Store build in the last days of the trial and after it.
+pub struct StoreBadge<M> {
+    pub text: String,
+    pub on_press: M,
+    /// The trial is over: the hint is in the error color.
+    pub expired: bool,
+}
+
 /// The branch of the repository the active panel is in, how far it is from its
 /// upstream, and how many files changed.
 pub struct GitLine {
@@ -247,6 +255,7 @@ pub struct Activity<'a, M> {
     pub git: Option<GitLine>,
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
+    pub store: Option<StoreBadge<M>>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
@@ -325,6 +334,7 @@ pub fn view<'a, M: Clone + 'a>(
         git,
         version,
         monitor,
+        store,
         test_folder,
         date_format,
     } = activity;
@@ -558,6 +568,23 @@ pub fn view<'a, M: Clone + 'a>(
                     .wrapping(text::Wrapping::None),
             )
             .padding([0.0, FIELD_PADDING_X]),
+        );
+    }
+    if let Some(badge) = store {
+        bar = bar.push(
+            button(
+                text(badge.text)
+                    .size(font_size::SMALL)
+                    .color(if badge.expired {
+                        palette.error
+                    } else {
+                        palette.text
+                    })
+                    .wrapping(text::Wrapping::None),
+            )
+            .on_press(badge.on_press)
+            .padding([0.0, FIELD_PADDING_X])
+            .style(theme::icon_button(palette)),
         );
     }
     if let Some(badge) = version {

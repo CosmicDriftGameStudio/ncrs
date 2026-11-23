@@ -13769,6 +13769,150 @@
       "context": "Command list, Git group: brings the conflict markers of the chosen file back and throws its resolution away.",
       "en": "Reset the resolution of the chosen file",
       "de": "Lösung der gewählten Datei zurücksetzen"
+    },
+    {
+      "key": "settings.feature_full_version",
+      "context": "Entry of the feature list on the settings tab, only in the App Store build while the free trial or the purchase matters: the page about the 14-day trial and the one-time purchase of the full version.",
+      "en": "Full version",
+      "de": "Vollversion"
+    },
+    {
+      "key": "settings.feature_full_version_intro",
+      "context": "Line under the heading of the Full version page on the settings tab of the App Store build. The page shows the state of the trial and the buttons to start it, buy the full version and restore an earlier purchase.",
+      "en": "Your trial and the one-time purchase of ncrs.",
+      "de": "Dein Testzeitraum und der einmalige Kauf von ncrs."
+    },
+    {
+      "key": "store.row_status",
+      "context": "Label of the row on the Full version page that says where the trial or the purchase stands. The value beside it is one of the status sentences.",
+      "en": "Status",
+      "de": "Status"
+    },
+    {
+      "key": "store.row_trial",
+      "context": "Label of the row on the Full version page with the button that starts the free 14-day trial of the App Store build.",
+      "en": "Free trial",
+      "de": "Kostenlos testen"
+    },
+    {
+      "key": "store.row_buy",
+      "context": "Label of the row on the Full version page with the button that buys the full version of ncrs once in the App Store.",
+      "en": "Buy",
+      "de": "Kaufen"
+    },
+    {
+      "key": "store.row_restore",
+      "context": "Label of the row on the Full version page with the button that asks the App Store for earlier purchases of ncrs, for instance after a new computer.",
+      "en": "Restore",
+      "de": "Wiederherstellen"
+    },
+    {
+      "key": "store.button_start_trial",
+      "context": "Button on the Full version page that starts the free trial period of 14 days in the App Store build.",
+      "en": "Try free for 14 days",
+      "de": "14 Tage kostenlos testen"
+    },
+    {
+      "key": "store.button_buy",
+      "context": "Button on the Full version page that starts the one-time purchase of the full version through the App Store.",
+      "en": "Buy full version",
+      "de": "Vollversion kaufen"
+    },
+    {
+      "key": "store.button_restore",
+      "context": "Button on the Full version page that asks the App Store to give back an earlier purchase of ncrs.",
+      "en": "Restore purchase",
+      "de": "Kauf wiederherstellen"
+    },
+    {
+      "key": "store.status_not_started",
+      "context": "Status on the Full version page while the free trial has not been started yet.",
+      "en": "Trial not started",
+      "de": "Testzeitraum nicht gestartet"
+    },
+    {
+      "key": "store.status_trial",
+      "context": "Status on the Full version page during the trial. The placeholder {days} is the number of days left, two or more.",
+      "en": "Trial period: {days} days left",
+      "de": "Testzeitraum: noch {days} Tage"
+    },
+    {
+      "key": "store.status_trial_one",
+      "context": "Status on the Full version page during the trial when exactly one day is left (singular form of the trial status).",
+      "en": "Trial period: 1 day left",
+      "de": "Testzeitraum: noch 1 Tag"
+    },
+    {
+      "key": "store.status_expired",
+      "context": "Status on the Full version page and in the notice of a locked action once the 14-day trial has run out.",
+      "en": "The trial period has ended.",
+      "de": "Der Testzeitraum ist abgelaufen."
+    },
+    {
+      "key": "store.status_bought",
+      "context": "Status on the Full version page after the one-time purchase of the full version in the App Store.",
+      "en": "Full version purchased",
+      "de": "Vollversion gekauft"
+    },
+    {
+      "key": "store.status_earlier",
+      "context": "Status on the Full version page for people who bought ncrs when it still cost money. Their purchase unlocks everything without a new one.",
+      "en": "Unlocked by your earlier purchase",
+      "de": "Freigeschaltet durch deinen früheren Kauf"
+    },
+    {
+      "key": "store.model_note",
+      "context": "Sentence on the Full version page about the model: one payment, no subscription, and what stays free after the trial has ended.",
+      "en": "One-time purchase, no subscription. After the trial you can still view, browse and search your files; changing them needs the full version.",
+      "de": "Einmaliger Kauf, kein Abo. Nach dem Testzeitraum kannst du Dateien weiter ansehen, durchsuchen und durchblättern; Ändern braucht die Vollversion."
+    },
+    {
+      "key": "store.locked_not_started",
+      "context": "Notice when an action that changes files is refused because the free trial of the App Store build was never started.",
+      "en": "Start the free trial or buy the full version.",
+      "de": "Starte den kostenlosen Testzeitraum oder kaufe die Vollversion."
+    },
+    {
+      "key": "store.locked_press",
+      "context": "Notice of a refused action with the pointer that opens the Full version page. The placeholder {reason} is the sentence that says why the action did not run.",
+      "en": "{reason} Open: Full version",
+      "de": "{reason} Öffnen: Vollversion"
+    },
+    {
+      "key": "store.badge_trial",
+      "context": "Hint in the status bar during the last days of the trial, pressing it opens the Full version page. The placeholder {days} is the number of days left, two or more.",
+      "en": "Trial period: {days} days left",
+      "de": "Testzeitraum: noch {days} Tage"
+    },
+    {
+      "key": "store.badge_trial_one",
+      "context": "Hint in the status bar when exactly one day of the trial is left (singular form of the status bar hint).",
+      "en": "Trial period: 1 day left",
+      "de": "Testzeitraum: noch 1 Tag"
+    },
+    {
+      "key": "store.badge_expired",
+      "context": "Hint in the status bar after the trial has ended, pressing it opens the Full version page.",
+      "en": "Trial period over",
+      "de": "Testzeitraum abgelaufen"
+    },
+    {
+      "key": "store.purchase_pending",
+      "context": "Notice after a purchase that the App Store holds back, for instance for an approval by a family organizer. The unlock follows by itself.",
+      "en": "The purchase is waiting for approval. ncrs unlocks when it goes through.",
+      "de": "Der Kauf wartet auf eine Freigabe. ncrs schaltet frei, sobald sie da ist."
+    },
+    {
+      "key": "store.purchase_failed",
+      "context": "Notice when the App Store could not finish a purchase or the restore. The placeholder {error} is the reason the store gave.",
+      "en": "The App Store could not finish this: {error}",
+      "de": "Der App Store konnte das nicht abschließen: {error}"
+    },
+    {
+      "key": "store.restore_nothing",
+      "context": "Notice after Restore purchase when the App Store knows of no earlier purchase of ncrs for this Apple account.",
+      "en": "No earlier purchase was found for this Apple account.",
+      "de": "Für dieses Apple-Konto wurde kein früherer Kauf gefunden."
     }
   ]
 }

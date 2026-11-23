@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use iced::Task;
-use ncrs_filing::chat_work::{ChatAccess, ChatResult};
+use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork};
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
 
@@ -31,12 +31,31 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
     if !ctx.ai_on {
         state.picks_stop.store(true, Ordering::Relaxed);
     }
-    let action = route(state, message, ctx).or_else(|| state.queued_action.take());
+    let mut action = route(state, message, ctx).or_else(|| state.queued_action.take());
+    if !ctx.changes_allowed && state.fresh && state.pending.as_ref().is_some_and(changes_files) {
+        state.fresh = false;
+        finish_work(state);
+        action = Some(Action::ChangesLocked);
+    }
     if state.restart_when_idle && !is_busy(state) {
         restart_conversation(state, ctx);
     }
     state.sync_chats(ctx.now);
     (launch(state, ctx), action)
+}
+
+/// The work that moves, trashes or puts back files, as opposed to reading and
+/// planning.
+fn changes_files(work: &ChatWork) -> bool {
+    matches!(
+        work,
+        ChatWork::File { .. }
+            | ChatWork::TrashDuplicates { .. }
+            | ChatWork::Undo { .. }
+            | ChatWork::UndoAll { .. }
+            | ChatWork::WaitingFile { .. }
+            | ChatWork::WaitingFileInto { .. }
+    )
 }
 
 fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {

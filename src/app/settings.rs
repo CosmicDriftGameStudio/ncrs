@@ -26,6 +26,7 @@ impl App {
                 .filter(|&&action| !self.keymap.has_built_in_keys(action))
                 .count(),
             updates_listed: ncrs_updates::CHECK_AVAILABLE,
+            entitlement: self.store_entitlement(),
             protection: Some(self.protection_panel(&overview)),
             lang: self.lang,
             palette: &self.palette,
@@ -195,6 +196,7 @@ impl App {
             Ask::NotesRecovery => self.update_notes(ncrs_notes::Message::RecoveryRequested),
             Ask::NotesRestore(text) => self.update_notes(ncrs_notes::Message::Restore(text)),
             Ask::NotesSyncNow => self.update_notes(ncrs_notes::Message::SyncNow),
+            Ask::Store(button) => self.press_store_button(button),
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
