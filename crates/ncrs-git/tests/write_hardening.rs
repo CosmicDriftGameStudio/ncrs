@@ -9,8 +9,13 @@
 
 mod git_cli;
 
-use git_cli::{numbered, repo, write};
-use ncrs_git::{ActionError, ConflictChoice, Git, HunkSide};
+use git_cli::{repo, write};
+use ncrs_git::ConflictChoice;
+#[cfg(unix)]
+use {
+    git_cli::numbered,
+    ncrs_git::{ActionError, Git, HunkSide},
+};
 
 #[cfg(unix)]
 #[test]
