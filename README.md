@@ -29,7 +29,7 @@ network and what it stores is in [PRIVACY.md](PRIVACY.md).
 | System | Command |
 | --- | --- |
 | macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs`, after adding the tap below |
-| macOS (App Store) | [Mac App Store](https://apps.apple.com/app/id6828066808), paid, runs in Apple's sandbox |
+| macOS (App Store) | [Mac App Store](https://apps.apple.com/app/id6828066808), 14 days free, then a one-time purchase; macOS 13 or later; runs in Apple's sandbox |
 | Debian, Ubuntu | `sudo apt install ncrs`, after adding the repository below |
 | Fedora | `sudo dnf install ncrs`, after adding the repository below |
 | openSUSE | `sudo zypper install ncrs`, after adding the repository below |
@@ -255,7 +255,12 @@ The same window in German, switched with F9.
   line. `Shift`+`Cmd`+`G` (`Shift`+`Ctrl`+`G` on Linux and Windows) opens a Git tab for the
   repository of the active panel, as many as you like: history graph, branches, tags and
   worktrees, commit details with +/− per file, side-by-side and unified diff, and a filter by
-  message, author or SHA. Read-only
+  message, author or SHA. With the git installed on your computer the tab also changes things:
+  stage and unstage hunks or files, discard, commit, amend, undo; create, rename, check out and
+  delete branches; fetch, pull, push; resolve merge and rebase conflicts block by block; stash.
+  These write actions are off in the App Store build
+- Many tabs: they shrink to fit and then page with ‹ ›, the active tab stays in view and the
+  left and right path tabs stay pinned
 - Open in ncrs from other apps: folders and files handed over by the Finder ("Open With"), the
   Explorer or the Linux file manager service open in the active panel, with the cursor on the file
 - A favourites bar with the favourite folders that fit, the rest behind », `Cmd`+`1` to `9` (`Ctrl` on Linux and Windows)
@@ -861,9 +866,16 @@ prepares folder suggestions, the status bar names the folder and counts down the
 files still left. The window stays responsive while the built-in model works: the
 model waits while you type or move the mouse.
 
+**Questions and activity.** Open questions are grouped by kind (target taken, date,
+amount, rule, sender, no rule, already filed) and answered per row or per group; "already
+filed" is an inbox scan whose content is already in a write folder, and the copy goes to the
+trash or is ignored. "Clarify in chat" and the quick fix menu open the chat about the
+document. The activity page shows what Hermes is doing now and the last runs, newest first.
+New files in a read folder can be filed on their own, when Hermes is sure; the rest becomes
+a question.
+
 **On/off.** One switch for all of Hermes: "Hermes" (On | Off) at the top of
-Settings › AI. While it is off, a dim "Hermes off" chip in the title bar opens
-that page. A file without the key has it on. Off, no read folder is watched and no
+Settings › AI. A file without the key has it on. Off, no read folder is watched and no
 model is called (sorting, chat, name suggestions, learning rules). Files from
 before this key keep their old `[modules.filing] enabled`, which is read once
 when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`. An old `[modules.filing.ai] enabled = false` without a `[hermes]` key still means Hermes is off, even with `[modules.filing] enabled = true`; once the switch has been used, `[hermes] enabled` decides.
@@ -918,7 +930,7 @@ threads = 4
   the tokens per day and the cost where the server reports a price.
 - Settings › AI shows the state of the model in the row "Model on this computer"
   or, for an own server, in the row "Connection". When the own server fails, that
-  row and the Hermes chip in the title bar say why.
+  row says why.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax
