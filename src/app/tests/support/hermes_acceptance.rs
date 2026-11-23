@@ -37,7 +37,6 @@ impl App {
 
     /// The pipeline is up, idle, and no file waits in any step; candidates the
     /// continuous filing is unsure of stay waiting for good.
-    #[cfg(unix)]
     pub fn pipeline_is_quiet_for_test(&self) -> bool {
         self.hermes.live_pipeline().is_some_and(|runner| {
             let snapshot = runner.snapshot();
