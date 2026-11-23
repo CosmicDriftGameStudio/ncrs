@@ -15,8 +15,9 @@ workspace = true
 ncrs-index-types = { path = "../ncrs-index-types", version = "0.0.0" }
 # bundled-sqlcipher-vendored-openssl builds SQLCipher and its OpenSSL from
 # source, so no system library is needed. Windows has no system OpenSSL, and
-# the aarch64 Linux release is cross-compiled.
-rusqlite = { version = "0.42", features = ["bundled-sqlcipher-vendored-openssl"] }
+# the aarch64 Linux release is cross-compiled. No default features: no
+# statement cache (hashlink) and no wasm backend.
+rusqlite = { version = "0.42", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 # The default feature (v1) picks the platform store: Keychain on macOS,
 # Credential Manager on Windows, Secret Service over pure-Rust zbus on Linux
 # (no libdbus, no pkg-config; the store's crypto is RustCrypto, not a second

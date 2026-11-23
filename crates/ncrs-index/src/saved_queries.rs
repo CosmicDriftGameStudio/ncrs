@@ -282,7 +282,7 @@ impl Index {
         let mut by_document: HashMap<i64, BTreeSet<String>> = HashMap::new();
         for chunk in id_list.chunks(IDS_PER_STATEMENT) {
             let marks = vec!["?"; chunk.len()].join(",");
-            let mut statement = self.connection().prepare_cached(&format!(
+            let mut statement = self.connection().prepare(&format!(
                 "SELECT dt.document_id, t.name FROM document_tag dt
                  JOIN tag t ON t.id = dt.tag_id
                  WHERE dt.automatic = 0 AND dt.document_id IN ({marks})"
