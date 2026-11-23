@@ -265,7 +265,7 @@ async fn with_a_folder_to_file(config: &tempfile::TempDir) -> (App, std::path::P
     let mut app = with_a_filing_location(config).await;
     let created = config.path().join("Scans");
     std::fs::create_dir(&created).unwrap();
-    let source = created.canonicalize().unwrap();
+    let source = ncrs_intake::canonical_path(&created).unwrap();
     app.panel_mut(LEFT).entries[DOCUMENTS].path = source.clone();
     app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
     (app, source)

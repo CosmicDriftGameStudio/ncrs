@@ -159,7 +159,7 @@ fn build_repositories(parent: &Path) -> Repositories {
         commit_all(&repo, 2 + index as u64, index % 3, summary);
     }
 
-    let origin = parent.join("origin.git");
+    let origin = ncrs_intake::without_verbatim_prefix(parent.join("origin.git"));
     run_git(parent, 20, 0, &["init", "--bare", "-q", "origin.git"]);
     run_git(
         &repo,
