@@ -8,6 +8,7 @@ mod fields;
 mod icons;
 mod lines;
 mod summary;
+mod tab_strip;
 mod tables;
 mod title_tab;
 
@@ -16,5 +17,6 @@ pub use fields::*;
 pub use icons::*;
 pub use lines::*;
 pub use summary::*;
+pub use tab_strip::*;
 pub use tables::*;
 pub use title_tab::*;

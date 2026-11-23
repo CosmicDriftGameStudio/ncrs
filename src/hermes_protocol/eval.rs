@@ -14,6 +14,13 @@
 //! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model;
 //! `NCRS_EVAL_RESUME=<that folder>` continues a run the wait cut short, and
 //! `NCRS_EVAL_TIDY=1` then tidies the source in the chat, with screenshots in `out`.
+//! `NCRS_EVAL_FILE=copy|move` then files the plan in the tab and undoes it.
+//! `NCRS_EVAL_CONTINUOUS=<folder with new files>` (with `NCRS_EVAL_TIDY=1` and
+//! `NCRS_EVAL_FILE=copy`) answers "Always" in the chat instead of "Once", so the
+//! source files by itself afterwards, copies the folder into the scratch copy
+//! of the source, waits (`NCRS_PROTOCOL_AI_WAIT_SECS`) for the background run,
+//! prints what it filed and the review entries before and after, takes the
+//! pictures for the acceptance (1740x1130) and undoes the run.
 //! `NCRS_EVAL_QUIT_AFTER_SECS=<n>` quits n seconds into the reading instead and
 //! prints how long the quit and the end of the app took.
 

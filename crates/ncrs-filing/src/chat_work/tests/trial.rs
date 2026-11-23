@@ -100,6 +100,7 @@ pub(in crate::chat_work::tests) fn staying(
         outcome: TrialOutcome::Stays(StayReason::NoNeighbours),
         neighbour: None,
         wanted: None,
+        placed_by: None,
     }
 }
 

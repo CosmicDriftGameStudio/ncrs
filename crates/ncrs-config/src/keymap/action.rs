@@ -109,6 +109,9 @@ key_actions! {
     HermesQuickFix => "hermes_quick_fix",
     HermesHandToInbox => "hermes_hand_to_inbox",
     HermesProcessAgain => "hermes_process_again",
+    HermesFileOnce => "hermes_file_once",
+    HermesFileContinuously => "hermes_file_continuously",
+    HermesStopContinuous => "hermes_stop_continuous",
     HermesSetInbox => "hermes_set_inbox",
     HermesSetFilingLocation => "hermes_set_filing_location",
     HermesSetArchive => "hermes_set_archive",
@@ -234,6 +237,9 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesFileOnce
+            | Self::HermesFileContinuously
+            | Self::HermesStopContinuous
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -333,6 +339,9 @@ impl KeyAction {
             Self::HermesQuickFix
                 | Self::HermesHandToInbox
                 | Self::HermesProcessAgain
+                | Self::HermesFileOnce
+                | Self::HermesFileContinuously
+                | Self::HermesStopContinuous
                 | Self::HermesSetInbox
                 | Self::HermesSetFilingLocation
                 | Self::HermesSetArchive
@@ -479,6 +488,9 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesFileOnce
+            | Self::HermesFileContinuously
+            | Self::HermesStopContinuous
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -595,6 +607,9 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesFileOnce
+            | Self::HermesFileContinuously
+            | Self::HermesStopContinuous
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive

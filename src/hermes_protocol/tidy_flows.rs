@@ -7,7 +7,7 @@ use ncrs_hermes_chat::{ChipReply, Step};
 use ncrs_i18n::Msg;
 
 use super::thread::{chat, chip_labels, has_chip, last_hermes_has_chips, last_text};
-use super::{all, expect, Check, Protocol, READ_LIMIT};
+use super::{all, env_path, expect, Check, Protocol, READ_LIMIT};
 use crate::app::App;
 use crate::messages::Message;
 
@@ -32,6 +32,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let (_, _, mut limit) = self.wait_idle(READ_LIMIT, None);
         let mut questions = Vec::new();
         let archive = self.archive.clone();
+        let continuous = env_path("NCRS_EVAL_CONTINUOUS").is_some();
         for round in 1..=20 {
             let labels = chip_labels(self.app());
             questions.push(format!(
@@ -46,6 +47,14 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 _ => false,
             });
             let pressed = first_press
+                .or_else(|failed| {
+                    // "Always" files the source once now and then by itself.
+                    if continuous {
+                        self.press_chip(|reply| *reply == ChipReply::Always)
+                    } else {
+                        Err(failed)
+                    }
+                })
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Once))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ConfirmTidy))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo))
@@ -105,9 +114,17 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             result,
         );
         match std::env::var("NCRS_EVAL_FILE").as_deref() {
-            Ok("copy") => self.copy_planned_files(),
+            Ok("copy") => {
+                self.copy_planned_files();
+                if let Some(new_files) = env_path("NCRS_EVAL_CONTINUOUS") {
+                    self.continuous_after_copy(&new_files);
+                }
+            }
             Ok("move") => self.move_planned_files(),
             _ => {}
+        }
+        if continuous && std::env::var("NCRS_EVAL_FILE").as_deref() != Ok("copy") {
+            println!("NCRS_EVAL_CONTINUOUS needs NCRS_EVAL_FILE=copy, nothing ran");
         }
     }
 
@@ -601,7 +618,9 @@ fn file_stamp(path: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
 }
 
 /// The files below `root`, relative to it.
-fn relative_files(root: &std::path::Path) -> BTreeSet<std::path::PathBuf> {
+pub(in crate::hermes_protocol) fn relative_files(
+    root: &std::path::Path,
+) -> BTreeSet<std::path::PathBuf> {
     fn walk(
         root: &std::path::Path,
         dir: &std::path::Path,

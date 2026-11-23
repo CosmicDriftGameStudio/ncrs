@@ -71,6 +71,8 @@ pub enum SettingChange {
     System(SystemSettings),
     /// The whole `[columns]` section, as it is to be written.
     Columns(PanelColumns),
+    /// The whole `[git_view]` section: what the Git tab remembers.
+    GitView(ncrs_config::git_view::GitViewSettings),
     /// The whole `[appearance]` section: the font and its size.
     Appearance(Appearance),
     /// The whole list of read folders, as it is to be written. Hermes and the
@@ -202,6 +204,8 @@ pub enum SettingsMessage {
         result: Result<(), String>,
     },
     RemoveFolder(PathBuf),
+    /// The read folder stays but no longer files its new files by itself.
+    StopContinuous(PathBuf),
     /// Opens the dialog of this read folder, or closes it.
     EditFolder(Option<PathBuf>),
     /// The folder with this path takes the values of the location.

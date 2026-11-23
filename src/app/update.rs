@@ -44,6 +44,9 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::FileOnce
+            | HermesFileMessage::FileContinuously
+            | HermesFileMessage::StopContinuous
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -96,6 +99,9 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::FileOnce
+            | HermesFileMessage::FileContinuously
+            | HermesFileMessage::StopContinuous
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -136,7 +142,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::HermesPage(_)
-            | Message::ShowAiSettings
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
             | Message::VersionPressed
@@ -167,6 +172,7 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
         TitleBarMessage::Drag => window.and_then(iced::window::drag),
         TitleBarMessage::ToggleMaximize => window.and_then(iced::window::toggle_maximize),
         TitleBarMessage::Minimize => window.and_then(|id| iced::window::minimize(id, true)),
+        TitleBarMessage::TabsFrom(_) => Task::none(),
         TitleBarMessage::Resize(edge) => {
             window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
         }
@@ -413,6 +419,10 @@ impl App {
                 Task::none()
             }
             Message::Panel(panel_message) => self.update_panel(panel_message),
+            Message::TitleBar(TitleBarMessage::TabsFrom(first)) => {
+                self.title_tabs_first = first;
+                Task::none()
+            }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::ComputeFolderSizes => {
                 let walk = self.panels.start_folder_size_run();
@@ -440,9 +450,11 @@ impl App {
             }
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
-            plain @ (Message::Rules(_) | Message::SavedQueries(_) | Message::Tags(_)) => {
-                self.update_hermes_plain(plain)
-            }
+            plain @ (Message::Rules(_)
+            | Message::SavedQueries(_)
+            | Message::Tags(_)
+            | Message::Reviews(_)
+            | Message::Activity(_)) => self.update_hermes_plain(plain),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
@@ -456,10 +468,9 @@ impl App {
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
-            Message::ShowAiSettings => {
-                self.show_setting(crate::messages::SettingsFeature::Ai, None)
+            plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
+                self.update_hermes_plain(plain)
             }
-            plain @ Message::DocumentsFiled(_) => self.update_hermes_plain(plain),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),

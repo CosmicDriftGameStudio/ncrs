@@ -178,6 +178,8 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Tags => Msg::SettingsFeatureTags,
         SettingsFeature::Reports => Msg::SettingsFeatureReports,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrors,
+        SettingsFeature::Reviews => Msg::SettingsFeatureReviews,
+        SettingsFeature::Activity => Msg::SettingsFeatureActivity,
         SettingsFeature::Usage => Msg::SettingsFeatureUsage,
     }
 }
@@ -201,6 +203,8 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
+        | SettingsFeature::Reviews
+        | SettingsFeature::Activity
         | SettingsFeature::Usage => None,
     }
 }
@@ -234,6 +238,8 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
+        | SettingsFeature::Reviews
+        | SettingsFeature::Activity
         | SettingsFeature::Usage => None,
     }
 }
@@ -257,6 +263,8 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
+        | SettingsFeature::Reviews
+        | SettingsFeature::Activity
         | SettingsFeature::Usage => None,
     }
 }
@@ -280,6 +288,8 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Tags => Msg::SettingsFeatureTagsIntro,
         SettingsFeature::Reports => Msg::SettingsFeatureReportsIntro,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrorsIntro,
+        SettingsFeature::Reviews => Msg::SettingsFeatureReviewsIntro,
+        SettingsFeature::Activity => Msg::SettingsFeatureActivityIntro,
         SettingsFeature::Usage => Msg::SettingsFeatureUsageIntro,
     }
 }
@@ -304,6 +314,8 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
+        | SettingsFeature::Reviews
+        | SettingsFeature::Activity
         | SettingsFeature::Updates
         | SettingsFeature::Usage => None,
     }
@@ -376,6 +388,8 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
+        | SettingsFeature::Reviews
+        | SettingsFeature::Activity
         | SettingsFeature::Updates
         | SettingsFeature::Usage => Vec::new(),
     }

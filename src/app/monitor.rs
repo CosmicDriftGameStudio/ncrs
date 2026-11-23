@@ -6,6 +6,7 @@ impl App {
         ncrs_monitor::Ctx {
             window_size: self.window_size,
             pointer: self.input.lock().pointer,
+            now: std::time::Instant::now(),
         }
     }
 

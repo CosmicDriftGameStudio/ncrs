@@ -145,6 +145,9 @@ fn set_locations(
         if location.transfer == LocationTransfer::Copy {
             entry.insert("transfer", toml_edit::value("copy"));
         }
+        if location.continuous {
+            entry.insert("continuous", toml_edit::value(true));
+        }
         if entries.is_empty() {
             if let Some(prefix) = first_prefix.clone() {
                 entry.decor_mut().set_prefix(prefix);

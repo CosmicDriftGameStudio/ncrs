@@ -65,7 +65,8 @@ fn a_folder_can_get_a_role_before_any_location_is_set() {
     let items = submenu_items(&mut app);
 
     let enabled = |wanted| items.iter().any(|&(action, on)| action == wanted && on);
-    assert!(enabled(HermesAction::SetInbox));
+    assert!(!enabled(HermesAction::FileOnce));
+    assert!(!enabled(HermesAction::FileContinuously));
     assert!(enabled(HermesAction::SetFilingLocation));
     assert!(enabled(HermesAction::SetArchive));
     assert!(!enabled(HermesAction::ProcessAgain));
@@ -226,6 +227,7 @@ fn location_at(path: &Path, mode: LocationMode) -> FilingLocation {
         images: false,
         is_target: mode == LocationMode::Archive,
         transfer: Default::default(),
+        continuous: false,
     }
 }
 
@@ -257,4 +259,151 @@ async fn handing_to_the_inbox_without_one_says_so() {
         app.notice_for_test(),
         Some(app.lang.text(Msg::StatusHermesNoInbox))
     );
+}
+/// An app with a write folder and a second folder under the cursor.
+async fn with_a_folder_to_file(config: &tempfile::TempDir) -> (App, std::path::PathBuf) {
+    let mut app = with_a_filing_location(config).await;
+    let created = config.path().join("Scans");
+    std::fs::create_dir(&created).unwrap();
+    let source = ncrs_intake::canonical_path(&created).unwrap();
+    app.panel_mut(LEFT).entries[DOCUMENTS].path = source.clone();
+    app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+    (app, source)
+}
+
+fn finished_run(source: &std::path::Path, filed: usize) -> ncrs_filing_view::Action {
+    ncrs_filing_view::Action::Finished {
+        source: source.to_path_buf(),
+        transfer: ncrs_index::Transfer::Move,
+        filed,
+        left: Vec::new(),
+        batch: ncrs_index::BatchId::from_number(1),
+        then_continuous: true,
+    }
+}
+
+fn continuous_folders(app: &App) -> Vec<(std::path::PathBuf, LocationMode)> {
+    app.hermes
+        .filing_config
+        .locations
+        .iter()
+        .filter(|location| location.continuous)
+        .map(|location| (location.path.clone(), location.mode))
+        .collect()
+}
+
+#[tokio::test]
+async fn filing_continuously_changes_nothing_until_the_run_is_filed() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, source) = with_a_folder_to_file(&config).await;
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::FileContinuously),
+    )
+    .await;
+
+    let session = app.filing_view.session.as_ref().unwrap();
+    assert!(session.then_continuous);
+    assert_eq!(session.source, source);
+    assert!(continuous_folders(&app).is_empty());
+    assert!(app
+        .hermes
+        .filing_config
+        .locations
+        .iter()
+        .all(|location| location.path != source));
+}
+
+#[tokio::test]
+async fn filing_once_opens_the_tab_without_the_continuous_mark() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, _) = with_a_folder_to_file(&config).await;
+
+    settle(&mut app, Message::HermesFile(HermesFileMessage::FileOnce)).await;
+
+    assert!(!app.filing_view.session.as_ref().unwrap().then_continuous);
+}
+
+#[tokio::test]
+async fn the_folder_files_by_itself_only_after_a_run_was_filed() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, source) = with_a_folder_to_file(&config).await;
+
+    let nothing = app.run_filing_action(finished_run(&source, 0));
+    assert!(
+        task::into_stream(nothing).is_none(),
+        "nothing filed, nothing set"
+    );
+    assert!(continuous_folders(&app).is_empty());
+
+    let filed_run = app.run_filing_action(finished_run(&source, 3));
+    let mut queue = vec![filed_run];
+    while let Some(next) = queue.pop() {
+        let Some(mut stream) = task::into_stream(next) else {
+            continue;
+        };
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                if !matches!(reported, Message::NoticeExpired(_)) {
+                    queue.push(app.update(reported));
+                }
+            }
+        }
+    }
+
+    assert_eq!(
+        continuous_folders(&app),
+        vec![(source, LocationMode::Inbox)]
+    );
+}
+
+#[tokio::test]
+async fn stopping_continuous_filing_keeps_the_role() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, source) = with_a_folder_to_file(&config).await;
+    app.hermes
+        .filing_config
+        .locations
+        .push(ncrs_config::config::FilingLocation {
+            path: source.clone(),
+            mode: LocationMode::Inbox,
+            images: false,
+            is_target: false,
+            transfer: Default::default(),
+            continuous: true,
+        });
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::StopContinuous),
+    )
+    .await;
+
+    assert!(continuous_folders(&app).is_empty());
+    assert!(app
+        .hermes
+        .filing_config
+        .locations
+        .iter()
+        .any(|location| location.path == source && location.mode == LocationMode::Inbox));
+}
+
+#[tokio::test]
+async fn always_in_the_chat_sets_no_role_before_the_run_in_the_tab_is_filed() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, source) = with_a_folder_to_file(&config).await;
+    let target = app.hermes.filing_config.locations[0].path.clone();
+    let before = app.hermes.filing_config.locations.clone();
+
+    drop(
+        app.run_hermes_chat_action(ncrs_hermes_chat::Action::OpenFiling {
+            source,
+            target,
+            watch_source: true,
+        }),
+    );
+
+    assert_eq!(app.hermes.filing_config.locations, before);
+    assert!(app.filing_view.session.as_ref().unwrap().then_continuous);
 }

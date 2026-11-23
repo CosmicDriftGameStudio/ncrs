@@ -112,6 +112,7 @@ pub fn apply_saved_filing(
             .is_none_or(|module| !module.has_configured_locations() && module.can_be_replaced());
     if !replaceable {
         hermes.filing_config = filing;
+        super::continuous::sync_continuous_roots(hermes);
         return (SavedFilingApplies::AtNextStart, forget);
     }
     (
@@ -377,6 +378,7 @@ mod tests {
             mode: ncrs_intake::LocationMode::Archive,
             images: false,
             is_target: false,
+            continuous: false,
             transfer: Default::default(),
         }
     }

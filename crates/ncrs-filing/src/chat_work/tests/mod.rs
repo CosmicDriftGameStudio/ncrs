@@ -14,6 +14,7 @@ use tempfile::TempDir;
 
 use super::*;
 
+mod continuous;
 mod diagnosis;
 mod eval;
 mod groups;

@@ -127,3 +127,34 @@ fn a_font_size_outside_ten_to_twenty_is_the_systems() {
     let config = from_text("[appearance]\nfont_size = 16\n").unwrap();
     assert_eq!(config.appearance.font_size, FontSizeChoice::Points(16));
 }
+
+#[test]
+fn what_the_git_tab_remembers_survives_a_write_and_a_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "version = 1\n").unwrap();
+    let settings = crate::git_view::GitViewSettings {
+        author_width: Some(180),
+        date_width: None,
+        sha_width: Some(90),
+        ..Default::default()
+    }
+    .with_folded(
+        "/work/repo",
+        vec!["tags".to_owned(), "remote:origin".to_owned()],
+    );
+
+    let read_back = write_git_view(&path, &settings).unwrap().git_view;
+
+    assert_eq!(read_back, settings);
+    assert_eq!(read_back.folded_in("/work/repo"), ["tags", "remote:origin"]);
+    assert!(read_back.folded_in("/other").is_empty());
+}
+
+#[test]
+fn a_bad_git_tab_width_is_dropped() {
+    let config = from_text("[git_view]\nauthor_width = -4\nsha_width = 90\n").unwrap();
+
+    assert_eq!(config.git_view.author_width, None);
+    assert_eq!(config.git_view.sha_width, Some(90));
+}

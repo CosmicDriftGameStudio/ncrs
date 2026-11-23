@@ -192,8 +192,11 @@ fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> T
 /// Hands the documents without a suggestion to the chat, which asks for what
 /// is missing.
 fn open_chat_from_menu(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
-    hermes.quick_fix = None;
-    actions.push(Action::OpenChat);
+    let menu = hermes.quick_fix.take();
+    actions.push(
+        menu.as_ref()
+            .map_or(Action::OpenChat, QuickFix::chat_action),
+    );
     Task::none()
 }
 
@@ -225,7 +228,10 @@ fn open_rule_form_from_menu(
 
 /// What the status bar says about the documents filed from the menu; `None`
 /// when the only one failed, which is an error rather than a notice.
-fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<String> {
+pub(in crate::update) fn accept_notice(
+    summary: &AcceptSummary,
+    lang: ncrs_i18n::Language,
+) -> Option<String> {
     let template = |msg: Msg| lang.text(msg).to_owned();
     match (summary.total(), summary) {
         (
@@ -258,12 +264,22 @@ fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<S
     }
 }
 
-/// The documents of a group were filed from the menu: the column asks again
-/// and the panels read their folders.
-fn filed(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+/// Documents were filed or removed: the column asks again for everything.
+pub(in crate::update) fn settle_column(hermes: &mut Hermes) {
     hermes.hermes_column.invalidate_all();
     hermes.hermes_failed_reads.clear();
     hermes.hermes_detail_reads.clear();
+}
+
+/// The documents of a group were filed from the menu: the column asks again
+/// and the panels read their folders.
+pub(in crate::update) fn filed(
+    hermes: &mut Hermes,
+    summary: &AcceptSummary,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) {
+    settle_column(hermes);
     match accept_notice(summary, ctx.lang) {
         Some(text) => actions.push(Action::ShowNotice(text)),
         None => actions.push(Action::ShowError(

@@ -374,8 +374,14 @@ mod tests {
                 | Msg::BatchRenameTokenName
                 | Msg::BatchRenameStart
                 | Msg::BatchRenameColumnProblem
-                // A name and a placeholder for an already translated sentence.
-                | Msg::TitleBarHermesServerProblem
+                // Git command names, kept as is in German too.
+                | Msg::GitViewToolbarPull
+                | Msg::GitViewToolbarPush
+                | Msg::GitViewToolbarStash
+                | Msg::GitViewPaletteGroup
+                // The same word in German: Name, Details.
+                | Msg::GitViewNewBranchName
+                | Msg::GitViewNoticeDetails
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
                 | Msg::QuickFixLoading
@@ -394,7 +400,7 @@ mod tests {
                 // Git and Hermes terms, abbreviations and loanwords German keeps as they are.
                 | Msg::GitViewColumnSha
                 | Msg::GitViewMode
-                | Msg::GitViewSectionRemote
+                | Msg::GitViewSectionRemotes
                 | Msg::GitViewSectionStashes
                 | Msg::GitViewSectionTags
                 | Msg::GitViewSectionWorktrees

@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iced::Point;
 use ncrs_config::system_monitor::{StatusValue, SystemSettings};
@@ -60,9 +60,11 @@ pub struct State {
     pub filter_focused: bool,
     /// Positions in the snapshot's tasks, in the order shown.
     pub order: Vec<usize>,
-    /// The cursor sits on a row, not on a task: a new measurement may put
-    /// another task under it.
+    /// The row the cursor is on. A measurement moves it with the task it was
+    /// on (`follow_pid`), so a task never lands under it by chance.
     pub cursor_index: usize,
+    /// When a key last moved the cursor: a refresh waits for the keys to stop.
+    pub last_navigation: Option<Instant>,
     /// Tasks of one program are shown as one row. Only the page keeps this,
     /// the settings do not.
     pub grouped: bool,
@@ -101,6 +103,7 @@ impl State {
             filter_focused: false,
             order: Vec::new(),
             cursor_index: 0,
+            last_navigation: None,
             grouped: false,
             groups: Vec::new(),
             window: ListWindow::default(),
@@ -258,6 +261,24 @@ impl State {
         self.menu = None;
         self.kill_dialog = None;
         self.restart_list();
+    }
+
+    /// The cursor moves with the task it is on: after a refresh the row of `pid`
+    /// holds it, so another task never lands under a cursor that is about to
+    /// act on it. A task that is gone leaves the cursor on its row number.
+    pub(crate) fn follow_pid(&mut self, followed: Option<u32>) {
+        let Some(pid) = followed else { return };
+        let found = (0..self.order.len())
+            .find(|row| self.task_at_row(*row).is_some_and(|task| task.pid == pid));
+        if let Some(row) = found {
+            self.cursor_index = row;
+        }
+    }
+
+    /// A key moved the cursor less than one refresh interval ago.
+    pub(crate) fn is_navigating(&self, now: Instant) -> bool {
+        self.last_navigation
+            .is_some_and(|at| now.saturating_duration_since(at) < self.refresh_every())
     }
 
     pub(crate) fn put_cursor_on_row(&mut self, row: usize) {

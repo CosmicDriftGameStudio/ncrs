@@ -125,6 +125,7 @@ impl App {
         let git_state = git.and_then(|id| self.git_tabs.get(id));
         let git_filter = git_state.is_some_and(|state| state.filter_focused);
         let git_diff = git_state.is_some_and(|state| state.diff.is_some());
+        let git_dialog = git_state.is_some_and(|state| state.actions.dialog_open());
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
@@ -186,6 +187,7 @@ impl App {
             git,
             git_filter,
             git_diff,
+            git_dialog,
             // A conflict is asked while no prompt is open — the prompt is
             // gone by then, the transfer is what is running. Without this
             // the dialog's keys would fall through to the panels.

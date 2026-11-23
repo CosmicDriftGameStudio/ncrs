@@ -8,6 +8,9 @@ use crate::state::{ChipReply, Step};
 #[derive(Debug, Clone)]
 pub enum Message {
     Open,
+    /// Opens the chat on these review documents: it asks about each one, as
+    /// it does about the waiting ones, and skips the greeting.
+    OpenAbout(Vec<ncrs_filing::review_work::ReviewItem>),
     Close,
     /// The button of the chat list: a new chat with a fresh greeting; the old
     /// one stays in the list.

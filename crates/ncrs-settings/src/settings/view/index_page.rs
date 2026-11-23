@@ -355,6 +355,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
     }
 }

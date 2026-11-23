@@ -28,6 +28,9 @@ pub struct Item {
     /// Set when the file is judged to be no document (a picture without text,
     /// program code, a chat export): it is no inquiry, Hermes leaves it alone.
     pub not_a_document: bool,
+    /// Set by the review step: the rules left the file open in a location that
+    /// files such files by itself, so it got no review entry and waits for that.
+    pub continuous_candidate: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

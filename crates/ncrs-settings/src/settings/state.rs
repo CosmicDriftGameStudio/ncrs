@@ -633,6 +633,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::Locations(_)
         | SettingChange::FileListTags(_)
         | SettingChange::Columns(_)
+        | SettingChange::GitView(_)
         | SettingChange::Appearance(_)
         | SettingChange::System(_) => Vec::new(),
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],

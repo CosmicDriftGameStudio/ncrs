@@ -7,13 +7,18 @@ impl App {
         message: HermesChatMessage,
     ) -> Task<Message> {
         let mut first_run = Task::none();
-        if matches!(message, HermesChatMessage::Open) {
+        if matches!(
+            message,
+            HermesChatMessage::Open | HermesChatMessage::OpenAbout(_)
+        ) {
             if self.blocking_overlay_is_open() {
                 return Task::none();
             }
             if self.hermes_chat.open && !self.hermes_chat_shown() {
                 self.shown_tab = ShownTab::Hermes;
-                return ncrs_hermes_chat::focus_input();
+                if matches!(message, HermesChatMessage::Open) {
+                    return ncrs_hermes_chat::focus_input();
+                }
             }
             self.close_context_menu();
             let filing = &self.hermes.filing_config;
@@ -244,14 +249,11 @@ impl App {
                 target,
                 watch_source,
             } => {
-                let watch = if watch_source {
-                    self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                        ncrs_hermes_ui::set_folder_role(hermes, &source, FolderRole::Inbox, ctx)
-                    })
-                } else {
-                    Task::none()
-                };
-                Task::batch([watch, self.open_filing(source, target)])
+                let opened = self.open_filing(source, target);
+                if let Some(session) = self.filing_view.session.as_mut() {
+                    session.then_continuous = watch_source;
+                }
+                opened
             }
             ncrs_hermes_chat::Action::OpenOcrModels => {
                 self.update_ocr_models(OcrModelsMessage::Open)

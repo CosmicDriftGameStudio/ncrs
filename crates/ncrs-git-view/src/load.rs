@@ -6,9 +6,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use iced::Task;
-use ncrs_git::{DiffTarget, GitError};
+use ncrs_git::{ActionError, DiffTarget, GitError};
 
+use crate::job::{Finished, Job};
 use crate::message::Message;
+use crate::snapshot::{self, Want};
 use crate::state::State;
 
 fn blocking<T, Work>(
@@ -95,4 +97,41 @@ pub fn file_diff(state: &mut State, target: DiffTarget, ignore_whitespace: bool)
         move |cancelled| ncrs_git::file_diff(&root, &target, ignore_whitespace, cancelled),
         move |result| Message::DiffLoaded(generation, Box::new(result)),
     )
+}
+
+/// Reads what the actions show; `None` in the answer's error means no actions here.
+pub fn actions(state: &mut State) -> Task<Message> {
+    let Some(root) = root_of(state) else {
+        return Task::none();
+    };
+    let want = Want::of(state);
+    let (generation, _) = state.loads.actions.begin();
+    Task::perform(
+        async move { tokio::task::spawn_blocking(move || snapshot::read(&root, &want)).await },
+        move |joined| {
+            Message::ActionsLoaded(
+                generation,
+                Box::new(joined.unwrap_or_else(|error| Err(ActionError::Io(error.to_string())))),
+            )
+        },
+    )
+}
+
+/// Runs one call to git on the blocking pool.
+pub fn job(root: PathBuf, job: Job) -> Task<Message> {
+    let kept = job.clone();
+    Task::perform(
+        async move { tokio::task::spawn_blocking(move || job.run_in(&root)).await },
+        move |joined| {
+            Message::JobDone(Box::new(joined.unwrap_or_else(|error| Finished {
+                job: kept,
+                result: Err(ActionError::Io(error.to_string())),
+            })))
+        },
+    )
+}
+
+/// Everything a change of the repository can touch.
+pub fn everything(state: &mut State) -> Task<Message> {
+    Task::batch([refs(state), log(state), actions(state)])
 }

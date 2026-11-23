@@ -46,6 +46,7 @@ impl GitTabs {
         &mut self,
         root: PathBuf,
         name: String,
+        ctx: &ncrs_git_view::Ctx,
     ) -> (GitTabId, Task<ncrs_git_view::Message>) {
         let id = self.id_of(&root).unwrap_or_else(|| {
             let id = GitTabId(self.next_id);
@@ -53,9 +54,9 @@ impl GitTabs {
             self.tabs.push((id, State::default()));
             id
         });
-        let task = self
-            .get_mut(id)
-            .map_or_else(Task::none, |state| ncrs_git_view::open(state, root, name));
+        let task = self.get_mut(id).map_or_else(Task::none, |state| {
+            ncrs_git_view::open(state, root, name, ctx)
+        });
         (id, task)
     }
 
@@ -64,8 +65,8 @@ impl GitTabs {
         self.tabs.retain(|(_, state)| state.is_open());
     }
 
-    /// A tab that is already filled, for the screenshot generators.
-    #[cfg(all(test, feature = "media-tools"))]
+    /// A tab that is already filled, for the screenshot generators and tests.
+    #[cfg(test)]
     pub(in crate::app) fn adopt_for_test(&mut self, state: State) -> GitTabId {
         let id = GitTabId(self.next_id);
         self.next_id += 1;
@@ -86,7 +87,12 @@ mod tests {
     use super::*;
 
     fn open(tabs: &mut GitTabs, root: &str) -> GitTabId {
-        tabs.open(PathBuf::from(root), root.to_owned()).0
+        tabs.open(
+            PathBuf::from(root),
+            root.to_owned(),
+            &ncrs_git_view::Ctx::new(ncrs_i18n::Language::English),
+        )
+        .0
     }
 
     #[test]

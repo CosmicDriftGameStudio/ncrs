@@ -1,22 +1,118 @@
 //! The rows of the Git view: a commit with its graph, ref chips, and a changed
 //! file with its line counts, and the lines of a diff.
 
+use iced::mouse::Interaction;
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, text, Row};
+use iced::widget::{button, column, container, mouse_area, row, text, Row, Space};
 use iced::{alignment, Border, Color, Element, Length, Padding};
 
+use crate::format::{estimated_width, fit_end};
 use crate::git_mark::MODIFIED_ORANGE;
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use crate::tree_list::{LABEL_LEAD, TREE_INDENT};
 
-pub const AUTHOR_WIDTH: f32 = 130.0;
-pub const DATE_WIDTH: f32 = 130.0;
-pub const SHA_WIDTH: f32 = 70.0;
 const NUMBER_WIDTH: f32 = 44.0;
 const COUNT_WIDTH: f32 = 90.0;
 const WASH_ALPHA: f32 = 0.18;
 const DIMMED_ALPHA: f32 = 0.55;
+/// Room the scroll bar of the list takes from the message.
+const SCROLL_BAR_ROOM: f32 = 12.0;
+/// A column dragged narrower or wider stops here.
+pub const COMMIT_COLUMN_MIN: u16 = 50;
+pub const COMMIT_COLUMN_MAX: u16 = 600;
+
+/// The commit columns after the message, in pixels; the message takes what is left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommitColumns {
+    pub author: u16,
+    pub date: u16,
+    pub sha: u16,
+}
+
+impl CommitColumns {
+    pub const STANDARD: Self = Self {
+        author: 130,
+        date: 130,
+        sha: 70,
+    };
+
+    pub fn of(self, column: CommitColumn) -> u16 {
+        match column {
+            CommitColumn::Author => self.author,
+            CommitColumn::Date => self.date,
+            CommitColumn::Sha => self.sha,
+        }
+    }
+
+    pub fn with(self, column: CommitColumn, wanted: u16) -> Self {
+        let width = wanted.clamp(COMMIT_COLUMN_MIN, COMMIT_COLUMN_MAX);
+        match column {
+            CommitColumn::Author => Self {
+                author: width,
+                ..self
+            },
+            CommitColumn::Date => Self {
+                date: width,
+                ..self
+            },
+            CommitColumn::Sha => Self { sha: width, ..self },
+        }
+    }
+
+    /// `column` after its left edge was dragged `delta` pixels to the right.
+    pub fn dragged(self, column: CommitColumn, delta: f32) -> Self {
+        let wanted = (f32::from(self.of(column)) - delta)
+            .round()
+            .clamp(f32::from(COMMIT_COLUMN_MIN), f32::from(COMMIT_COLUMN_MAX));
+        self.with(column, wanted as u16)
+    }
+
+    /// What the columns, the gaps in front of them and the SHA column when shown take.
+    fn taken(self, show_sha: bool) -> f32 {
+        let columns = f32::from(self.author) + f32::from(self.date);
+        let sha = if show_sha { f32::from(self.sha) } else { 0.0 };
+        let gaps = if show_sha { 3.0 } else { 2.0 };
+        columns + sha + gaps * size::COLUMN_GAP
+    }
+}
+
+/// The columns of the commit list whose width can be dragged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitColumn {
+    Author,
+    Date,
+    Sha,
+}
+
+/// How wide the message cell of a commit row is in a list `pane_width` wide.
+pub fn commit_message_width(
+    pane_width: f32,
+    graph_width: f32,
+    columns: CommitColumns,
+    show_sha: bool,
+) -> f32 {
+    (pane_width
+        - 2.0 * (spacing::XXL + spacing::CELL_PADDING_X)
+        - graph_width
+        - size::COLUMN_GAP
+        - columns.taken(show_sha)
+        - SCROLL_BAR_ROOM)
+        .max(0.0)
+}
+
+/// A layer over the whole view while a column is dragged: the pointer moves
+/// and the release are seen wherever the pointer is.
+pub fn drag_capture<'a, M: Clone + 'a>(
+    on_move: impl Fn(f32) -> M + 'a,
+    on_release: M,
+) -> Element<'a, M> {
+    mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
+        .on_move(move |point| on_move(point.x))
+        .on_release(on_release)
+        .interaction(Interaction::ResizingHorizontally)
+        .into()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefChipKind {
@@ -53,6 +149,10 @@ pub struct CommitRow<'a, M> {
     pub author: String,
     pub date: String,
     pub sha: String,
+    pub columns: CommitColumns,
+    /// How wide the message cell is, from [`commit_message_width`]: a longer
+    /// message is cut with an ellipsis.
+    pub message_width: f32,
     /// The SHA column is left out where the message needs the room.
     pub show_sha: bool,
     pub chosen: bool,
@@ -68,35 +168,92 @@ impl<M> std::fmt::Debug for CommitRow<'_, M> {
 }
 
 /// The titles above the commit columns; `graph_width` is the width of the graph cells.
-pub fn commit_header<'a, M: 'a>(
+/// With `on_resize` the gap before each column after the message can be
+/// pressed and dragged to change that column's width.
+pub fn commit_header<'a, M: Clone + 'a>(
     graph_width: f32,
     labels: [&str; 4],
+    columns: CommitColumns,
     show_sha: bool,
+    on_resize: Option<Box<dyn Fn(CommitColumn) -> M + 'a>>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let [message, author, date, sha] = labels;
-    let cell = |label: &str, width: Length| {
+    let label = |label: &str| {
         container(
             text(label.to_owned())
                 .size(font_size::COLUMN_HEADER)
                 .color(palette.dim_text)
                 .wrapping(Wrapping::None),
         )
-        .width(width)
+        .width(Length::Fill)
+        .clip(true)
+    };
+    let strip = |column: CommitColumn| -> Element<'a, M> {
+        let line = container(theme::vertical_rule(palette.border_inactive))
+            .width(size::COLUMN_GAP)
+            .height(Length::Fill)
+            .center_x(size::COLUMN_GAP);
+        match &on_resize {
+            Some(pressed) => mouse_area(line)
+                .on_press(pressed(column))
+                .interaction(Interaction::ResizingHorizontally)
+                .into(),
+            None => line.into(),
+        }
+    };
+    let cell = |title: &str, column: CommitColumn| -> Element<'a, M> {
+        row![strip(column), label(title)]
+            .align_y(alignment::Vertical::Center)
+            .width(f32::from(columns.of(column)) + size::COLUMN_GAP)
+            .into()
     };
     container(
         row![
-            container("").width(graph_width),
-            cell(message, Length::Fill),
-            cell(author, Length::Fixed(AUTHOR_WIDTH)),
-            cell(date, Length::Fixed(DATE_WIDTH)),
+            container("").width(graph_width + size::COLUMN_GAP),
+            label(message),
+            cell(author, CommitColumn::Author),
+            cell(date, CommitColumn::Date),
         ]
-        .extend(show_sha.then(|| Element::from(cell(sha, Length::Fixed(SHA_WIDTH)))))
-        .spacing(spacing::XS)
+        .extend(show_sha.then(|| cell(sha, CommitColumn::Sha)))
         .align_y(alignment::Vertical::Center),
     )
-    .padding([0.0, spacing::CELL_PADDING_X])
+    .padding([0.0, spacing::XXL + spacing::CELL_PADDING_X])
     .height(size::COLUMN_HEADER)
+    .into()
+}
+
+/// The chips and the message after them, the message cut to what is left of `width`.
+fn message_cell<'a, M: 'a>(
+    chips: Vec<(String, RefChipKind)>,
+    message: &str,
+    width: f32,
+    ink: Color,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let chips_width: f32 = chips
+        .iter()
+        .map(|(label, _)| {
+            estimated_width(label, font_size::SMALL) + 2.0 * spacing::XS + spacing::XS
+        })
+        .sum();
+    let fitted = fit_end(message, width - chips_width, font_size::BODY);
+    let chip_row = Row::with_children(
+        chips
+            .into_iter()
+            .map(|(label, kind)| ref_chip(label, kind, palette)),
+    )
+    .spacing(spacing::XS);
+    row![
+        chip_row,
+        text(fitted)
+            .size(font_size::BODY)
+            .color(ink)
+            .wrapping(Wrapping::None)
+    ]
+    .spacing(spacing::XS)
+    .align_y(alignment::Vertical::Center)
+    .width(Length::Fill)
     .into()
 }
 
@@ -119,39 +276,35 @@ pub fn commit_row<'a, M: Clone + 'a>(
     } else {
         palette.dim_text
     };
-    let cell = |content: String, color: Color, width: Length| {
+    let cell = |content: String, color: Color, width: u16| {
         container(
             text(content)
                 .size(font_size::BODY)
                 .color(color)
                 .wrapping(Wrapping::None),
         )
-        .width(width)
+        .width(f32::from(width))
         .clip(true)
     };
-    let chips = Row::with_children(
-        commit
-            .chips
-            .into_iter()
-            .map(|(label, kind)| ref_chip(label, kind, palette)),
-    )
-    .spacing(spacing::XS);
-    let message = row![chips, cell(commit.message, ink, Length::Fill)]
-        .spacing(spacing::XS)
-        .align_y(alignment::Vertical::Center)
-        .width(Length::Fill);
+    let message = message_cell(
+        commit.chips,
+        &commit.message,
+        commit.message_width,
+        ink,
+        palette,
+    );
     let line = row![
         commit.graph,
         container(message).width(Length::Fill).clip(true),
-        cell(commit.author, dim, Length::Fixed(AUTHOR_WIDTH)),
-        cell(commit.date, dim, Length::Fixed(DATE_WIDTH)),
+        cell(commit.author, dim, commit.columns.author),
+        cell(commit.date, dim, commit.columns.date),
     ]
     .extend(
         commit
             .show_sha
-            .then(|| Element::from(cell(commit.sha, dim, Length::Fixed(SHA_WIDTH)))),
+            .then(|| Element::from(cell(commit.sha, dim, commit.columns.sha))),
     )
-    .spacing(spacing::XS)
+    .spacing(size::COLUMN_GAP)
     .align_y(alignment::Vertical::Center);
     button(
         container(line)
@@ -240,6 +393,10 @@ pub enum DiffTone {
     Context,
     Added,
     Removed,
+    /// A line of the checked-out side of a conflict.
+    Mine,
+    /// A line of the merged side of a conflict: the accent of the tags, not the red of a deletion.
+    Theirs,
     /// The other side has no line here.
     Empty,
 }
@@ -248,6 +405,8 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
     let base = match tone {
         DiffTone::Added => palette.success,
         DiffTone::Removed => palette.error,
+        DiffTone::Mine => palette.success,
+        DiffTone::Theirs => palette.tagged,
         DiffTone::Context | DiffTone::Empty => return None,
     };
     Some(Color {

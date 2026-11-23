@@ -133,22 +133,6 @@ pub fn vertical_rule<'a, M: 'a>(color: Color) -> Element<'a, M> {
         .into()
 }
 
-/// A small round status dot.
-pub fn status_dot<'a, M: 'a>(color: Color) -> Element<'a, M> {
-    container(Space::new())
-        .width(size::DOT)
-        .height(size::DOT)
-        .style(move |_theme: &Theme| container::Style {
-            background: Some(Background::Color(color)),
-            border: Border {
-                radius: (size::DOT / 2.0).into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        })
-        .into()
-}
-
 /// The mode field at the left end of the status bar: names the active panel.
 /// Filled with the "on" role, like every other thing that is switched on.
 pub fn mode_field(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
@@ -188,28 +172,6 @@ pub fn title_tab(
         button::Style {
             background: fill,
             text_color,
-            ..button::Style::default()
-        }
-    }
-}
-
-/// The button that opens the command palette: a subtle fill, lit while the
-/// pointer is over it.
-pub fn title_command_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: Some(Background::Color(if hovered {
-                colors.border
-            } else {
-                colors.border_inactive
-            })),
-            text_color: colors.text,
-            border: Border {
-                radius: radius::CORNER.into(),
-                ..Border::default()
-            },
             ..button::Style::default()
         }
     }
@@ -927,3 +889,18 @@ pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> contai
 
 #[cfg(test)]
 mod tests;
+
+/// A flat button in the accent, for a name that opens what it names: it reads
+/// as a link and not as plain text.
+pub fn named_link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then(|| hover_fill(&colors)),
+            text_color: colors.accent,
+            border: Border::default(),
+            ..button::Style::default()
+        }
+    }
+}

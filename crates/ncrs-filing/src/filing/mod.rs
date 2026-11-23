@@ -74,8 +74,8 @@ pub use locations::lies_within;
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{
-    ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader, IndexFigures,
-    IndexFiguresReader, NoteLinkFinder, TextSource,
+    ActivityBatch, ActivityReader, ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader,
+    IndexFigures, IndexFiguresReader, NoteLinkFinder, TextSource,
 };
 use recovery_marker::{clear_unconfirmed, is_unconfirmed, mark_unconfirmed};
 pub use secrets::{SecretText, ShownRecoveryKey};

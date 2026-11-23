@@ -210,6 +210,7 @@ pub fn update(
         | SettingsMessage::FolderPicked { .. }
         | SettingsMessage::FolderGranted { .. }
         | SettingsMessage::RemoveFolder(_)
+        | SettingsMessage::StopContinuous(_)
         | SettingsMessage::EditFolder(_)
         | SettingsMessage::ReplaceFolder(_)
         | SettingsMessage::AddOwnDetail(_)
@@ -456,6 +457,18 @@ pub fn close_settings(settings: &mut Settings) -> Task<Message> {
 /// Opens the settings tab, unless something blocks it, on `feature`, with
 /// `row` in view.
 pub fn show_setting(
+    settings: &mut Settings,
+    ctx: &Ctx<'_>,
+    feature: SettingsFeature,
+    row: Option<String>,
+) -> Task<Message> {
+    Task::batch([
+        open_on(settings, ctx, feature, row),
+        ncrs_ui_kit::nav_list::chosen_into_view(),
+    ])
+}
+
+fn open_on(
     settings: &mut Settings,
     ctx: &Ctx<'_>,
     feature: SettingsFeature,

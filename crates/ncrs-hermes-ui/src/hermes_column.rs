@@ -458,6 +458,7 @@ mod tests {
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: false,
         }
     }
 

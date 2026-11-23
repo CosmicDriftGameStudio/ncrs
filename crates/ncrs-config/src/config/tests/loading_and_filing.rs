@@ -135,6 +135,7 @@ pub fn assert_the_filing_settings(config: &Config) {
                 images: false,
                 is_target: false,
                 transfer: Default::default(),
+                continuous: false,
             },
             FilingLocation {
                 path: home.join("Documents/Archive"),
@@ -142,6 +143,7 @@ pub fn assert_the_filing_settings(config: &Config) {
                 images: true,
                 is_target: true,
                 transfer: Default::default(),
+                continuous: false,
             },
         ]
     );

@@ -8,7 +8,9 @@ use ncrs_git::{LogCommit, RefKind, SegmentHalf};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::commit_graph::{graph_cell, GraphCell, GraphLine, LineHalf, LANE_WIDTH};
 use ncrs_ui_kit::format;
-use ncrs_ui_kit::git_rows::{commit_header, commit_row, CommitRow, RefChipKind};
+use ncrs_ui_kit::git_rows::{
+    commit_header, commit_message_width, commit_row, CommitRow, RefChipKind,
+};
 use ncrs_ui_kit::kit::{button, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_text::page_line;
@@ -28,8 +30,15 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         return notice(ctx, Msg::GitViewNoCommits);
     }
     let show_sha = !super::is_narrow(ctx);
+    let columns = state.columns_in_view(ctx.columns);
     let lanes = log.lane_count.max(1);
     let graph_width = LANE_WIDTH * lanes as f32;
+    let message_width = commit_message_width(
+        super::commits_pane_width(state, ctx),
+        graph_width,
+        columns,
+        show_sha,
+    );
     let working = state.has_working_row().then(|| {
         let count = state.current_worktree().map_or(0, |worktree| worktree.wip);
         let empty = GraphCell {
@@ -49,6 +58,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 author: String::new(),
                 date: String::new(),
                 sha: String::new(),
+                columns,
+                message_width,
                 show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
                 dimmed: false,
@@ -72,6 +83,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 author: commit.author.clone(),
                 date: date_of(commit, ctx),
                 sha: commit.short.clone(),
+                columns,
+                message_width,
                 show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == row,
                 dimmed: commit.is_merge,
@@ -102,7 +115,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             ctx.lang.text(Msg::GitViewColumnDate),
             ctx.lang.text(Msg::GitViewColumnSha),
         ],
+        columns,
         show_sha,
+        Some(Box::new(Message::ResizePressed)),
         palette,
     );
     column![

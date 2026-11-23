@@ -20,6 +20,7 @@ fn location(path: &Path) -> FilingLocation {
         images: false,
         is_target: false,
         transfer: Default::default(),
+        continuous: false,
     }
 }
 

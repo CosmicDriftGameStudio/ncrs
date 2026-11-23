@@ -13,6 +13,7 @@ fn configured() -> Filing {
         images: false,
         is_target,
         transfer: Default::default(),
+        continuous: false,
     };
     Filing {
         enabled: true,

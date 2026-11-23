@@ -38,11 +38,12 @@ use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
-use crate::hermes_column::{ColumnView, FolderRole, HermesFileState};
+#[cfg(test)]
+use crate::hermes_column::FolderRole;
+use crate::hermes_column::{ColumnView, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
-use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
 use crate::jobs;
@@ -142,7 +143,7 @@ use ncrs_ops::{restore_one, Restoration};
 use ncrs_ops::{Deletion, Extracting, PendingConflict};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
-    HermesCommands, RECENT_LIMIT,
+    GitCommandEntry, HermesCommands, RECENT_LIMIT,
 };
 #[cfg(test)]
 use ncrs_pipeline::Load;
@@ -330,6 +331,8 @@ pub struct App {
     clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
     /// The window's size, for keeping the context menu inside it.
     window_size: Size,
+    /// The first title bar tab that shows while the tabs do not all fit.
+    title_tabs_first: usize,
     /// Where the session is remembered; `None` writes nothing.
     state_path: Option<PathBuf>,
     /// The snapshot last scheduled for writing, so a message that changes
@@ -405,6 +408,8 @@ pub struct App {
     kinds: Kinds,
     /// The `[columns]` setting: which columns the panels show and how wide.
     columns: ncrs_config::panel_columns::PanelColumns,
+    /// The `[git_view]` setting: the commit columns and the folded groups of the Git tabs.
+    git_view_settings: ncrs_config::git_view::GitViewSettings,
     /// Folders that get a symbol of their own, worked out from the Hermes
     /// folders in `special_folders_source` so a frame only reads them.
     special_folders: Vec<(PathBuf, ncrs_ui_kit::file_icon::SpecialFolder)>,
@@ -571,6 +576,8 @@ pub struct PromptKeyState {
     pub git_filter: bool,
     /// A diff is shown in the Git tab.
     pub git_diff: bool,
+    /// A dialog is over the Git tab: it takes the keys.
+    pub git_dialog: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -652,6 +659,7 @@ impl Default for PromptKeyState {
             git: None,
             git_filter: false,
             git_diff: false,
+            git_dialog: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             quit_dialog: false,

@@ -8,12 +8,12 @@ use ncrs_git::{
 };
 use ncrs_i18n::Language;
 
-use crate::state::{Area, SidebarItem, Subject};
-use crate::{git_view_key, tab_title, update, Action, Ctx, Message, State};
+use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns, COMMIT_COLUMN_MAX};
 
-const CTX: Ctx = Ctx {
-    lang: Language::English,
-};
+use crate::state::{remote_groups, Area, Section, SidebarItem, Subject};
+use crate::{git_view_key, open, tab_title, update, Action, Ctx, Message, State};
+
+const CTX: Ctx = Ctx::new(Language::English);
 
 fn commit(id: &str) -> LogCommit {
     LogCommit {
@@ -267,7 +267,7 @@ fn hunks_step_within_the_diff() {
 }
 
 #[test]
-fn enter_on_a_worktree_asks_to_show_it_in_the_panel() {
+fn enter_on_a_worktree_asks_to_open_it_as_a_git_tab() {
     let mut state = opened(&["aaaaaaa"], 0);
     state.area = Area::Sidebar;
     let items = state.sidebar_items();
@@ -278,7 +278,7 @@ fn enter_on_a_worktree_asks_to_show_it_in_the_panel() {
     state.sidebar_cursor = position;
     assert_eq!(
         send(&mut state, Message::Enter),
-        Some(Action::ShowWorktree(PathBuf::from("/repo-feature")))
+        Some(Action::OpenWorktreeTab(PathBuf::from("/repo-feature")))
     );
 }
 
@@ -344,19 +344,19 @@ fn the_tab_is_titled_with_the_repository_and_has_none_while_closed() {
 fn keys_map_to_messages_and_the_filter_keeps_the_letters() {
     let none = Modifiers::empty();
     assert_eq!(
-        git_view_key(&Key::Named(Named::ArrowDown), none, false, false),
+        git_view_key(&Key::Named(Named::ArrowDown), none, false, false, false),
         Some(Message::Down)
     );
     assert_eq!(
-        git_view_key(&Key::Character("/".into()), none, false, false),
+        git_view_key(&Key::Character("/".into()), none, false, false, false),
         Some(Message::FocusFilter)
     );
     assert_eq!(
-        git_view_key(&Key::Character("n".into()), none, false, false),
+        git_view_key(&Key::Character("n".into()), none, false, false, false),
         None
     );
     assert_eq!(
-        git_view_key(&Key::Character("n".into()), none, false, true),
+        git_view_key(&Key::Character("n".into()), none, false, true, false),
         Some(Message::NextHunk)
     );
     assert_eq!(
@@ -364,12 +364,204 @@ fn keys_map_to_messages_and_the_filter_keeps_the_letters() {
             &Key::Named(Named::ArrowDown),
             Modifiers::COMMAND,
             false,
-            true
+            true,
+            false
         ),
         Some(Message::NextFile)
     );
     assert_eq!(
-        git_view_key(&Key::Named(Named::ArrowDown), none, true, false),
+        git_view_key(&Key::Named(Named::ArrowDown), none, true, false, false),
         None
     );
+    // A dialog over the tab takes every key but Enter.
+    assert_eq!(
+        git_view_key(&Key::Named(Named::Enter), none, false, false, true),
+        Some(Message::Enter)
+    );
+    assert_eq!(
+        git_view_key(&Key::Named(Named::ArrowDown), none, false, false, true),
+        None
+    );
+}
+
+#[test]
+fn a_click_on_a_worktree_asks_for_the_same_tab_as_enter() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    let position = state
+        .sidebar_items()
+        .iter()
+        .position(|item| *item == SidebarItem::Worktree(1))
+        .expect("second worktree listed");
+    assert_eq!(
+        send(&mut state, Message::SidebarPressed(position)),
+        Some(Action::OpenWorktreeTab(PathBuf::from("/repo-feature")))
+    );
+}
+
+fn with_remotes(state: &mut State, remotes: &[&str]) {
+    let mut overview = state.overview.clone().expect("refs are loaded");
+    overview.remote = remotes.iter().map(|name| (*name).to_owned()).collect();
+    let (generation, _) = state.loads.refs.begin();
+    let _ = update(
+        state,
+        Message::RefsLoaded(generation, Box::new(Ok(overview))),
+        &CTX,
+    );
+}
+
+fn press_row(state: &mut State, wanted: SidebarItem) -> Option<Action> {
+    let position = state
+        .sidebar_items()
+        .iter()
+        .position(|item| *item == wanted)?;
+    send(state, Message::SidebarPressed(position))
+}
+
+#[test]
+fn remote_branches_are_listed_under_their_remote_without_its_prefix() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_remotes(&mut state, &["origin/main", "origin/dev", "upstream/main"]);
+    let remotes_at = |shown: &State| {
+        shown
+            .sidebar_items()
+            .into_iter()
+            .skip_while(|item| *item != SidebarItem::Header(Section::Remotes))
+            .take_while(|item| *item != SidebarItem::Header(Section::Tags))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        remotes_at(&state),
+        [
+            SidebarItem::Header(Section::Remotes),
+            SidebarItem::RemoteHeader(0),
+            SidebarItem::Remote(0),
+            SidebarItem::Remote(1),
+            SidebarItem::RemoteHeader(1),
+            SidebarItem::Remote(2),
+        ]
+    );
+    let overview = state.overview.as_ref().expect("refs");
+    let groups = remote_groups(overview);
+    assert_eq!(groups[0].name, "origin");
+    assert_eq!(groups[0].branches, [(0, "main"), (1, "dev")]);
+    assert_eq!(groups[1].name, "upstream");
+
+    press_row(&mut state, SidebarItem::RemoteHeader(0));
+    assert_eq!(
+        remotes_at(&state),
+        [
+            SidebarItem::Header(Section::Remotes),
+            SidebarItem::RemoteHeader(0),
+            SidebarItem::RemoteHeader(1),
+            SidebarItem::Remote(2),
+        ]
+    );
+}
+
+#[test]
+fn the_arrow_keys_walk_every_visible_sidebar_row_once() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_remotes(&mut state, &["origin/main", "origin/dev", "upstream/main"]);
+    press_row(&mut state, SidebarItem::RemoteHeader(1));
+    state.area = Area::Sidebar;
+    state.sidebar_cursor = 0;
+    let items = state.sidebar_items();
+    let mut walked = vec![items[state.sidebar_cursor]];
+    for _ in 1..items.len() {
+        send(&mut state, Message::Down);
+        walked.push(state.sidebar_items()[state.sidebar_cursor]);
+    }
+    assert_eq!(walked, items);
+    send(&mut state, Message::Down);
+    assert_eq!(state.sidebar_cursor, items.len() - 1, "stops at the end");
+}
+
+#[test]
+fn left_and_right_fold_a_remote_and_ask_the_app_to_remember_it() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_remotes(&mut state, &["origin/main", "upstream/main"]);
+    state.area = Area::Sidebar;
+    state.sidebar_cursor = state
+        .sidebar_items()
+        .iter()
+        .position(|item| *item == SidebarItem::RemoteHeader(0))
+        .expect("origin");
+    let folded = send(&mut state, Message::Left);
+    assert_eq!(
+        folded,
+        Some(Action::FoldsChanged {
+            root: PathBuf::from("/repo"),
+            folded: vec!["remote:origin".to_owned()],
+        })
+    );
+    assert!(!state.sidebar_items().contains(&SidebarItem::Remote(0)));
+    assert!(matches!(
+        send(&mut state, Message::Right),
+        Some(Action::FoldsChanged { folded: now, .. }) if now.is_empty()
+    ));
+    assert!(state.sidebar_items().contains(&SidebarItem::Remote(0)));
+}
+
+#[test]
+fn folded_groups_come_back_when_the_repository_is_opened_again() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_remotes(&mut state, &["origin/main"]);
+    press_row(&mut state, SidebarItem::Header(Section::Tags));
+    let Some(Action::FoldsChanged { root, folded }) =
+        press_row(&mut state, SidebarItem::RemoteHeader(0))
+    else {
+        panic!("folding asks the app to remember");
+    };
+    assert_eq!(folded, ["remote:origin", "tags"]);
+
+    let remembered = Ctx {
+        folded,
+        ..Ctx::new(Language::English)
+    };
+    let mut reopened = State::default();
+    drop(open(&mut reopened, root, "repo".to_owned(), &remembered));
+    assert_eq!(reopened.collapsed, state.collapsed);
+
+    let mut other = State::default();
+    drop(open(
+        &mut other,
+        PathBuf::from("/elsewhere"),
+        "elsewhere".to_owned(),
+        &Ctx::new(Language::English),
+    ));
+    assert!(other.collapsed.is_empty());
+}
+
+#[test]
+fn dragging_a_column_header_resizes_it_and_reports_the_width_once() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    let standard = CommitColumns::STANDARD;
+    send(&mut state, Message::ResizePressed(CommitColumn::Author));
+    assert_eq!(send(&mut state, Message::ResizeMoved(500.0)), None);
+    assert_eq!(send(&mut state, Message::ResizeMoved(450.0)), None);
+    assert_eq!(
+        state.columns_in_view(standard).author,
+        standard.author + 50,
+        "dragging left widens the column on the right of the gap"
+    );
+    assert_eq!(
+        send(&mut state, Message::ResizeReleased),
+        Some(Action::ColumnsResized(CommitColumns {
+            author: standard.author + 50,
+            ..standard
+        }))
+    );
+    assert_eq!(send(&mut state, Message::ResizeReleased), None);
+
+    send(&mut state, Message::ResizePressed(CommitColumn::Sha));
+    send(&mut state, Message::ResizeMoved(100.0));
+    send(&mut state, Message::ResizeMoved(-5_000.0));
+    assert_eq!(
+        state.columns_in_view(standard).sha,
+        COMMIT_COLUMN_MAX,
+        "stops at the widest"
+    );
+    send(&mut state, Message::Escape);
+    assert!(state.column_drag.is_none());
+    assert_eq!(state.columns_in_view(standard), standard);
 }

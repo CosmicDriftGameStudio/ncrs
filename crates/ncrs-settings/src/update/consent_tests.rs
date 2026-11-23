@@ -381,3 +381,19 @@ fn a_withdrawn_kind_can_be_allowed_again() {
         Some(true)
     );
 }
+
+#[test]
+fn a_new_page_scrolls_the_sidebar_to_its_entry_and_the_same_page_does_not() {
+    use ncrs_config::SettingsFeature;
+    let mut world = World::saved(LOCAL);
+
+    let (opened, _) = world.send(SettingsMessage::Select(SettingsFeature::Activity));
+    assert_eq!(world.page().feature, SettingsFeature::Activity);
+    assert_eq!(opened, 1);
+
+    let (again, _) = world.send(SettingsMessage::Select(SettingsFeature::Activity));
+    assert_eq!(again, 0);
+
+    let (searched, _) = world.send(SettingsMessage::SearchChanged("rules".to_owned()));
+    assert_eq!(searched, 1);
+}

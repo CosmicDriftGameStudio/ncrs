@@ -19,5 +19,8 @@ pub enum Action {
         filed: usize,
         left: Vec<PathBuf>,
         batch: BatchId,
+        /// The source is to file continuously from now on: the user asked for
+        /// that before the tab opened.
+        then_continuous: bool,
     },
 }

@@ -118,6 +118,11 @@ impl KeyActionMessage for KeyAction {
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            Self::HermesFileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
+            Self::HermesFileContinuously => {
+                Message::HermesFile(HermesFileMessage::FileContinuously)
+            }
+            Self::HermesStopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
             Self::HermesSetInbox => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
             }
@@ -228,6 +233,38 @@ mod tests {
 
     fn press(keymap: &Keymap, key: Key, modifiers: Modifiers) -> Option<Message> {
         keymap.map_key(&key, modifiers, KeyScope::Panel)
+    }
+
+    #[test]
+    fn no_git_view_shortcut_is_taken_by_the_app_keymap() {
+        use ncrs_git_view::shortcuts::Shortcut;
+        let same_key = |left: &Key, right: &Key| match (left, right) {
+            (Key::Character(a), Key::Character(b)) => a.eq_ignore_ascii_case(b),
+            _ => left == right,
+        };
+        for shortcut in Shortcut::ALL {
+            // These mean in the Git tab what they mean in the app: edit, menu, rename.
+            if matches!(
+                shortcut,
+                Shortcut::OpenEditor | Shortcut::OpenMenu | Shortcut::Rename
+            ) {
+                continue;
+            }
+            let (modifiers, key) = shortcut.binding();
+            let taken_by: Vec<_> = Keymap::built_in()
+                .bindings()
+                .iter()
+                .filter(|(_, binding)| {
+                    binding.modifiers == modifiers && same_key(&binding.key, &key)
+                })
+                .map(|(action, _)| *action)
+                .collect();
+            assert!(
+                taken_by.is_empty(),
+                "{shortcut:?} ({}) is also {taken_by:?}",
+                shortcut.label()
+            );
+        }
     }
 
     #[test]

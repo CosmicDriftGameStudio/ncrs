@@ -4,13 +4,39 @@ use iced::widget::column;
 use iced::Element;
 use ncrs_git::WorktreeInfo;
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_ui_kit::action_rows::context_area;
+use ncrs_ui_kit::format::{estimated_width, fit_end};
 use ncrs_ui_kit::git_rows::{worktree_row, WorktreeRow};
-use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
+use ncrs_ui_kit::theme::{font_size, size, spacing};
+use ncrs_ui_kit::tree_list::{
+    tree_row, tree_scroll, TreeRow, LIST_INSET, ROW_OVERHEAD, TREE_INDENT,
+};
 
 use super::SIDEBAR_ID;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
-use crate::state::{Area, Section, SidebarItem, State};
+use crate::state::{remote_groups, Area, Fold, Section, SidebarItem, State};
+use crate::update::menu_target_of;
+
+/// Room the scroll bar of the list takes from a label.
+const SCROLL_BAR_ROOM: f32 = 12.0;
+
+/// How much of a label of a row `depth` levels down and `trail` wide shows
+/// before it is cut with an ellipsis.
+fn label_budget(depth: usize, trail: &str) -> f32 {
+    let trail_room = if trail.is_empty() {
+        0.0
+    } else {
+        estimated_width(trail, font_size::SMALL) + spacing::XS
+    };
+    size::SIDE_PANE
+        - 2.0 * LIST_INSET
+        - ROW_OVERHEAD
+        - spacing::CELL_PADDING_X
+        - TREE_INDENT * depth as f32
+        - SCROLL_BAR_ROOM
+        - trail_room
+}
 
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let rows = state
@@ -18,7 +44,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into_iter()
         .enumerate()
         .map(|(index, item)| {
-            let chosen = state.area == Area::Sidebar && index == state.sidebar_cursor;
+            let chosen = state.area == Area::Sidebar && index == state.sidebar_cursor
+                || item == SidebarItem::Changes && state.actions.changes_open;
             if let (SidebarItem::Worktree(which), Some(overview)) = (item, &state.overview) {
                 if let Some(worktree) = overview.worktrees.get(which) {
                     return worktree_row_of(
@@ -30,48 +57,103 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     );
                 }
             }
-            let (depth, open, label) = match item {
+            let (depth, open, label, trail) = match item {
                 SidebarItem::Header(section) => (
                     0,
-                    Some(!state.collapsed.contains(&section)),
+                    Some(!state.collapsed.contains(&Fold::Section(section))),
                     format!(
                         "{} ({})",
                         ctx.lang.text(section_title(section)),
                         state.section_count(section)
                     ),
+                    String::new(),
                 ),
-                other => (1, None, child_label(state, other)),
+                SidebarItem::Changes => {
+                    let count = state
+                        .actions
+                        .local
+                        .as_ref()
+                        .map_or(0, |local| local.unstaged.len() + local.staged.len());
+                    (
+                        0,
+                        None,
+                        fill_template(
+                            ctx.lang.text(Msg::GitViewWorkingCopy),
+                            &[("{count}", &count.to_string())],
+                        ),
+                        String::new(),
+                    )
+                }
+                SidebarItem::RemoteHeader(position) => {
+                    let (name, count) = remote_label(state, position);
+                    let folded = state.collapsed.contains(&Fold::Remote(name.clone()));
+                    (1, Some(!folded), format!("{name} ({count})"), String::new())
+                }
+                other => {
+                    let (label, trail) = child_label(state, other);
+                    (
+                        if matches!(other, SidebarItem::Remote(_)) {
+                            2
+                        } else {
+                            1
+                        },
+                        None,
+                        label,
+                        trail,
+                    )
+                }
             };
-            tree_row(
+            let fitted = fit_end(&label, label_budget(depth, &trail), font_size::BODY);
+            let menu_target = menu_target_of(item);
+            let row = tree_row(
                 TreeRow {
                     depth,
                     open,
-                    label,
+                    label: fitted,
                     chosen,
                     dim: false,
                     lead: None,
-                    trail: Vec::new(),
+                    trail: if trail.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![(trail, ctx.palette.dim_text)]
+                    },
                     on_press: Message::SidebarPressed(index),
                 },
                 ctx.palette,
-            )
+            );
+            match menu_target {
+                Some(target) => context_area(row, Message::OpenMenu(target)),
+                None => row,
+            }
         });
     tree_scroll(SIDEBAR_ID, column(rows).into())
+}
+
+fn remote_label(state: &State, position: usize) -> (String, usize) {
+    let Some(overview) = &state.overview else {
+        return (String::new(), 0);
+    };
+    remote_groups(overview)
+        .get(position)
+        .map(|group| (group.name.to_owned(), group.branches.len()))
+        .unwrap_or_default()
 }
 
 fn section_title(section: Section) -> Msg {
     match section {
         Section::Local => Msg::GitViewSectionLocal,
-        Section::Remote => Msg::GitViewSectionRemote,
+        Section::Remotes => Msg::GitViewSectionRemotes,
         Section::Tags => Msg::GitViewSectionTags,
         Section::Stashes => Msg::GitViewSectionStashes,
         Section::Worktrees => Msg::GitViewSectionWorktrees,
     }
 }
 
-fn child_label(state: &State, item: SidebarItem) -> String {
+/// The label of a leaf and what stands at the right of it.
+fn child_label(state: &State, item: SidebarItem) -> (String, String) {
     let Some(overview) = &state.overview else {
-        return String::new();
+        return (String::new(), String::new());
     };
     match item {
         SidebarItem::Local(index) => overview
@@ -79,19 +161,37 @@ fn child_label(state: &State, item: SidebarItem) -> String {
             .get(index)
             .map(|branch| {
                 let mark = if branch.is_current { "\u{25cf} " } else { "" };
-                if branch.has_upstream {
-                    format!(
-                        "{mark}{} \u{2191}{} \u{2193}{}",
-                        branch.name, branch.ahead, branch.behind
-                    )
+                let distance = if branch.has_upstream {
+                    format!("\u{2191}{} \u{2193}{}", branch.ahead, branch.behind)
                 } else {
-                    format!("{mark}{}", branch.name)
-                }
+                    String::new()
+                };
+                (format!("{mark}{}", branch.name), distance)
             })
             .unwrap_or_default(),
-        SidebarItem::Remote(index) => overview.remote.get(index).cloned().unwrap_or_default(),
-        SidebarItem::Tag(index) => overview.tags.get(index).cloned().unwrap_or_default(),
-        SidebarItem::Worktree(_) | SidebarItem::Header(_) => String::new(),
+        SidebarItem::Remote(index) => {
+            let label = remote_groups(overview)
+                .iter()
+                .flat_map(|group| group.branches.iter())
+                .find(|(at, _)| *at == index)
+                .map(|(_, branch)| (*branch).to_owned())
+                .unwrap_or_default();
+            (label, String::new())
+        }
+        SidebarItem::Tag(index) => (
+            overview.tags.get(index).cloned().unwrap_or_default(),
+            String::new(),
+        ),
+        SidebarItem::Stash(index) => state
+            .actions
+            .stashes
+            .get(index)
+            .map(|stash| (stash.message.clone(), stash.origin.clone()))
+            .unwrap_or_default(),
+        SidebarItem::Worktree(_)
+        | SidebarItem::Header(_)
+        | SidebarItem::RemoteHeader(_)
+        | SidebarItem::Changes => (String::new(), String::new()),
     }
 }
 

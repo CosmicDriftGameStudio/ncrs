@@ -146,6 +146,9 @@ mod filing_cards;
 #[cfg(test)]
 mod filing_status_page;
 
+#[cfg(test)]
+mod hermes_pages;
+
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[cfg(test)]

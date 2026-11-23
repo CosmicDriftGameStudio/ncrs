@@ -112,6 +112,7 @@ impl Fixture {
             force: false,
             stored_text_is_current: false,
             not_a_document: false,
+            continuous_candidate: false,
         }
     }
 

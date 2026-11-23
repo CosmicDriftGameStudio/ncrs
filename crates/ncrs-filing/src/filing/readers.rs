@@ -66,6 +66,48 @@ impl HermesCountsReader {
     }
 }
 
+/// The latest batches that moved files, with what they moved, read on a
+/// blocking thread like [`HermesCountsReader`].
+pub struct ActivityReader {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for ActivityReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActivityReader").finish_non_exhaustive()
+    }
+}
+
+/// One run that moved files: what started it, when it ended and what it
+/// moved, from where to where.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityBatch {
+    pub kind: ncrs_index::BatchKind,
+    /// Unix seconds; the start when the run did not end.
+    pub at: i64,
+    pub undone: bool,
+    pub moves: Vec<(PathBuf, PathBuf)>,
+}
+
+impl ActivityReader {
+    pub fn read(self, batches: usize) -> Result<Vec<ActivityBatch>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let recent = index
+            .recent_batches(batches)
+            .map_err(|err| err.to_string())?;
+        Ok(recent
+            .into_iter()
+            .map(|(info, items)| ActivityBatch {
+                kind: info.kind,
+                at: info.finished_at.unwrap_or(info.started_at),
+                undone: info.undone_at.is_some(),
+                moves: items.into_iter().map(|item| (item.from, item.to)).collect(),
+            })
+            .collect())
+    }
+}
+
 /// Reads what one panel's Hermes column needs, on a blocking thread like
 /// [`HermesCountsReader`].
 pub struct ColumnReader {
@@ -213,6 +255,15 @@ impl FilingModule {
     }
 
     /// Like [`Self::index_figures_reader`]: looks at the phase only.
+    pub fn activity_reader(&self) -> Option<ActivityReader> {
+        match self.phase {
+            Phase::Ready => Some(ActivityReader {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
     pub fn hermes_counts_reader(&self) -> Option<HermesCountsReader> {
         match self.phase {
             Phase::Ready => Some(HermesCountsReader {

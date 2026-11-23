@@ -262,6 +262,9 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::OpenHitsLeft | KeyAction::OpenHitsRight => at(2),
         KeyAction::HermesHandToInbox
         | KeyAction::HermesProcessAgain
+        | KeyAction::HermesFileOnce
+        | KeyAction::HermesFileContinuously
+        | KeyAction::HermesStopContinuous
         | KeyAction::HermesQuickFix
         | KeyAction::HermesExclude => at(0),
         KeyAction::Rules => at(1),
@@ -430,6 +433,13 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         }
         KeyAction::HermesProcessAgain => {
             Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
+        }
+        KeyAction::HermesFileOnce => Command::plain(action, Hermes, Msg::ActionHermesFileOnce),
+        KeyAction::HermesFileContinuously => {
+            Command::plain(action, Hermes, Msg::ActionHermesFileContinuously)
+        }
+        KeyAction::HermesStopContinuous => {
+            Command::plain(action, Hermes, Msg::ActionHermesStopContinuous)
         }
         KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
         KeyAction::HermesSetFilingLocation => {

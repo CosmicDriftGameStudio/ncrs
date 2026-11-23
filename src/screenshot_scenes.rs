@@ -56,12 +56,13 @@ impl Scenes {
         let root = &self.repository;
         let lang = Language::English;
         let mut state = GitState::default();
+        let ctx = ncrs_git_view::Ctx::new(lang);
         drop(ncrs_git_view::open(
             &mut state,
             root.clone(),
             "ncrs-demo".to_owned(),
+            &ctx,
         ));
-        let ctx = ncrs_git_view::Ctx { lang };
         let stop = Arc::new(AtomicBool::new(false));
         let feed = |state: &mut GitState, message: GitMessage| {
             drop(ncrs_git_view::update(state, message, &ctx));
@@ -406,6 +407,7 @@ pub fn monitor(window: iced::Size) -> ncrs_monitor::State {
     let ctx = ncrs_monitor::Ctx {
         window_size: window,
         pointer: iced::Point::ORIGIN,
+        now: std::time::Instant::now(),
     };
     let mut state = ncrs_monitor::State::default();
     for message in [

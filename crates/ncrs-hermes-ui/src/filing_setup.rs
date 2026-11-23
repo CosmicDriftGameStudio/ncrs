@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use ncrs_intake::LocationMode;
 
 use crate::hermes_column::FolderRole;
-use ncrs_config::config::{self, Filing, FilingLocation, FilingRuleViolation, FilingWriteError};
+use ncrs_config::config::{
+    self, Filing, FilingLocation, FilingRuleViolation, FilingWriteError, LocationTransfer,
+};
 pub use ncrs_ui_kit::format::shown_path;
 
 /// What keeps the list from being saved. Shown at once, so the user sees what
@@ -123,6 +125,7 @@ pub fn locations_with_role(
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: false,
         }),
     }
     if is_target {
@@ -137,6 +140,23 @@ pub fn locations_with_role(
         }),
         None => Ok(setup.locations_to_save()),
     }
+}
+
+/// The list to write once `folder` files its new files by itself with
+/// `transfer`, or, with `None`, no longer (the way of carrying files stays).
+/// `None` when the folder is not in the list.
+pub fn locations_with_continuous(
+    configured: &[FilingLocation],
+    folder: &Path,
+    transfer: Option<LocationTransfer>,
+) -> Option<Vec<FilingLocation>> {
+    let mut setup = FilingSetup::new(configured);
+    let location = setup.chosen.iter_mut().find(|l| l.path == folder)?;
+    location.continuous = transfer.is_some();
+    if let Some(way) = transfer {
+        location.transfer = way;
+    }
+    Some(setup.locations_to_save())
 }
 
 /// Blocking. The canonical path of the folder a panel shows: the rules
@@ -187,7 +207,45 @@ mod tests {
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: false,
         }
+    }
+
+    #[test]
+    fn continuous_filing_is_set_and_cleared_for_one_listed_folder() {
+        let configured = [
+            location(LocationMode::Inbox, "tubes", false),
+            location(LocationMode::Archive, "filed", true),
+        ];
+
+        let on =
+            locations_with_continuous(&configured, &folder("tubes"), Some(LocationTransfer::Copy))
+                .unwrap();
+        assert_eq!(
+            (on[0].continuous, on[0].transfer),
+            (true, LocationTransfer::Copy)
+        );
+        assert!(!on[1].continuous && on[1].is_target);
+
+        let off = locations_with_continuous(&on, &folder("tubes"), None).unwrap();
+        assert_eq!(
+            (off[0].continuous, off[0].transfer),
+            (false, LocationTransfer::Copy)
+        );
+
+        assert_eq!(
+            locations_with_continuous(&configured, &folder("unknown"), None),
+            None
+        );
+    }
+
+    #[test]
+    fn a_role_change_keeps_the_way_a_folder_files() {
+        let mut configured = [location(LocationMode::Inbox, "tubes", false)];
+        configured[0].continuous = true;
+        configured[0].transfer = LocationTransfer::Copy;
+        let saved = FilingSetup::new(&configured).locations_to_save();
+        assert_eq!(saved, configured);
     }
 
     #[test]

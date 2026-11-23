@@ -185,6 +185,9 @@ pub struct SettingRow<'a, M> {
     /// Set at the left of the whole row, before its label (the number of a
     /// favourite).
     pub leading: Option<Element<'a, M>>,
+    /// Set: the label is a link that sends this message (the name of a file
+    /// that opens).
+    pub label_action: Option<M>,
 }
 
 pub struct Group<'a, M> {
@@ -246,6 +249,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
                 .map(|control| control.map(wrap.clone()))
                 .collect(),
             leading: self.leading.map(|lead| lead.map(wrap.clone())),
+            label_action: self.label_action.map(&wrap),
         }
     }
 
@@ -266,6 +270,15 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             list_indent: None,
             marked_controls: Vec::new(),
             leading: None,
+            label_action: None,
+        }
+    }
+
+    /// The label becomes a link that sends `message`.
+    pub fn with_label_action(self, message: M) -> Self {
+        Self {
+            label_action: Some(message),
+            ..self
         }
     }
 
@@ -283,6 +296,26 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
                 .clone()
                 .map(|shown| status_text(shown, palette.dim_text));
             button_row(leading, &buttons, marked, palette)
+        };
+        Self {
+            list_indent: Some(0.0),
+            ..Self::text(label, description, build(None))
+        }
+        .with_buttons(pressable(&buttons), build)
+    }
+
+    /// A listed row with an input field before its buttons; `field` draws the
+    /// field each time the row is built.
+    pub fn listed_field_buttons(
+        label: String,
+        description: Option<String>,
+        field: impl Fn() -> Element<'a, M>,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let build = |marked| {
+            let boxed = container(field()).width(size::FIELD_WIDE).into();
+            button_row(Some(boxed), &buttons, marked, palette)
         };
         Self {
             list_indent: Some(0.0),
@@ -425,6 +458,7 @@ pub fn simple_row<'a, M: Clone + 'a>(
         list_indent: None,
         marked_controls: Vec::new(),
         leading: None,
+        label_action: None,
     }
 }
 
@@ -604,8 +638,12 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 } else {
                     *palette
                 };
-                let plain_row = kit::form_row_with_problem(
-                    &setting.label,
+                let title = match setting.label_action {
+                    Some(message) => kit::text_link(setting.label.clone(), message, &row_palette),
+                    None => kit::paragraph(setting.label.clone(), &row_palette),
+                };
+                let plain_row = kit::form_row_titled(
+                    title,
                     setting
                         .theme_name
                         .as_deref()

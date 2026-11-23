@@ -70,6 +70,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 understand::hermes_ready(state, ctx)
             }
         }
+        Message::OpenAbout(items) => open_about(state, items, ctx),
         Message::Close => {
             // Escape first closes what the list has opened.
             if state.chats.dismiss_open_thing() {
@@ -574,6 +575,21 @@ pub fn say_off(state: &mut State, ctx: &Ctx) {
 }
 
 /// yet. The greeting follows once the AI and the model are there.
+/// Without a ready Hermes or while busy it is a plain open: the documents are
+/// still in the reviews.
+fn open_about(
+    state: &mut State,
+    items: Vec<ncrs_filing::review_work::ReviewItem>,
+    ctx: &Ctx,
+) -> Option<Action> {
+    if items.is_empty() || is_busy(state) || !matches!(ctx.availability, Availability::Ready(_)) {
+        return route(state, Message::Open, ctx);
+    }
+    state.open = true;
+    crate::waiting::ask_about(state, ctx, items);
+    None
+}
+
 pub fn open_thread(state: &mut State, ctx: &Ctx) {
     match &ctx.availability {
         Availability::Off => {

@@ -18,8 +18,9 @@ pub use ncrs_hermes_chat::Message as HermesChatMessage;
 #[cfg(test)]
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
-    FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
+    HermesOverviewMessage, HermesPage, QuickFixMessage, ReviewsMessage, RulesMessage,
+    SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{
     BatchRenameMessage, ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage,
@@ -213,12 +214,14 @@ pub enum Message {
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
+    Reviews(ReviewsMessage),
+    Activity(ActivityMessage),
     /// Opens one of the single pages.
     HermesPage(HermesPage),
-    /// Opens the settings on the AI page, where the Hermes switch is.
-    ShowAiSettings,
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
+    /// The background filing of new files is done.
+    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
@@ -297,6 +300,8 @@ pub enum TitleBarMessage {
     /// maximize or restore elsewhere.
     ToggleMaximize,
     Minimize,
+    /// An arrow of the tab strip: the first tab that shows, while not all fit.
+    TabsFrom(usize),
     Resize(ResizeEdge),
 }
 
@@ -387,7 +392,10 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::QuickFix(inner) => Self::QuickFix(inner),
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),
+            Hermes::Reviews(inner) => Self::Reviews(inner),
+            Hermes::Activity(inner) => Self::Activity(inner),
             Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
+            Hermes::ContinuousFiled(result) => Self::ContinuousFiled(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::HermesFile(inner) => Self::HermesFile(inner),
             Hermes::ToggleFileListTags => Self::Settings(SettingsMessage::ToggleFileListTags),

@@ -13,6 +13,24 @@ impl App {
         })
     }
 
+    /// The Git actions, while a Git tab is shown that offers them.
+    pub(in crate::app) fn command_palette_git_commands(&self) -> Vec<GitCommandEntry> {
+        let offered = self
+            .shown_git_tab()
+            .and_then(|id| self.git_tabs.get(id))
+            .is_some_and(ncrs_git_view::actions_available);
+        if !offered {
+            return Vec::new();
+        }
+        ncrs_git_view::commands(self.lang)
+            .into_iter()
+            .map(|(label, shortcut)| GitCommandEntry {
+                label,
+                shortcut: Some(shortcut),
+            })
+            .collect()
+    }
+
     /// The settings pages and settings the command list finds by a query.
     fn command_palette_settings_targets(&self) -> Vec<ncrs_config::SettingsTarget> {
         let fresh;
@@ -37,6 +55,25 @@ impl App {
                     || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
             })
             .collect()
+    }
+
+    /// The commands on a folder that the row under the cursor cannot take now.
+    fn commands_without_a_folder_to_file(&self) -> Vec<KeyAction> {
+        [
+            (KeyAction::HermesFileOnce, HermesAction::FileOnce),
+            (
+                KeyAction::HermesFileContinuously,
+                HermesAction::FileContinuously,
+            ),
+            (
+                KeyAction::HermesStopContinuous,
+                HermesAction::StopContinuous,
+            ),
+        ]
+        .into_iter()
+        .filter(|(_, action)| !self.hermes_action_enabled(*action))
+        .map(|(key, _)| key)
+        .collect()
     }
 
     pub(in crate::app) fn resize_command_palette(&mut self, window: Size) {
@@ -76,7 +113,14 @@ impl App {
             scope,
             hermes,
             unavailable: if opening && !blocked && scope == KeyScope::Panel {
-                self.commands_the_panel_refuses()
+                let mut refused = self.commands_the_panel_refuses();
+                refused.extend(self.commands_without_a_folder_to_file());
+                refused
+            } else {
+                Vec::new()
+            },
+            git_commands: if opening && !blocked {
+                self.command_palette_git_commands()
             } else {
                 Vec::new()
             },
@@ -94,6 +138,15 @@ impl App {
             // prompt the action opens takes the focus after the list gave it
             // up.
             Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
+            Some(CommandPaletteAction::RunGit(place)) => {
+                let sent = self
+                    .shown_git_tab()
+                    .zip(ncrs_git_view::message_of_command(place));
+                match sent {
+                    Some((id, git_message)) => task.chain(self.update_git_tab(id, git_message)),
+                    None => task,
+                }
+            }
             Some(CommandPaletteAction::ShowSetting { feature, row }) => {
                 Task::batch([task, self.show_setting(feature, row)])
             }

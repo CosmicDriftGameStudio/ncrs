@@ -70,6 +70,7 @@ pub fn resolve_filing(
             images: entry.images,
             is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
             transfer: entry.transfer.unwrap_or_default(),
+            continuous: entry.continuous,
         });
     }
     check_filing_rules(&filing.locations).map_err(|violation| {

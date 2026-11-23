@@ -1,15 +1,25 @@
 //! A sidebar list of pages in headed groups: the group head in small dim
 //! capitals, the pages under it, a divider between the groups.
 
+use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
-use iced::widget::{button, container, row, text, Column};
+use iced::widget::{button, container, row, scrollable, text, Column};
 use iced::{alignment, Element, Length, Padding};
 
+use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use crate::kit;
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 
 const ITEM_GAP: f32 = 2.0;
+
+const NAV_SCROLL_ID: &str = "nav-list-scroll";
+const NAV_CHOSEN_ID: &str = "nav-list-chosen";
+
+/// Scrolls the list just far enough that the chosen page shows whole.
+pub fn chosen_into_view<T: Send + 'static>() -> iced::Task<T> {
+    crate::row_scroll::row_into_view(NAV_SCROLL_ID, NAV_CHOSEN_ID)
+}
 
 #[derive(Debug)]
 pub struct NavItem<M> {
@@ -52,7 +62,17 @@ pub fn nav_list<'a, M: Clone + 'a>(groups: Vec<NavGroup<M>>, palette: &Palette) 
             ..Padding::ZERO
         }));
     }
-    list.into()
+    scrollable(list)
+        .direction(Direction::Vertical(
+            Scrollbar::new()
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH)
+                .margin(SCROLLBAR_MARGIN)
+                .spacing(0.0),
+        ))
+        .id(NAV_SCROLL_ID)
+        .height(Length::Fill)
+        .into()
 }
 
 fn head<'a, M: 'a>(group: &NavGroup<M>, palette: &Palette) -> Element<'a, M> {
@@ -106,11 +126,15 @@ fn item_button<'a, M: Clone + 'a>(item: NavItem<M>, palette: &Palette) -> Elemen
             ..Padding::ZERO
         })
         .center_y(Length::Fill);
-    button(content)
+    let entry = button(content)
         .on_press(item.on_press)
         .width(Length::Fill)
         .height(size::SIDEBAR_ITEM)
         .padding(0.0)
-        .style(theme::feature_item(palette, item.chosen, item.dimmed))
-        .into()
+        .style(theme::feature_item(palette, item.chosen, item.dimmed));
+    if item.chosen {
+        container(entry).id(NAV_CHOSEN_ID).into()
+    } else {
+        entry.into()
+    }
 }

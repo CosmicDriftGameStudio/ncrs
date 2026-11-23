@@ -24,7 +24,7 @@ const AUTHORS: [(&str, &str); 3] = [
 
 const FIRST_TICK: u64 = 1_790_000_000;
 
-fn run_git(dir: &Path, tick: u64, author: usize, args: &[&str]) -> String {
+pub(in crate::e2e_tests) fn run_git(dir: &Path, tick: u64, author: usize, args: &[&str]) -> String {
     let (name, email) = AUTHORS[author % AUTHORS.len()];
     let date = format!("{} +0000", FIRST_TICK + tick * 5_400);
     let output = Command::new("git")
@@ -111,11 +111,11 @@ fn engine_source() -> String {
         .collect()
 }
 
-fn write(root: &Path, relative: &str, text: &str) {
+pub(in crate::e2e_tests) fn write(root: &Path, relative: &str, text: &str) {
     super::write(&root.join(relative), text);
 }
 
-fn append(root: &Path, relative: &str, line: &str) {
+pub(in crate::e2e_tests) fn append(root: &Path, relative: &str, line: &str) {
     let path = root.join(relative);
     let mut text = std::fs::read_to_string(&path).unwrap_or_default();
     text.push_str(line);
@@ -123,7 +123,7 @@ fn append(root: &Path, relative: &str, line: &str) {
     super::write(&path, &text);
 }
 
-fn commit_all(root: &Path, tick: u64, author: usize, summary: &str) {
+pub(in crate::e2e_tests) fn commit_all(root: &Path, tick: u64, author: usize, summary: &str) {
     run_git(root, tick, author, &["add", "-A"]);
     run_git(root, tick, author, &["commit", "-q", "-m", summary]);
 }
@@ -483,6 +483,23 @@ fn open_git_view_from_the_context_menu<P: Live>(session: &mut Session<P>) {
     session.settle();
 }
 
+fn assert_local_changes_sit_in_the_sidebar(view: &ncrs_git_view::State) {
+    assert_eq!(
+        view.has_working_row(),
+        !ncrs_git::WRITE_ACTIONS_ENABLED,
+        "the local changes sit in the sidebar where actions exist, otherwise in the log"
+    );
+    if !ncrs_git::WRITE_ACTIONS_ENABLED {
+        return;
+    }
+    let local = view
+        .actions
+        .local
+        .as_ref()
+        .expect("the local changes were read");
+    assert_eq!(local.staged.len() + local.unstaged.len(), 3);
+}
+
 #[test]
 fn the_git_view_shows_the_graph_details_diff_and_filter() {
     let world = World::new("git-view", "");
@@ -506,13 +523,13 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
     assert_eq!((linked.ahead, linked.behind), (2, 0), "against main");
     let current = view.current_worktree().expect("the opened worktree");
     assert_eq!(current.wip, 3);
-    assert!(view.has_working_row());
+    assert_local_changes_sit_in_the_sidebar(view);
     let log = view.log.clone().expect("the log was read");
     assert!(log.commits.len() >= 33, "{} commits", log.commits.len());
     shoot(&session.app, "20-git-ansicht");
 
     // The merge commit, then a normal one.
-    let working_row = 1;
+    let working_row = usize::from(view.has_working_row());
     let merge_row = working_row
         + log
             .commits

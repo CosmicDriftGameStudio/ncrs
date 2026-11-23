@@ -6,18 +6,20 @@ use std::path::PathBuf;
 use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
+use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, ReviewItem, TargetComparison};
 use ncrs_filing::rules_work::{RulesLoad, TryResult};
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
-use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
+use ncrs_index::{DocumentId, HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
+use crate::reviews_page::{Answer, Question, ReviewsLoad};
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,8 +31,13 @@ pub enum Message {
     QuickFix(QuickFixMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
+    Reviews(ReviewsMessage),
+    Activity(ActivityMessage),
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
+    /// The background filing of new files is done: the read folders and how
+    /// many files each had filed.
+    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
     HermesColumn(HermesColumnMessage),
     HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings
@@ -108,6 +115,8 @@ pub enum HermesPage {
     SavedQueries,
     Tags,
     Inspection,
+    Reviews,
+    Activity,
 }
 
 /// Everything the saved queries page sends.
@@ -209,6 +218,12 @@ pub enum HermesFileMessage {
     HandToInbox,
     ProcessAgain,
     SetRole(FolderRole),
+    /// Opens the filing tab for the folder under the cursor.
+    FileOnce,
+    /// The same, and the folder files continuously once the run is filed.
+    FileContinuously,
+    /// The folder under the cursor no longer files continuously.
+    StopContinuous,
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
     ShowInInspection,
@@ -311,4 +326,50 @@ pub enum RuleFormMessage {
         generation: u64,
         result: Result<RuleId, String>,
     },
+}
+
+/// Everything the reviews page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewsMessage {
+    /// The open reviews of the generation. Dropped when the page was closed
+    /// or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<ReviewsLoad, String>,
+    },
+    /// Folds or unfolds the group of a question.
+    ToggleGroup(Question),
+    /// Answers the question of a group for all its documents.
+    Answer(Question, Answer),
+    /// Answers the question for one document of the group.
+    AnswerFile(Question, Answer, DocumentId),
+    /// Answers the question about the inbox file at the path, which is no
+    /// document.
+    AnswerRepeat(Answer, PathBuf),
+    /// The name of a file: opens it in the viewer.
+    OpenFile(PathBuf),
+    /// The text of the input in the row of a document changed.
+    InputChanged(DocumentId, String),
+    /// How the files in the taken places compare with the incoming ones. Dropped
+    /// when the list was read again meanwhile.
+    Compared {
+        generation: u64,
+        result: Vec<(DocumentId, Option<TargetComparison>)>,
+    },
+    /// The folder the user picked for the documents that wait for one.
+    FolderPicked(Option<PathBuf>),
+    /// What an answer did to its documents.
+    Filed(AcceptSummary),
+}
+
+/// Everything the activity page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActivityMessage {
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ActivityBatch>, String>,
+    },
+    ShowFile(PathBuf),
+    OpenReviews,
+    OpenReadErrors,
 }

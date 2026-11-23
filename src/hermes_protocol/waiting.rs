@@ -18,7 +18,7 @@ const INDEX_STALL: Duration = Duration::from_secs(300);
 const REPORT_EVERY: Duration = Duration::from_secs(10);
 const PUMP_FOR: Duration = Duration::from_millis(500);
 
-fn ai_wait_limit() -> Duration {
+pub(in crate::hermes_protocol) fn ai_wait_limit() -> Duration {
     std::env::var(AI_WAIT_VARIABLE)
         .ok()
         .and_then(|value| value.parse().ok())

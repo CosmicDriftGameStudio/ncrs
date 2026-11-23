@@ -498,7 +498,16 @@ impl Step for ReviewStep {
         let added = with_index_value(self.index.as_ref(), |index| {
             let status = index.document(id)?.map(|document| document.status);
             let needs_review = status == Some(DocumentStatus::New);
-            if needs_review {
+            // A location that files by itself takes what the rules leave
+            // open: the background filing decides, not the review list.
+            let left_to_background = needs_review
+                && item.location.continuous
+                && !item.not_a_document
+                && matches!(
+                    reason,
+                    ReviewReason::NoMatchingRule | ReviewReason::UnconfirmedRule
+                );
+            if needs_review && !left_to_background {
                 match index.add_review(id, reason) {
                     // Processed again while its review was still open: the
                     // intake had set it back to new, the open review is the
@@ -517,12 +526,12 @@ impl Step for ReviewStep {
             if item.not_a_document && still_an_inquiry {
                 index.exclude_path_automatically(&item.path)?;
             }
-            Ok::<_, IndexError>(())
+            Ok::<_, IndexError>(left_to_background)
         })
         .ok_or_else(|| NO_INDEX.to_owned())?;
-        added
-            .map(|()| StepOutcome::Finished)
-            .map_err(|err| err.to_string())
+        let left_to_background = added.map_err(|err| err.to_string())?;
+        item.continuous_candidate = left_to_background;
+        Ok(StepOutcome::Finished)
     }
 }
 

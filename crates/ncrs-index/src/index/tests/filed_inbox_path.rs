@@ -53,3 +53,39 @@ fn a_version_33_database_upgrades_and_keeps_its_documents() {
         .unwrap()
         .is_none());
 }
+
+#[test]
+fn noted_repeats_are_listed_by_path_and_can_be_dropped() {
+    let dir = TempDir::new().unwrap();
+    let index = Index::create_plain(&db_in(&dir)).unwrap();
+    index
+        .conn
+        .execute_batch(
+            "INSERT INTO document (id, hash, path, source, received_at, status)
+             VALUES (1, zeroblob(32), '/archive/a.pdf', 'archive', 1, 'filed');",
+        )
+        .unwrap();
+    let keeper = crate::model::DocumentId::new(1);
+    for name in ["/inbox/b.pdf", "/inbox/a.pdf"] {
+        index
+            .record_filed_inbox_path(keeper, Path::new(name), stamp(1, 1))
+            .unwrap();
+    }
+
+    let listed = index.filed_inbox_paths().unwrap();
+    let paths: Vec<_> = listed.iter().map(|copy| copy.path.as_path()).collect();
+    assert_eq!(
+        paths,
+        [Path::new("/inbox/a.pdf"), Path::new("/inbox/b.pdf")]
+    );
+    assert_eq!(listed[0].document, keeper);
+    assert_eq!(listed[0].stamp, Some(stamp(1, 1)));
+
+    assert!(index
+        .remove_filed_inbox_path(Path::new("/inbox/a.pdf"))
+        .unwrap());
+    assert!(!index
+        .remove_filed_inbox_path(Path::new("/inbox/a.pdf"))
+        .unwrap());
+    assert_eq!(index.filed_inbox_paths().unwrap().len(), 1);
+}

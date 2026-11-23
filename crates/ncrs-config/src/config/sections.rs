@@ -51,6 +51,21 @@ pub struct ColumnsSection {
     pub size_format: Option<SizeFormat>,
 }
 
+/// The `[git_view]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitViewSection {
+    /// Checked by `resolve_git_view`: a width that is no pixel count is dropped.
+    #[serde(default)]
+    pub author_width: Option<i64>,
+    #[serde(default)]
+    pub date_width: Option<i64>,
+    #[serde(default)]
+    pub sha_width: Option<i64>,
+    #[serde(default)]
+    pub folded: std::collections::BTreeMap<String, Vec<String>>,
+}
+
 /// The `[appearance]` section, unchecked.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -393,6 +408,8 @@ pub struct LocationEntry {
     pub target: Option<Spanned<bool>>,
     #[serde(default)]
     pub transfer: Option<LocationTransfer>,
+    #[serde(default)]
+    pub continuous: bool,
 }
 
 /// What Hermes does with a file it takes from a read folder.
@@ -476,6 +493,8 @@ pub struct FilingLocation {
     pub images: bool,
     pub is_target: bool,
     pub transfer: LocationTransfer,
+    /// Hermes files the new files of a read folder by itself, with `transfer`.
+    pub continuous: bool,
 }
 
 /// A text and its ground in the `[theme]` palette whose contrast is low.

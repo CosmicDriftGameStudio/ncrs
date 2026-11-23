@@ -235,6 +235,7 @@ mod tests {
             images: false,
             is_target: false,
             transfer: ncrs_config::config::LocationTransfer::Move,
+            continuous: false,
         }
     }
 

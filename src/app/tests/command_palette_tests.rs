@@ -87,6 +87,57 @@ fn the_chord_opens_it_over_the_panels_and_over_the_search() {
     );
 }
 
+/// The labels and keys of the Git commands the open list offers.
+fn git_entries(app: &App) -> Vec<(String, Option<String>)> {
+    let palette = app.command_palette_for_test().unwrap();
+    palette
+        .hits()
+        .filter_map(|hit| palette.entry(hit))
+        .filter(|entry| matches!(entry.target, ncrs_palette::command_list::Target::Git(_)))
+        .map(|entry| (entry.label.clone(), entry.shortcut.clone()))
+        .collect()
+}
+
+fn app_showing_git(actions: bool) -> App {
+    let mut app = App::with_fixed_panels();
+    let ctx = ncrs_git_view::Ctx::new(app.lang);
+    let (id, _) = app
+        .git_tabs
+        .open(PathBuf::from("/repo"), "repo".to_owned(), &ctx);
+    if let Some(git) = app.git_tabs.get_mut(id).filter(|_| actions) {
+        git.actions.local = Some(ncrs_git_view::actions::LocalChanges::default());
+    }
+    app.shown_tab = ShownTab::Git(id);
+    app
+}
+
+#[test]
+fn the_git_actions_are_listed_with_their_keys_while_a_git_tab_offers_them() {
+    let mut app = app_showing_git(true);
+    open_palette(&mut app);
+    let entries = git_entries(&app);
+    let commands = ncrs_git_view::commands(app.lang);
+    assert!(!commands.is_empty());
+    assert_eq!(entries.len(), commands.len());
+    for (label, shortcut) in commands {
+        assert!(
+            entries.contains(&(label.clone(), Some(shortcut))),
+            "{label} is missing"
+        );
+    }
+}
+
+#[test]
+fn the_git_actions_are_not_listed_over_the_panels_or_without_write_actions() {
+    let mut panels = App::with_fixed_panels();
+    open_palette(&mut panels);
+    assert!(git_entries(&panels).is_empty());
+
+    let mut read_only = app_showing_git(false);
+    open_palette(&mut read_only);
+    assert!(git_entries(&read_only).is_empty());
+}
+
 #[test]
 fn opening_lists_the_actions_and_takes_the_keys() {
     let mut app = App::with_fixed_panels();
@@ -196,7 +247,7 @@ fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
     type_into_palette(&mut app, "filing status");
     drop(app.update(palette_message(CommandPaletteMessage::Run)));
     assert!(app.command_palette_for_test().is_none());
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
     assert!(!app.prompt_key_state().command_palette);
 }
 
@@ -207,7 +258,7 @@ fn a_click_on_an_entry_runs_it() {
     type_into_palette(&mut app, "filing status");
     drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
     assert!(app.command_palette_for_test().is_none());
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
 }
 
 #[test]

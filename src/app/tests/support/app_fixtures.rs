@@ -52,6 +52,7 @@ impl App {
             home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
+            title_tabs_first: 0,
             state_path: None,
             session_scheduled: SessionState::default(),
             session_save_generation: 0,
@@ -79,6 +80,7 @@ impl App {
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
             columns: ncrs_config::panel_columns::PanelColumns::default(),
+            git_view_settings: ncrs_config::git_view::GitViewSettings::default(),
             special_folders: Vec::new(),
             special_folders_source: Vec::new(),
             appearance: ncrs_config::panel_columns::Appearance::default(),
@@ -252,6 +254,13 @@ impl App {
         self
     }
 
+    /// A Git tab filled by hand, opened and shown.
+    pub fn showing_git_for_test(mut self, git: ncrs_git_view::State) -> Self {
+        let id = self.git_tabs.adopt_for_test(git);
+        self.shown_tab = crate::messages::ShownTab::Git(id);
+        self
+    }
+
     pub fn with_window_size_for_test(mut self, size: Size) -> Self {
         self.apply_window_size(size);
         self
@@ -273,6 +282,7 @@ impl App {
             images: false,
             is_target,
             transfer: Default::default(),
+            continuous: false,
         };
         let mut app = Self::with_fixed_panels();
         app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));

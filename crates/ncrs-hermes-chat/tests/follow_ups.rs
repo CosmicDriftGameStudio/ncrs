@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn always_on_a_watched_inbox_says_what_happens_and_changes_no_setting() {
+    fn always_on_a_watched_inbox_says_what_happens_and_asks_for_the_continuous_mark() {
         let mut talk = small_talk();
         talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
         talk.press(&ChipReply::ConfirmTidy);
@@ -148,7 +148,7 @@ mod tests {
             matches!(
                 talk.actions.as_slice(),
                 [Action::OpenFiling {
-                    watch_source: false,
+                    watch_source: true,
                     ..
                 }]
             ),

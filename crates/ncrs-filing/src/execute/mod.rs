@@ -27,7 +27,9 @@ use ncrs_fs::transfer::{
 mod respell;
 mod trash;
 use respell::{is_respelling, is_same_entry, respell, respell_back, restore_respelled};
-pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
+pub use trash::{
+    trash_can_restore, trash_replaced, trash_run, ReplacedItem, TrashItem, TrashReport,
+};
 
 /// One move. Paths are absolute.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iced::{Point, Size};
 use iced_test::Simulator;
@@ -15,10 +15,24 @@ use crate::*;
 const WINDOW: Size = Size::new(1200.0, 760.0);
 
 fn ctx() -> Ctx {
+    ctx_at(Instant::now())
+}
+
+fn ctx_at(now: Instant) -> Ctx {
     Ctx {
         window_size: WINDOW,
         pointer: Point::new(300.0, 300.0),
+        now,
     }
+}
+
+/// A measurement as the page takes it.
+fn measured(state: &mut State, snapshot: Snapshot) {
+    let _ = update(
+        state,
+        MonitorMessage::Measured(sampler::Depth::Full, Box::new(snapshot)),
+        &ctx(),
+    );
 }
 
 /// Only a path with a drive letter is absolute on Windows.
@@ -203,7 +217,7 @@ fn a_value_not_measured_yet_shows_a_dash_and_none_selected_shows_nothing() {
 }
 
 #[test]
-fn the_cursor_stays_on_its_row_when_the_order_changes() {
+fn the_cursor_follows_its_task_when_the_order_changes() {
     let mut state = open_state(snapshot());
     // Sorted by CPU: beta (50), gamma (20), alpha (5).
     let _ = update(&mut state, MonitorMessage::SelectRow(30), &ctx());
@@ -212,20 +226,40 @@ fn the_cursor_stays_on_its_row_when_the_order_changes() {
     let mut next = snapshot();
     next.tasks[0].cpu = Some(90.0);
     next.tasks[1].cpu = Some(1.0);
-    state.test_put_snapshot(next);
+    measured(&mut state, next);
     assert_eq!(state.test_cursor_row(), 1, "alpha 90, gamma 20, beta 1");
-    assert_eq!(state.pid_under_cursor(), Some(30), "gamma is still second");
+    assert_eq!(state.pid_under_cursor(), Some(30));
 
     let mut other = snapshot();
     other.tasks[2].cpu = Some(60.0);
-    state.test_put_snapshot(other);
-    assert_eq!(state.test_cursor_row(), 1);
-    assert_eq!(state.pid_under_cursor(), Some(20), "beta moved under it");
+    measured(&mut state, other);
+    assert_eq!(
+        state.test_cursor_row(),
+        0,
+        "gamma 60 moved up, the cursor with it"
+    );
+    assert_eq!(state.pid_under_cursor(), Some(30));
 }
 
-/// Two measurements with the order turned around: row and window stay.
 #[test]
-fn a_measurement_moves_neither_the_cursor_row_nor_the_window() {
+fn a_task_that_is_gone_leaves_the_cursor_on_its_row() {
+    let mut state = open_state(snapshot());
+    let _ = update(&mut state, MonitorMessage::SelectRow(30), &ctx());
+    let mut next = snapshot();
+    next.tasks.retain(|task| task.pid != 30);
+    measured(&mut state, next);
+    assert_eq!(state.test_cursor_row(), 1);
+    assert_eq!(
+        state.pid_under_cursor(),
+        Some(10),
+        "alpha, the second row now"
+    );
+}
+
+/// A measurement with the order turned around: the cursor stays on its task,
+/// and the window follows it.
+#[test]
+fn a_measurement_keeps_the_cursor_on_its_task_and_in_the_window() {
     let visible = visible_rows(WINDOW.height);
     let reversed = || {
         let mut reversed = many_tasks(100);
@@ -235,24 +269,47 @@ fn a_measurement_moves_neither_the_cursor_row_nor_the_window() {
         reversed
     };
     let mut state = open_state(many_tasks(100));
-    assert_eq!(state.test_cursor_row(), 0);
     assert_eq!(state.pid_under_cursor(), Some(100), "the highest CPU");
-    state.test_put_snapshot(reversed());
-    assert_eq!(state.test_cursor_row(), 0);
-    assert_eq!(state.window.offset(state.test_row_count(), visible), 0);
-    assert_eq!(state.pid_under_cursor(), Some(199), "now the highest CPU");
 
     let _ = update(&mut state, MonitorMessage::Move(5), &ctx());
-    state.test_put_snapshot(many_tasks(100));
-    assert_eq!(state.test_cursor_row(), 5);
-    assert_eq!(state.window.offset(state.test_row_count(), visible), 0);
-
-    let _ = update(&mut state, MonitorMessage::Last, &ctx());
+    assert_eq!(state.pid_under_cursor(), Some(105));
+    measured(&mut state, reversed());
+    assert_eq!(state.pid_under_cursor(), Some(105));
+    assert_eq!(state.test_cursor_row(), 94);
     let offset = state.window.offset(state.test_row_count(), visible);
-    assert!(offset > 0);
-    state.test_put_snapshot(reversed());
-    assert_eq!(state.test_cursor_row(), 99);
-    assert_eq!(state.window.offset(state.test_row_count(), visible), offset);
+    assert!((offset..offset + visible).contains(&94), "the row is shown");
+}
+
+#[test]
+fn a_tick_waits_while_a_key_moved_the_cursor_less_than_one_interval_ago() {
+    use iced_test::runtime::task;
+
+    let start = Instant::now();
+    let interval = Duration::from_secs(2);
+    let mut state = open_state(snapshot());
+    assert_eq!(state.refresh_every(), interval);
+
+    let (_, _) = update(&mut state, MonitorMessage::Move(1), &ctx_at(start));
+    let ticked = |shown: &mut State, after: Duration| {
+        let (task, _) = update(shown, MonitorMessage::Tick, &ctx_at(start + after));
+        task::into_stream(task).is_some()
+    };
+    assert!(!ticked(&mut state, Duration::from_millis(1_999)), "held");
+    assert!(
+        ticked(&mut state, interval),
+        "a whole interval without a key"
+    );
+
+    let (_, _) = update(
+        &mut state,
+        MonitorMessage::Move(1),
+        &ctx_at(start + interval),
+    );
+    assert!(
+        !ticked(&mut state, interval + Duration::from_millis(1_500)),
+        "every key restarts the wait"
+    );
+    assert!(ticked(&mut state, interval * 2));
 }
 
 #[test]

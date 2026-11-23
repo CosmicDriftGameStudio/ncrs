@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime};
 use ncrs_pipeline::{RunnerState, Snapshot};
 
 use super::*;
-use crate::messages::{FilingStatusMessage, PanelSide};
-use crate::ui::titlebar::{HERMES_CHIP_ID, LEFT_TAB_ID, RIGHT_TAB_ID};
+use crate::messages::{PanelSide, SettingsMessage};
+use crate::ui::titlebar::{LEFT_TAB_ID, RIGHT_TAB_ID};
 
 fn taken_at() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
@@ -53,130 +53,6 @@ fn a_click_on_the_inactive_tab_makes_its_panel_active() {
         messages_after_click(&app, LEFT_TAB_ID),
         vec![Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))]
     );
-}
-
-#[test]
-fn a_click_on_the_hermes_chip_opens_the_inspection_page() {
-    let mut app = with_hermes().with_starting_hermes_for_test();
-    let messages = messages_after_click(&app, HERMES_CHIP_ID);
-    assert_eq!(
-        messages,
-        vec![Message::FilingStatus(FilingStatusMessage::Open)]
-    );
-    for message in messages {
-        drop(app.update(message));
-    }
-    assert!(app.inspection_page_is_open_for_test());
-}
-
-#[test]
-fn the_chip_says_hermes_is_off_while_the_switch_is_off() {
-    let shows_chip = |app: &App| {
-        simulator(app)
-            .find(iced::widget::Id::new(HERMES_CHIP_ID))
-            .is_ok()
-    };
-    let switched_off = || {
-        App::with_settings_file(
-            crate::messages::SettingsFeature::Look,
-            Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
-        )
-    };
-    let off = switched_off();
-    assert!(shows_chip(&off));
-    assert_eq!(off.hermes_chip_for_test().as_deref(), Some("Hermes off"));
-    let german = switched_off().in_language(Language::German);
-    assert_eq!(german.hermes_chip_for_test().as_deref(), Some("Hermes aus"));
-    assert!(shows_chip(&with_hermes()));
-}
-
-#[test]
-fn a_click_on_the_off_chip_opens_the_ai_settings() {
-    let mut app = App::with_settings_file(
-        crate::messages::SettingsFeature::Look,
-        Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
-    );
-    let messages = messages_after_click(&app, HERMES_CHIP_ID);
-    assert_eq!(messages, vec![Message::ShowAiSettings]);
-    for message in messages {
-        drop(app.update(message));
-    }
-    simulator(&app)
-        .find("One model for everything: sorting, chat (F2), rules, name suggestions.")
-        .unwrap();
-}
-
-#[test]
-fn the_chip_names_the_rate_in_the_language_of_the_app() {
-    let english = with_hermes();
-    simulator(&english).find("Hermes 78/min processed").unwrap();
-    let german = with_hermes().in_language(Language::German);
-    simulator(&german)
-        .find("Hermes 78/Min. verarbeitet")
-        .unwrap();
-}
-
-#[test]
-fn an_idle_chip_shows_no_rate() {
-    let mut snapshot = Snapshot::off();
-    snapshot.state = RunnerState::Idle;
-    snapshot.documents_per_minute[1] = 78;
-    let snapshot_again = snapshot.clone();
-    let app = App::with_filing_snapshot(snapshot, taken_at());
-    assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
-    let themed = App::with_filing_snapshot(snapshot_again, taken_at())
-        .in_language(Language::EnglishFuturama);
-    assert_eq!(themed.hermes_chip_for_test().as_deref(), Some("Hermes"));
-}
-
-#[test]
-fn a_failed_request_to_the_own_server_shows_in_the_chip() {
-    let provider = crate::filing::http_ai_provider(
-        "http://127.0.0.1:1/v1",
-        "model-x",
-        &ncrs_ai::ConsentedOrigins::default(),
-        std::path::Path::new("index.db"),
-    )
-    .unwrap();
-    let mut snapshot = Snapshot::off();
-    snapshot.state = RunnerState::Running;
-    snapshot.documents_per_minute[1] = 78;
-    let app = App::with_filing_snapshot(snapshot, taken_at())
-        .in_language(Language::English)
-        .with_filing_module_for_test(crate::filing::FilingModule::in_phase_with_own_server(
-            crate::filing::Phase::Ready,
-            std::sync::Arc::clone(&provider),
-            "http://127.0.0.1:1",
-            "model-x",
-        ));
-    let chip_before = app.hermes_chip_for_test();
-
-    ncrs_ai::Provider::extract(
-        provider.as_ref(),
-        &ncrs_ai::ExtractionRequest {
-            text: "Invoice 4711".to_owned(),
-            open_fields: Vec::new(),
-            known: ncrs_index::DocumentFields::default(),
-            source: std::path::PathBuf::from("inbox"),
-            kinds: std::sync::Arc::default(),
-            language: ncrs_index::KindLanguage::default(),
-            judge_document: false,
-        },
-    )
-    .unwrap_err();
-
-    let problem = ncrs_i18n::fill_template(
-        Language::English.text(ncrs_i18n::Msg::TitleBarHermesServerProblem),
-        &[(
-            "{problem}",
-            &crate::hermes_overview::server_failure_text(
-                ncrs_ai::ReplyFailure::NoAnswer,
-                Language::English,
-            ),
-        )],
-    );
-    assert_eq!(chip_before.as_deref(), Some("Hermes"));
-    assert_eq!(app.hermes_chip_for_test(), Some(problem));
 }
 
 #[test]
@@ -344,4 +220,73 @@ fn the_main_view_matches_its_snapshots() {
             "the main view does not match tests/snapshots/{name}.png"
         );
     }
+}
+
+/// Names that differ from the first letter on, as real repositories do.
+const REPOSITORY_NAMES: [&str; 15] = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
+    "kilo", "lima", "mike", "november", "oscar",
+];
+
+/// Settings, Monitor and `git_tabs` Git tabs in a window as wide as Marc's.
+fn crowded_title_bar(git_tabs: usize) -> App {
+    let size = iced::Size::new(1740.0, 1130.0);
+    let mut app = App::with_fixed_panels().with_window_size_for_test(size);
+    drop(app.update(Message::Settings(SettingsMessage::Toggle)));
+    drop(app.update(Message::Monitor(ncrs_monitor::MonitorMessage::Toggle)));
+    for listed in REPOSITORY_NAMES.iter().take(git_tabs) {
+        let name = (*listed).to_owned();
+        let mut git = ncrs_git_view::State::default();
+        drop(ncrs_git_view::open(
+            &mut git,
+            std::path::PathBuf::from(format!("/repo/{name}")),
+            name,
+            &ncrs_git_view::Ctx::new(Language::English),
+        ));
+        app = app.showing_git_for_test(git);
+    }
+    app
+}
+
+fn matches_title_bar_snapshot(app: &App, name: &str) {
+    let matches = Simulator::with_size(
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
+        iced::Size::new(1740.0, 1130.0),
+        app.view(),
+    )
+    .snapshot(&iced::Theme::Dark)
+    .unwrap()
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
+    .expect("snapshot comparison");
+    assert!(
+        matches,
+        "the title bar does not match tests/snapshots/{name}.png"
+    );
+}
+
+#[test]
+fn a_few_page_tabs_keep_the_full_tab_width() {
+    matches_title_bar_snapshot(&crowded_title_bar(3), "title_bar_tabs_five");
+}
+
+#[test]
+fn many_page_tabs_shrink_and_keep_the_active_one_in_view() {
+    matches_title_bar_snapshot(&crowded_title_bar(8), "title_bar_tabs_ten");
+}
+
+#[test]
+fn too_many_page_tabs_scroll_to_the_active_one() {
+    matches_title_bar_snapshot(&crowded_title_bar(15), "title_bar_tabs_scrolled_end");
+}
+
+#[test]
+fn a_tab_selected_by_the_keys_scrolls_into_view() {
+    let mut app = crowded_title_bar(15);
+    for _ in 0..13 {
+        drop(app.update(Message::PreviousTab));
+    }
+    matches_title_bar_snapshot(&app, "title_bar_tabs_scrolled_second");
 }

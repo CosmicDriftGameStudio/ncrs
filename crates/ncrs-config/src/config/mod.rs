@@ -30,6 +30,7 @@ use serde::Deserialize;
 use serde_spanned::Spanned;
 
 use crate::file_list_tags::{FileListTags, TagGroup};
+use crate::git_view::GitViewSettings;
 use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
@@ -182,6 +183,12 @@ pub struct Config {
     /// The columns the file panels show and how they write dates and sizes.
     #[serde(skip)]
     pub columns: PanelColumns,
+    /// The `[git_view]` section as written; `load` checks it into `git_view`.
+    #[serde(default, rename = "git_view")]
+    pub git_view_section: GitViewSection,
+    /// What the Git tab remembers.
+    #[serde(skip)]
+    pub git_view: GitViewSettings,
     /// The `[appearance]` section as written; `load` checks it into `appearance`.
     #[serde(default, rename = "appearance")]
     pub appearance_section: AppearanceSection,
@@ -260,17 +267,18 @@ use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
-    ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, HermesSection,
-    KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue, LocationEntry,
-    LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection, ThemeEntry,
-    ThemeSection, VscodeWarning,
+    ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,
+    HermesSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue,
+    LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection,
+    ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,
     write_columns, write_default_pattern, write_favourites_bar, write_file_list_tags,
-    write_filing_load, write_hermes_chat_keep_days, write_hermes_enabled, write_keys,
-    write_language, write_notes_settings, write_open_rules, write_own_details, write_program,
-    write_system_settings, write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
+    write_filing_load, write_git_view, write_hermes_chat_keep_days, write_hermes_enabled,
+    write_keys, write_language, write_notes_settings, write_open_rules, write_own_details,
+    write_program, write_system_settings, write_theme_preset, AiProviderChoice, KeyChange,
+    OwnDetail,
 };
 use self::write_support::*;
 use self::writing::*;

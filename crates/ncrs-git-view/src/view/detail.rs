@@ -5,8 +5,8 @@ use iced::{Element, Length};
 use ncrs_git::ChangeKind;
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::kit::segmented;
-use ncrs_ui_kit::page_text::{page_heading, page_line};
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::page_text::{page_heading_wrapped, page_line, page_paragraph};
+use ncrs_ui_kit::theme::{self, font_size, spacing};
 use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
 
 use super::commits::moment;
@@ -31,14 +31,14 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .padding(spacing::M)
         .into();
     };
-    let mut head = Column::new().spacing(spacing::XS);
+    let mut head = Column::new().spacing(spacing::XS).width(Length::Fill);
     if let Some(info) = &detail.info {
         head = head
-            .push(page_heading(
+            .push(page_heading_wrapped(
                 info.message.lines().next().unwrap_or_default(),
                 palette,
             ))
-            .push(page_line(
+            .push(page_paragraph(
                 format!(
                     "{} \u{b7} {} \u{b7} {}",
                     info.short,
@@ -54,7 +54,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             .skip(1)
             .filter(|line| !line.trim().is_empty())
         {
-            head = head.push(page_line(line.to_owned(), font_size::BODY, palette.text));
+            head = head.push(page_paragraph(
+                line.to_owned(),
+                font_size::BODY,
+                palette.text,
+            ));
         }
     }
     let toggle = segmented(
@@ -114,6 +118,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let list = column(files).width(Length::Fill);
     column![
         container(head).padding(spacing::M),
+        theme::horizontal_rule(palette.border_inactive),
         container(
             row![
                 toggle,
@@ -123,7 +128,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             .spacing(spacing::M)
             .align_y(iced::alignment::Vertical::Center)
         )
-        .padding([0.0, spacing::M]),
+        .padding(spacing::M),
         tree_scroll(DETAIL_ID, list.into()),
     ]
     .into()

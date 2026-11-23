@@ -20,6 +20,7 @@ pub const FILE_LIST_TAGS_TABLE: &str = "file_list_tags";
 pub const SYSTEM_TABLE: &str = "system";
 pub const COLUMNS_TABLE: &str = "columns";
 pub const APPEARANCE_TABLE: &str = "appearance";
+pub const GIT_VIEW_TABLE: &str = "git_view";
 pub const AI_TABLES: &[&str] = &[MODULES_TABLE, FILING_TABLE, AI_TABLE];
 
 pub fn theme_preset_setting(preset: ThemePreset) -> Setting {
@@ -218,6 +219,36 @@ pub fn columns_settings(columns: &PanelColumns) -> [Setting; 6] {
     ]
 }
 
+/// The whole `[git_view]` section; a width left to the standard and nothing
+/// folded drop their lines.
+pub fn git_view_settings(settings: &GitViewSettings) -> [Setting; 4] {
+    let width = |key: &'static str, pixels: Option<u16>| Setting {
+        tables: &[GIT_VIEW_TABLE],
+        key,
+        value: pixels.map(|width| i64::from(width).into()),
+    };
+    let folded = (!settings.folded.is_empty()).then(|| {
+        let mut table = toml_edit::InlineTable::new();
+        for (root, groups) in &settings.folded {
+            table.insert(
+                root,
+                toml_edit::Value::Array(groups.iter().map(String::as_str).collect()),
+            );
+        }
+        toml_edit::Value::InlineTable(table)
+    });
+    [
+        width("author_width", settings.author_width),
+        width("date_width", settings.date_width),
+        width("sha_width", settings.sha_width),
+        Setting {
+            tables: &[GIT_VIEW_TABLE],
+            key: "folded",
+            value: folded,
+        },
+    ]
+}
+
 /// The whole `[appearance]` section; the system's choice drops its line.
 pub fn appearance_settings(appearance: &Appearance) -> [Setting; 2] {
     let font = match &appearance.font {
@@ -336,6 +367,16 @@ pub fn write_system_settings(
 /// [`write_theme_preset`].
 pub fn write_columns(path: &Path, columns: &PanelColumns) -> Result<Config, FilingWriteError> {
     write_settings(path, &columns_settings(columns), home_from_env().as_deref())
+}
+
+/// Writes the whole `[git_view]` section; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_git_view(path: &Path, settings: &GitViewSettings) -> Result<Config, FilingWriteError> {
+    write_settings(
+        path,
+        &git_view_settings(settings),
+        home_from_env().as_deref(),
+    )
 }
 
 /// Writes the whole `[appearance]` section; same guarantees as

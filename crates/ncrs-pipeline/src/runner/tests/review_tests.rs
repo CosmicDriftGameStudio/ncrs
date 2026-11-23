@@ -41,6 +41,45 @@ fn the_backlog_is_taken_in_and_only_inbox_documents_are_reviewed() {
 }
 
 #[test]
+fn a_continuous_location_gets_no_review_entry_but_reports_the_open_file_as_a_candidate() {
+    let continuous_dir = TempDir::new().unwrap();
+    let plain_dir = TempDir::new().unwrap();
+    let continuous = location(&continuous_dir, LocationMode::Inbox).with_continuous(true);
+    let plain = location(&plain_dir, LocationMode::Inbox);
+    let wanted = put(&continuous, "invoice.pdf", INVOICE);
+    put(&plain, "reminder.pdf", REMINDER);
+    let fixture = IndexFixture::new();
+    let runner = Runner::start(
+        settings(workers(2)),
+        fixture.steps(),
+        vec![continuous.clone(), plain.clone()],
+        stepping_clock(),
+    );
+
+    runner.wait_for("both files passed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done == 2
+    });
+
+    let index = fixture.index.lock().unwrap();
+    let reviews = index.open_reviews().unwrap();
+    assert_eq!(reviews.len(), 1);
+    let reviewed = index.document(reviews[0].document_id).unwrap().unwrap();
+    assert!(reviewed.path.starts_with(&plain.path));
+    drop(index);
+    assert!(!runner.has_continuous_candidates(&|root| root == plain.path));
+    assert!(runner.has_continuous_candidates(&|root| root == continuous.path));
+    let taken = runner.take_continuous_candidates(&|root| root == continuous.path);
+    assert_eq!(
+        taken,
+        [ContinuousCandidate {
+            location: continuous.path.clone(),
+            path: wanted,
+        }]
+    );
+    assert!(!runner.has_continuous_candidates(&|_| true));
+}
+
+#[test]
 fn a_file_the_watcher_reports_reaches_the_review_list() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
@@ -746,4 +785,64 @@ fn a_new_inbox_document_with_an_empty_stored_text_goes_to_the_review_list_on_the
         ncrs_index::DocumentStatus::InReview
     );
     assert!(index.open_review_of(document).unwrap().is_some());
+}
+
+#[test]
+fn seeded_candidates_are_taken_once_and_not_doubled_with_found_ones() {
+    let dir = TempDir::new().unwrap();
+    let location = location(&dir, LocationMode::Inbox).with_continuous(true);
+    let fixture = IndexFixture::new();
+    let runner = Runner::start(
+        settings(workers(1)),
+        fixture.steps(),
+        vec![location.clone()],
+        stepping_clock(),
+    );
+    assert!(!runner.continuous_seeded());
+    let candidate = |name: &str| ContinuousCandidate {
+        location: location.path.clone(),
+        path: location.path.join(name),
+    };
+
+    runner.seed_continuous_candidates(vec![candidate("a.pdf"), candidate("b.pdf")]);
+    runner.seed_continuous_candidates(vec![candidate("a.pdf")]);
+
+    assert!(runner.continuous_seeded());
+    let taken = runner.take_continuous_candidates(&|root| root == location.path);
+    assert_eq!(taken, [candidate("a.pdf"), candidate("b.pdf")]);
+    assert!(!runner.has_continuous_candidates(&|_| true));
+}
+
+#[test]
+fn a_location_set_to_continuous_after_the_start_takes_its_next_file_as_a_candidate() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = location(&inbox_dir, LocationMode::Inbox);
+    put(&inbox, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let runner = Runner::start(
+        settings(workers(2)),
+        fixture.steps(),
+        vec![inbox.clone()],
+        stepping_clock(),
+    );
+    runner.wait_for("the first file reviewed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done == 1
+    });
+
+    runner.set_continuous_roots([inbox.path.clone()]);
+    let later = put(&inbox, "reminder.pdf", REMINDER);
+    assert!(runner.rescan_around(&later));
+    runner.wait_for("the second file passed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done == 2
+    });
+
+    let reviews = fixture.index.lock().unwrap().open_reviews().unwrap();
+    assert_eq!(reviews.len(), 1, "only the file from before is reviewed");
+    assert_eq!(
+        runner.take_continuous_candidates(&|root| root == inbox.path),
+        [ContinuousCandidate {
+            location: inbox.path.clone(),
+            path: later,
+        }]
+    );
 }

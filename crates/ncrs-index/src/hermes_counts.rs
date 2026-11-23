@@ -99,18 +99,34 @@ impl Index {
             ),
             [],
         )?;
+        let excluded_copy = is_excluded_sql("f.path");
+        // ponytail: the page "Liegt schon in der Ablage" also checks that the
+        // inbox file is still there and unchanged; this count does not touch the
+        // disk, so it stays too high for files that are gone or edited until the
+        // page reloads (the intake and the page then drop the row).
+        let already_filed = self.count(
+            &format!(
+                "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM filed_inbox_path f
+                 JOIN document d ON d.id = f.document_id
+                 WHERE d.missing_since IS NULL AND d.status = '{}'
+                   AND NOT {excluded_copy}",
+                DocumentStatus::Filed.as_str()
+            ),
+            [],
+        )?;
+        let open_reviews = self.count(
+            &format!(
+                "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
+                 JOIN document d ON d.id = r.document_id
+                 WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
+                   AND NOT {excluded}"
+            ),
+            [],
+        )?;
         Ok(HermesCounts {
             inbox: self.status_counts(DocumentSource::Inbox)?,
             archive: self.status_counts(DocumentSource::Archive)?,
-            open_reviews: self.count(
-                &format!(
-                    "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
-                     JOIN document d ON d.id = r.document_id
-                     WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
-                       AND NOT {excluded}"
-                ),
-                [],
-            )?,
+            open_reviews: open_reviews + already_filed,
             open_reviews_without_text,
             confirmed_rules: self.count("SELECT COUNT(*) FROM rule WHERE confirmed = 1", [])?,
             archive_documents: self.count(
@@ -307,6 +323,25 @@ mod tests {
         ];
         expected.sort();
         assert_eq!(index.documents_without_text().unwrap(), expected);
+    }
+
+    #[test]
+    fn inbox_files_repeating_a_filed_document_count_as_open_reviews() {
+        let (_dir, index) = plain_index();
+        let keeper = index.insert_document(&archive_document(1)).unwrap();
+        let stamp = crate::FileStamp::from_columns(Some(5), Some(6))
+            .unwrap()
+            .unwrap();
+        index
+            .record_filed_inbox_path(keeper, &native("inbox/a.pdf"), stamp)
+            .unwrap();
+        assert_eq!(index.hermes_counts().unwrap().open_reviews, 0);
+        index
+            .set_document_status(keeper, DocumentStatus::Filed)
+            .unwrap();
+        assert_eq!(index.hermes_counts().unwrap().open_reviews, 1);
+        index.exclude_path(&native("inbox/a.pdf")).unwrap();
+        assert_eq!(index.hermes_counts().unwrap().open_reviews, 0);
     }
 
     #[test]

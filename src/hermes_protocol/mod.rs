@@ -47,6 +47,7 @@ use crate::e2e_tests::{Outcome, Session};
 use crate::filing::FilingMessage;
 use crate::messages::{Message, SettingsMessage};
 
+mod continuous_flow;
 mod eval;
 mod free_sentences;
 pub mod real_start;
@@ -176,6 +177,12 @@ struct Protocol<P: iced::Program<State = App, Message = Message> + 'static> {
     kept_index: PathBuf,
     /// The run started from the kept index.
     reused: bool,
+    /// What each background filing job reported, in the order it came.
+    background_reports: Vec<Result<Vec<(PathBuf, usize)>, String>>,
+    /// The longest `deliver` since `NCRS_EVAL_CONTINUOUS` started its wait.
+    longest_deliver: Duration,
+    /// The message that took `longest_deliver`, cut to its variant path.
+    longest_deliver_message: String,
 }
 
 type Check = Result<(), String>;
@@ -261,6 +268,7 @@ fn start_protocol(
                 images: false,
                 is_target: true,
                 transfer: Default::default(),
+                continuous: false,
             },
             FilingLocation {
                 path: downloads.clone(),
@@ -268,6 +276,7 @@ fn start_protocol(
                 images: false,
                 is_target: false,
                 transfer: Default::default(),
+                continuous: false,
             },
         ],
         ai: AiSetting::Local { threads: None },
@@ -294,6 +303,17 @@ fn start_protocol(
     // The start work runs at once on the blocking pool; its report is the
     // task held back here, so the chat can be opened while the module starts.
     let Session { app, runtime, .. } = &mut session;
+    if env_path("NCRS_EVAL_CONTINUOUS").is_some() {
+        // The run sets a folder to file continuously, which is saved to the
+        // config file: a scratch one, with the switches the run needs.
+        let config_file = scratch.join("config.toml");
+        std::fs::write(
+            &config_file,
+            "[modules.filing]\nenabled = true\nai = { provider = \"local\" }\n",
+        )
+        .unwrap();
+        app.set_config_path_for_test(config_file);
+    }
     let start = runtime.enter(|| {
         app.start_filing_for_test(
             &filing,
@@ -319,6 +339,9 @@ fn start_protocol(
         index_path,
         kept_index,
         reused,
+        background_reports: Vec::new(),
+        longest_deliver: Duration::ZERO,
+        longest_deliver_message: String::new(),
     }
 }
 
@@ -407,8 +430,22 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
 
     /// Delivers one message and starts what it asks for, without waiting.
     fn deliver(&mut self, message: Message) {
+        let began = Instant::now();
+        if let Message::ContinuousFiled(report) = &message {
+            self.background_reports.push(report.clone());
+        }
+        let name = format!("{message:?}");
         let task = self.session.send_held(message);
         self.session.drive(task);
+        let took = began.elapsed();
+        if took > self.longest_deliver {
+            self.longest_deliver = took;
+            self.longest_deliver_message = name
+                .split(['(', '{', ' '])
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+        }
     }
 
     fn tick(&mut self) {

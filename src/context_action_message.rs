@@ -51,9 +51,11 @@ impl ContextActionMessage for HermesAction {
             HermesAction::ShowSuggestion => Message::QuickFix(QuickFixMessage::Open),
             HermesAction::HandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             HermesAction::ProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
-            HermesAction::SetInbox => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
+            HermesAction::FileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
+            HermesAction::FileContinuously => {
+                Message::HermesFile(HermesFileMessage::FileContinuously)
             }
+            HermesAction::StopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
             HermesAction::SetFilingLocation => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
             }

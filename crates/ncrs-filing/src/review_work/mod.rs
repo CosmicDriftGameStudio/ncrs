@@ -29,6 +29,12 @@ use ncrs_fs::transfer::{Counting, Move, Source};
 
 pub use ncrs_index::{amount_digits, amount_text};
 
+mod already_filed;
+pub use already_filed::AlreadyFiled;
+
+mod answers;
+pub use answers::{compare_files, FileFacts, TargetComparison};
+
 mod neighbour_cache;
 pub use neighbour_cache::NeighbourCache;
 
@@ -102,6 +108,8 @@ pub struct AcceptSummary {
     pub filed: usize,
     pub target_exists: usize,
     pub requeued: usize,
+    /// Incoming duplicates that went to the trash.
+    pub trashed: usize,
     /// No suggestion, or the work failed; the first detail is kept.
     pub failed: usize,
     pub first_failure: Option<String>,
@@ -124,7 +132,7 @@ impl AcceptSummary {
     }
 
     pub fn total(&self) -> usize {
-        self.filed + self.target_exists + self.requeued + self.failed
+        self.filed + self.target_exists + self.requeued + self.trashed + self.failed
     }
 }
 
@@ -151,6 +159,7 @@ pub struct ReviewAccess {
     own: OwnDetails,
     index_work: crate::index_work::IndexWork,
     neighbour_cache: NeighbourCache,
+    trash: Option<Arc<dyn ncrs_fs::Trash>>,
 }
 
 impl std::fmt::Debug for ReviewAccess {
@@ -170,6 +179,7 @@ impl ReviewAccess {
             own: OwnDetails::default(),
             index_work: crate::index_work::IndexWork::default(),
             neighbour_cache: NeighbourCache::default(),
+            trash: None,
         }
     }
 
@@ -568,9 +578,17 @@ fn review_item(
                 .map(|rule| rule.spec.filing_pattern.clone()),
             Some(id),
         ),
-        Planning::Review { rule: None, .. } | Planning::Plan(_) => {
-            (document.fields.clone(), None, None)
-        }
+        // A document whose place is taken plans fine: the rule that planned
+        // it gives the place, not the neighbours.
+        Planning::Plan(plan) => (
+            document.fields.clone(),
+            rules
+                .iter()
+                .find(|rule| rule.id == plan.rule)
+                .map(|rule| rule.spec.filing_pattern.clone()),
+            None,
+        ),
+        Planning::Review { rule: None, .. } => (document.fields.clone(), None, None),
     };
     let effective_origins = match nearest_rule {
         Some(id) => with_planned_origins(origins, &document.fields, &fields, id, &kinds.catalog),

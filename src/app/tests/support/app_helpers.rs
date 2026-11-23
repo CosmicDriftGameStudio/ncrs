@@ -214,12 +214,6 @@ impl App {
         self
     }
 
-    /// Hermes with `module` as its filing module.
-    pub fn with_filing_module_for_test(mut self, module: FilingModule) -> Self {
-        self.hermes.filing = Some(module);
-        self
-    }
-
     /// A ready Hermes module without an index, so Quick Open asks for documents.
     pub fn with_ready_hermes_for_test(mut self) -> Self {
         self.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
@@ -669,6 +663,65 @@ impl App {
         self.hermes.index_path = db_path;
         self.hermes.key_store = Some(ncrs_hermes_ui::KeyStoreHandle(store));
         self.start_filing_module(filing)
+    }
+
+    /// The config file the app writes to, for the protocol run that sets
+    /// folder roles.
+    pub fn set_config_path_for_test(&mut self, path: PathBuf) {
+        self.config_path = Some(path);
+    }
+
+    /// A panel, for the protocol run that looks at what it shows.
+    pub fn panel_for_test(&self, side: PanelSide) -> &PanelState {
+        self.panel(side)
+    }
+
+    /// The read and write folders as the saved config has them.
+    pub fn filing_locations_for_test(&self) -> &[crate::config::FilingLocation] {
+        &self.hermes.filing_config.locations
+    }
+
+    /// The pipeline is up and has nothing to do.
+    pub fn pipeline_is_idle_for_test(&self) -> bool {
+        self.hermes
+            .live_pipeline()
+            .is_some_and(|runner| runner.state() == ncrs_pipeline::RunnerState::Idle)
+    }
+
+    /// Runner state, waiting files per step and waiting continuous
+    /// candidates, as text for the protocol's progress line.
+    pub fn pipeline_status_for_test(&self) -> (String, String, usize) {
+        let Some(runner) = self.hermes.live_pipeline() else {
+            return ("none".to_owned(), String::new(), 0);
+        };
+        let snapshot = runner.snapshot();
+        let queues = snapshot
+            .steps
+            .iter()
+            .map(|step| format!("{} {}", step.name, step.waiting))
+            .collect::<Vec<_>>()
+            .join(", ");
+        (
+            format!("{:?}", snapshot.state),
+            queues,
+            runner.continuous_candidates_waiting(),
+        )
+    }
+
+    /// Whether the background filing has its model, and whether an "Ablegen"
+    /// tab that still works holds a folder back.
+    pub fn continuous_gates_for_test(&self) -> (bool, bool) {
+        (
+            self.continuous_tools().is_some(),
+            self.filing_view
+                .session
+                .as_ref()
+                .is_some_and(|session| session.is_working()),
+        )
+    }
+
+    pub fn jobs_busy_for_test(&self) -> bool {
+        self.jobs.is_busy()
     }
 
     /// The filing module, for the protocol run that waits for its start.

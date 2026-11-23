@@ -232,7 +232,12 @@ fn right_opens_the_submenu_on_the_hermes_entry_and_left_closes_it() {
 
 #[test]
 fn the_submenu_skips_separators_and_greyed_entries() {
-    let mut menu = hermes_menu(&[HermesAction::ProcessAgain, HermesAction::SetInbox]);
+    let mut menu = hermes_menu(&[
+        HermesAction::ProcessAgain,
+        HermesAction::FileOnce,
+        HermesAction::FileContinuously,
+        HermesAction::StopContinuous,
+    ]);
     menu.select_last();
     menu.open_submenu();
     menu.move_by(1);

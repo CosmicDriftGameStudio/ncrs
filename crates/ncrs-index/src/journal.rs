@@ -454,6 +454,38 @@ impl Index {
         Ok(found.into_iter().map(BatchId::new).collect())
     }
 
+    /// The latest batches that moved something, newest first, with their
+    /// moved items; the activity page of Hermes shows them.
+    pub fn recent_batches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(BatchInfo, Vec<JournalItem>)>, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT id FROM execution_batch b
+             WHERE EXISTS (SELECT 1 FROM execution_item i
+                           WHERE i.batch_id = b.id AND i.state = 'moved')
+             ORDER BY id DESC LIMIT ?1",
+        )?;
+        let ids = statement
+            .query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+                row.get::<_, i64>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut batches = Vec::new();
+        for id in ids.into_iter().map(BatchId::new) {
+            let Some(info) = self.batch_info(id)? else {
+                continue;
+            };
+            let moved = self
+                .journal_items(id)?
+                .into_iter()
+                .filter(|item| item.state == JournalState::Moved)
+                .collect();
+            batches.push((info, moved));
+        }
+        Ok(batches)
+    }
+
     pub fn batch_kind(&self, batch: BatchId) -> Result<Option<BatchKind>, IndexError> {
         let found: Option<String> = self
             .connection()
@@ -545,6 +577,40 @@ mod tests {
         assert_eq!(items[1].state, JournalState::Skipped);
         assert_eq!(items[1].reason.as_deref(), Some("changed"));
         assert_eq!(items[1].hash, ContentHash([2; 32]));
+    }
+
+    #[test]
+    fn recent_batches_come_newest_first_with_their_moved_items_only() {
+        let (_dir, index) = encrypted_index();
+        let moved_batch = |kind, seed| {
+            let batch = index.begin_batch(kind).unwrap();
+            let moved = index
+                .add_journal_item(batch, &pending("/a/x", "/a/y", seed))
+                .unwrap();
+            index
+                .add_journal_item(
+                    batch,
+                    &NewJournalItem {
+                        state: JournalState::Skipped,
+                        ..pending("/a/p", "/a/q", seed)
+                    },
+                )
+                .unwrap();
+            index
+                .set_journal_state(batch, moved, JournalState::Moved, None)
+                .unwrap();
+            index.finish_batch(batch).unwrap();
+        };
+        moved_batch(BatchKind::Reorganisation, 1);
+        index.begin_batch(BatchKind::Filing).unwrap();
+        moved_batch(BatchKind::Filing, 2);
+
+        let recent = index.recent_batches(10).unwrap();
+
+        let kinds: Vec<_> = recent.iter().map(|(info, _)| info.kind).collect();
+        assert_eq!(kinds, [BatchKind::Filing, BatchKind::Reorganisation]);
+        assert!(recent.iter().all(|(_, items)| items.len() == 1));
+        assert_eq!(index.recent_batches(1).unwrap().len(), 1);
     }
 
     #[test]

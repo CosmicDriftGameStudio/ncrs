@@ -15,8 +15,12 @@ use crate::clock::Clock;
 use crate::load::Load;
 use crate::step::{Item, Step, StepOutcome};
 
+mod candidates;
 mod gone;
+mod handle;
 mod snapshot;
+use candidates::Candidates;
+pub use candidates::ContinuousCandidate;
 use gone::GoneQueue;
 use snapshot::ChangeLog;
 pub use snapshot::{
@@ -138,6 +142,10 @@ struct State {
     continuations: VecDeque<Continuation>,
     /// Paths queued or deferred at the first step.
     waiting_first: HashSet<PathBuf>,
+    /// The roots of the locations that file by themselves. Set from the
+    /// locations at the start and replaced when the config is saved, so the
+    /// next file of a location takes it into account without a restart.
+    continuous_roots: HashSet<PathBuf>,
     /// Each path as it was when it last left the first-step queue since the
     /// latest scan of its location started. Recorded at that point, so a
     /// report arriving while the file runs is matched too.
@@ -152,6 +160,7 @@ struct State {
     errors: VecDeque<ErrorEntry>,
     left_pipeline: usize,
     plans_made: usize,
+    candidates: Candidates,
     changes: ChangeLog,
 }
 
@@ -201,7 +210,7 @@ impl State {
         }
         self.first_step.push_back(Queued {
             item: Item {
-                location: location.clone(),
+                location: self.as_configured(location),
                 path: path.to_path_buf(),
                 document: None,
                 text: None,
@@ -210,11 +219,19 @@ impl State {
                 force: false,
                 stored_text_is_current: false,
                 not_a_document: false,
+                continuous_candidate: false,
             },
             batch,
             fingerprint,
         });
         true
+    }
+
+    /// The location with the flag the config has now.
+    fn as_configured(&self, location: &Location) -> Location {
+        location
+            .clone()
+            .with_continuous(self.continuous_roots.contains(&location.path))
     }
 
     /// A file that just arrived goes before the stock a scan found, so a slow
@@ -247,7 +264,7 @@ impl State {
         }
         self.first_step.push_back(Queued {
             item: Item {
-                location: location.clone(),
+                location: self.as_configured(location),
                 path: path.to_path_buf(),
                 document: None,
                 text: None,
@@ -256,6 +273,7 @@ impl State {
                 force: true,
                 stored_text_is_current: false,
                 not_a_document: false,
+                continuous_candidate: false,
             },
             batch: None,
             fingerprint: None,
@@ -875,6 +893,7 @@ impl State {
                 if item.plan.is_some() {
                     self.plans_made += 1;
                 }
+                self.candidates.add_from(&item);
                 self.changes.push(&item.path, ChangeOutcome::Finished);
                 self.record_document(at);
             }
@@ -970,8 +989,6 @@ impl fmt::Debug for Runner {
             .finish_non_exhaustive()
     }
 }
-
-mod handle;
 
 #[cfg(test)]
 mod tests;

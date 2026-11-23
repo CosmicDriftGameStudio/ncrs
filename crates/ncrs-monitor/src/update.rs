@@ -30,10 +30,14 @@ pub fn tick_every(state: &State) -> Option<Duration> {
 pub fn update(state: &mut State, message: MonitorMessage, ctx: &Ctx) -> Outcome {
     use MonitorMessage as M;
     let visible = visible_rows(ctx.window_size.height);
+    if matches!(message, M::Move(_) | M::PageMove(_) | M::First | M::Last) {
+        state.last_navigation = Some(ctx.now);
+    }
     match message {
         M::Toggle if state.open => close(state),
         M::Toggle => open(state),
         M::Close => close(state),
+        M::Tick if state.is_navigating(ctx.now) => none(),
         M::Tick | M::MeasureAgain => (measure(state), None),
         M::Measured(depth, snapshot) => {
             let wants_second_reading = lacks_cpu_reading(state, depth, &snapshot);
@@ -380,10 +384,20 @@ fn take_snapshot(state: &mut State, depth: Depth, snapshot: Snapshot, visible: u
     if state.depth() != Some(depth) {
         return;
     }
+    // A cursor nobody moved stays on the top row, whatever task a refresh puts there.
+    let cursor_was_moved = state.last_navigation.is_some() || state.cursor_index != 0;
+    let followed = state.pid_under_cursor().filter(|_| cursor_was_moved);
     state.snapshot = Some(snapshot);
     state.failure = None;
     if state.open {
         state.reorder();
+        let before = state.cursor_index;
+        state.follow_pid(followed);
+        if state.cursor_index != before {
+            state
+                .window
+                .ensure_visible(state.cursor_index, state.order.len(), visible);
+        }
         keep_command_offset_in_range(state, visible);
     }
 }

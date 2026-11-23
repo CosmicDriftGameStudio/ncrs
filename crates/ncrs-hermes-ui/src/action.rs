@@ -40,6 +40,8 @@ pub enum Action {
     IndexReplaced,
     /// Opens the Hermes chat.
     OpenChat,
+    /// Opens the Hermes chat on these documents, which it asks about.
+    OpenChatAbout(Vec<ncrs_filing::review_work::ReviewItem>),
     /// The settings show this page of the Hermes crate.
     ShowPage(HermesPage),
     /// Shows the file in the active panel.
@@ -90,6 +92,11 @@ pub enum Action {
     },
     /// Asks for the folder the reports are exported to, starting at the path.
     PickExportFolder(PathBuf),
+    /// Asks for the folder the documents of the reviews page are filed in,
+    /// starting at the path.
+    PickReviewFolder(PathBuf),
+    /// Opens the file in the viewer.
+    PreviewFile(PathBuf),
     /// Put the job into the queue and start it if nothing runs; the work
     /// sends its progress through the app's channel, which the app makes
     /// first.

@@ -3,6 +3,8 @@ use ncrs_config::keymap::{KeyAction, KeyScope, Keymap};
 use ncrs_config::SettingsTarget;
 use ncrs_i18n::Language;
 
+use super::GitCommandEntry;
+
 /// Which of the Hermes commands on a file the list offers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesCommands {
@@ -52,6 +54,8 @@ pub struct CommandPaletteCtx<'a> {
     pub hermes: HermesCommands,
     /// Commands the panel under the cursor refuses, left out of the list.
     pub unavailable: Vec<KeyAction>,
+    /// The commands of the Git tab: empty unless one is shown with write actions.
+    pub git_commands: Vec<GitCommandEntry>,
     /// The settings pages and settings a query can find. Read only when the
     /// list opens.
     pub settings_targets: Vec<SettingsTarget>,

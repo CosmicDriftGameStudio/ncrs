@@ -23,6 +23,7 @@ pub struct TitleTab<'a, M> {
     on_close: Option<M>,
     mark: Option<String>,
     left_edge: bool,
+    width: f32,
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -43,6 +44,7 @@ pub fn title_tab<'a, M: Clone + 'a>(
         on_close,
         mark: None,
         left_edge: false,
+        width: size::TAB_WIDTH,
         _marker: std::marker::PhantomData,
     }
 }
@@ -59,6 +61,13 @@ impl<'a, M: Clone + 'a> TitleTab<'a, M> {
     #[must_use]
     pub fn left_edge(mut self, left_edge: bool) -> Self {
         self.left_edge = left_edge;
+        self
+    }
+
+    /// The width of the tab, `TAB_WIDTH` unless the strip shrinks it.
+    #[must_use]
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
         self
     }
 
@@ -95,7 +104,7 @@ impl<'a, M: Clone + 'a> TitleTab<'a, M> {
             theme::vertical_rule(palette.border_inactive),
         ])
         .id(self.id)
-        .width(size::TAB_WIDTH)
+        .width(self.width)
         .height(Length::Fill)
         .into()
     }

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use iced::{Point, Size};
 use ncrs_i18n::Language;
 use ncrs_ui_kit::palette::Palette;
@@ -9,6 +11,9 @@ pub struct Ctx {
     /// Where the pointer was last seen, in window coordinates: a menu opened
     /// by a right click stands there.
     pub pointer: Point,
+    /// The moment this message is handled; the page holds its refresh while the
+    /// user is moving the cursor.
+    pub now: Instant,
 }
 
 /// What `view` reads from the app.

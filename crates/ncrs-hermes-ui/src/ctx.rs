@@ -4,8 +4,34 @@ use std::time::SystemTime;
 use iced::{Point, Size};
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_core::PanelSide;
+use ncrs_filing::chat_work::ChatAccess;
 use ncrs_i18n::Language;
 use ncrs_index::Kinds;
+use std::sync::Arc;
+
+/// What filing by itself needs: the handle of the chat and the model, which
+/// are there only while Hermes is ready and its AI is on.
+#[derive(Clone)]
+pub struct ContinuousTools {
+    pub access: ChatAccess,
+    pub model: Arc<dyn ncrs_ai::ChatModel>,
+}
+
+impl std::fmt::Debug for ContinuousTools {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ContinuousTools").finish_non_exhaustive()
+    }
+}
+
+/// The trash the app deletes into, so what an answer removes can be got back.
+#[derive(Clone)]
+pub struct Bin(pub Arc<dyn ncrs_fs::Trash>);
+
+impl std::fmt::Debug for Bin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bin").finish_non_exhaustive()
+    }
+}
 
 /// What `update` reads from the app.
 #[derive(Debug, Clone)]
@@ -26,6 +52,10 @@ pub struct Ctx<'a> {
     pub chat_open: bool,
     pub hermes_counts_missing: bool,
     pub jobs_busy: bool,
+    pub continuous: Option<ContinuousTools>,
+    pub trash: Bin,
+    /// The source folder of the "Ablegen" tab while it plans or files.
+    pub filing_tab_source: Option<&'a Path>,
     pub window_size: Size,
     pub config_path: Option<&'a Path>,
     /// What a leading `~` in a path stands for.

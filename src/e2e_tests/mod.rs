@@ -792,16 +792,22 @@ mod viewer;
 mod acceptance_v150;
 
 #[cfg(test)]
-mod acceptance_v160;
+pub(in crate::e2e_tests) mod acceptance_v160;
 
 #[cfg(test)]
 pub mod acceptance_v160_git;
+
+#[cfg(all(test, not(feature = "sandbox")))]
+mod acceptance_v170_git;
 
 #[cfg(test)]
 mod acceptance_v160_notes_chats;
 
 #[cfg(test)]
 mod acceptance_v161_tabs;
+
+#[cfg(all(test, unix))]
+mod acceptance_v170;
 
 #[cfg(test)]
 mod favourites;

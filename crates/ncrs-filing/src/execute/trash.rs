@@ -24,6 +24,22 @@ pub struct TrashItem {
     pub keeper: PathBuf,
 }
 
+/// A file to put in the trash because another file takes its place. Nothing
+/// holds its content afterwards; an undo of the run brings it back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplacedItem {
+    pub path: PathBuf,
+    pub expected_hash: ContentHash,
+}
+
+/// What a trash run checks and journals about one file; the keeper, when
+/// there is one, must still hold the same content.
+struct Candidate {
+    path: PathBuf,
+    expected_hash: ContentHash,
+    keeper: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TrashReport {
     pub trashed: usize,
@@ -36,7 +52,7 @@ pub fn trash_can_restore(trash: &dyn Trash) -> bool {
     trash.reach() != TrashReach::FinderOnly
 }
 
-fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) -> NewJournalItem {
+fn journal_entry(item: &Candidate, state: JournalState, reason: Option<String>) -> NewJournalItem {
     NewJournalItem {
         from: item.path.clone(),
         to: item.path.clone(),
@@ -51,7 +67,7 @@ fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) 
 fn skip(
     index: &Index,
     batch: BatchId,
-    item: &TrashItem,
+    item: &Candidate,
     reason: SkipReason,
 ) -> Result<(), ExecuteError> {
     index.add_journal_item(
@@ -62,7 +78,7 @@ fn skip(
 }
 
 /// Why this item must not be trashed, if there is a reason.
-fn refusal(root: &Path, item: &TrashItem) -> Option<SkipReason> {
+fn refusal(root: &Path, item: &Candidate) -> Option<SkipReason> {
     if !is_below(root, &item.path) {
         return Some(SkipReason::OutsideLocation);
     }
@@ -77,8 +93,10 @@ fn refusal(root: &Path, item: &TrashItem) -> Option<SkipReason> {
         Err(err) if is_not_found(&err) => return Some(SkipReason::SourceMissing),
         Err(err) => return Some(SkipReason::Failed(err.to_string())),
     }
-    (item.keeper == item.path || !has_hash(&item.keeper, item.expected_hash))
-        .then(|| SkipReason::Failed("the file that makes it redundant is gone".to_owned()))
+    item.keeper
+        .as_ref()
+        .filter(|keeper| **keeper == item.path || !has_hash(keeper, item.expected_hash))
+        .map(|_| SkipReason::Failed("the file that makes it redundant is gone".to_owned()))
 }
 
 /// Puts the items in the trash, each only while it still holds the content it
@@ -89,6 +107,44 @@ pub fn trash_run(
     name: &str,
     root: &Path,
     items: &[TrashItem],
+    trash: &dyn Trash,
+) -> Result<TrashReport, ExecuteError> {
+    let candidates: Vec<Candidate> = items
+        .iter()
+        .map(|item| Candidate {
+            path: item.path.clone(),
+            expected_hash: item.expected_hash,
+            keeper: Some(item.keeper.clone()),
+        })
+        .collect();
+    run_candidates(index, name, root, &candidates, trash)
+}
+
+/// Puts the files in the trash that a newer file replaces, each only while it
+/// still holds the content it was planned with. Journaled like [`trash_run`].
+pub fn trash_replaced(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: &[ReplacedItem],
+    trash: &dyn Trash,
+) -> Result<TrashReport, ExecuteError> {
+    let candidates: Vec<Candidate> = items
+        .iter()
+        .map(|item| Candidate {
+            path: item.path.clone(),
+            expected_hash: item.expected_hash,
+            keeper: None,
+        })
+        .collect();
+    run_candidates(index, name, root, &candidates, trash)
+}
+
+fn run_candidates(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: &[Candidate],
     trash: &dyn Trash,
 ) -> Result<TrashReport, ExecuteError> {
     let source = remember_source_root(root)?;

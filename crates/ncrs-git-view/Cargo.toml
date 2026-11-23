@@ -21,6 +21,7 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 iced_test = "0.14"
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3.27"
 
 [lints]
 workspace = true

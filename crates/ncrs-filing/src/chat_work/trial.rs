@@ -45,6 +45,24 @@ pub enum TrialOutcome {
     Stays(StayReason),
 }
 
+/// What gave a file its place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlacedBy {
+    /// A confirmed rule.
+    Rule,
+    /// Files of the target that look alike.
+    Neighbours,
+    /// Only the order of a target without neighbours.
+    Layout,
+}
+
+impl PlacedBy {
+    /// Only a rule or neighbours make a place sure enough to file unasked.
+    pub fn is_sure(self) -> bool {
+        !matches!(self, Self::Layout)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrialEntry {
     pub from: PathBuf,
@@ -59,6 +77,8 @@ pub struct TrialEntry {
     pub neighbour: Option<PathBuf>,
     /// Relative to the target: where the file would go when its name is taken.
     pub wanted: Option<PathBuf>,
+    /// What gave the place of a filed file; `None` for the others.
+    pub placed_by: Option<PlacedBy>,
 }
 
 /// In the order the chat shows them: one filed file per area, the unsure
@@ -117,6 +137,8 @@ pub const MODEL_FIRST_PAGE: usize = 10;
 pub enum ModelScope {
     /// The first files in source order, as many as the trial page shows.
     FirstPage,
+    /// Only these files, by their source path.
+    Only(BTreeSet<PathBuf>),
     /// The last files in source order, as many as a page, in the background
     /// lane; the files before them are left for later.
     LastPage,
@@ -211,6 +233,7 @@ pub fn trial(
             outcome: decided.outcome,
             neighbour: decided.neighbour,
             wanted: decided.wanted,
+            placed_by: decided.placed_by,
         });
     }
 
@@ -279,6 +302,7 @@ struct Decided {
     outcome: TrialOutcome,
     neighbour: Option<PathBuf>,
     wanted: Option<PathBuf>,
+    placed_by: Option<PlacedBy>,
     /// The folders the neighbours offered for an unsure file.
     candidates: Vec<Candidate>,
 }
@@ -289,19 +313,21 @@ impl Decided {
             outcome,
             neighbour: None,
             wanted: None,
+            placed_by: None,
             candidates: Vec::new(),
         }
     }
 
-    fn filed_or_taken(to: PathBuf, taken: &mut BTreeSet<PathBuf>) -> Self {
+    fn filed_or_taken(to: PathBuf, placed_by: PlacedBy, taken: &mut BTreeSet<PathBuf>) -> Self {
         if taken.insert(to.clone()) {
-            Self::outcome(TrialOutcome::Filed { to })
+            Self {
+                placed_by: Some(placed_by),
+                ..Self::outcome(TrialOutcome::Filed { to })
+            }
         } else {
             Self {
-                outcome: TrialOutcome::Stays(StayReason::NameTaken),
-                neighbour: None,
                 wanted: Some(to),
-                candidates: Vec::new(),
+                ..Self::outcome(TrialOutcome::Stays(StayReason::NameTaken))
             }
         }
     }
@@ -329,14 +355,14 @@ fn decide(
     );
     if let Planning::Plan(filing) = planning {
         let to = with_extension_of(filing.relative_path, name);
-        return Decided::filed_or_taken(to, taken);
+        return Decided::filed_or_taken(to, PlacedBy::Rule, taken);
     }
     let Some(placement) = ctx.neighbours.place(&file.fields, file.text.as_deref()) else {
         let Some(levels) = ctx.layout else {
             return Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
         };
         return match layout_path(levels, &file.fields, ctx.kinds, name) {
-            Some(to) => Decided::filed_or_taken(to, taken),
+            Some(to) => Decided::filed_or_taken(to, PlacedBy::Layout, taken),
             None => Decided::outcome(TrialOutcome::Stays(StayReason::NoPattern)),
         };
     };
@@ -384,7 +410,7 @@ fn decide(
         };
     };
     let to = with_extension_of(rendered, name);
-    let mut decided = Decided::filed_or_taken(to, taken);
+    let mut decided = Decided::filed_or_taken(to, PlacedBy::Neighbours, taken);
     if decided.wanted.is_some() {
         decided.neighbour = Some(placement.folder);
     }
@@ -511,11 +537,21 @@ fn ask_model(
             let asked = rest.split_off(rest.len().saturating_sub(MODEL_FIRST_PAGE));
             (asked, rest)
         }
+        ModelScope::Only(files) => wanting.into_iter().partition(|position| {
+            entries
+                .get(*position)
+                .is_some_and(|entry| files.contains(&entry.from))
+        }),
     };
-    let left: BTreeSet<PathBuf> = not_asked
-        .into_iter()
-        .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
-        .collect();
+    // A named set is the rest itself: what it leaves out was settled before.
+    let left: BTreeSet<PathBuf> = if matches!(scope, ModelScope::Only(_)) {
+        BTreeSet::new()
+    } else {
+        not_asked
+            .into_iter()
+            .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
+            .collect()
+    };
     if asked.is_empty() {
         return (left, None);
     }
@@ -529,7 +565,7 @@ fn ask_model(
         .map(document_text)
         .collect();
     let lane = match scope {
-        ModelScope::LastPage => FolderChoiceLane::Background,
+        ModelScope::Only(_) | ModelScope::LastPage => FolderChoiceLane::Background,
         ModelScope::FirstPage => FolderChoiceLane::Waiting,
     };
     let picks = match ask

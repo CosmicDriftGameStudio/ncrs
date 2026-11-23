@@ -3,7 +3,7 @@
 
 use iced::widget::text::Wrapping;
 use iced::widget::{container, text, Container};
-use iced::{Color, Element};
+use iced::{Color, Element, Length};
 
 use crate::palette::Palette;
 use crate::theme::{self, font_size};
@@ -48,5 +48,30 @@ pub fn page_source<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M
         .font(crate::APP_FONT)
         .color(palette.text)
         .wrapping(Wrapping::WordOrGlyph)
+        .into()
+}
+
+/// [`page_heading`] that wraps at the width of its block instead of running past it.
+pub fn page_heading_wrapped<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
+    text(content.to_owned())
+        .size(font_size::ROW)
+        .font(crate::APP_FONT_BOLD)
+        .color(palette.text)
+        .wrapping(Wrapping::WordOrGlyph)
+        .width(Length::Fill)
+        .into()
+}
+
+/// A line of a block that wraps at the width of the block.
+pub fn page_paragraph<'a, M: 'a>(
+    content: impl Into<String>,
+    size: f32,
+    color: Color,
+) -> Element<'a, M> {
+    text(content.into())
+        .size(size)
+        .color(color)
+        .wrapping(Wrapping::WordOrGlyph)
+        .width(Length::Fill)
         .into()
 }

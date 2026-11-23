@@ -63,6 +63,9 @@ fn open(command_palette: &mut Option<CommandPalette>, ctx: &CommandPaletteCtx<'_
     for &action in &ctx.unavailable {
         palette = palette.without_command(action);
     }
+    if !ctx.git_commands.is_empty() {
+        palette = palette.with_git_commands(ctx.git_commands.clone());
+    }
     palette = palette.with_settings(ctx.settings_targets.clone());
     palette.set_visible_rows(visible_rows(ctx.window));
     *command_palette = Some(palette);
@@ -98,6 +101,7 @@ fn run(command_palette: &mut Option<CommandPalette>) -> Outcome {
     let closed = close(command_palette);
     let action = match target {
         Target::Command(action) => CommandPaletteAction::Run(action),
+        Target::Git(place) => CommandPaletteAction::RunGit(place),
         Target::Setting { feature, row } => CommandPaletteAction::ShowSetting { feature, row },
     };
     (closed, Some(action))

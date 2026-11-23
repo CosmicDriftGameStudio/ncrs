@@ -150,6 +150,7 @@ pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
         ..simple_row(
             Msg::SettingsRowVscode,
@@ -226,6 +227,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
     }
 }
@@ -292,6 +294,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
     }
     .with_buttons(pressable(&buttons), build)
@@ -375,6 +378,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
     }
 }
@@ -642,6 +646,7 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
         in_command_list: false,
         list_indent: None,
         marked_controls: Vec::new(),
+        label_action: None,
         leading: None,
         ..simple_row(Msg::SettingsIndexRowEncryption, None, build(None), lang)
     }
