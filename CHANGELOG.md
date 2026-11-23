@@ -6,6 +6,61 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-11-23
+
+### Added
+
+- Git actions in the Git tab, using the git installed on your computer: stage
+  and unstage hunks or files, discard with a confirmation, commit, amend and
+  undo; create, rename, check out and delete branches (with a warning for
+  unmerged ones), also remote branches; fetch, pull (merge or rebase, asked
+  once) and push, and a "pull first" offer when a push is rejected; resolve
+  merge and rebase conflicts block by block (mine, theirs, both), mark
+  resolved, continue or abort; stash, apply, pop and drop. A Git group in the
+  command list while a Git tab is shown. Read-only git calls run without the
+  repository's hooks and filters. Write actions are off in the App Store build.
+- Hermes questions page: open questions grouped by kind, each answered per row
+  or per group (target taken, date, amount, rule, sender, no rule). New: "already
+  filed" for inbox scans whose content is already in the archive, to move the
+  copy to the trash or ignore it.
+- Hermes activity page: what Hermes is doing now and the last runs, newest first.
+- "Clarify in chat" and the quick fix menu open the chat about the document.
+- Continuous filing: new files in a read folder are filed by Hermes on their
+  own when it is sure; the rest goes to the questions page. Also available as
+  commands to file once, file continuously and stop.
+- App Store: try ncrs free for 14 days, then buy the full version once. Without
+  it, viewing, browsing and searching stay free; changes are locked. Whoever
+  bought ncrs before 1.7.0 keeps everything. Settings › General › Full version
+  shows the state, and the status bar reminds you in the last three days of the
+  trial. Homebrew, Linux and Windows stay free and unchanged.
+- Screenshots and store pictures show the current features: Git tab, Filing
+  tab, notes, document search, compare, batch rename, monitor and viewer.
+
+### Changed
+
+- The App Store build needs macOS 13 or later.
+- Many tabs fit in the title bar: they shrink to fit, then page with ‹ ›, and
+  the active tab stays in view. The left and right path tabs stay pinned. The
+  Hermes chip and the commands button are gone from the title bar; the command
+  list stays on `Shift`+`Cmd`+`P` and `F1`.
+- In narrow windows the Git tab gives the detail pane the sidebar width and
+  hides the SHA column, so commit messages keep their room.
+- The app and package descriptions name Git, SFTP, archives and AI document
+  filing.
+- A target Hermes took is compared against the pattern of the planning rule.
+- Filing actions are refused in archives and on servers.
+
+### Fixed
+
+- The review count in the sidebar, the badge and the questions page is the same
+  number.
+- A document you filed or moved into a write folder yourself no longer keeps an
+  open review.
+- Git: undo backups and restores refuse symbolic links, values you type never
+  reach git as options, and credentials in remote URLs are removed from error
+  details.
+- The monitor keeps the cursor on the first row until you move it.
+
 ## [1.6.0] — 2026-11-21
 
 ### Added
