@@ -667,25 +667,21 @@ impl App {
 
     /// The config file the app writes to, for the protocol run that sets
     /// folder roles.
-    #[cfg(unix)]
     pub fn set_config_path_for_test(&mut self, path: PathBuf) {
         self.config_path = Some(path);
     }
 
     /// A panel, for the protocol run that looks at what it shows.
-    #[cfg(unix)]
     pub fn panel_for_test(&self, side: PanelSide) -> &PanelState {
         self.panel(side)
     }
 
     /// The read and write folders as the saved config has them.
-    #[cfg(unix)]
     pub fn filing_locations_for_test(&self) -> &[crate::config::FilingLocation] {
         &self.hermes.filing_config.locations
     }
 
     /// The pipeline is up and has nothing to do.
-    #[cfg(unix)]
     pub fn pipeline_is_idle_for_test(&self) -> bool {
         self.hermes
             .live_pipeline()
@@ -694,7 +690,6 @@ impl App {
 
     /// Runner state, waiting files per step and waiting continuous
     /// candidates, as text for the protocol's progress line.
-    #[cfg(unix)]
     pub fn pipeline_status_for_test(&self) -> (String, String, usize) {
         let Some(runner) = self.hermes.live_pipeline() else {
             return ("none".to_owned(), String::new(), 0);
@@ -715,7 +710,6 @@ impl App {
 
     /// Whether the background filing has its model, and whether an "Ablegen"
     /// tab that still works holds a folder back.
-    #[cfg(unix)]
     pub fn continuous_gates_for_test(&self) -> (bool, bool) {
         (
             self.continuous_tools().is_some(),
@@ -726,7 +720,6 @@ impl App {
         )
     }
 
-    #[cfg(unix)]
     pub fn jobs_busy_for_test(&self) -> bool {
         self.jobs.is_busy()
     }
