@@ -418,6 +418,8 @@ mod tests {
                 | Msg::FilingViewStateFiled
                 // Only placeholders and a comma.
                 | Msg::PermissionsTitlePartsJoined
+                // Only placeholders and a colon.
+                | Msg::NotMovedWithReason
                 // Units, a standard's name and "System", written alike in German.
                 | Msg::SettingsDateIso
                 | Msg::SettingsSizeBytes
