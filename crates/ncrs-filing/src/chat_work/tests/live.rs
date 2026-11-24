@@ -290,7 +290,7 @@ fn published(run: &LiveRun) -> LivePlan {
 }
 
 #[test]
-fn a_live_plan_starts_all_waiting_and_ends_done_with_every_bucket_counted() {
+fn a_live_plan_shows_what_needs_no_model_before_the_first_answer_and_ends_done() {
     let setup = Setup::new();
     write_source(&setup);
     let run = Arc::new(LiveRun::default());
@@ -304,10 +304,10 @@ fn a_live_plan_starts_all_waiting_and_ends_done_with_every_bucket_counted() {
     let first = model.seen.lock().unwrap()[0].clone().unwrap();
     assert_eq!(first.files.len(), 27);
     assert!(!first.done);
-    assert!(first
-        .files
-        .iter()
-        .all(|file| file.state == LiveState::Waiting && file.hash.is_none()));
+    assert!(first.files.iter().all(|file| file.hash.is_some()));
+    let before_answer = tally(&first);
+    assert_eq!(before_answer.waiting, 0);
+    assert_eq!(before_answer.looking, 27);
     let calls: Vec<usize> = model.calls().iter().map(|(count, _)| *count).collect();
     assert_eq!(calls, vec![10, 10, 7]);
     assert!(model
@@ -324,6 +324,28 @@ fn a_live_plan_starts_all_waiting_and_ends_done_with_every_bucket_counted() {
         last.files.len()
     );
     assert_eq!(state_of(&last, "blank.dat"), LiveState::Unreadable);
+}
+
+#[test]
+fn a_file_already_in_the_target_shows_before_the_model_answers_the_others() {
+    let setup = Setup::new();
+    index_known(&setup, "archive/Beta/old.txt", "Beta GmbH invoice");
+    setup.write("inbox/copy.txt", "Beta GmbH invoice");
+    setup.write("inbox/new.txt", "Contract number 7");
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        run: Some(Arc::clone(&run)),
+        ..RecordingModel::default()
+    };
+
+    run_live(&setup, &model, &run).unwrap();
+
+    let first = model.seen.lock().unwrap()[0].clone().unwrap();
+    assert!(matches!(
+        state_of(&first, "copy.txt"),
+        LiveState::AlreadyThere { .. }
+    ));
+    assert_eq!(state_of(&first, "new.txt"), LiveState::Looking);
 }
 
 #[test]
@@ -739,7 +761,7 @@ fn the_target_folder_is_not_read_for_text_while_the_plan_waits_on_the_source() {
     assert!(first
         .files
         .iter()
-        .all(|file| file.state == LiveState::Waiting));
+        .all(|file| file.state == LiveState::Looking));
     let counted = tally(&published(&run));
     assert_eq!(counted.waiting + counted.looking, 0);
 }
