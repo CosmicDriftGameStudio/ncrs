@@ -36,8 +36,10 @@ const FILLER_WORDS: &[&str] = &[
     "deine",
     "your",
     "the",
-    "und",
 ];
+/// Words that join two parties: "Marc Muster und Eva Beispiel" is not the
+/// sender "Marc Muster", though it starts with it.
+const CONJUNCTIONS: &[&str] = &["und", "and"];
 /// A sender of one word only matches itself: a prefix of one word is too
 /// likely another sender.
 const MIN_PREFIX_TOKENS: usize = 2;
@@ -69,7 +71,11 @@ impl SenderKey {
             (&other.tokens, &self.tokens)
         };
         shorter == longer
-            || (shorter.len() >= MIN_PREFIX_TOKENS && longer.starts_with(shorter.as_slice()))
+            || (shorter.len() >= MIN_PREFIX_TOKENS
+                && longer.starts_with(shorter.as_slice())
+                && !longer
+                    .get(shorter.len())
+                    .is_some_and(|next| CONJUNCTIONS.contains(&next.as_str())))
     }
 
     pub fn joined(&self) -> String {
@@ -112,6 +118,7 @@ mod tests {
         assert!(!key("Deutsche Kreditbank AG").matches(&key("Deutsche Bank AG")));
         assert!(!key("KfW").matches(&key("KfW Bankengruppe")));
         assert!(key("KfW").matches(&key("kfw")));
+        assert!(!key("Marc Muster und Eva Beispiel").matches(&key("Marc Muster")));
     }
 
     #[test]

@@ -731,23 +731,33 @@ fn offer_model_folder(
             )
         });
     // The neighbours were sure of the folder and only missed a name pattern:
-    // the model may go deeper into it, never elsewhere.
+    // the model never moves the file elsewhere. A subfolder of it is the
+    // model's guess alone and stays unsure, with the sure folder second.
     if let (TrialOutcome::Stays(StayReason::NoPattern), Some(sure_folder)) =
-        (&entry.outcome, entry.neighbour.as_ref())
+        (&entry.outcome, entry.neighbour.clone())
     {
-        let (to, placed_by) = if from_model.0.starts_with(sure_folder) {
-            (
-                from_model.0.join(&from_model.1),
-                PlacedBy::ModelAndNeighbours,
-            )
-        } else {
-            (sure_folder.join(&entry.name), PlacedBy::Neighbours)
-        };
-        if taken.insert(to.clone()) {
-            entry.outcome = TrialOutcome::Filed { to };
-            entry.placed_by = Some(placed_by);
-            return;
+        let deeper = from_model.0 != sure_folder && from_model.0.starts_with(&sure_folder);
+        if !deeper {
+            let (to, placed_by) = if from_model.0 == sure_folder {
+                (
+                    from_model.0.join(&from_model.1),
+                    PlacedBy::ModelAndNeighbours,
+                )
+            } else {
+                (sure_folder.join(&entry.name), PlacedBy::Neighbours)
+            };
+            if taken.insert(to.clone()) {
+                entry.outcome = TrialOutcome::Filed { to };
+                entry.placed_by = Some(placed_by);
+                return;
+            }
         }
+        entry.outcome = TrialOutcome::Unsure {
+            choices: vec![sure_folder],
+            file_names: vec![entry.name.clone()],
+            kind_label: known_kind_label(ask.kinds, &entry.fields)
+                .or_else(|| entry.fields.sender.clone()),
+        };
     }
     let neighbours_first = match &entry.outcome {
         TrialOutcome::Unsure { choices, .. } => choices.first(),

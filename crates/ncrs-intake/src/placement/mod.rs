@@ -317,7 +317,18 @@ impl NeighbourIndex {
             .map(|iban| self.similar(|neighbour| neighbour.features.ibans.contains(iban)))
             .max_by_key(Vec::len);
         if let Some(group) = with_iban.filter(|group| group.len() >= MIN_IBAN_NEIGHBOURS) {
-            return Some(self.settle(Signal::SameIban, &group, fields));
+            let placement = self.settle(Signal::SameIban, &group, fields);
+            // An account also stands on what others write to its holder, like
+            // the rent account in a lease: a document of another sender and
+            // kind than the account's documents is not placed by it alone.
+            let from_elsewhere = sender_key.is_some()
+                && wanted_kind.is_some()
+                && !group
+                    .iter()
+                    .any(|neighbour| same_sender(neighbour) || same_kind(neighbour));
+            if !(placement.is_sure() && from_elsewhere) {
+                return Some(placement);
+            }
         }
 
         let of_sender = self.similar(|neighbour| same_sender(&neighbour));

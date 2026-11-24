@@ -826,3 +826,31 @@ fn documents_of_one_account_or_one_sender_and_kind_share_a_group_key() {
     );
     assert_eq!(index.group_key(&fields(None, Some("Letter")), None), None);
 }
+
+#[test]
+fn a_lease_naming_the_rent_account_is_not_placed_with_the_statements_of_that_account() {
+    let statements = filed(
+        "Bank/dkb",
+        1..4,
+        &fields(Some("Deutsche Kreditbank AG"), Some("bank_statement")),
+        Some("IBAN DE51 8705 0000 0712 3456 78"),
+    );
+
+    let lease = place(
+        &statements,
+        &ordered(),
+        &fields(Some("Hausverwaltung Muster"), Some("contract")),
+        Some("Miete auf IBAN DE51 8705 0000 0712 3456 78"),
+    );
+    assert!(!lease.is_some_and(|placement| placement.is_sure()));
+
+    let statement = place(
+        &statements,
+        &ordered(),
+        &fields(Some("Deutsche Kreditbank AG"), Some("bank_statement")),
+        Some("IBAN DE51 8705 0000 0712 3456 78"),
+    )
+    .unwrap();
+    assert!(statement.is_sure());
+    assert_eq!(statement.folder, Path::new("Bank/dkb"));
+}

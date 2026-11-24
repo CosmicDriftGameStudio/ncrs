@@ -503,7 +503,7 @@ fn a_model_pick_outside_the_folder_the_neighbours_are_sure_of_does_not_win() {
 }
 
 #[test]
-fn a_model_pick_inside_the_folder_the_neighbours_are_sure_of_is_taken() {
+fn a_model_pick_inside_the_folder_the_neighbours_are_sure_of_is_offered_first_but_unsure() {
     let plan = trial_with_model_pick(
         &delta_new_file(),
         &delta_without_a_name_pattern(),
@@ -511,13 +511,12 @@ fn a_model_pick_inside_the_folder_the_neighbours_are_sure_of_is_taken() {
     );
 
     let entry = &plan.entries[0];
+    let TrialOutcome::Unsure { choices, .. } = &entry.outcome else {
+        panic!("{:?}", entry.outcome);
+    };
     assert_eq!(
-        entry.outcome,
-        TrialOutcome::Filed {
-            to: PathBuf::from("Bank/Delta/Alt/new.pdf")
-        },
-        "{:?}",
-        entry.outcome
+        choices,
+        &[PathBuf::from("Bank/Delta/Alt"), PathBuf::from("Bank/Delta")]
     );
-    assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
+    assert_eq!(entry.placed_by, Some(PlacedBy::Model));
 }
