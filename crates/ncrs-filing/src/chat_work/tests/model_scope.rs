@@ -82,7 +82,7 @@ fn unknown_files() -> Vec<PlanFile> {
             plan_file(
                 &format!("unknown{seed:02}.pdf"),
                 100 + seed,
-                Some("Unknown KG"),
+                Some(&lone_sender(seed)),
                 date(2022, 7, 4),
             )
         })

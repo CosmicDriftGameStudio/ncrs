@@ -71,17 +71,22 @@ impl App {
                 then_continuous,
             } => {
                 self.filing_finished(source.clone(), transfer, filed, left.len(), batch);
-                if then_continuous && filed > 0 {
-                    return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                        ncrs_hermes_ui::set_continuous_filing(
-                            hermes,
-                            &source,
-                            Some(location_transfer_of(transfer)),
-                            ctx,
-                        )
-                    });
+                if filed == 0 {
+                    return Task::none();
                 }
-                Task::none()
+                let reload = self.reload_panels();
+                if !then_continuous {
+                    return reload;
+                }
+                let continuous = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::set_continuous_filing(
+                        hermes,
+                        &source,
+                        Some(location_transfer_of(transfer)),
+                        ctx,
+                    )
+                });
+                Task::batch([reload, continuous])
             }
         }
     }

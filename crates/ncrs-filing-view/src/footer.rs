@@ -68,7 +68,8 @@ pub fn footer<'a>(
         palette.text,
         palette.error,
     ];
-    let filed = tally(plan).filed;
+    let counts = tally(plan);
+    let filed = counts.filed;
     let mut tallies: Vec<Tally> = texts
         .into_iter()
         .zip(colors)
@@ -95,7 +96,8 @@ pub fn footer<'a>(
             palette,
         )
     };
-    let controls = vec![
+    let sure = filed - counts.unsure;
+    let mut controls = vec![
         row![
             checkbox(
                 if session.trash_dupes {
@@ -116,8 +118,20 @@ pub fn footer<'a>(
             Tone::Secondary,
             palette,
         ),
-        carry(Transfer::Copy, Msg::FilingViewCopy, "↵"),
-        carry(Transfer::Move, Msg::FilingViewMove, "⇧↵"),
     ];
+    if counts.unsure > 0 && sure > 0 {
+        controls.push(button(
+            &say(
+                lang,
+                Msg::FilingViewMoveSure,
+                &[("count", &sure.to_string())],
+            ),
+            (ready && !session.copy_only).then_some(Message::FileSure),
+            Tone::Secondary,
+            palette,
+        ));
+    }
+    controls.push(carry(Transfer::Copy, Msg::FilingViewCopy, "↵"));
+    controls.push(carry(Transfer::Move, Msg::FilingViewMove, "⇧↵"));
     compare_bar(lang.text(Msg::FilingViewTitle), tallies, controls, palette)
 }

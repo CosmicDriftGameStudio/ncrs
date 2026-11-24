@@ -87,7 +87,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
     match message {
         Message::Cancel => return cancel(state, ctx),
         Message::Filed(result) => return filed(state, result),
-        Message::File(transfer) => return file(state, transfer, ctx),
+        Message::File(transfer) => return file(state, transfer, false, ctx),
+        Message::FileSure => return file(state, Transfer::Move, true, ctx),
         Message::Marked(_) => return nothing(),
         _ => {}
     }
@@ -171,7 +172,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
                 session.closed_folders.insert(folder);
             }
         }
-        Message::Cancel | Message::Filed(_) | Message::File(_) | Message::Marked(_) => {}
+        Message::Cancel
+        | Message::Filed(_)
+        | Message::File(_)
+        | Message::FileSure
+        | Message::Marked(_) => {}
     }
     (task, None)
 }
@@ -394,7 +399,7 @@ fn cancel(state: &mut State, ctx: &Ctx) -> Step {
     (task, Some(Action::Close))
 }
 
-fn file(state: &mut State, transfer: Transfer, ctx: &Ctx) -> Step {
+fn file(state: &mut State, transfer: Transfer, sure_only: bool, ctx: &Ctx) -> Step {
     let Some(session) = state.session.as_mut() else {
         return nothing();
     };
@@ -404,10 +409,15 @@ fn file(state: &mut State, transfer: Transfer, ctx: &Ctx) -> Step {
     if session.copy_only && transfer == Transfer::Move {
         return nothing();
     }
-    if session
-        .shown_ref()
-        .is_none_or(|plan| tally(&plan).filed == 0)
-    {
+    if session.shown_ref().is_none_or(|plan| {
+        let counts = tally(&plan);
+        let carried = if sure_only {
+            counts.filed - counts.unsure
+        } else {
+            counts.filed
+        };
+        carried == 0
+    }) {
         return nothing();
     }
     let (Some(access), Some(plan)) = (ctx.access.clone(), session.shown_plan()) else {
@@ -433,6 +443,7 @@ fn file(state: &mut State, transfer: Transfer, ctx: &Ctx) -> Step {
                     &access,
                     &plan,
                     transfer,
+                    sure_only,
                     (run_name, trash_name),
                     trash,
                     (&tags, &unexpected),
@@ -452,6 +463,7 @@ fn carry_out(
     access: &ChatAccess,
     plan: &LivePlan,
     transfer: Transfer,
+    sure_only: bool,
     names: (String, String),
     trash: bool,
     (tags, unexpected): (&ncrs_filing::chat_work::LiveTags, &str),
@@ -460,7 +472,7 @@ fn carry_out(
     let _running = access.begin_work();
     mark_files(access, plan, tags)?;
     let ChatResult::Filed(report) = access.run(ChatWork::File {
-        run: run_plan(plan, transfer, run_name),
+        run: run_plan(&carried_plan(plan, sure_only), transfer, run_name),
     }) else {
         return Err(unexpected.to_owned());
     };
@@ -494,6 +506,7 @@ fn carry_out(
         .files
         .iter()
         .filter(|file| match &file.state {
+            LiveState::Filed { unsure: true, .. } if sure_only => true,
             LiveState::Filed { folder, name, .. } => {
                 carried.skipped > 0 && not_carried(plan, transfer, &file.from, &folder.join(name))
             }
@@ -509,6 +522,18 @@ fn carry_out(
         left,
         batch: carried.batch,
     })
+}
+
+/// The plan as it is carried out: without the unsure files when only the sure
+/// ones go.
+pub fn carried_plan(plan: &LivePlan, sure_only: bool) -> LivePlan {
+    let mut carried = plan.clone();
+    if sure_only {
+        carried
+            .files
+            .retain(|file| !matches!(file.state, LiveState::Filed { unsure: true, .. }));
+    }
+    carried
 }
 
 /// Whether a file the plan filed is still undone after a run that skipped some:

@@ -91,6 +91,7 @@ struct Scan {
     name: String,
     fields: String,
     outcome: &'static str,
+    neighbour: String,
     proposal: Option<Vec<String>>,
     candidates: Vec<Vec<String>>,
     proposed_name: String,
@@ -136,6 +137,10 @@ fn scan_of(
                 .map_or_else(|| "-".to_owned(), |date| date.to_string())
         ),
         outcome,
+        neighbour: entry
+            .neighbour
+            .as_ref()
+            .map_or_else(String::new, |folder| folder.display().to_string()),
         proposal,
         candidates,
         proposed_name,
@@ -227,7 +232,7 @@ fn report_of(
     with_model: bool,
 ) -> String {
     let mut text = String::from(
-        "| Scan | Sender / Art / Datum | Ergebnis | Modell | Vorschlag | Name | Soll | Treffer |\n|---|---|---|---|---|---|---|---|\n",
+        "| Scan | Sender / Art / Datum | Nachbar | Ergebnis | Modell | Vorschlag | Name | Soll | Treffer |\n|---|---|---|---|---|---|---|---|---|\n",
     );
     let cell = |value: &str| value.replace('|', "/").replace('\n', " ");
     for scan in scans {
@@ -258,9 +263,10 @@ fn report_of(
         };
         writeln!(
             text,
-            "| {} | {} | {} | {} | {} | {} | {} | {hit} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {hit} |",
             cell(&scan.name),
             cell(&scan.fields),
+            cell(&scan.neighbour),
             scan.outcome,
             cell(&modelled),
             cell(&proposal),

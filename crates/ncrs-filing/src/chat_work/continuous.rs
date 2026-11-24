@@ -1,6 +1,6 @@
 //! Filing new files by itself: the sure places of the filing tab are carried
 //! out as a run of their own, everything else stays for the tab. The model's
-//! own pick counts as a sure place here too, since the run can be undone.
+//! pick alone is no sure place: it waits in the tab until the user confirms it.
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,6 @@ use ncrs_ai::ChatModel;
 use ncrs_index::{DocumentStatus, Transfer};
 
 use super::live::{plan_listed, run_plan, LiveFile, LivePlan, LiveRun, LiveState};
-use super::trial::PlacedBy;
 use super::{runs, ChatAccess};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -20,11 +19,7 @@ pub struct ContinuousReport {
 }
 
 fn is_sure_place(file: &LiveFile) -> bool {
-    matches!(file.state, LiveState::Filed { unsure: false, .. }) || is_model_pick(file)
-}
-
-fn is_model_pick(file: &LiveFile) -> bool {
-    matches!(file.state, LiveState::Filed { .. }) && file.placed_by == Some(PlacedBy::Model)
+    matches!(file.state, LiveState::Filed { unsure: false, .. })
 }
 
 /// The documents under `roots` that the index holds as new and without an

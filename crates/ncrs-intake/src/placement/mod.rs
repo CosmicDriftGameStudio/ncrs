@@ -20,9 +20,10 @@ use crate::filing_plan::missing_field;
 use crate::reorganisation::PlanFile;
 use crate::sender_detection::found_ibans;
 use crate::structure::LocationStructure;
+use sender_key::SenderKey;
 
 /// Lower-case spelling as written in a letter, and how it is shown.
-const NUMBER_LABELS: [(&str, &str); 14] = [
+const NUMBER_LABELS: [(&str, &str); 20] = [
     ("darlehensnummer", "Darlehensnummer"),
     ("versicherungsnummer", "Versicherungsnummer"),
     ("vertragsnummer", "Vertragsnummer"),
@@ -37,6 +38,22 @@ const NUMBER_LABELS: [(&str, &str); 14] = [
     ("contract number", "Contract number"),
     ("customer number", "Customer number"),
     ("member number", "Member number"),
+    ("konto-nr", "Konto-Nr."),
+    ("kontonummer", "Kontonummer"),
+    ("stamm-nr", "Stamm-Nr."),
+    ("depot-nr", "Depot-Nr."),
+    ("depotnummer", "Depotnummer"),
+    ("account number", "Account number"),
+];
+/// The numbers of an account. Letters of other senders may state one's own
+/// account as well, so they only decide when the folders agree.
+const ACCOUNT_LABELS: [&str; 6] = [
+    "Konto-Nr.",
+    "Kontonummer",
+    "Stamm-Nr.",
+    "Depot-Nr.",
+    "Depotnummer",
+    "Account number",
 ];
 const TAX_NUMBER_LABEL: &str = "Steuernummer";
 const MIN_VALUE_CHARS: usize = 3;
@@ -58,7 +75,7 @@ static LABELLED_NUMBER: LazyLock<Option<Regex>> = LazyLock::new(|| {
         .map(|(spelling, _)| spelling.replace(' ', r"[ \t]+"))
         .collect();
     compile_bounded_regex(&format!(
-        r"(?i)\b({})\b[ \t]*(?:nr\.?)?[ \t]*[:\-]?[ \t]*([A-Za-z0-9][A-Za-z0-9/\-]*(?:[ \t][0-9]{{1,5}}\b)?)",
+        r"(?i)\b({})\b[ \t]*(?:nr)?\.?[ \t]*[:\-]?[ \t]*([A-Za-z0-9][A-Za-z0-9/\-]*(?:[ \t][0-9]{{1,5}}\b)?)",
         labels.join("|")
     ))
     .ok()
@@ -82,7 +99,7 @@ struct Features {
 #[derive(Debug)]
 struct Neighbour {
     folder: PathBuf,
-    sender: Option<String>,
+    sender_key: Option<SenderKey>,
     kind: Option<String>,
     features: Features,
     subtree: Option<String>,
@@ -227,7 +244,7 @@ impl NeighbourIndex {
                     .parent()
                     .map(Path::to_path_buf)
                     .unwrap_or_default(),
-                sender: document.fields.sender.clone(),
+                sender_key: document.fields.sender.as_deref().and_then(SenderKey::of),
                 kind: document.fields.kind.clone(),
                 features: features_of(document.text.as_deref(), &own_ibans, &own_tax_ids),
                 subtree,
@@ -258,8 +275,15 @@ impl NeighbourIndex {
     /// say anything.
     pub fn place(&self, fields: &DocumentFields, text: Option<&str>) -> Option<Placement> {
         let features = features_of(text, &self.own_ibans, &self.own_tax_ids);
-        let same_sender =
-            |neighbour: &&Neighbour| fields.sender.is_some() && neighbour.sender == fields.sender;
+        let sender_key = fields.sender.as_deref().and_then(SenderKey::of);
+        let same_sender = |neighbour: &&Neighbour| {
+            sender_key.as_ref().is_some_and(|wanted| {
+                neighbour
+                    .sender_key
+                    .as_ref()
+                    .is_some_and(|other| wanted.matches(other))
+            })
+        };
         let wanted_kind = fields.kind.as_deref().map(|kind| self.kind_key(kind));
         let same_kind = |neighbour: &&Neighbour| {
             wanted_kind.is_some()
@@ -281,7 +305,10 @@ impl NeighbourIndex {
                 label: number.label.to_owned(),
                 value: number.value.clone(),
             };
-            return Some(self.settle(signal, &group, fields));
+            let placement = self.settle(signal, &group, fields);
+            if placement.is_sure() || !ACCOUNT_LABELS.contains(&number.label) {
+                return Some(placement);
+            }
         }
 
         let with_iban = features
@@ -290,7 +317,18 @@ impl NeighbourIndex {
             .map(|iban| self.similar(|neighbour| neighbour.features.ibans.contains(iban)))
             .max_by_key(Vec::len);
         if let Some(group) = with_iban.filter(|group| group.len() >= MIN_IBAN_NEIGHBOURS) {
-            return Some(self.settle(Signal::SameIban, &group, fields));
+            let placement = self.settle(Signal::SameIban, &group, fields);
+            // An account also stands on what others write to its holder, like
+            // the rent account in a lease: a document of another sender and
+            // kind than the account's documents is not placed by it alone.
+            let from_elsewhere = sender_key.is_some()
+                && wanted_kind.is_some()
+                && !group
+                    .iter()
+                    .any(|neighbour| same_sender(neighbour) || same_kind(neighbour));
+            if !(placement.is_sure() && from_elsewhere) {
+                return Some(placement);
+            }
         }
 
         let of_sender = self.similar(|neighbour| same_sender(&neighbour));
@@ -311,6 +349,22 @@ impl NeighbourIndex {
             });
         }
         None
+    }
+
+    /// What alike documents share, so that they are asked about once: the
+    /// account number when the text states one, else the sender and the kind.
+    pub fn group_key(&self, fields: &DocumentFields, text: Option<&str>) -> Option<String> {
+        let features = features_of(text, &self.own_ibans, &self.own_tax_ids);
+        if let Some(account) = features
+            .numbers
+            .iter()
+            .find(|number| ACCOUNT_LABELS.contains(&number.label))
+        {
+            return Some(format!("account:{}", account.value));
+        }
+        let sender = fields.sender.as_deref().and_then(SenderKey::of)?;
+        let kind = fields.kind.as_deref().map(|kind| self.kind_key(kind))?;
+        Some(format!("sender:{}|{kind}", sender.joined()))
     }
 
     fn similar(&self, matches: impl Fn(&Neighbour) -> bool) -> Vec<&Neighbour> {
@@ -520,5 +574,6 @@ fn busiest_folders(group: &[&Neighbour]) -> (PathBuf, usize, Option<PathBuf>) {
     )
 }
 
+mod sender_key;
 #[cfg(test)]
 mod tests;

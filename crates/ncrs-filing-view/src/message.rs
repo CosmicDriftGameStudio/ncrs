@@ -43,6 +43,9 @@ pub enum Message {
     ToggleTrashDupes,
     ToggleFolder(PathBuf),
     File(Transfer),
+    /// Moves only the files with a sure place; the unsure ones stay in the read
+    /// folder.
+    FileSure,
     Filed(Result<FiledReport, String>),
     Cancel,
     /// The tags of a cancelled plan are written; nothing to do.

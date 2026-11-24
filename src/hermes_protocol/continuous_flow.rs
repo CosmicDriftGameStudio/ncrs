@@ -116,13 +116,23 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let mut idle_since: Option<Instant> = None;
         let mut status_shot = false;
         let mut last_status = Instant::now();
+        let mut reports_seen = 0;
         while started.elapsed() < limit {
+            if self.background_reports.len() > reports_seen {
+                reports_seen = self.background_reports.len();
+                println!(
+                    "[{}] background report {reports_seen} after {:.1} s",
+                    self.language.code(),
+                    started.elapsed().as_secs_f64()
+                );
+            }
             if last_status.elapsed() >= Duration::from_secs(60) {
                 last_status = Instant::now();
                 println!(
-                    "[{}] waiting: {}",
+                    "[{}] waiting: {}, in flight {}",
                     self.language.code(),
-                    self.pipeline_line()
+                    self.pipeline_line(),
+                    self.session.in_flight
                 );
             }
             if last_tick.elapsed() >= Duration::from_secs(1) {
@@ -227,6 +237,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             self.app().command_palette_for_test().is_none(),
             "the command palette is still open before the settings"
         );
+        if self.app().settings_for_test().is_none() {
+            self.deliver(Message::Settings(SettingsMessage::Toggle));
+        }
         self.deliver(Message::Settings(SettingsMessage::Select(
             SettingsFeature::Hermes,
         )));

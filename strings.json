@@ -12523,6 +12523,18 @@
       "de": "Hermes: nicht lesbar"
     },
     {
+      "key": "filing_view.tag_unsure",
+      "context": "Filing tab: chip after a planned file whose folder is only the model's guess and should be checked. Keep the leading question mark.",
+      "en": "? unsure",
+      "de": "? unsicher"
+    },
+    {
+      "key": "filing_view.move_sure",
+      "context": "Filing tab: button that moves only the planned files whose place is sure and leaves the unsure ones in the read folder. {count} is how many.",
+      "en": "Move only {count} sure",
+      "de": "Nur {count} sichere verschieben"
+    },
+    {
       "key": "filing_view.tag_no_folder",
       "context": "Filing tab: the tag put on a file for which no folder fits; also shown as a chip in its row. Keep the prefix.",
       "en": "Hermes: no folder",

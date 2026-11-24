@@ -40,13 +40,22 @@ pub fn what_happens(
             palette.dim_text,
             None,
         ),
-        LiveState::Filed { folder, name, .. } => {
+        LiveState::Filed {
+            folder,
+            name,
+            unsure,
+        } => {
             let path = folder.join(name).display().to_string();
-            (
-                say(lang, Msg::FilingViewStateFiled, &[("path", &path)]),
-                palette.success,
-                None,
-            )
+            let line = say(lang, Msg::FilingViewStateFiled, &[("path", &path)]);
+            if *unsure {
+                (
+                    line,
+                    palette.text,
+                    Some(lang.text(Msg::FilingViewTagUnsure).to_owned()),
+                )
+            } else {
+                (line, palette.success, None)
+            }
         }
         LiveState::AlreadyThere { at } => (
             say(

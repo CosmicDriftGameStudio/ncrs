@@ -120,7 +120,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                     self.continuous_after_copy(&new_files);
                 }
             }
-            Ok("move") => self.move_planned_files(),
+            Ok("move") => self.move_planned_files(false),
+            Ok("move-sure") => self.move_planned_files(true),
             _ => {}
         }
         if continuous && std::env::var("NCRS_EVAL_FILE").as_deref() != Ok("copy") {
@@ -240,9 +241,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     /// Presses `transfer` in the tab and ticks until its session is gone;
     /// false when 300 s were not enough.
     fn press_and_wait(&mut self, transfer: ncrs_index::Transfer) -> bool {
-        self.deliver(Message::FilingView(ncrs_filing_view::Message::File(
-            transfer,
-        )));
+        self.press_message_and_wait(ncrs_filing_view::Message::File(transfer))
+    }
+
+    fn press_message_and_wait(&mut self, press: ncrs_filing_view::Message) -> bool {
+        self.deliver(Message::FilingView(press));
         let started = Instant::now();
         while started.elapsed() < Duration::from_secs(300)
             && self.app().filing_session_for_test().is_some()
@@ -278,8 +281,14 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     /// `NCRS_EVAL_FILE=move`: moves the planned files with the duplicates in
     /// the source trashed, checks archive and source, then undoes the run in
     /// the chat and records what came back.
-    fn move_planned_files(&mut self) {
+    /// `sure_only`: presses "Move only the sure ones"; the unsure files stay.
+    fn move_planned_files(&mut self, sure_only: bool) {
         use ncrs_filing::chat_work::LiveState;
+        let label = if sure_only {
+            "5 tidy move sure"
+        } else {
+            "5 tidy move"
+        };
         let started = Instant::now();
         let Some(plan) = self
             .app()
@@ -287,7 +296,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             .and_then(|session| session.shown_plan())
         else {
             self.record(
-                "5 tidy move",
+                label,
                 "no plan in the tab",
                 started.elapsed().as_secs_f64(),
                 "",
@@ -301,6 +310,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let mut duplicates = Vec::new();
         for file in &plan.files {
             match &file.state {
+                LiveState::Filed { unsure: true, .. } if sure_only => {}
                 LiveState::Filed { folder, name, .. } => {
                     rows.push(folder.join(name));
                     moved_sources.insert(file.from.clone());
@@ -322,7 +332,12 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.deliver(Message::FilingView(
             ncrs_filing_view::Message::ToggleTrashDupes,
         ));
-        let done = self.press_and_wait(ncrs_index::Transfer::Move);
+        let done = if sure_only {
+            self.shot("filing-unsure-marked");
+            self.press_message_and_wait(ncrs_filing_view::Message::FileSure)
+        } else {
+            self.press_and_wait(ncrs_index::Transfer::Move)
+        };
         let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
         let archive_after = self.files_below(&self.archive);
         let downloads_after = self.files_below(&self.downloads);
@@ -390,9 +405,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             duplicates.len(),
             back.join(", ")
         );
-        println!("[{}] 5 tidy move: {summary}", self.language.code());
+        println!("[{}] {label}: {summary}", self.language.code());
         self.record(
-            "5 tidy move",
+            label,
             &summary,
             started.elapsed().as_secs_f64(),
             &format!("{moved_image}, {undone_image}"),

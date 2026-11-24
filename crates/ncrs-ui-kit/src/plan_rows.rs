@@ -67,6 +67,10 @@ pub fn plan_file_row<'a, M: Clone + 'a>(
     list_row(line.into(), file.on_press, file.chosen, true, palette)
 }
 
+/// The most room the old name behind a renamed file takes: the new name comes
+/// first, a longer old name is cut with an ellipsis.
+const OLD_NAME_WIDTH: f32 = 260.0;
+
 /// A file that comes into a folder: `+ new name`, and `← old name` dim behind
 /// it when it is renamed.
 #[derive(Debug)]
@@ -90,7 +94,13 @@ pub fn new_file_row<'a, M: Clone + 'a>(file: NewFileRow<M>, palette: &Palette) -
             lead: Some(("+".to_owned(), palette.text)),
             trail: file
                 .old_name
-                .map(|old| (format!("\u{2190} {old}"), palette.dim_text))
+                .map(|old| {
+                    let shown = format!("\u{2190} {old}");
+                    (
+                        format::fit_end(&shown, OLD_NAME_WIDTH, font_size::SMALL),
+                        palette.dim_text,
+                    )
+                })
                 .into_iter()
                 .collect(),
             on_press: file.on_press,

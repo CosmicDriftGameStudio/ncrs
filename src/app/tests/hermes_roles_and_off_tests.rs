@@ -326,6 +326,54 @@ async fn filing_once_opens_the_tab_without_the_continuous_mark() {
 }
 
 #[tokio::test]
+async fn the_panels_show_the_folder_without_the_moved_files_after_a_run() {
+    let config = tempfile::tempdir().unwrap();
+    let (mut app, source) = with_a_folder_to_file(&config).await;
+    let moved = source.join("scan.pdf");
+    std::fs::write(&moved, b"scan").unwrap();
+    let opened = app.load(LEFT, source.clone(), None);
+    drive(&mut app, opened).await;
+    let shows_scan = |shown: &App| {
+        shown
+            .panel(LEFT)
+            .entries
+            .iter()
+            .any(|entry| entry.name == "scan.pdf")
+    };
+    assert!(shows_scan(&app));
+
+    std::fs::remove_file(&moved).unwrap();
+    let mut run = finished_run(&source, 1);
+    if let ncrs_filing_view::Action::Finished {
+        then_continuous, ..
+    } = &mut run
+    {
+        *then_continuous = false;
+    }
+    let finished = app.run_filing_action(run);
+    drive(&mut app, finished).await;
+
+    assert!(!shows_scan(&app));
+}
+
+/// Runs `first` and delivers everything it and the tasks after it report.
+async fn drive(app: &mut App, first: Task<Message>) {
+    let mut queue = vec![first];
+    while let Some(next) = queue.pop() {
+        let Some(mut stream) = task::into_stream(next) else {
+            continue;
+        };
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                if !matches!(reported, Message::NoticeExpired(_)) {
+                    queue.push(app.update(reported));
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn the_folder_files_by_itself_only_after_a_run_was_filed() {
     let config = tempfile::tempdir().unwrap();
     let (mut app, source) = with_a_folder_to_file(&config).await;

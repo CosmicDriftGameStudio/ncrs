@@ -378,3 +378,73 @@ fn the_tab_says_while_the_files_are_carried_out() {
 
     assert!(!title.contains('✓'));
 }
+
+fn unsure(folder: &str, name: &str) -> LiveState {
+    LiveState::Filed {
+        folder: PathBuf::from(folder),
+        name: name.to_owned(),
+        unsure: true,
+    }
+}
+
+#[test]
+fn an_unsure_place_gets_the_chip_and_not_the_success_color() {
+    let palette = ncrs_ui_kit::palette::Palette::default();
+
+    let (_, color, chip) = crate::left::what_happens(
+        Language::English,
+        &palette,
+        &file("a.pdf", unsure("R", "a.pdf")),
+    );
+    assert_eq!(color, palette.text);
+    assert_eq!(chip.as_deref(), Some("? unsure"));
+
+    let (_, sure_color, sure_chip) = crate::left::what_happens(
+        Language::English,
+        &palette,
+        &file("a.pdf", filed("R", "a.pdf")),
+    );
+    assert_eq!(sure_color, palette.success);
+    assert_eq!(sure_chip, None);
+}
+
+#[test]
+fn the_tally_counts_the_unsure_files_among_the_filed() {
+    let state = state_with(
+        vec![
+            file("a.pdf", filed("R", "a.pdf")),
+            file("b.pdf", filed("R", "b.pdf")),
+            file("c.pdf", unsure("S", "c.pdf")),
+        ],
+        true,
+    );
+    let counts = ncrs_filing::chat_work::tally(&session(&state).shown_plan().unwrap());
+    assert_eq!((counts.filed, counts.unsure), (3, 1));
+}
+
+#[test]
+fn only_the_sure_files_are_carried_out_on_request() {
+    let state = state_with(
+        vec![
+            file("a.pdf", filed("R", "a.pdf")),
+            file("c.pdf", unsure("S", "c.pdf")),
+            file("d.pdf", LiveState::NoFolder),
+        ],
+        true,
+    );
+    let plan = session(&state).shown_plan().unwrap();
+
+    let sure = crate::update::carried_plan(&plan, true);
+    let names: Vec<_> = sure.files.iter().map(|file| file.from.clone()).collect();
+    assert_eq!(names, [PathBuf::from("a.pdf"), PathBuf::from("d.pdf")]);
+    assert_eq!(crate::update::carried_plan(&plan, false), plan);
+}
+
+#[test]
+fn nothing_is_moved_as_sure_when_every_place_is_unsure() {
+    let mut state = state_with(vec![file("a.pdf", unsure("S", "a.pdf"))], true);
+
+    send(&mut state, Message::FileSure);
+
+    assert!(!session(&state).filing);
+}

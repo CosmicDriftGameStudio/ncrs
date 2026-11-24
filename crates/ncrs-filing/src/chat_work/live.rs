@@ -100,6 +100,8 @@ pub struct Tally {
     pub waiting: usize,
     pub looking: usize,
     pub filed: usize,
+    /// How many of the filed files have only the model's guess as their place.
+    pub unsure: usize,
     /// The distinct folders the filed files go to.
     pub folders: usize,
     pub already_there: usize,
@@ -561,8 +563,9 @@ pub fn tally(plan: &LivePlan) -> Tally {
         match &file.state {
             LiveState::Waiting => tally.waiting += 1,
             LiveState::Looking | LiveState::NeedsModel => tally.looking += 1,
-            LiveState::Filed { folder, .. } => {
+            LiveState::Filed { folder, unsure, .. } => {
                 tally.filed += 1;
+                tally.unsure += usize::from(*unsure);
                 folders.insert(folder);
             }
             LiveState::AlreadyThere { .. } => tally.already_there += 1,
