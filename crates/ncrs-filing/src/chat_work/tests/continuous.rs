@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleSpec};
 
+use super::live::index_known;
 use super::picks::RecordingModel;
 use super::*;
 use crate::chat_work::{file_new, plan_listed, ContinuousReport};
@@ -27,7 +28,7 @@ fn setup_with_rule() -> Setup {
     setup.write("inbox/one.txt", "Zeta contract number one");
     setup.write("inbox/two.txt", "Zeta contract number two");
     setup.write("inbox/other.txt", "Something nobody knows");
-    setup.write("archive/Alfa/old.txt", "Alfa AG invoice");
+    index_known(&setup, "archive/Alfa/old.txt", "Alfa AG invoice");
     let ChatResult::RuleStored(stored) = setup.access.run(ChatWork::SaveRule {
         spec: rule_for("Zeta contract", "Zeta"),
     }) else {
@@ -109,12 +110,44 @@ fn a_copy_leaves_the_source_files_in_place() {
 fn nothing_is_filed_without_a_sure_place_and_no_run_is_made() {
     let setup = Setup::new();
     setup.write("inbox/other.txt", "Something nobody knows");
-    setup.write("archive/Alfa/old.txt", "Alfa AG invoice");
+    index_known(&setup, "archive/Alfa/old.txt", "Alfa AG invoice");
 
     let report = file_all(&setup, &[PathBuf::from("other.txt")], Transfer::Move);
 
     assert_eq!(report, ContinuousReport { filed: 0, left: 1 });
     assert!(setup.access.recent_runs(5).unwrap().is_empty());
+}
+
+#[test]
+fn a_file_only_the_model_picked_a_folder_for_is_filed_and_can_be_undone() {
+    let setup = Setup::new();
+    setup.write("inbox/other.txt", "Gamma KG invoice");
+    index_known(&setup, "archive/Alfa/old.txt", "Alfa AG invoice");
+    index_known(&setup, "archive/Beta/old.txt", "Beta GmbH invoice");
+    let inbox = setup.dir.path().join("inbox");
+    let beta = setup.dir.path().join("archive/Beta");
+    let model = RecordingModel {
+        picks_folder: Some("Beta"),
+        ..RecordingModel::default()
+    };
+
+    let report = file_new(
+        &setup.access,
+        &inbox,
+        &setup.dir.path().join("archive"),
+        &[PathBuf::from("other.txt")],
+        Transfer::Move,
+        &model,
+        "inbox filed continuously".to_owned(),
+    )
+    .unwrap();
+
+    assert_eq!(report, ContinuousReport { filed: 1, left: 0 });
+    assert!(!inbox.join("other.txt").exists());
+    assert_eq!(files_in(&beta), 2);
+    let runs = setup.access.recent_runs(5).unwrap();
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].undoable);
 }
 
 #[test]

@@ -175,6 +175,8 @@ pub struct ReviewsPage {
     comparisons: HashMap<DocumentId, Option<TargetComparison>>,
     /// The documents that wait for the folder the user is picking.
     awaiting_folder: Vec<ReviewItem>,
+    /// How many files an answer is being carried out for in the background.
+    busy_with: Option<usize>,
     /// What was typed in the inputs of the rows, by document.
     inputs: HashMap<DocumentId, String>,
 }
@@ -190,6 +192,7 @@ impl ReviewsPage {
             unfolded: HashSet::new(),
             comparisons: HashMap::new(),
             awaiting_folder: Vec::new(),
+            busy_with: None,
             inputs: HashMap::new(),
         }
     }
@@ -233,6 +236,19 @@ impl ReviewsPage {
     pub fn remove_already_filed(&mut self, paths: &[PathBuf]) {
         self.already_filed
             .retain(|found| !paths.contains(&found.path));
+    }
+
+    pub fn work_started(&mut self, files: usize) {
+        self.busy_with = Some(files);
+    }
+
+    pub fn work_finished(&mut self) {
+        self.busy_with = None;
+    }
+
+    /// How many files the running answer is for; the answers are off meanwhile.
+    pub fn busy_with(&self) -> Option<usize> {
+        self.busy_with
     }
 
     pub fn failed(&mut self, detail: String) {
@@ -611,6 +627,18 @@ mod tests {
             existing: facts,
             same_content,
         })
+    }
+
+    #[test]
+    fn a_page_is_busy_from_the_start_of_an_answer_to_its_end() {
+        let mut page = page_of(items_of(ReviewReason::NoMatchingRule, 3));
+        assert_eq!(page.busy_with(), None);
+
+        page.work_started(3);
+        assert_eq!(page.busy_with(), Some(3));
+
+        page.work_finished();
+        assert_eq!(page.busy_with(), None);
     }
 
     #[test]

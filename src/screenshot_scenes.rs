@@ -267,6 +267,7 @@ pub fn filing_tab(read: usize, done: bool) -> ncrs_filing_view::State {
             hash: Some(ContentHash([1; 32])),
             state: filing_state(index, resolved),
             by_user: false,
+            placed_by: None,
         })
         .collect();
     session.plan = Some(LivePlan {

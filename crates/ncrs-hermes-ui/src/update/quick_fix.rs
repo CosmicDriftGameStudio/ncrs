@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, NotMoved, ReviewItem};
 use ncrs_i18n::{fill_template, Msg};
 
 use super::rules::open_rule_form;
@@ -181,7 +181,7 @@ fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> T
             Message::QuickFix(QuickFixMessage::Filed(joined.unwrap_or_else(|err| {
                 AcceptSummary {
                     failed: 1,
-                    first_failure: Some(err.to_string()),
+                    first_failure: Some(NotMoved::other(err.to_string())),
                     ..AcceptSummary::default()
                 }
             })))
@@ -283,7 +283,11 @@ pub(in crate::update) fn filed(
     match accept_notice(summary, ctx.lang) {
         Some(text) => actions.push(Action::ShowNotice(text)),
         None => actions.push(Action::ShowError(
-            summary.first_failure.clone().unwrap_or_default(),
+            summary
+                .first_failure
+                .as_ref()
+                .map(|failure| failure.text(ctx.lang))
+                .unwrap_or_default(),
         )),
     }
     actions.push(Action::ReloadPanels);

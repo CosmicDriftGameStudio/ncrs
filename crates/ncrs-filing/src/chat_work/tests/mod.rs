@@ -34,6 +34,10 @@ struct Setup {
 
 impl Setup {
     fn new() -> Self {
+        Self::with_chain(TextChain::new().with_source(PlainText))
+    }
+
+    fn with_chain(chain: TextChain) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
         let bin = dir.path().join("bin");
@@ -41,7 +45,7 @@ impl Setup {
         let trash = JournaledTrash::new(dir.path().join("trash.toml"), FolderBackend(bin));
         let access = ChatAccess::new(
             Arc::new(Mutex::new(Some(index))),
-            Arc::new(TextChain::new().with_source(PlainText)),
+            Arc::new(chain),
             Arc::new(trash),
         );
         Self { dir, access }

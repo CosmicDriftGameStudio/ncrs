@@ -82,6 +82,7 @@ mod ui_tests {
                 hash: Some(ContentHash([1; 32])),
                 state: state_of(index, resolved),
                 by_user: false,
+                placed_by: None,
             })
             .collect();
         session.plan = Some(LivePlan {

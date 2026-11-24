@@ -145,23 +145,69 @@ pub fn loaded(state: &mut State, ctx: &Ctx, result: Result<Vec<WaitingGroup>, St
     next(state, ctx, None);
 }
 
-/// The walk through exactly these documents, one question each.
+/// The walk through exactly these documents: those that would go to the same
+/// folder are one question, the others without a folder are one question per
+/// sender, and a document with neither is asked about alone.
 pub fn ask_about(state: &mut State, ctx: &Ctx, items: Vec<ncrs_filing::review_work::ReviewItem>) {
     state.step = Step::Idle;
     let total = items.len();
     state.session.waiting = Some(Walk {
-        groups: items
-            .into_iter()
-            .map(|item| WaitingGroup {
-                folder: None,
-                items: vec![item],
-            })
-            .collect(),
+        groups: grouped_for_questions(items).into(),
         current: None,
         total,
         filed: 0,
     });
     next(state, ctx, None);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SameThing {
+    Folder(PathBuf),
+    Sender(String),
+}
+
+fn same_thing_of(item: &ncrs_filing::review_work::ReviewItem) -> Option<SameThing> {
+    match (&item.placement, &item.fields.sender) {
+        (Some(placement), _) => Some(SameThing::Folder(placement.folder.clone())),
+        (None, Some(sender)) => Some(SameThing::Sender(sender.clone())),
+        (None, None) => None,
+    }
+}
+
+fn grouped_for_questions(items: Vec<ncrs_filing::review_work::ReviewItem>) -> Vec<WaitingGroup> {
+    let mut grouped: Vec<(Option<SameThing>, Vec<ncrs_filing::review_work::ReviewItem>)> =
+        Vec::new();
+    for item in items {
+        let same = same_thing_of(&item);
+        match grouped
+            .iter_mut()
+            .find(|(known, _)| same.is_some() && *known == same)
+        {
+            Some((_, members)) => members.push(item),
+            None => grouped.push((same, vec![item])),
+        }
+    }
+    grouped
+        .into_iter()
+        .map(|(_, members)| WaitingGroup {
+            folder: None,
+            items: members,
+        })
+        .collect()
+}
+
+/// The folder all documents of an unsure group would go to, when they agree.
+fn shared_placement(group: &WaitingGroup) -> Option<&std::path::Path> {
+    let first = group.items.first()?.placement.as_ref()?;
+    group
+        .items
+        .iter()
+        .all(|item| {
+            item.placement
+                .as_ref()
+                .is_some_and(|placement| placement.folder == first.folder)
+        })
+        .then_some(first.folder.as_path())
 }
 
 pub fn file_current(state: &mut State, ctx: &Ctx) {
@@ -277,6 +323,23 @@ fn next(state: &mut State, ctx: &Ctx, note: Option<String>) {
     hermes(state, parts, chips);
 }
 
+/// The first file names of the group, with an ellipsis when there are more.
+fn file_names(group: &WaitingGroup) -> String {
+    let names: Vec<String> = group
+        .items
+        .iter()
+        .take(NAMES_SHOWN)
+        .filter_map(|item| item.path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect();
+    let more = if group.items.len() > NAMES_SHOWN {
+        " …"
+    } else {
+        ""
+    };
+    format!("{}{more}", names.join(", "))
+}
+
 /// `None` for a group with nothing in it: there is nothing to ask.
 fn question(ctx: &Ctx, group: &WaitingGroup) -> Option<(Vec<Part>, Vec<Chip>)> {
     let skip = chip(
@@ -288,25 +351,13 @@ fn question(ctx: &Ctx, group: &WaitingGroup) -> Option<(Vec<Part>, Vec<Chip>)> {
     let first = group.items.first()?;
     Some(match (&group.folder, first) {
         (Some(folder), _) => {
-            let names: Vec<String> = group
-                .items
-                .iter()
-                .take(NAMES_SHOWN)
-                .filter_map(|item| item.path.file_name())
-                .map(|name| name.to_string_lossy().into_owned())
-                .collect();
-            let more = if group.items.len() > NAMES_SHOWN {
-                " …"
-            } else {
-                ""
-            };
             let sentence = fill(
                 ctx.lang,
                 Msg::HermesChatWaitingGroup,
                 &[
                     ("count", &number(group.items.len())),
                     ("folder", &segments(folder).join(" / ")),
-                    ("names", &format!("{}{more}", names.join(", "))),
+                    ("names", &file_names(group)),
                 ],
             );
             (
@@ -323,32 +374,34 @@ fn question(ctx: &Ctx, group: &WaitingGroup) -> Option<(Vec<Part>, Vec<Chip>)> {
                 ],
             )
         }
-        (None, item) => {
-            let name = item
-                .path
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let mut parts = vec![Part::Text(fill(
-                ctx.lang,
-                Msg::HermesChatWaitingUnsure,
-                &[("name", &name)],
-            ))];
+        (None, _) => {
+            let many = group.items.len() > 1;
+            let names = file_names(group);
+            let mut parts = vec![Part::Text(if many {
+                fill(
+                    ctx.lang,
+                    Msg::HermesChatWaitingUnsureMany,
+                    &[("count", &number(group.items.len())), ("names", &names)],
+                )
+            } else {
+                fill(ctx.lang, Msg::HermesChatWaitingUnsure, &[("name", &names)])
+            })];
             let mut chips = Vec::new();
-            if let Some(placement) = &item.placement {
-                let folder = segments(&placement.folder).join(" / ");
+            if let Some(placed) = shared_placement(group) {
+                let folder = segments(placed).join(" / ");
                 parts.push(Part::Text(fill(
                     ctx.lang,
                     Msg::HermesChatWaitingUnsureNear,
                     &[("folder", &folder)],
                 )));
+                let label = if many {
+                    Msg::HermesChatWaitingFileIntoMany
+                } else {
+                    Msg::HermesChatWaitingFileInto
+                };
                 chips.push(chip_labelled(
-                    fill(
-                        ctx.lang,
-                        Msg::HermesChatWaitingFileInto,
-                        &[("folder", &folder)],
-                    ),
-                    ChipReply::WaitingFileInto(placement.folder.clone()),
+                    fill(ctx.lang, label, &[("folder", &folder)]),
+                    ChipReply::WaitingFileInto(placed.to_path_buf()),
                     true,
                 ));
             }
@@ -377,7 +430,11 @@ fn unfiled_note(lang: Language, summary: &AcceptSummary) -> Option<String> {
                 ("count", &number(summary.failed)),
                 (
                     "reason",
-                    summary.first_failure.as_deref().unwrap_or_default(),
+                    &summary
+                        .first_failure
+                        .as_ref()
+                        .map(|failure| failure.text(lang))
+                        .unwrap_or_default(),
                 ),
             ],
         ));
@@ -417,7 +474,7 @@ mod tests {
         let summary = AcceptSummary {
             failed: 2,
             target_exists: 1,
-            first_failure: Some("disk full".to_owned()),
+            first_failure: Some(ncrs_filing::review_work::NotMoved::other("disk full")),
             ..AcceptSummary::default()
         };
         assert_eq!(
@@ -433,5 +490,78 @@ mod tests {
             ..AcceptSummary::default()
         };
         assert_eq!(unfiled_note(Language::English, &summary), None);
+    }
+}
+
+#[cfg(test)]
+mod group_tests {
+    use chrono::{TimeZone as _, Utc};
+    use ncrs_filing::review_work::{ReviewItem, TextState};
+    use ncrs_index::{
+        ContentHash, DocumentFields, DocumentSource, FieldOrigins, Index, NewDocument, ReviewReason,
+    };
+    use ncrs_intake::{Placement, Signal};
+
+    use super::*;
+
+    fn items_of(shapes: &[(Option<&str>, Option<&str>)]) -> Vec<ReviewItem> {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        (1..)
+            .zip(shapes)
+            .map(|(seed, (sender, folder))| {
+                let document = index
+                    .insert_document(&NewDocument {
+                        hash: ContentHash([seed; 32]),
+                        path: dir.path().join(format!("scan-{seed}.pdf")),
+                        source: DocumentSource::Inbox,
+                        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                        stamp: None,
+                    })
+                    .unwrap();
+                let reason = ReviewReason::NoMatchingRule;
+                ReviewItem {
+                    entry: index.add_review(document, reason).unwrap(),
+                    document_id: document,
+                    path: PathBuf::from(format!("inbox/scan-{seed}.pdf")),
+                    reason,
+                    text_state: TextState::Read,
+                    fields: DocumentFields {
+                        sender: sender.map(str::to_owned),
+                        ..DocumentFields::default()
+                    },
+                    proposed_pattern: None,
+                    origins: FieldOrigins::default(),
+                    passages: Vec::new(),
+                    placement: folder.map(|placed_in| Placement {
+                        folder: PathBuf::from(placed_in),
+                        signal: Signal::SameSender,
+                        agreeing: 3,
+                        similar: 3,
+                        pattern: None,
+                        missing: None,
+                        runner_up: None,
+                        candidates: Vec::new(),
+                    }),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn documents_with_one_folder_or_one_sender_are_asked_about_together() {
+        let mut shapes = vec![(Some("Company A"), Some("Insurance")); 5];
+        shapes.extend([(Some("Company B"), None); 3]);
+        shapes.push((None, None));
+
+        let groups = grouped_for_questions(items_of(&shapes));
+
+        let sizes: Vec<usize> = groups.iter().map(|group| group.items.len()).collect();
+        assert_eq!(sizes, [5, 3, 1]);
+        assert_eq!(
+            shared_placement(&groups[0]),
+            Some(std::path::Path::new("Insurance"))
+        );
+        assert_eq!(shared_placement(&groups[1]), None);
     }
 }

@@ -54,10 +54,15 @@ pub enum PlacedBy {
     Neighbours,
     /// Only the order of a target without neighbours.
     Layout,
+    /// The model chose the folder the neighbours offered first.
+    ModelAndNeighbours,
+    /// The model's folder alone: the neighbours offered none or another one.
+    Model,
 }
 
 impl PlacedBy {
-    /// Only a rule or neighbours make a place sure enough to file unasked.
+    /// Only a rule, neighbours or the model agreeing with them make a place
+    /// sure; the model alone stays unsure, like the order of a bare target.
     pub fn is_sure(self) -> bool {
         !matches!(self, Self::Layout)
     }
@@ -249,7 +254,7 @@ pub fn trial(
             files: &source.files,
             candidates: &candidate_lists,
         };
-        (model_left, model_failure) = ask_model(&asked, &mut entries, scope);
+        (model_left, model_failure) = ask_model(&asked, &mut entries, &mut taken, scope);
     }
 
     let count = |matches_outcome: fn(&TrialOutcome) -> bool| {
@@ -505,8 +510,9 @@ const MODEL_TEXT_CHARS: usize = 2000;
 pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 2;
 
 /// The files that did not get a sure place go to the model once, as a batch.
-/// A file it picks a folder for is unsure: the model's folder first, then the
-/// one the neighbours offered. A model that fails changes nothing and stores
+/// A file it picks a folder for gets the model's folder first, then the one
+/// the neighbours offered: filed when the neighbours offered it first, else
+/// unsure and placed by the model alone. A model that fails changes nothing and stores
 /// nothing: the files it was asked about stay among the ones that still need
 /// it, and the failure is returned. Picks stored by an earlier trial count as
 /// the model's answer and are not asked again.
@@ -514,6 +520,7 @@ pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 2;
 fn ask_model(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
+    taken: &mut BTreeSet<PathBuf>,
     scope: &ModelScope,
 ) -> (BTreeSet<PathBuf>, Option<AiError>) {
     let needing_model: Vec<usize> = entries
@@ -525,7 +532,7 @@ fn ask_model(
     if needing_model.is_empty() || ask.folders.entries.is_empty() {
         return (BTreeSet::new(), None);
     }
-    let wanting = apply_stored_picks(ask, entries, needing_model);
+    let wanting = apply_stored_picks(ask, entries, taken, needing_model);
     let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
         ModelScope::FirstPage => {
             let mut asked = wanting;
@@ -588,7 +595,7 @@ fn ask_model(
             to_remember.push((entry.hash, folder_name.clone()));
         }
         if let Some(folder) = folder_name {
-            offer_model_folder(ask, entries, position, folder_path(&folder));
+            offer_model_folder(ask, entries, taken, position, folder_path(&folder));
         }
     }
     // The picks are a cache: a trial without them is only slower next time.
@@ -606,6 +613,7 @@ fn ask_model(
 fn apply_stored_picks(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
+    taken: &mut BTreeSet<PathBuf>,
     wanting: Vec<usize>,
 ) -> Vec<usize> {
     let hashes: Vec<ContentHash> = wanting
@@ -629,7 +637,7 @@ fn apply_stored_picks(
         match stored.get(&entry.hash) {
             Some(None) => {}
             Some(Some(folder)) if ask.folders.entries.iter().any(|(known, _)| known == folder) => {
-                offer_model_folder(ask, entries, position, folder_path(folder));
+                offer_model_folder(ask, entries, taken, position, folder_path(folder));
             }
             Some(Some(_)) | None => remaining.push(position),
         }
@@ -644,10 +652,12 @@ fn folder_path(folder: &str) -> PathBuf {
 }
 
 /// Makes the file unsure with the model's `folder` first, then what the
-/// neighbours offered.
+/// neighbours offered. When the model's folder is the one the neighbours
+/// offered first, two independent signals agree: the file is filed there.
 fn offer_model_folder(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
+    taken: &mut BTreeSet<PathBuf>,
     position: usize,
     folder: PathBuf,
 ) {
@@ -677,6 +687,18 @@ fn offer_model_folder(
                 entry.name.clone(),
             )
         });
+    let neighbours_first = match &entry.outcome {
+        TrialOutcome::Unsure { choices, .. } => choices.first(),
+        _ => None,
+    };
+    if neighbours_first == Some(&from_model.0) {
+        let to = from_model.0.join(&from_model.1);
+        if taken.insert(to.clone()) {
+            entry.outcome = TrialOutcome::Filed { to };
+            entry.placed_by = Some(PlacedBy::ModelAndNeighbours);
+            return;
+        }
+    }
     let mut offers = vec![from_model];
     let mut kind_label = None;
     if let TrialOutcome::Unsure {
@@ -704,6 +726,7 @@ fn offer_model_folder(
         file_names,
         kind_label,
     };
+    entry.placed_by = Some(PlacedBy::Model);
 }
 
 /// Sure places stay as they are; a taken name or a missing field is no

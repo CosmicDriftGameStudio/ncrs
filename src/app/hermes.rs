@@ -84,8 +84,10 @@ impl App {
         } else {
             Vec::new()
         };
+        // Read before Hermes is taken out: the tools come from its module.
+        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let mut ctx = self.hermes_ctx(&hermes, Vec::new());
+        let mut ctx = self.hermes_ctx(&hermes, Vec::new(), continuous);
         ctx.action_sources = action_sources;
         let asked = ncrs_hermes_ui::update(
             &mut hermes,
@@ -146,6 +148,7 @@ impl App {
         &self,
         hermes: &ncrs_hermes_ui::Hermes,
         inquiry_paths: Vec<PathBuf>,
+        continuous: Option<ncrs_hermes_ui::ContinuousTools>,
     ) -> ncrs_hermes_ui::Ctx<'_> {
         let side = self.panels.active;
         let panel = self.panel(side);
@@ -170,7 +173,7 @@ impl App {
             chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
-            continuous: self.continuous_tools(),
+            continuous,
             trash: ncrs_hermes_ui::Bin(Arc::clone(&self.trash)),
             filing_tab_source: self
                 .filing_view
@@ -236,8 +239,10 @@ impl App {
         inquiry_paths: Vec<PathBuf>,
         step: impl FnOnce(&mut ncrs_hermes_ui::Hermes, &ncrs_hermes_ui::Ctx<'_>) -> R,
     ) -> R {
+        // Read before Hermes is taken out: the tools come from its module.
+        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let ctx = self.hermes_ctx(&hermes, inquiry_paths);
+        let ctx = self.hermes_ctx(&hermes, inquiry_paths, continuous);
         let outcome = step(&mut hermes, &ctx);
         self.hermes = hermes;
         outcome
@@ -349,9 +354,15 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
-            Ask::PickReviewFolder(start_in) => (self.pick_folder)(&start_in).map(|folder| {
-                Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder))
-            }),
+            Ask::PickReviewFolder(start_in) => {
+                let sandbox = self
+                    .sandbox
+                    .grants_dir
+                    .clone()
+                    .map(|dir| (dir, self.sandbox.grant));
+                (self.pick_folder)(&start_in)
+                    .then(move |folder| review_folder_chosen(folder, sandbox.clone()))
+            }
             Ask::PreviewFile(path) => {
                 let left = self.leave_settings_page();
                 let opened = self.open_in_viewer(path);
@@ -381,4 +392,40 @@ impl App {
         let download = self.update_ai_model(AiModelMessage::Download);
         Task::batch([open, download])
     }
+}
+
+/// The folder chosen for a review answer keeps its access for the next start,
+/// like a folder chosen in the chat; a failure to save it is shown, the answer
+/// goes on with the access the dialog just gave.
+type SaveGrant = fn(&Path, &Path) -> Result<(), String>;
+
+fn review_folder_chosen(
+    folder: Option<PathBuf>,
+    sandbox: Option<(PathBuf, SaveGrant)>,
+) -> Task<Message> {
+    let picked = |answer_folder| {
+        Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(answer_folder))
+    };
+    let (Some(chosen), Some((dir, grant))) = (folder.clone(), sandbox) else {
+        return Task::done(picked(folder));
+    };
+    let saved = chosen.clone();
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || grant(&dir, &saved))
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
+        },
+        move |result| (chosen.clone(), result),
+    )
+    .then(move |(granted, result)| match result {
+        Ok(()) => Task::done(picked(Some(granted))),
+        Err(reason) => Task::batch([
+            Task::done(Message::Grant(GrantMessage::Saved {
+                folder: granted.clone(),
+                result: Err(reason),
+            })),
+            Task::done(picked(Some(granted))),
+        ]),
+    })
 }

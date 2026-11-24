@@ -3469,6 +3469,54 @@
       "de": "{count} Doppelte in den Papierkorb gelegt."
     },
     {
+      "key": "status.reviews_failed",
+      "context": "Error in the status bar after an answer on the reviews page when some files could not be dealt with. {total} is how many files the answer was for, {done} how many of them were dealt with (may be 0), {failed} how many were not (1 or more), {reason} the first problem: a file name and the operating system's message.",
+      "en": "{done} of {total} files done, {failed} not. First problem: {reason}",
+      "de": "{done} von {total} Dateien erledigt, {failed} nicht. Erstes Problem: {reason}"
+    },
+    {
+      "key": "not_moved.changed",
+      "context": "Reason in the error line after a file was not filed from the reviews page or the chat: the file was changed or replaced after Hermes had read it. {file} is the file name.",
+      "en": "{file}: The file has changed in the meantime.",
+      "de": "{file}: Die Datei hat sich inzwischen geändert."
+    },
+    {
+      "key": "not_moved.outside_folders",
+      "context": "Reason in the error line after a file was not filed: it lies outside the folders that Hermes is set up to work in. {file} is the file name.",
+      "en": "{file}: The file lies outside the folders Hermes may work in.",
+      "de": "{file}: Die Datei liegt außerhalb der Ordner, in denen Hermes arbeiten darf."
+    },
+    {
+      "key": "not_moved.missing",
+      "context": "Reason in the error line after a file was not filed: the file is gone from where Hermes saw it. {file} is the file name.",
+      "en": "{file}: The file is no longer there.",
+      "de": "{file}: Die Datei ist nicht mehr da."
+    },
+    {
+      "key": "not_moved.name_taken",
+      "context": "Reason in the error line after a file was not filed: a file of that name already lies in the folder it was to go to. {file} is the file name.",
+      "en": "{file}: The name is already taken in the target folder.",
+      "de": "{file}: Der Name ist im Zielordner schon vergeben."
+    },
+    {
+      "key": "not_moved.stopped",
+      "context": "Reason in the error line after a file was not filed: the work was stopped before the file was moved. {file} is the file name.",
+      "en": "{file}: Stopped.",
+      "de": "{file}: Abgebrochen."
+    },
+    {
+      "key": "not_moved.with_reason",
+      "context": "Reason in the error line after a file was not filed, when the reason comes as text from the operating system. {file} is the file name, {reason} the operating system's message, not translated.",
+      "en": "{file}: {reason}",
+      "de": "{file}: {reason}"
+    },
+    {
+      "key": "reviews_page.busy",
+      "context": "Line at the top of the reviews page while an answer is being carried out in the background, and the answer buttons are off. {files} is the count with its noun, such as '3 files' or '1 file'.",
+      "en": "Working on {files} …",
+      "de": "Bearbeite {files} …"
+    },
+    {
       "key": "reviews_page.answer_file",
       "context": "Button on the reviews page: files the document where Hermes suggests, with the date or sender typed in its row when there is an input.",
       "en": "File",
@@ -8459,6 +8507,18 @@
       "context": "Hermes chat (F2): Added to the note about an unsure waiting document: similar documents already lie in this folder. {folder} is the folder.",
       "en": "Similar documents lie in “{folder}”.",
       "de": "Ähnliche Dokumente liegen in „{folder}“."
+    },
+    {
+      "key": "hermes_chat.waiting_unsure_many",
+      "context": "Hermes chat (F2): Hermes says it cannot tell where a group of waiting documents belongs; they have the same sender or would go to the same folder. {count} is the number of documents, two or more, {names} the first file names, separated by commas.",
+      "en": "I'm not sure where these {count} belong: {names}.",
+      "de": "Bei diesen {count} bin ich nicht sicher, wohin sie gehören: {names}."
+    },
+    {
+      "key": "hermes_chat.waiting_file_into_many",
+      "context": "Hermes chat (F2): Primary answer button to the question about a group of unsure waiting documents; files all of them in the folder where similar documents lie. {folder} is that folder.",
+      "en": "File them in “{folder}”",
+      "de": "Alle in „{folder}“ einordnen"
     },
     {
       "key": "hermes_chat.working_waiting",

@@ -43,14 +43,29 @@ fn no_streams(error: &io::Error) -> bool {
     )
 }
 
+/// Whether a mark ended up on the file. A volume that takes no attributes, or
+/// refuses this one (a Cryptomator or FUSE drive answers EPERM), cannot carry
+/// it and nothing there reads it: the copy goes on and the caller reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarkOutcome {
+    Placed,
+    Refused,
+}
+
 #[cfg(target_os = "macos")]
-fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<()> {
+fn refuses_attributes(error: rustix::io::Errno) -> bool {
+    use rustix::io::Errno;
+    matches!(error, Errno::NOTSUP | Errno::PERM | Errno::ACCESS)
+}
+
+#[cfg(target_os = "macos")]
+fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<MarkOutcome> {
     use rustix::fs::{lgetxattr, lgetxattr_query, lsetxattr, XattrFlags};
     use rustix::io::Errno;
     const NAME: &str = "com.apple.quarantine";
     let len = match lgetxattr_query(origin, NAME) {
         Ok(len) => len,
-        Err(Errno::NOATTR | Errno::NOTSUP) => return Ok(()),
+        Err(Errno::NOATTR | Errno::NOTSUP) => return Ok(MarkOutcome::Placed),
         Err(other) => return Err(other.into()),
     };
     let mut value = vec![0; len];
@@ -61,8 +76,8 @@ fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<()> {
         value.get(..got).unwrap_or_default(),
         XattrFlags::empty(),
     ) {
-        // A file system that holds no attributes has nothing Gatekeeper reads.
-        Ok(()) | Err(Errno::NOTSUP) => Ok(()),
+        Ok(()) => Ok(MarkOutcome::Placed),
+        Err(error) if refuses_attributes(error) => Ok(MarkOutcome::Refused),
         Err(other) => Err(other.into()),
     }
 }
@@ -75,9 +90,8 @@ fn zone_text_for(source_url: &str) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn put_quarantine(file: &Path) -> io::Result<()> {
+fn put_quarantine(file: &Path) -> io::Result<MarkOutcome> {
     use rustix::fs::{lsetxattr, XattrFlags};
-    use rustix::io::Errno;
     // Flags 0081: downloaded, still to be approved on the first open.
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -89,36 +103,50 @@ fn put_quarantine(file: &Path) -> io::Result<()> {
         value.as_bytes(),
         XattrFlags::empty(),
     ) {
-        Ok(()) | Err(Errno::NOTSUP) => Ok(()),
+        Ok(()) => Ok(MarkOutcome::Placed),
+        Err(error) if refuses_attributes(error) => Ok(MarkOutcome::Refused),
         Err(other) => Err(other.into()),
     }
 }
 
 /// Marks `file`, fetched from `source_url` (host and path, never a login), as
-/// coming from another computer. A mark that cannot be put on it is an error.
+/// coming from another computer. A mark that cannot be put on it is an error,
+/// unless the volume refuses it (`MarkOutcome::Refused`).
 /// Linux has no such mark, and nothing is done there.
-pub fn mark_downloaded(file: &Path, source_url: &str) -> io::Result<()> {
+pub fn mark_downloaded(file: &Path, source_url: &str) -> io::Result<MarkOutcome> {
     #[cfg(windows)]
     match std::fs::write(zone_stream_of(file), zone_text_for(source_url)) {
         Err(error) if !no_streams(&error) => return Err(error),
         _ => {}
     }
     #[cfg(target_os = "macos")]
-    put_quarantine(file)?;
-    let _ = (file, source_url);
-    Ok(())
+    {
+        let _ = source_url;
+        put_quarantine(file)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (file, source_url);
+        Ok(MarkOutcome::Placed)
+    }
 }
 
 /// Puts the origin mark of `origin` on `copy`. A mark that cannot be put on
-/// the copy is an error: an unmarked copy of a marked file is never shown.
-/// Linux has no such mark, and nothing is done there.
-pub fn origin_mark(origin: &Path, copy: &Path) -> io::Result<()> {
+/// the copy is an error, except on a volume that refuses attributes: there the
+/// copy stays unmarked, as on a volume without them, and `Refused` is returned
+/// for the caller to report. Linux has no such mark, and nothing is done there.
+pub fn origin_mark(origin: &Path, copy: &Path) -> io::Result<MarkOutcome> {
     #[cfg(windows)]
     carry_zone_stream(origin, copy)?;
     #[cfg(target_os = "macos")]
-    carry_quarantine(origin, copy)?;
-    let _ = (origin, copy);
-    Ok(())
+    {
+        carry_quarantine(origin, copy)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (origin, copy);
+        Ok(MarkOutcome::Placed)
+    }
 }
 
 #[cfg(test)]

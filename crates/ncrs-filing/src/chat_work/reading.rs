@@ -257,7 +257,17 @@ pub fn read_folder(
     progress: &ReadProgress,
     stop: Option<&AtomicBool>,
 ) -> Result<FolderReading, ReadError> {
-    read_folder_only(access, folder, progress, stop, None)
+    read_folder_only(access, folder, progress, stop, None, UnknownFiles::Extract)
+}
+
+/// What becomes of a file the index does not know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnknownFiles {
+    /// Its text is read, which for a scan means OCR.
+    Extract,
+    /// It stays out of the picture, as in [`known_structure`]: a folder that
+    /// only gives context must not cost the minutes of reading its files.
+    Skip,
 }
 
 /// [`read_folder`] for the listed files (paths below `folder`) alone: the
@@ -268,6 +278,7 @@ pub fn read_folder_only(
     progress: &ReadProgress,
     stop: Option<&AtomicBool>,
     only: Option<&BTreeSet<&PathBuf>>,
+    unknown_files: UnknownFiles,
 ) -> Result<FolderReading, ReadError> {
     let mut walked = walk_sorted(folder, progress)?;
     if let Some(listed) = only {
@@ -312,6 +323,9 @@ pub fn read_folder_only(
                 if let Some(slot) = known.get_mut(position) {
                     *slot = Some(record);
                 }
+            }
+            None if unknown_files == UnknownFiles::Skip => {
+                progress.done.fetch_add(1, Ordering::Relaxed);
             }
             None => unknown.push((position, hash)),
         }

@@ -12,7 +12,7 @@ use ncrs_fs::Trash;
 use ncrs_index::Kinds;
 use ncrs_intake::{hash_path, render_pattern_in};
 
-use super::{AcceptSummary, Naming, ReviewAccess, ReviewItem, PATTERN_DOES_NOT_FIT};
+use super::{AcceptSummary, Naming, NotMoved, ReviewAccess, ReviewItem, PATTERN_DOES_NOT_FIT};
 use crate::execute::{
     trash_can_restore, trash_replaced, trash_run, FilingBatches, ReplacedItem, TrashItem,
 };
@@ -75,9 +75,9 @@ pub fn compare_files(incoming: &Path, existing: &Path) -> Option<TargetCompariso
 }
 
 impl AcceptSummary {
-    pub(super) fn fail(&mut self, detail: String) {
+    pub(super) fn fail(&mut self, detail: impl Into<NotMoved>) {
         self.failed += 1;
-        self.first_failure.get_or_insert(detail);
+        self.first_failure.get_or_insert_with(|| detail.into());
     }
 }
 
@@ -307,7 +307,7 @@ impl ReviewAccess {
         let mut batches = FilingBatches::default();
         for (item, target) in ready {
             let outcome = match (&item.proposed_pattern, exists(&target)) {
-                (_, true) => Err(NOT_TRASHED.to_owned()),
+                (_, true) => Err(NOT_TRASHED.to_owned().into()),
                 (Some(pattern), false) => self.confirm_in(
                     &self.target_root,
                     &mut batches,
@@ -316,7 +316,7 @@ impl ReviewAccess {
                     &item.fields,
                     Naming::Pattern(pattern),
                 ),
-                (None, false) => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+                (None, false) => Err(PATTERN_DOES_NOT_FIT.to_owned().into()),
             };
             summary.record(outcome);
         }
@@ -341,6 +341,7 @@ impl ReviewAccess {
                 .still_describes(item)
                 .and_then(|()| self.suggested_place(item, &kinds))
                 .and_then(|(relative, _)| free_name(&self.target_root, &relative, &item.path))
+                .map_err(NotMoved::from)
                 .and_then(|name| {
                     self.confirm_in(
                         &self.target_root,

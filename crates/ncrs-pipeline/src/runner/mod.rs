@@ -831,8 +831,20 @@ impl Shared {
         let outcome = match self.steps.get(step_index) {
             Some(step) => {
                 let now = self.clock.now();
-                catch_unwind(AssertUnwindSafe(|| step.run(&mut item, now)))
-                    .unwrap_or_else(|_panic| Err(PANIC_MESSAGE.to_owned()))
+                let started = Instant::now();
+                let outcome = catch_unwind(AssertUnwindSafe(|| step.run(&mut item, now)))
+                    .unwrap_or_else(|_panic| Err(PANIC_MESSAGE.to_owned()));
+                if timing_enabled() {
+                    eprintln!(
+                        "[timing] {name} {} {}",
+                        started.elapsed().as_millis(),
+                        item.path.file_name().map_or_else(
+                            || item.path.display().to_string(),
+                            |file| file.to_string_lossy().into_owned(),
+                        ),
+                    );
+                }
+                outcome
             }
             None => Err("no such step".to_owned()),
         };
@@ -992,3 +1004,9 @@ impl fmt::Debug for Runner {
 
 #[cfg(test)]
 mod tests;
+
+/// Per-step timing on stderr, for measuring where a file spends its time.
+fn timing_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("NCRS_PIPELINE_TIMING").is_some())
+}
