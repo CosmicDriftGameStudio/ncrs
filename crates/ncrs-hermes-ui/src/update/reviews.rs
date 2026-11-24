@@ -11,7 +11,7 @@ use iced::widget::operation;
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
-use ncrs_filing::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, NotMoved, ReviewAccess, ReviewItem};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_index::DocumentId;
 
@@ -103,12 +103,31 @@ fn compare_taken(hermes: &Hermes) -> Task<Message> {
     )
 }
 
+fn is_busy(hermes: &Hermes) -> bool {
+    hermes
+        .reviews
+        .as_ref()
+        .is_some_and(|page| page.busy_with().is_some())
+}
+
+fn is_answer(message: &ReviewsMessage) -> bool {
+    matches!(
+        message,
+        ReviewsMessage::Answer(..)
+            | ReviewsMessage::AnswerFile(..)
+            | ReviewsMessage::AnswerRepeat(..)
+    )
+}
+
 pub fn update(
     hermes: &mut Hermes,
     message: ReviewsMessage,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
+    if is_answer(&message) && is_busy(hermes) {
+        return Task::none();
+    }
     match message {
         ReviewsMessage::Loaded { generation, result } => {
             if generation != hermes.reviews_generation {
@@ -182,6 +201,7 @@ pub fn update(
             answered(hermes, &summary, ctx, actions);
             actions.push(Action::RequestHermesCounts);
             if let Some(page) = hermes.reviews.as_mut() {
+                page.work_finished();
                 page.loading_again();
             }
             request(hermes)
@@ -299,8 +319,9 @@ fn answer_already_filed(
     let files = page.answer_already_filed(path.as_deref());
     match answer {
         Answer::DeleteDuplicate => {
+            let count = files.len();
             let work = move |access: &ReviewAccess| access.delete_already_filed(&files);
-            run_with(hermes, ctx, actions, work)
+            run_with(hermes, count, ctx, actions, work)
         }
         Answer::Exclude => {
             let paths: Vec<PathBuf> = files.into_iter().map(|found| found.path).collect();
@@ -314,7 +335,7 @@ fn answer_already_filed(
 /// Runs `work` on the documents, one after the other: each can fail on its
 /// own, and the summary says how it went for all.
 fn run(
-    hermes: &Hermes,
+    hermes: &mut Hermes,
     items: Vec<ReviewItem>,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
@@ -323,11 +344,15 @@ fn run(
     if items.is_empty() {
         return Task::none();
     }
-    run_with(hermes, ctx, actions, move |access| work(access, &items))
+    let count = items.len();
+    run_with(hermes, count, ctx, actions, move |access| {
+        work(access, &items)
+    })
 }
 
 fn run_with(
-    hermes: &Hermes,
+    hermes: &mut Hermes,
+    count: usize,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
     work: impl FnOnce(&ReviewAccess) -> AcceptSummary + Send + 'static,
@@ -337,13 +362,16 @@ fn run_with(
         return Task::none();
     };
     let access = bare_access.with_trash(Arc::clone(&ctx.trash.0));
+    if let Some(page) = hermes.reviews.as_mut() {
+        page.work_started(count);
+    }
     Task::perform(
         tokio::task::spawn_blocking(move || work(&access)),
         |joined| {
             Message::Reviews(ReviewsMessage::Filed(joined.unwrap_or_else(|err| {
                 AcceptSummary {
                     failed: 1,
-                    first_failure: Some(err.to_string()),
+                    first_failure: Some(NotMoved::other(err.to_string())),
                     ..AcceptSummary::default()
                 }
             })))
@@ -361,9 +389,23 @@ fn answered(
 ) {
     settle_column(hermes);
     if summary.failed > 0 {
-        actions.push(Action::ShowError(
-            summary.first_failure.clone().unwrap_or_default(),
-        ));
+        let total = summary.total();
+        actions.push(Action::ShowError(fill_template(
+            ctx.lang.text(Msg::StatusReviewsFailed),
+            &[
+                ("{done}", &(total - summary.failed).to_string()),
+                ("{total}", &total.to_string()),
+                ("{failed}", &summary.failed.to_string()),
+                (
+                    "{reason}",
+                    &summary
+                        .first_failure
+                        .as_ref()
+                        .map(|failure| failure.text(ctx.lang))
+                        .unwrap_or_default(),
+                ),
+            ],
+        )));
     } else if summary.trashed > 0 {
         actions.push(Action::ShowNotice(fill_template(
             ctx.lang.text(Msg::StatusReviewsTrashed),

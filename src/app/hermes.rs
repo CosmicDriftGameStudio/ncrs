@@ -349,9 +349,15 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
-            Ask::PickReviewFolder(start_in) => (self.pick_folder)(&start_in).map(|folder| {
-                Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder))
-            }),
+            Ask::PickReviewFolder(start_in) => {
+                let sandbox = self
+                    .sandbox
+                    .grants_dir
+                    .clone()
+                    .map(|dir| (dir, self.sandbox.grant));
+                (self.pick_folder)(&start_in)
+                    .then(move |folder| review_folder_chosen(folder, sandbox.clone()))
+            }
             Ask::PreviewFile(path) => {
                 let left = self.leave_settings_page();
                 let opened = self.open_in_viewer(path);
@@ -381,4 +387,36 @@ impl App {
         let download = self.update_ai_model(AiModelMessage::Download);
         Task::batch([open, download])
     }
+}
+
+/// The folder chosen for a review answer keeps its access for the next start,
+/// like a folder chosen in the chat; a failure to save it is shown, the answer
+/// goes on with the access the dialog just gave.
+fn review_folder_chosen(
+    folder: Option<PathBuf>,
+    sandbox: Option<(PathBuf, fn(&Path, &Path) -> Result<(), String>)>,
+) -> Task<Message> {
+    let picked = |folder| Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder));
+    let (Some(chosen), Some((dir, grant))) = (folder.clone(), sandbox) else {
+        return Task::done(picked(folder));
+    };
+    let saved = chosen.clone();
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || grant(&dir, &saved))
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
+        },
+        move |result| (chosen.clone(), result),
+    )
+    .then(move |(chosen, result)| match result {
+        Ok(()) => Task::done(picked(Some(chosen))),
+        Err(reason) => Task::batch([
+            Task::done(Message::Grant(GrantMessage::Saved {
+                folder: chosen.clone(),
+                result: Err(reason),
+            })),
+            Task::done(picked(Some(chosen))),
+        ]),
+    })
 }

@@ -33,12 +33,14 @@ use crate::prompt::{
 };
 use crate::status::Compute;
 use crate::user_input::Waiter;
+use reply_sampler::ReplySampler;
 
 mod backends;
 mod chat_session;
 mod check;
 mod folder_choice;
 mod lazy;
+mod reply_sampler;
 mod rule_session;
 mod worker;
 
@@ -46,6 +48,8 @@ pub use check::{check_local_model, LocalCheck};
 pub use lazy::LazyLocalModel;
 pub use rule_session::RuleSession;
 
+#[cfg(test)]
+mod bench;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -191,8 +195,8 @@ impl LocalModel {
     }
 
     /// Writes the reply token by token after the prompt that was decoded
-    /// last. Grammar first, greedy second: the grammar rules out every token
-    /// that would leave the reply shape, so greedy only ever sees legal ones.
+    /// last. The grammar rules out every token
+    /// that would leave the reply shape; the likeliest legal one is taken.
     fn sample_reply(
         &self,
         context: &mut LlamaContext<'_>,
@@ -202,14 +206,15 @@ impl LocalModel {
         max_new_tokens: usize,
     ) -> Result<String, AiError> {
         let vocab = self.model.vocab();
-        let constraint = LlamaSampler::grammar(&self.model, grammar, "root")
-            .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
-        let mut sampler = LlamaSampler::chain_simple([constraint, LlamaSampler::greedy()]);
+        let mut sampler = ReplySampler::new(
+            LlamaSampler::grammar(&self.model, grammar, "root")
+                .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?,
+        );
 
         let mut reply = Vec::new();
         for _ in 0..max_new_tokens {
             self.not_stopped()?;
-            let token = sampler.sample(context, batch.n_tokens() - 1);
+            let token = sampler.next(context, batch.n_tokens() - 1);
             if vocab.is_eog(token) {
                 break;
             }

@@ -5,7 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{partial_prefix, OnConflict, Progress, SkipKind, Skipped, Source};
-use crate::origin_mark::origin_mark;
+use crate::origin_mark::{origin_mark, MarkOutcome};
 use crate::place_file::{copy_xattrs, rename_no_replace, set_folder_modified};
 
 /// How much of a file is written between two looks at the progress channel.
@@ -609,8 +609,7 @@ pub(in crate::transfer) fn create_entry<P: Progress>(
         // filled; the original's permissions come with the last step.
         let mut to = create_private(target)?;
         let filled = copy_in_chunks(&mut from, &mut to, progress).and_then(|()| {
-            report_refused(progress, source, copy_xattrs(source, target));
-            origin_mark(source, target)?;
+            copy_attributes_and_mark(progress, source, target)?;
             // The copy keeps the date of the original, as in the Finder: a
             // folder comparison after a sync must not find every copy newer.
             if let Ok(modified) = meta.modified() {
@@ -694,13 +693,33 @@ fn finish_dir<P: Progress>(
     target: &Path,
     progress: &mut P,
 ) -> io::Result<()> {
-    report_refused(progress, source, copy_xattrs(source, target));
-    origin_mark(source, target)?;
+    copy_attributes_and_mark(progress, source, target)?;
     if let Ok(modified) = meta.modified() {
         let _skipped = set_folder_modified(target, modified);
     }
     let _skipped = std::fs::set_permissions(target, copied_permissions(meta));
     Ok(())
+}
+
+/// The attribute copy already tries the quarantine; a refusal of it is
+/// reported once, whichever of the two steps saw it first.
+pub(in crate::transfer) fn copy_attributes_and_mark<P: Progress>(
+    progress: &mut P,
+    source: &Path,
+    target: &Path,
+) -> io::Result<()> {
+    const QUARANTINE: &str = "com.apple.quarantine";
+    let mut refused = copy_xattrs(source, target);
+    let outcome = origin_mark(source, target);
+    if outcome
+        .as_ref()
+        .is_ok_and(|mark| *mark == MarkOutcome::Refused)
+        && !refused.iter().any(|name| name == QUARANTINE)
+    {
+        refused.push(QUARANTINE.to_owned());
+    }
+    report_refused(progress, source, refused);
+    outcome.map(|_placed_or_refused| ())
 }
 
 fn report_refused<P: Progress>(progress: &mut P, path: &Path, refused: Vec<String>) {

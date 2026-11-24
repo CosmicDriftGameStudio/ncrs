@@ -889,3 +889,85 @@ fn a_target_that_is_the_source_by_another_route_is_refused() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(fs::read(&src).unwrap(), b"x");
 }
+
+/// A Cryptomator or FUSE drive answers the quarantine with EPERM; an immutable
+/// file answers the same way. Filing onto such a volume must not fail.
+#[cfg(target_os = "macos")]
+mod refused_quarantine {
+    use super::*;
+    use crate::origin_mark::{origin_mark, MarkOutcome};
+
+    struct Immutable<'a>(&'a Path);
+
+    impl<'a> Immutable<'a> {
+        fn set(path: &'a Path) -> Self {
+            let status = std::process::Command::new("chflags")
+                .arg("uchg")
+                .arg(path)
+                .status()
+                .unwrap();
+            assert!(status.success());
+            Self(path)
+        }
+    }
+
+    impl Drop for Immutable<'_> {
+        fn drop(&mut self) {
+            let _released = std::process::Command::new("chflags")
+                .arg("nouchg")
+                .arg(self.0)
+                .status();
+        }
+    }
+
+    #[derive(Default)]
+    struct Skips(Vec<Skipped>);
+
+    impl Progress for Skips {
+        fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn skipped(&mut self, skipped: Skipped) {
+            self.0.push(skipped);
+        }
+    }
+
+    fn quarantined_source_and_refusing_target(dir: &Path) -> (PathBuf, PathBuf) {
+        let source = dir.join("download.pdf");
+        let target = dir.join("filed.pdf");
+        fs::write(&source, b"x").unwrap();
+        fs::write(&target, b"x").unwrap();
+        rustix::fs::lsetxattr(
+            &source,
+            "com.apple.quarantine",
+            b"0081;5f3a;Safari",
+            rustix::fs::XattrFlags::empty(),
+        )
+        .unwrap();
+        (source, target)
+    }
+
+    #[test]
+    fn a_volume_that_refuses_the_quarantine_leaves_the_copy_unmarked() {
+        let dir = scratch("quarantine-refused");
+        let (source, target) = quarantined_source_and_refusing_target(dir.path());
+        let _immutable = Immutable::set(&target);
+
+        assert_eq!(origin_mark(&source, &target).unwrap(), MarkOutcome::Refused);
+    }
+
+    #[test]
+    fn a_refused_quarantine_is_reported_once_and_does_not_fail_the_copy() {
+        let dir = scratch("quarantine-reported");
+        let (source, target) = quarantined_source_and_refusing_target(dir.path());
+        let _immutable = Immutable::set(&target);
+        let mut progress = Skips::default();
+
+        place::copy_attributes_and_mark(&mut progress, &source, &target).unwrap();
+
+        assert_eq!(progress.0.len(), 1);
+        assert_eq!(progress.0[0].kind, SkipKind::Attributes);
+        assert!(progress.0[0].detail.contains("com.apple.quarantine"));
+    }
+}

@@ -453,3 +453,55 @@ fn the_published_key_state_follows_a_page_brought_to_the_front() {
     assert!(state.settings);
     assert!(!state.monitor);
 }
+
+#[test]
+fn a_failed_answer_of_the_reviews_page_is_shown_in_the_status_bar_of_the_settings() {
+    let mut app = App::with_settings_file(SettingsFeature::Reviews, Ok(Config::default()));
+    assert_eq!(app.settings_status_failure(), None);
+
+    drop(
+        app.update(Message::Reviews(crate::messages::ReviewsMessage::Filed(
+            ncrs_filing::review_work::AcceptSummary {
+                filed: 1,
+                failed: 2,
+                first_failure: Some(ncrs_filing::review_work::NotMoved {
+                    file: "scan.pdf".to_owned(),
+                    reason: ncrs_filing::review_work::NotMovedReason::Os(
+                        "Operation not permitted (os error 1)".to_owned(),
+                    ),
+                }),
+                ..Default::default()
+            },
+        ))),
+    );
+
+    let shown = app.settings_status_failure().unwrap();
+    assert!(
+        shown.contains("scan.pdf: Operation not permitted"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains('1') && shown.contains('2') && shown.contains('3'),
+        "{shown}"
+    );
+}
+
+#[test]
+fn the_answers_of_the_reviews_page_are_ignored_while_one_is_being_carried_out() {
+    use crate::messages::ReviewsMessage;
+    use ncrs_hermes_ui::reviews_page::{Answer, Question, ReviewsPage};
+
+    let mut app = App::with_settings_file(SettingsFeature::Reviews, Ok(Config::default()));
+    let mut page = ReviewsPage::new();
+    page.work_started(7);
+    app.hermes.reviews = Some(page);
+    let pick_folder =
+        || Message::Reviews(ReviewsMessage::Answer(Question::NoRule, Answer::PickFolder));
+
+    drop(app.update(pick_folder()));
+    assert_eq!(app.job_error, None);
+
+    app.hermes.reviews.as_mut().unwrap().work_finished();
+    drop(app.update(pick_folder()));
+    assert!(app.job_error.is_some());
+}

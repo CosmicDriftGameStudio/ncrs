@@ -35,6 +35,9 @@ pub use already_filed::AlreadyFiled;
 mod answers;
 pub use answers::{compare_files, FileFacts, TargetComparison};
 
+mod not_moved;
+pub use not_moved::{NotMoved, NotMovedReason};
+
 mod neighbour_cache;
 pub use neighbour_cache::NeighbourCache;
 
@@ -112,11 +115,11 @@ pub struct AcceptSummary {
     pub trashed: usize,
     /// No suggestion, or the work failed; the first detail is kept.
     pub failed: usize,
-    pub first_failure: Option<String>,
+    pub first_failure: Option<NotMoved>,
 }
 
 impl AcceptSummary {
-    fn record(&mut self, outcome: Result<ConfirmOutcome, String>) {
+    fn record(&mut self, outcome: Result<ConfirmOutcome, NotMoved>) {
         match outcome {
             Ok(ConfirmOutcome::Filed { relative_path }) => {
                 self.filed += 1;
@@ -312,7 +315,7 @@ impl ReviewAccess {
         let mut batches = FilingBatches::default();
         for item in items {
             let outcome = match (&item.proposed_pattern, self.still_describes(item)) {
-                (_, Err(detail)) => Err(detail),
+                (_, Err(detail)) => Err(detail.into()),
                 (Some(pattern), Ok(())) => self.confirm_in(
                     &self.target_root,
                     &mut batches,
@@ -321,7 +324,7 @@ impl ReviewAccess {
                     &item.fields,
                     Naming::Pattern(pattern),
                 ),
-                (None, Ok(())) => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+                (None, Ok(())) => Err(PATTERN_DOES_NOT_FIT.to_owned().into()),
             };
             summary.record(outcome);
         }
@@ -356,8 +359,8 @@ impl ReviewAccess {
         let mut batches = FilingBatches::default();
         for item in items {
             let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
-                _ if !folder_fits => Err(FOLDER_ESCAPES_TARGET.to_owned()),
-                Some(stem) => self.still_describes(item).and_then(|()| {
+                _ if !folder_fits => Err(FOLDER_ESCAPES_TARGET.to_owned().into()),
+                Some(stem) => self.still_describes(item).map_err(NotMoved::from).and_then(|()| {
                     self.confirm_in(
                         &root,
                         &mut batches,
@@ -367,7 +370,7 @@ impl ReviewAccess {
                         Naming::Fixed(stem),
                     )
                 }),
-                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+                None => Err(PATTERN_DOES_NOT_FIT.to_owned().into()),
             };
             summary.record(outcome);
         }
@@ -413,7 +416,7 @@ impl ReviewAccess {
         document_id: DocumentId,
         fields: &DocumentFields,
         pattern: &str,
-    ) -> Result<ConfirmOutcome, String> {
+    ) -> Result<ConfirmOutcome, NotMoved> {
         self.confirm_in(
             &self.target_root,
             &mut FilingBatches::default(),
@@ -432,7 +435,7 @@ impl ReviewAccess {
         document_id: DocumentId,
         fields: &DocumentFields,
         naming: Naming<'_>,
-    ) -> Result<ConfirmOutcome, String> {
+    ) -> Result<ConfirmOutcome, NotMoved> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         confirm(
@@ -763,7 +766,7 @@ fn confirm<S: Source>(
     naming: Naming<'_>,
     (effect, copy_roots, batches): (&S, &[PathBuf], &mut FilingBatches),
     kind_language: KindLanguage,
-) -> Result<ConfirmOutcome, String> {
+) -> Result<ConfirmOutcome, NotMoved> {
     let failed = |err: IndexError| err.to_string();
     let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
     let relative = match naming {
@@ -776,11 +779,11 @@ fn confirm<S: Source>(
         .map_err(failed)?
         .ok_or_else(|| "the document is no longer in the index".to_owned())?;
     if index.is_excluded(&document.path).map_err(failed)? {
-        return Err(DOCUMENT_EXCLUDED.to_owned());
+        return Err(DOCUMENT_EXCLUDED.to_owned().into());
     }
     let open_entry = index.open_review_of(document_id).map_err(failed)?;
     if open_entry.map(|found| found.id) != Some(entry) {
-        return Err(ITEM_CHANGED.to_owned());
+        return Err(ITEM_CHANGED.to_owned().into());
     }
     let target = target_of(root, &relative, &document.path);
     let item = crate::execute::ExecutionItem {
@@ -841,8 +844,8 @@ fn confirm<S: Source>(
                 .map_err(failed)?;
             Ok(ConfirmOutcome::Requeued)
         }
-        Some(ItemOutcome::Skipped(other)) => Err(format!("the file was not moved: {other:?}")),
-        None => Err("the file was not moved".to_owned()),
+        Some(ItemOutcome::Skipped(other)) => Err(NotMoved::skipped(&document.path, other)),
+        None => Err(NotMoved::unsettled(&document.path)),
     }
 }
 

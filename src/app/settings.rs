@@ -368,6 +368,15 @@ impl App {
         written.chain(Task::done(Message::Quit))
     }
 
+    /// The main status bar is not shown over the settings, so a job error
+    /// (an answer of the reviews page that failed) is read in theirs.
+    pub(in crate::app) fn settings_status_failure(&self) -> Option<&str> {
+        self.settings
+            .failure
+            .as_deref()
+            .or(self.job_error.as_deref())
+    }
+
     pub(in crate::app) fn settings_area<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,
@@ -391,7 +400,7 @@ impl App {
             });
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
-            failure: self.settings.failure.as_deref(),
+            failure: self.settings_status_failure(),
             notice: self.notice.as_deref(),
             lang: self.lang,
             palette: &self.palette,

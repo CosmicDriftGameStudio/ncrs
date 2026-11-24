@@ -326,7 +326,7 @@ fn an_excluded_document_is_neither_listed_nor_confirmed() {
 
     assert_eq!(
         result,
-        Err("the document is no longer in the index".to_owned())
+        Err(NotMoved::other("the document is no longer in the index"))
     );
     assert!(setup.inbox.join("scan.pdf").exists());
 }
@@ -358,7 +358,7 @@ fn a_pattern_that_cannot_be_rendered_moves_nothing() {
             pattern,
         );
 
-        assert_eq!(result, Err(PATTERN_DOES_NOT_FIT.to_owned()), "{pattern}");
+        assert_eq!(result, Err(NotMoved::other(PATTERN_DOES_NOT_FIT)), "{pattern}");
     }
     assert!(setup.inbox.join("scan.pdf").exists());
     assert_eq!(access.load().unwrap().len(), 1);
@@ -610,7 +610,7 @@ fn an_item_that_names_another_file_than_the_document_is_refused() {
     let summary = access.accept(&[item]);
 
     assert_eq!(summary.failed, 1);
-    assert_eq!(summary.first_failure.as_deref(), Some(ITEM_CHANGED));
+    assert_eq!(summary.first_failure, Some(NotMoved::other(ITEM_CHANGED)));
     assert!(setup.inbox.join("scan.pdf").exists());
 }
 
@@ -631,7 +631,7 @@ fn confirming_an_entry_that_is_no_longer_open_files_nothing() {
         "{sender}/{kind}",
     );
 
-    assert_eq!(outcome, Err(ITEM_CHANGED.to_owned()));
+    assert_eq!(outcome, Err(NotMoved::other(ITEM_CHANGED)));
     assert!(setup.inbox.join("scan.pdf").exists());
     assert!(!setup.archive.join("Company A").exists());
 }
@@ -649,8 +649,8 @@ fn a_folder_outside_the_target_files_nothing() {
 
         assert_eq!(summary.failed, 1, "{folder:?}");
         assert_eq!(
-            summary.first_failure.as_deref(),
-            Some(FOLDER_ESCAPES_TARGET),
+            summary.first_failure,
+            Some(NotMoved::other(FOLDER_ESCAPES_TARGET)),
             "{folder:?}"
         );
     }
@@ -804,8 +804,8 @@ fn a_file_that_differs_is_not_taken_for_a_duplicate() {
 
     assert_eq!((summary.trashed, summary.failed), (0, 1));
     assert_eq!(
-        summary.first_failure.as_deref(),
-        Some(answers::NOT_A_DUPLICATE)
+        summary.first_failure,
+        Some(NotMoved::other(answers::NOT_A_DUPLICATE))
     );
     assert!(found.item.path.exists());
     assert_eq!(found.access.load().unwrap().len(), 1);
@@ -913,4 +913,22 @@ fn a_typed_sender_is_filed_into_the_folder() {
 
     assert_eq!((summary.filed, summary.failed), (1, 0));
     assert!(setup.archive.join("Company B").join("Invoice.pdf").exists());
+}
+
+#[test]
+fn a_move_that_failed_names_the_file_and_the_reason_in_the_language_of_the_page() {
+    let os = NotMoved::skipped(
+        Path::new("/inbox/scan.pdf"),
+        &SkipReason::Failed("Operation not permitted (os error 1)".to_owned()),
+    );
+    let changed = NotMoved::skipped(Path::new("/inbox/scan.pdf"), &SkipReason::SourceChanged);
+
+    assert_eq!(
+        os.text(ncrs_i18n::Language::English),
+        "scan.pdf: Operation not permitted (os error 1)"
+    );
+    assert_eq!(
+        changed.text(ncrs_i18n::Language::German),
+        "scan.pdf: Die Datei hat sich inzwischen geändert."
+    );
 }

@@ -33,7 +33,7 @@ pub fn groups<'a>(
     let note = |text: String, problem: Option<String>| {
         vec![SettingRow::adding(Some(text), problem, Vec::new())]
     };
-    let (title, rows) = if let Some(problem) = state.problem() {
+    let (title, mut rows) = if let Some(problem) = state.problem() {
         (String::new(), note(String::new(), Some(problem.to_owned())))
     } else if state.is_loading() && state.total() == 0 {
         (
@@ -59,6 +59,13 @@ pub fn groups<'a>(
         }
         (title, rows)
     };
+    if let Some(files) = state.busy_with() {
+        let working = fill_template(
+            lang.text(Msg::ReviewsPageBusy),
+            &[("{files}", &format::files_counted(files, lang))],
+        );
+        rows.insert(0, SettingRow::adding(Some(working), None, Vec::new()));
+    }
     vec![Group {
         intro: None,
         title,
@@ -120,6 +127,7 @@ fn answer_buttons(
                 Some(only) => Some(ReviewsMessage::AnswerFile(question, answer, only)),
                 None => Some(ReviewsMessage::Answer(question, answer)),
             };
+            let message = message.filter(|_| state.busy_with().is_none());
             let mut label = answer_text(question, answer, lang);
             if document.is_none() && fits < members {
                 label = format!("{label} ({})", format::grouped(fits as u64));

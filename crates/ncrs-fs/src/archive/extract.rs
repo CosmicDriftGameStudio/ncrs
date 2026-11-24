@@ -308,7 +308,9 @@ impl<P: Progress> Writer<'_, P> {
         missing.reverse();
         for folder in missing {
             match std::fs::create_dir(folder) {
-                Ok(()) => origin_mark(self.plan.origin, folder)?,
+                Ok(()) => {
+                    origin_mark(self.plan.origin, folder)?;
+                }
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
             }

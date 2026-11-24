@@ -253,8 +253,25 @@ fn write_source(setup: &Setup) {
     setup.write("inbox/desktop.ini", "[.ShellClassInfo]");
     setup.write("inbox/blank.dat", "");
     setup.write("inbox/.hidden.txt", "never read");
-    setup.write("archive/Alfa/2021/old.txt", "Alfa AG invoice");
-    setup.write("archive/Beta/old.txt", "Beta GmbH invoice");
+    index_known(setup, "archive/Alfa/2021/old.txt", "Alfa AG invoice");
+    index_known(setup, "archive/Beta/old.txt", "Beta GmbH invoice");
+}
+
+/// A file of the target as the index holds it after the intake has seen it.
+fn index_known(setup: &Setup, relative: &str, content: &str) {
+    let path = setup.write(relative, content);
+    let mut guard = setup.access.slot.lock().unwrap();
+    guard
+        .as_mut()
+        .unwrap()
+        .insert_document(&NewDocument {
+            hash: hash_path(&path).unwrap(),
+            path: path.clone(),
+            source: DocumentSource::Archive,
+            received_at: Utc::now(),
+            stamp: Some(super::reading::stamp_of_file(&path)),
+        })
+        .unwrap();
 }
 
 fn run_live(setup: &Setup, model: &RecordingModel, run: &LiveRun) -> Result<(), PlanFailure> {
@@ -681,4 +698,42 @@ fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
         state_of(&live, "2020092_005.pdf"),
         filed("Bank/2020", "2020-04-04 Alfa Rechnung (3).pdf", true)
     );
+}
+
+#[derive(Debug)]
+struct CountingText(Arc<Mutex<Vec<PathBuf>>>);
+
+impl ncrs_intake::TextSource for CountingText {
+    fn extract(&self, path: &Path) -> Result<ncrs_intake::Extracted, TextError> {
+        self.0.lock().unwrap().push(path.to_path_buf());
+        PlainText.extract(path)
+    }
+}
+
+#[test]
+fn the_target_folder_is_not_read_for_text_while_the_plan_waits_on_the_source() {
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    let setup = Setup::with_chain(TextChain::new().with_source(CountingText(Arc::clone(&reads))));
+    setup.write("inbox/new.txt", "Contract");
+    setup.write("archive/Alfa/never_indexed.txt", "Alfa AG invoice");
+    index_known(&setup, "archive/Beta/old.txt", "Beta GmbH invoice");
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        run: Some(Arc::clone(&run)),
+        ..RecordingModel::default()
+    };
+
+    run_live(&setup, &model, &run).unwrap();
+
+    let archive = setup.dir.path().join("archive");
+    assert!(reads
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|path| !path.starts_with(&archive)));
+    assert!(!reads.lock().unwrap().is_empty());
+    let first = model.seen.lock().unwrap()[0].clone().unwrap();
+    assert!(first.files.iter().all(|file| file.state == LiveState::Waiting));
+    let counted = tally(&published(&run));
+    assert_eq!(counted.waiting + counted.looking, 0);
 }

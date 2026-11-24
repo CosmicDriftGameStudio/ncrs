@@ -11,7 +11,7 @@ use ncrs_index::{ContentHash, Transfer};
 
 use super::groups::numbered_name;
 use super::picks::ask_until_done;
-use super::reading::{list_files, read_folder, read_folder_only};
+use super::reading::{list_files, read_folder_only, UnknownFiles};
 use super::trial::{
     PlacedBy, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, FOLDER_PICK_VERSION,
 };
@@ -232,10 +232,24 @@ fn plan_from(
             })
             .map_err(PlanFailure::Other)?;
     }
-    let source_reading = read_folder_only(access, source, &run.progress, None, wanted.as_ref())
+    let source_reading = read_folder_only(
+        access,
+        source,
+        &run.progress,
+        None,
+        wanted.as_ref(),
+        UnknownFiles::Extract,
+    )
         .map_err(read_failed)?;
-    let target_reading =
-        read_folder(access, target, &ReadProgress::default(), None).map_err(read_failed)?;
+    let target_reading = read_folder_only(
+        access,
+        target,
+        &ReadProgress::default(),
+        None,
+        None,
+        UnknownFiles::Skip,
+    )
+    .map_err(read_failed)?;
     let scope = match listed {
         Some(files) => ModelScope::Only(files.iter().map(|path| source.join(path)).collect()),
         None => ModelScope::FirstPage,
