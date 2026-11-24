@@ -22,6 +22,8 @@ pub struct RecordingModel {
     /// Fails like a model that cannot answer the question at all.
     pub unsupported: bool,
     pub declines: bool,
+    /// Picks another folder for each document it is asked about.
+    pub rotates: bool,
     /// Picks the folder of this name instead of the first one.
     pub picks_folder: Option<&'static str>,
     pub run: Option<Arc<LiveRun>>,
@@ -114,6 +116,11 @@ impl ChatModel for RecordingModel {
             Some(wanted) => folders.iter().position(|(folder, _)| folder == wanted),
             None => Some(0),
         };
+        if self.rotates {
+            return Ok((0..documents.len())
+                .map(|document| Some(document % folders.len().max(1)))
+                .collect());
+        }
         Ok(vec![pick; documents.len()])
     }
 
@@ -132,7 +139,7 @@ fn source_of(count: u8) -> FolderReading {
                 plan_file(
                     &format!("unknown{seed:02}.pdf"),
                     100 + seed,
-                    Some("Unknown KG"),
+                    Some(&lone_sender(seed)),
                     date(2022, 7, 4),
                 )
             })
@@ -345,4 +352,89 @@ fn a_model_pick_without_any_neighbour_choice_is_unsure() {
         plan.entries[0].outcome
     );
     assert_eq!(plan.entries[0].placed_by, Some(PlacedBy::Model));
+}
+
+fn first_choice(plan: &TrialPlan, file: &str) -> PathBuf {
+    let entry = plan
+        .entries
+        .iter()
+        .find(|entry| entry.name == file)
+        .unwrap();
+    match &entry.outcome {
+        TrialOutcome::Unsure { choices, .. } => choices[0].clone(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn alike_files_of_one_sender_written_differently_get_one_question_and_one_folder() {
+    let setup = Setup::new();
+    let model = RecordingModel {
+        rotates: true,
+        ..RecordingModel::default()
+    };
+    let source = reading(
+        "/inbox",
+        [
+            "Gamma Bank AG",
+            "Gamma Bank Aktiengesellschaft",
+            "Ihre Gamma Bank",
+        ]
+        .into_iter()
+        .zip(0..)
+        .map(|(sender, seed)| {
+            plan_file(
+                &format!("statement{seed}.pdf"),
+                100 + seed,
+                Some(sender),
+                date(2022, 7, 4),
+            )
+        })
+        .collect(),
+    );
+
+    let plan = plan_with(&setup, &source, &model, &ModelScope::FirstPage);
+
+    assert_eq!(model.calls(), vec![(1, FolderChoiceLane::Waiting)]);
+    let first = first_choice(&plan, "statement0.pdf");
+    assert_eq!(first_choice(&plan, "statement1.pdf"), first);
+    assert_eq!(first_choice(&plan, "statement2.pdf"), first);
+    assert!(plan.model_left.is_empty());
+
+    plan_with(&setup, &source, &model, &ModelScope::FirstPage);
+    assert_eq!(model.calls().len(), 1, "the picks of the group are stored");
+}
+
+#[test]
+fn files_with_the_same_account_number_get_one_folder_whatever_their_senders() {
+    let setup = Setup::new();
+    let model = RecordingModel {
+        rotates: true,
+        ..RecordingModel::default()
+    };
+    let source = reading(
+        "/inbox",
+        ["Gamma Bank", "Delta Depot"]
+            .into_iter()
+            .zip(0..)
+            .map(|(sender, seed)| {
+                let mut file = plan_file(
+                    &format!("statement{seed}.pdf"),
+                    100 + seed,
+                    Some(sender),
+                    date(2022, 7, 4),
+                );
+                file.text = Some("Stamm-Nr.: 3117713 Portfolio: 1".to_owned());
+                file
+            })
+            .collect(),
+    );
+
+    let plan = plan_with(&setup, &source, &model, &ModelScope::FirstPage);
+
+    assert_eq!(model.calls().len(), 1);
+    assert_eq!(
+        first_choice(&plan, "statement0.pdf"),
+        first_choice(&plan, "statement1.pdf")
+    );
 }

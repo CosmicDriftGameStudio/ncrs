@@ -704,3 +704,125 @@ fn kinds_written_differently_but_known_as_one_kind_are_the_same_kind() {
     assert_eq!(placement.signal, Signal::SameSenderAndKind);
     assert_eq!(placement.folder, Path::new("Konto"));
 }
+
+#[test]
+fn a_sender_written_another_way_is_still_the_sender_of_the_folder() {
+    for (filed_as, written_as, folder) in [
+        (
+            "Deutsche Bank AG",
+            "Deutsche Bank Aktiengesellschaft",
+            "Bank/Deutsche Bank/Konto",
+        ),
+        (
+            "Baader Bank Aktiengesellschaft",
+            "Baader Bank AG Weihenstephaner Straße 4 85716 Unterschleißheim",
+            "Bank/Baader",
+        ),
+    ] {
+        let documents = filed(folder, 1..4, &fields(Some(filed_as), None), None);
+
+        let placement = place(
+            &documents,
+            &ordered(),
+            &fields(Some(written_as), None),
+            None,
+        )
+        .unwrap_or_else(|| panic!("{written_as} found no neighbours"));
+
+        assert_eq!(placement.folder, Path::new(folder));
+        assert_eq!(placement.signal, Signal::SameSender);
+        assert!(placement.is_sure());
+    }
+}
+
+#[test]
+fn a_similar_sounding_other_sender_is_not_the_sender_of_the_folder() {
+    let documents = filed(
+        "Bank/Deutsche Bank/Konto",
+        1..4,
+        &fields(Some("Deutsche Bank AG"), None),
+        None,
+    );
+
+    let placement = place(
+        &documents,
+        &ordered(),
+        &fields(Some("Deutsche Kreditbank AG"), None),
+        None,
+    );
+
+    assert_eq!(placement, None);
+}
+
+#[test]
+fn an_account_number_with_a_dot_in_its_label_places_by_that_number() {
+    let documents = filed(
+        "Bank/finanzen.net zero",
+        1..3,
+        &fields(Some("finanzen.net zero Team"), None),
+        Some("Stamm-Nr.: 3117713 Portfolio: 1"),
+    );
+
+    let placement = place(
+        &documents,
+        &ordered(),
+        &fields(Some("Scalable Capital"), None),
+        Some("Konto-Nr.: 3117713002\nStamm-Nr.: 3117713 Portfolio: 1"),
+    )
+    .unwrap();
+
+    assert_eq!(placement.folder, Path::new("Bank/finanzen.net zero"));
+    assert_eq!(
+        placement.signal,
+        Signal::SameNumber {
+            label: "Stamm-Nr.".to_owned(),
+            value: "3117713".to_owned()
+        }
+    );
+}
+
+#[test]
+fn an_account_number_the_folders_disagree_on_leaves_it_to_the_sender() {
+    let other = fields(Some("Other Bank"), None);
+    let mut documents = filed("Alpha", 1..3, &other, Some("Konto-Nr.: 3117713002"));
+    documents.extend(filed("Beta", 3..5, &other, Some("Konto-Nr.: 3117713002")));
+    documents.extend(filed(
+        "Bank/Mine",
+        5..8,
+        &fields(Some("My Bank AG"), None),
+        None,
+    ));
+
+    let placement = place(
+        &documents,
+        &ordered(),
+        &fields(Some("My Bank"), None),
+        Some("Konto-Nr.: 3117713002"),
+    )
+    .unwrap();
+
+    assert_eq!(placement.folder, Path::new("Bank/Mine"));
+    assert_eq!(placement.signal, Signal::SameSender);
+}
+
+#[test]
+fn documents_of_one_account_or_one_sender_and_kind_share_a_group_key() {
+    let index = NeighbourIndex::new(&[], &no_own(), &ordered());
+    let statement = |sender: &str| fields(Some(sender), Some("Letter"));
+
+    let by_account =
+        |sender: &str| index.group_key(&statement(sender), Some("Stamm-Nr.: 3117713 Portfolio: 1"));
+    assert!(by_account("Scalable").is_some());
+    assert_eq!(by_account("Scalable"), by_account("Another"));
+
+    let by_sender = |sender: &str| index.group_key(&statement(sender), None);
+    assert_eq!(
+        by_sender("Deutsche Bank AG"),
+        by_sender("Ihre Deutsche Bank")
+    );
+    assert_ne!(
+        by_sender("Deutsche Bank AG"),
+        by_sender("Deutsche Kreditbank")
+    );
+    assert_eq!(index.group_key(&fields(None, Some("Letter")), None), None);
+}

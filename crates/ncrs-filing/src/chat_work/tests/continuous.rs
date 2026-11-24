@@ -119,7 +119,7 @@ fn nothing_is_filed_without_a_sure_place_and_no_run_is_made() {
 }
 
 #[test]
-fn a_file_only_the_model_picked_a_folder_for_is_filed_and_can_be_undone() {
+fn a_file_only_the_model_picked_a_folder_for_waits_for_the_tab() {
     let setup = Setup::new();
     setup.write("inbox/other.txt", "Gamma KG invoice");
     index_known(&setup, "archive/Alfa/old.txt", "Alfa AG invoice");
@@ -142,12 +142,10 @@ fn a_file_only_the_model_picked_a_folder_for_is_filed_and_can_be_undone() {
     )
     .unwrap();
 
-    assert_eq!(report, ContinuousReport { filed: 1, left: 0 });
-    assert!(!inbox.join("other.txt").exists());
-    assert_eq!(files_in(&beta), 2);
-    let runs = setup.access.recent_runs(5).unwrap();
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].undoable);
+    assert_eq!(report, ContinuousReport { filed: 0, left: 1 });
+    assert!(inbox.join("other.txt").exists());
+    assert_eq!(files_in(&beta), 1);
+    assert!(setup.access.recent_runs(5).unwrap().is_empty());
 }
 
 #[test]

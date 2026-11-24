@@ -100,6 +100,11 @@ fn plan_file(path: &str, seed: u8, sender: Option<&str>, when: NaiveDate) -> Pla
     }
 }
 
+/// A sender no other seed shares, so that files are no group for the model.
+fn lone_sender(seed: u8) -> String {
+    format!("Sender {}", char::from(b'a' + seed % 26))
+}
+
 fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     let structure = location_structure(&files, &KindCatalog::built_in());

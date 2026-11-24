@@ -245,7 +245,13 @@ pub fn trial(
     let mut model_left = BTreeSet::new();
     let mut model_failure = None;
     if let Some(chat_model) = model {
+        let group_keys: Vec<Option<String>> = source
+            .files
+            .iter()
+            .map(|file| neighbours.group_key(&file.fields, file.text.as_deref()))
+            .collect();
         let asked = ModelAsk {
+            group_keys: &group_keys,
             access,
             model: chat_model,
             target_root: &target.root,
@@ -498,6 +504,9 @@ struct ModelAsk<'a> {
     files: &'a [PlanFile],
     /// The neighbours' candidates of each file, in the same order.
     candidates: &'a [Vec<Candidate>],
+    /// What alike files share, in the same order; files with the same key
+    /// get one question.
+    group_keys: &'a [Option<String>],
 }
 
 /// What the model reads of a file: the start of its text.
@@ -507,7 +516,8 @@ const MODEL_TEXT_CHARS: usize = 2000;
 /// version are asked again.
 /// Version 2: version 1 also held "no folder fits" for files the model never
 /// answered.
-pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 2;
+/// Version 3: a group of alike files gets one pick.
+pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 3;
 
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for gets the model's folder first, then the one
@@ -532,8 +542,8 @@ fn ask_model(
     if needing_model.is_empty() || ask.folders.entries.is_empty() {
         return (BTreeSet::new(), None);
     }
-    let wanting = apply_stored_picks(ask, entries, taken, needing_model);
-    let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
+    let wanting = apply_stored_picks(ask, entries, taken, model_groups(ask, &needing_model));
+    let (asked, not_asked): (Vec<Vec<usize>>, Vec<Vec<usize>>) = match scope {
         ModelScope::FirstPage => {
             let mut asked = wanting;
             let rest = asked.split_off(MODEL_FIRST_PAGE.min(asked.len()));
@@ -544,10 +554,12 @@ fn ask_model(
             let asked = rest.split_off(rest.len().saturating_sub(MODEL_FIRST_PAGE));
             (asked, rest)
         }
-        ModelScope::Only(files) => wanting.into_iter().partition(|position| {
-            entries
-                .get(*position)
-                .is_some_and(|entry| files.contains(&entry.from))
+        ModelScope::Only(files) => wanting.into_iter().partition(|group| {
+            group.iter().any(|position| {
+                entries
+                    .get(*position)
+                    .is_some_and(|entry| files.contains(&entry.from))
+            })
         }),
     };
     // A named set is the rest itself: what it leaves out was settled before.
@@ -556,6 +568,7 @@ fn ask_model(
     } else {
         not_asked
             .into_iter()
+            .flatten()
             .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
             .collect()
     };
@@ -564,10 +577,12 @@ fn ask_model(
     }
     let asked_files: Vec<PathBuf> = asked
         .iter()
+        .flatten()
         .filter_map(|position| entries.get(*position).map(|entry| entry.from.clone()))
         .collect();
     let documents: Vec<String> = asked
         .iter()
+        .filter_map(|group| group.first())
         .filter_map(|position| ask.files.get(*position))
         .map(document_text)
         .collect();
@@ -587,15 +602,17 @@ fn ask_model(
         }
     };
     let mut to_remember: Vec<(ContentHash, Option<String>)> = Vec::new();
-    for (position, pick) in asked.into_iter().zip(picks) {
+    for (group, pick) in asked.into_iter().zip(picks) {
         let folder_name = pick
             .and_then(|number| ask.folders.entries.get(number))
             .map(|(folder, _)| folder.clone());
-        if let Some(entry) = entries.get(position) {
-            to_remember.push((entry.hash, folder_name.clone()));
-        }
-        if let Some(folder) = folder_name {
-            offer_model_folder(ask, entries, taken, position, folder_path(&folder));
+        for position in group {
+            if let Some(entry) = entries.get(position) {
+                to_remember.push((entry.hash, folder_name.clone()));
+            }
+            if let Some(folder) = &folder_name {
+                offer_model_folder(ask, entries, taken, position, folder_path(folder));
+            }
         }
     }
     // The picks are a cache: a trial without them is only slower next time.
@@ -607,17 +624,40 @@ fn ask_model(
     (left, None)
 }
 
-/// Offers the stored folder to every file that has one, and returns the
-/// files that still need the model. A stored "none fits" settles the file; a
-/// stored folder that is no longer in the list is asked again.
+/// The files that need the model, alike ones together: the first of a group
+/// stands for it. A file without a key is a group of its own.
+fn model_groups(ask: &ModelAsk<'_>, needing_model: &[usize]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut by_key: HashMap<&str, usize> = HashMap::new();
+    for position in needing_model {
+        let key = ask.group_keys.get(*position).and_then(Option::as_deref);
+        let existing = key
+            .and_then(|shared| by_key.get(shared))
+            .and_then(|at| groups.get_mut(*at));
+        if let Some(group) = existing {
+            group.push(*position);
+            continue;
+        }
+        if let Some(shared) = key {
+            by_key.insert(shared, groups.len());
+        }
+        groups.push(vec![*position]);
+    }
+    groups
+}
+
+/// Offers the stored folder of a group's first file to the whole group, and
+/// returns the groups that still need the model. A stored "none fits" settles
+/// the group; a stored folder that is no longer in the list is asked again.
 fn apply_stored_picks(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
     taken: &mut BTreeSet<PathBuf>,
-    wanting: Vec<usize>,
-) -> Vec<usize> {
+    wanting: Vec<Vec<usize>>,
+) -> Vec<Vec<usize>> {
     let hashes: Vec<ContentHash> = wanting
         .iter()
+        .filter_map(|group| group.first())
         .filter_map(|position| entries.get(*position))
         .map(|entry| entry.hash)
         .collect();
@@ -630,16 +670,19 @@ fn apply_stored_picks(
         })
         .unwrap_or_default();
     let mut remaining = Vec::new();
-    for position in wanting {
-        let Some(entry) = entries.get(position) else {
+    for group in wanting {
+        let Some(entry) = group.first().and_then(|first| entries.get(*first)) else {
             continue;
         };
         match stored.get(&entry.hash) {
             Some(None) => {}
             Some(Some(folder)) if ask.folders.entries.iter().any(|(known, _)| known == folder) => {
-                offer_model_folder(ask, entries, taken, position, folder_path(folder));
+                let stored_folder = folder.clone();
+                for position in group {
+                    offer_model_folder(ask, entries, taken, position, folder_path(&stored_folder));
+                }
             }
-            Some(Some(_)) | None => remaining.push(position),
+            Some(Some(_)) | None => remaining.push(group),
         }
     }
     remaining
