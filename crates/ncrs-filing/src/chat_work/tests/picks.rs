@@ -520,3 +520,23 @@ fn a_model_pick_inside_the_folder_the_neighbours_are_sure_of_is_offered_first_bu
     );
     assert_eq!(entry.placed_by, Some(PlacedBy::Model));
 }
+
+#[test]
+fn a_model_pick_of_the_folder_the_neighbours_are_sure_of_keeps_the_name() {
+    let plan = trial_with_model_pick(
+        &delta_new_file(),
+        &delta_without_a_name_pattern(),
+        Some("Bank/Delta"),
+    );
+
+    let entry = &plan.entries[0];
+    assert_eq!(
+        entry.outcome,
+        TrialOutcome::Filed {
+            to: PathBuf::from("Bank/Delta/new.pdf")
+        },
+        "{:?}",
+        entry.outcome
+    );
+    assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
+}

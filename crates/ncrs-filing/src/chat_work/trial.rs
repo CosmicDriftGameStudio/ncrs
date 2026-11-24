@@ -732,20 +732,20 @@ fn offer_model_folder(
         });
     // The neighbours were sure of the folder and only missed a name pattern:
     // the model never moves the file elsewhere. A subfolder of it is the
-    // model's guess alone and stays unsure, with the sure folder second.
+    // model's guess alone and stays unsure, with the sure folder second. A
+    // folder without a name pattern keeps the names that come in, like the
+    // bank's own names of its statements.
     if let (TrialOutcome::Stays(StayReason::NoPattern), Some(sure_folder)) =
         (&entry.outcome, entry.neighbour.clone())
     {
         let deeper = from_model.0 != sure_folder && from_model.0.starts_with(&sure_folder);
         if !deeper {
-            let (to, placed_by) = if from_model.0 == sure_folder {
-                (
-                    from_model.0.join(&from_model.1),
-                    PlacedBy::ModelAndNeighbours,
-                )
+            let placed_by = if from_model.0 == sure_folder {
+                PlacedBy::ModelAndNeighbours
             } else {
-                (sure_folder.join(&entry.name), PlacedBy::Neighbours)
+                PlacedBy::Neighbours
             };
+            let to = sure_folder.join(&entry.name);
             if taken.insert(to.clone()) {
                 entry.outcome = TrialOutcome::Filed { to };
                 entry.placed_by = Some(placed_by);
