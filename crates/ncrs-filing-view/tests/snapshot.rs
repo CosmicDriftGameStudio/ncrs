@@ -165,4 +165,22 @@ mod ui_tests {
         };
         picture(&state, "tests/snapshots/filing-long-names-cosmic");
     }
+
+    /// The places that are only the model's guess carry a chip, and the bar
+    /// offers to move only the sure ones.
+    #[test]
+    fn filing_tab_unsure_places_picture() {
+        let mut session = session(FILES);
+        if let Some(plan) = session.plan.as_mut() {
+            for file in plan.files.iter_mut().step_by(4) {
+                if let LiveState::Filed { unsure, .. } = &mut file.state {
+                    *unsure = true;
+                }
+            }
+        }
+        let state = State {
+            session: Some(session),
+        };
+        picture(&state, "tests/snapshots/filing-unsure-cosmic");
+    }
 }
