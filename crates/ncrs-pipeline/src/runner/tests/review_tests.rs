@@ -846,3 +846,39 @@ fn a_location_set_to_continuous_after_the_start_takes_its_next_file_as_a_candida
         }]
     );
 }
+
+#[test]
+fn a_file_the_background_filing_took_once_is_not_offered_again_by_a_rescan() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = location(&inbox_dir, LocationMode::Inbox);
+    let fixture = IndexFixture::new();
+    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
+        "Reminder 12 from Agency B".to_owned(),
+    ))));
+    let runner = Runner::start(
+        settings(workers(2)),
+        fixture.steps_reading(chain),
+        vec![inbox.clone()],
+        stepping_clock(),
+    );
+    runner.set_continuous_roots([inbox.path.clone()]);
+    let left = put(&inbox, "reminder.pdf", REMINDER);
+    assert!(runner.rescan_around(&left));
+    let passed = runner.wait_for("the file passed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done >= 1
+    });
+    assert_eq!(
+        runner.take_continuous_candidates(&|root| root == inbox.path),
+        [ContinuousCandidate {
+            location: inbox.path.clone(),
+            path: left.clone(),
+        }]
+    );
+
+    assert!(runner.rescan_around(&left));
+    runner.wait_for("the file passed again", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done > passed.steps[3].done
+    });
+
+    assert!(!runner.has_continuous_candidates(&|_| true));
+}

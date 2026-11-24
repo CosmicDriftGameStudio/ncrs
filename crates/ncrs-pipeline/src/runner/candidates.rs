@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::step::Item;
@@ -15,12 +16,17 @@ pub struct ContinuousCandidate {
 pub(in crate::runner) struct Candidates {
     waiting: Vec<ContinuousCandidate>,
     seeded: bool,
+    /// Files handed to the background filing already. A file it left lying
+    /// stays new in the index, so every rescan passes it on again.
+    // ponytail: by path, so a file whose bytes change under the same name waits for the next app start.
+    taken: HashSet<PathBuf>,
 }
 
 impl Candidates {
-    /// A file that is processed again replaces its earlier entry.
+    /// A file that is processed again replaces its earlier entry; one taken
+    /// once is not offered again.
     pub(in crate::runner) fn add_from(&mut self, item: &Item) {
-        if !item.continuous_candidate {
+        if !item.continuous_candidate || self.taken.contains(&item.path) {
             return;
         }
         self.waiting.retain(|known| known.path != item.path);
@@ -65,6 +71,8 @@ impl Candidates {
             .into_iter()
             .partition(|known| wanted(&known.location));
         self.waiting = kept;
+        self.taken
+            .extend(taken.iter().map(|candidate| candidate.path.clone()));
         taken
     }
 }
