@@ -438,3 +438,86 @@ fn files_with_the_same_account_number_get_one_folder_whatever_their_senders() {
         first_choice(&plan, "statement1.pdf")
     );
 }
+
+/// Three statements of Delta Bank in `Bank/Delta`, named as they came, so the
+/// neighbours know the folder but no name pattern; `Haus` and
+/// `Bank/Delta/Alt` hold other senders.
+fn delta_without_a_name_pattern() -> FolderReading {
+    let mut files: Vec<PlanFile> = ["auszug.pdf", "scan 7.pdf", "kontoinfo.pdf"]
+        .into_iter()
+        .zip(0..)
+        .map(|(name, seed)| {
+            plan_file(
+                &format!("Bank/Delta/{name}"),
+                10 + seed,
+                Some("Delta Bank"),
+                date(2021, 3, 1 + u32::from(seed)),
+            )
+        })
+        .collect();
+    files.push(plan_file(
+        "Haus/brief.pdf",
+        30,
+        Some("Omega KG"),
+        date(2021, 4, 1),
+    ));
+    files.push(plan_file(
+        "Bank/Delta/Alt/x.pdf",
+        31,
+        Some("Sigma AG"),
+        date(2021, 5, 1),
+    ));
+    reading("/archive", files)
+}
+
+fn delta_new_file() -> FolderReading {
+    let mut file = plan_file("new.pdf", 100, Some("Delta Bank"), date(2022, 7, 4));
+    file.text = Some("Delta Bank statement".to_owned());
+    reading("/inbox", vec![file])
+}
+
+#[test]
+fn a_model_pick_outside_the_folder_the_neighbours_are_sure_of_does_not_win() {
+    let plan = trial_with_model_pick(
+        &delta_new_file(),
+        &delta_without_a_name_pattern(),
+        Some("Haus"),
+    );
+
+    let entry = &plan.entries[0];
+    assert_eq!(
+        entry.outcome,
+        TrialOutcome::Filed {
+            to: PathBuf::from("Bank/Delta/new.pdf")
+        },
+        "{:?}",
+        entry.outcome
+    );
+    assert_eq!(entry.placed_by, Some(PlacedBy::Neighbours));
+    let live = classify(&plan, &delta_new_file());
+    assert!(
+        matches!(live.files[0].state, LiveState::Filed { unsure: false, .. }),
+        "{:?}",
+        live.files[0].state
+    );
+}
+
+#[test]
+fn a_model_pick_inside_the_folder_the_neighbours_are_sure_of_is_taken() {
+    let plan = trial_with_model_pick(
+        &delta_new_file(),
+        &delta_without_a_name_pattern(),
+        Some("Bank/Delta/Alt"),
+    );
+
+    let entry = &plan.entries[0];
+    assert_eq!(
+        entry.outcome,
+        TrialOutcome::Filed {
+            to: PathBuf::from("Bank/Delta/Alt/new.pdf")
+        },
+        "{:?}",
+        entry.outcome
+    );
+    assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
+}

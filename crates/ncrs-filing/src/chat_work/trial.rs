@@ -730,6 +730,25 @@ fn offer_model_folder(
                 entry.name.clone(),
             )
         });
+    // The neighbours were sure of the folder and only missed a name pattern:
+    // the model may go deeper into it, never elsewhere.
+    if let (TrialOutcome::Stays(StayReason::NoPattern), Some(sure_folder)) =
+        (&entry.outcome, entry.neighbour.as_ref())
+    {
+        let (to, placed_by) = if from_model.0.starts_with(sure_folder) {
+            (
+                from_model.0.join(&from_model.1),
+                PlacedBy::ModelAndNeighbours,
+            )
+        } else {
+            (sure_folder.join(&entry.name), PlacedBy::Neighbours)
+        };
+        if taken.insert(to.clone()) {
+            entry.outcome = TrialOutcome::Filed { to };
+            entry.placed_by = Some(placed_by);
+            return;
+        }
+    }
     let neighbours_first = match &entry.outcome {
         TrialOutcome::Unsure { choices, .. } => choices.first(),
         _ => None,
