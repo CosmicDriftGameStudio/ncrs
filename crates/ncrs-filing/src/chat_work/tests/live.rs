@@ -258,7 +258,7 @@ fn write_source(setup: &Setup) {
 }
 
 /// A file of the target as the index holds it after the intake has seen it.
-pub(super) fn index_known(setup: &Setup, relative: &str, content: &str) {
+pub fn index_known(setup: &Setup, relative: &str, content: &str) {
     let path = setup.write(relative, content);
     let mut guard = setup.access.slot.lock().unwrap();
     guard
@@ -706,7 +706,9 @@ struct CountingText(Arc<Mutex<Vec<PathBuf>>>);
 
 impl ncrs_intake::TextSource for CountingText {
     fn extract(&self, path: &Path) -> Result<ncrs_intake::Extracted, TextError> {
-        self.0.lock().unwrap().push(path.to_path_buf());
+        if let Ok(mut seen) = self.0.lock() {
+            seen.push(path.to_path_buf());
+        }
         PlainText.extract(path)
     }
 }

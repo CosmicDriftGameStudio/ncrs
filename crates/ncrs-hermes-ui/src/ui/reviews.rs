@@ -120,14 +120,14 @@ fn answer_buttons(
         .into_iter()
         .enumerate()
         .map(|(position, (answer, fits))| {
-            let message = match document {
+            let answered = match document {
                 Some(_) if answer == Answer::FileTyped => document
                     .filter(|&candidate| state.typed_for(question, candidate).is_some())
                     .map(|candidate| ReviewsMessage::AnswerFile(question, answer, candidate)),
                 Some(only) => Some(ReviewsMessage::AnswerFile(question, answer, only)),
                 None => Some(ReviewsMessage::Answer(question, answer)),
             };
-            let message = message.filter(|_| state.busy_with().is_none());
+            let message = answered.filter(|_| state.busy_with().is_none());
             let mut label = answer_text(question, answer, lang);
             if document.is_none() && fits < members {
                 label = format!("{label} ({})", format::grouped(fits as u64));

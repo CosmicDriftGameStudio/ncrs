@@ -46,7 +46,7 @@ pub fn model() -> &'static LocalModel {
     })
 }
 
-pub(super) fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
+fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
     ExtractionRequest {
         text: text.to_owned(),
         open_fields: open_fields.to_vec(),

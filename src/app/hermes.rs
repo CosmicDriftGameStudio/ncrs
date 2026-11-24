@@ -397,11 +397,15 @@ impl App {
 /// The folder chosen for a review answer keeps its access for the next start,
 /// like a folder chosen in the chat; a failure to save it is shown, the answer
 /// goes on with the access the dialog just gave.
+type SaveGrant = fn(&Path, &Path) -> Result<(), String>;
+
 fn review_folder_chosen(
     folder: Option<PathBuf>,
-    sandbox: Option<(PathBuf, fn(&Path, &Path) -> Result<(), String>)>,
+    sandbox: Option<(PathBuf, SaveGrant)>,
 ) -> Task<Message> {
-    let picked = |folder| Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(folder));
+    let picked = |answer_folder| {
+        Message::Reviews(ncrs_hermes_ui::ReviewsMessage::FolderPicked(answer_folder))
+    };
     let (Some(chosen), Some((dir, grant))) = (folder.clone(), sandbox) else {
         return Task::done(picked(folder));
     };
@@ -414,14 +418,14 @@ fn review_folder_chosen(
         },
         move |result| (chosen.clone(), result),
     )
-    .then(move |(chosen, result)| match result {
-        Ok(()) => Task::done(picked(Some(chosen))),
+    .then(move |(granted, result)| match result {
+        Ok(()) => Task::done(picked(Some(granted))),
         Err(reason) => Task::batch([
             Task::done(Message::Grant(GrantMessage::Saved {
-                folder: chosen.clone(),
+                folder: granted.clone(),
                 result: Err(reason),
             })),
-            Task::done(picked(Some(chosen))),
+            Task::done(picked(Some(granted))),
         ]),
     })
 }

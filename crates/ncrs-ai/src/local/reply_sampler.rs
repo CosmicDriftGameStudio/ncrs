@@ -11,7 +11,7 @@ use llama_cpp_2::token::data::LlamaTokenData;
 use llama_cpp_2::token::data_array::LlamaTokenDataArray;
 use llama_cpp_2::token::LlamaToken;
 
-pub(super) struct ReplySampler {
+pub struct ReplySampler {
     grammar: LlamaSampler,
 }
 

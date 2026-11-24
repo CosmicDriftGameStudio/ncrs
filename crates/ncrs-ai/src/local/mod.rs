@@ -49,8 +49,6 @@ pub use lazy::LazyLocalModel;
 pub use rule_session::RuleSession;
 
 #[cfg(test)]
-mod bench;
-#[cfg(test)]
 mod tests;
 #[cfg(test)]
 pub use tests::models_dir;

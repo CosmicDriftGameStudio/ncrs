@@ -189,9 +189,9 @@ fn grouped_for_questions(items: Vec<ncrs_filing::review_work::ReviewItem>) -> Ve
     }
     grouped
         .into_iter()
-        .map(|(_, items)| WaitingGroup {
+        .map(|(_, members)| WaitingGroup {
             folder: None,
-            items,
+            items: members,
         })
         .collect()
 }
@@ -533,8 +533,8 @@ mod group_tests {
                     proposed_pattern: None,
                     origins: FieldOrigins::default(),
                     passages: Vec::new(),
-                    placement: folder.map(|folder| Placement {
-                        folder: PathBuf::from(folder),
+                    placement: folder.map(|placed_in| Placement {
+                        folder: PathBuf::from(placed_in),
                         signal: Signal::SameSender,
                         agreeing: 3,
                         similar: 3,

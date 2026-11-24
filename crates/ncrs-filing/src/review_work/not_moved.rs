@@ -62,8 +62,8 @@ impl From<String> for NotMoved {
 }
 
 impl NotMoved {
-    pub(super) fn skipped(path: &Path, reason: &SkipReason) -> Self {
-        let reason = match reason {
+    pub(super) fn skipped(path: &Path, skip: &SkipReason) -> Self {
+        let reason = match skip {
             SkipReason::Failed(detail) => NotMovedReason::Os(detail.clone()),
             SkipReason::OutsideLocation | SkipReason::LeavesLocation => {
                 NotMovedReason::OutsideFolders

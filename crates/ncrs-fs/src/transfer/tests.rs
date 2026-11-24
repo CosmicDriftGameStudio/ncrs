@@ -979,7 +979,7 @@ mod refused_quarantine {
         let target_dir = PathBuf::from(std::env::var_os("NCRS_REFUSING_DIR").unwrap());
         let dir = scratch("quarantine-real-drive");
         let (source, _) = quarantined_source_and_refusing_target(dir.path());
-        fs::write(&source, vec![7u8; 300_000]).unwrap();
+        fs::write(&source, b"x".repeat(300_000)).unwrap();
         let target = target_dir.join("download.pdf");
         let mut progress = Skips::default();
 

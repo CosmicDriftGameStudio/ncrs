@@ -331,11 +331,11 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
                 .text
                 .as_deref()
                 .is_none_or(|text| text.trim().is_empty());
-            let entry = entries.get(from.as_path());
+            let trial_entry = entries.get(from.as_path());
             let state = if plan.model_left.contains(&from) {
                 LiveState::Looking
             } else {
-                match entry {
+                match trial_entry {
                     Some(entry) => state_of(entry, without_text, &mut taken),
                     None if without_text => LiveState::Unreadable,
                     None => LiveState::NoFolder,
@@ -346,7 +346,7 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
                 hash: Some(file.hash),
                 state,
                 by_user: false,
-                placed_by: entry.and_then(|entry| entry.placed_by),
+                placed_by: trial_entry.and_then(|found| found.placed_by),
             }
         })
         .collect();
