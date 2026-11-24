@@ -819,21 +819,27 @@ fn a_location_set_to_continuous_after_the_start_takes_its_next_file_as_a_candida
     let inbox = location(&inbox_dir, LocationMode::Inbox);
     put(&inbox, "invoice.pdf", INVOICE);
     let fixture = IndexFixture::new();
+    // With text, a second pass of a file (the watcher and the rescan can both
+    // queue it) leaves it as it was; without, it would go to the review list
+    // as unreadable.
+    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
+        "Reminder 12 from Agency B".to_owned(),
+    ))));
     let runner = Runner::start(
         settings(workers(2)),
-        fixture.steps(),
+        fixture.steps_reading(chain),
         vec![inbox.clone()],
         stepping_clock(),
     );
-    runner.wait_for("the first file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+    let first = runner.wait_for("the first file reviewed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done >= 1
     });
 
     runner.set_continuous_roots([inbox.path.clone()]);
     let later = put(&inbox, "reminder.pdf", REMINDER);
     assert!(runner.rescan_around(&later));
     runner.wait_for("the second file passed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+        is_idle(snapshot) && snapshot.steps[3].done > first.steps[3].done
     });
 
     let reviews = fixture.index.lock().unwrap().open_reviews().unwrap();
