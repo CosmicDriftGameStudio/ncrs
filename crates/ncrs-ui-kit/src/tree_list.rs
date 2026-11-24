@@ -133,7 +133,12 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     if !row_of.trail.is_empty() {
         line = line.push(container("").width(Length::Fill));
         for (shown, color) in row_of.trail {
-            line = line.push(text(shown).size(font_size::SMALL).color(cursor_ink(color)));
+            line = line.push(
+                text(shown)
+                    .size(font_size::SMALL)
+                    .color(cursor_ink(color))
+                    .wrapping(Wrapping::None),
+            );
         }
     }
     let content = container(line)

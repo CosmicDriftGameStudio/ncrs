@@ -145,4 +145,24 @@ mod ui_tests {
         };
         picture(&state, "tests/snapshots/filing-done-cosmic");
     }
+
+    /// Downloads keep the long names banks and shops give them; the old name
+    /// behind the new one stays on one line.
+    #[test]
+    fn filing_tab_long_download_names_picture() {
+        let mut session = session(FILES);
+        if let Some(plan) = session.plan.as_mut() {
+            for (index, file) in plan.files.iter_mut().enumerate() {
+                file.from = PathBuf::from(format!(
+                    "2025-{:02}-06_4711000_01_4711000002_EUR__monatlicher-kontoauszug_7295{index:05}_20250306_10844{index:04}.pdf",
+                    index % 12 + 1
+                ));
+            }
+        }
+        session.selected = None;
+        let state = State {
+            session: Some(session),
+        };
+        picture(&state, "tests/snapshots/filing-long-names-cosmic");
+    }
 }
