@@ -30,7 +30,7 @@ tempfile = "3.27"
 # `join_all` of the SFTP link lookups; the same crate iced re-exports.
 futures = { version = "0.3", default-features = false, features = ["std"] }
 # The change notifications of a shown folder; the same version as ncrs-intake.
-notify = "8"
+notify = "9"
 # Browsing and writing .zip archives.
 zip = { workspace = true }
 # Browsing archives like folders. Entries are unpacked by our own code, never

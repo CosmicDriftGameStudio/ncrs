@@ -24,7 +24,7 @@ walkdir = "2.5"
 same-file = "1.0"
 # One recursive watcher per location; the backends (FSEvents, inotify,
 # ReadDirectoryChanges) do the per-directory work.
-notify = "8"
+notify = "9"
 # pdfium is loaded from a shared library at runtime, never linked: the library
 # is a separate download (see scripts/fetch-pdfium.sh) and a missing one must be
 # an error the app can show. `pdfium_7881` is the newest API level this crate
