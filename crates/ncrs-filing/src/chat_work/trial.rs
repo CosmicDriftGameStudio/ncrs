@@ -56,11 +56,13 @@ pub enum PlacedBy {
     Layout,
     /// The model chose the folder the neighbours offered first.
     ModelAndNeighbours,
+    /// The model's folder alone: the neighbours offered none or another one.
+    Model,
 }
 
 impl PlacedBy {
     /// Only a rule, neighbours or the model agreeing with them make a place
-    /// sure enough to file unasked.
+    /// sure; the model alone stays unsure, like the order of a bare target.
     pub fn is_sure(self) -> bool {
         !matches!(self, Self::Layout)
     }
@@ -508,8 +510,9 @@ const MODEL_TEXT_CHARS: usize = 2000;
 pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 2;
 
 /// The files that did not get a sure place go to the model once, as a batch.
-/// A file it picks a folder for is unsure: the model's folder first, then the
-/// one the neighbours offered. A model that fails changes nothing and stores
+/// A file it picks a folder for gets the model's folder first, then the one
+/// the neighbours offered: filed when the neighbours offered it first, else
+/// unsure and placed by the model alone. A model that fails changes nothing and stores
 /// nothing: the files it was asked about stay among the ones that still need
 /// it, and the failure is returned. Picks stored by an earlier trial count as
 /// the model's answer and are not asked again.
@@ -723,6 +726,7 @@ fn offer_model_folder(
         file_names,
         kind_label,
     };
+    entry.placed_by = Some(PlacedBy::Model);
 }
 
 /// Sure places stay as they are; a taken name or a missing field is no

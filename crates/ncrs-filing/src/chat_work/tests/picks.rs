@@ -325,6 +325,7 @@ fn a_model_that_picks_another_folder_than_the_neighbours_first_leaves_the_place_
         panic!("{:?}", plan.entries[0].outcome);
     };
     assert_eq!(choices[0], PathBuf::from("Haus/Alfa/2022"));
+    assert_eq!(plan.entries[0].placed_by, Some(PlacedBy::Model));
     assert_eq!((plan.filed, plan.unsure), (0, 1));
     let live = classify(&plan, &alfa_new_file());
     assert!(
@@ -343,4 +344,5 @@ fn a_model_pick_without_any_neighbour_choice_is_unsure() {
         "{:?}",
         plan.entries[0].outcome
     );
+    assert_eq!(plan.entries[0].placed_by, Some(PlacedBy::Model));
 }

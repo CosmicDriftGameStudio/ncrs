@@ -207,6 +207,7 @@ fn plan_at(
                 LiveState::Waiting
             },
             by_user: false,
+            placed_by: None,
         })
         .collect();
     LivePlan {

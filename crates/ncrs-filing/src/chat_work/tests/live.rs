@@ -258,7 +258,7 @@ fn write_source(setup: &Setup) {
 }
 
 /// A file of the target as the index holds it after the intake has seen it.
-fn index_known(setup: &Setup, relative: &str, content: &str) {
+pub(super) fn index_known(setup: &Setup, relative: &str, content: &str) {
     let path = setup.write(relative, content);
     let mut guard = setup.access.slot.lock().unwrap();
     guard
@@ -509,6 +509,7 @@ fn plan_to_override() -> LivePlan {
         hash: Some(ContentHash([seed; 32])),
         state,
         by_user: false,
+        placed_by: None,
     };
     LivePlan {
         source_root: PathBuf::from("/inbox"),

@@ -44,6 +44,8 @@ pub struct LiveFile {
     pub hash: Option<ContentHash>,
     pub state: LiveState,
     pub by_user: bool,
+    /// What gave the file its place, `None` while unknown.
+    pub placed_by: Option<PlacedBy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,6 +210,7 @@ fn plan_from(
             hash: None,
             state: LiveState::Waiting,
             by_user: false,
+            placed_by: None,
         })
         .collect();
     run.publish(LivePlan {
@@ -328,10 +331,11 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
                 .text
                 .as_deref()
                 .is_none_or(|text| text.trim().is_empty());
+            let entry = entries.get(from.as_path());
             let state = if plan.model_left.contains(&from) {
                 LiveState::Looking
             } else {
-                match entries.get(from.as_path()) {
+                match entry {
                     Some(entry) => state_of(entry, without_text, &mut taken),
                     None if without_text => LiveState::Unreadable,
                     None => LiveState::NoFolder,
@@ -342,6 +346,7 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
                 hash: Some(file.hash),
                 state,
                 by_user: false,
+                placed_by: entry.and_then(|entry| entry.placed_by),
             }
         })
         .collect();

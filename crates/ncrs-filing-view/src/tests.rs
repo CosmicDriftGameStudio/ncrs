@@ -26,6 +26,7 @@ fn file(from: &str, state: LiveState) -> LiveFile {
         hash: Some(ContentHash([1; 32])),
         state,
         by_user: false,
+        placed_by: None,
     }
 }
 
