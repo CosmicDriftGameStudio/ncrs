@@ -13,9 +13,12 @@ use super::groups::numbered_name;
 use super::picks::ask_until_done;
 use super::reading::{list_files, read_folder_only, UnknownFiles};
 use super::trial::{
-    PlacedBy, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, FOLDER_PICK_VERSION,
+    trial, PlacedBy, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan,
+    FOLDER_PICK_VERSION,
 };
-use super::{ChatAccess, FolderReading, ModelScope, ReadProgress, RunItem, RunPlan};
+use super::{
+    AnsweredGroups, ChatAccess, FolderReading, ModelScope, ReadProgress, RunItem, RunPlan,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveState {
@@ -259,6 +262,36 @@ fn plan_from(
         Some(files) => ModelScope::Only(files.iter().map(|path| source.join(path)).collect()),
         None => ModelScope::FirstPage,
     };
+    let mut publish = |trial_plan: &TrialPlan| {
+        let mut live = classify(trial_plan, &source_reading);
+        live.folder_choice_unsupported = trial_plan.model_failure == Some(AiError::Unsupported);
+        live.done = trial_plan.model_left.is_empty() || live.folder_choice_unsupported;
+        if live.folder_choice_unsupported {
+            for file in &mut live.files {
+                if file.state == LiveState::Looking {
+                    file.state = LiveState::NeedsModel;
+                }
+            }
+        }
+        // `done` goes out only after the tags are written, so nothing
+        // that acts on a finished plan races with `mark_files` below.
+        run.publish(LivePlan {
+            done: false,
+            ..live.clone()
+        });
+        *last = Some(live);
+    };
+    // A model round over a large archive takes minutes; what needs no model
+    // shows before it.
+    publish(&trial(
+        access,
+        &source_reading,
+        &target_reading,
+        &AnsweredGroups::default(),
+        None,
+        Some(model),
+        &ModelScope::NotYet,
+    )?);
     ask_until_done(
         access,
         &source_reading,
@@ -266,25 +299,7 @@ fn plan_from(
         model,
         &scope,
         Some(&run.stop),
-        &mut |trial_plan| {
-            let mut live = classify(trial_plan, &source_reading);
-            live.folder_choice_unsupported = trial_plan.model_failure == Some(AiError::Unsupported);
-            live.done = trial_plan.model_left.is_empty() || live.folder_choice_unsupported;
-            if live.folder_choice_unsupported {
-                for file in &mut live.files {
-                    if file.state == LiveState::Looking {
-                        file.state = LiveState::NeedsModel;
-                    }
-                }
-            }
-            // `done` goes out only after the tags are written, so nothing
-            // that acts on a finished plan races with `mark_files` below.
-            run.publish(LivePlan {
-                done: false,
-                ..live.clone()
-            });
-            *last = Some(live);
-        },
+        &mut publish,
     )
 }
 

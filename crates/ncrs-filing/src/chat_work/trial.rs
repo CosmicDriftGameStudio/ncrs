@@ -147,6 +147,9 @@ pub enum ModelScope {
     /// The last files in source order, as many as a page, in the background
     /// lane; the files before them are left for later.
     LastPage,
+    /// No file: what the model has to decide is left for later, so the rest of
+    /// the plan shows before the first answer.
+    NotYet,
 }
 
 impl TrialPlan {
@@ -554,6 +557,7 @@ fn ask_model(
             let asked = rest.split_off(rest.len().saturating_sub(MODEL_FIRST_PAGE));
             (asked, rest)
         }
+        ModelScope::NotYet => (Vec::new(), wanting),
         ModelScope::Only(files) => wanting.into_iter().partition(|group| {
             group.iter().any(|position| {
                 entries
@@ -587,7 +591,9 @@ fn ask_model(
         .map(document_text)
         .collect();
     let lane = match scope {
-        ModelScope::Only(_) | ModelScope::LastPage => FolderChoiceLane::Background,
+        ModelScope::Only(_) | ModelScope::LastPage | ModelScope::NotYet => {
+            FolderChoiceLane::Background
+        }
         ModelScope::FirstPage => FolderChoiceLane::Waiting,
     };
     let picks = match ask
