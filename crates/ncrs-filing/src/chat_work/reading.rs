@@ -257,14 +257,7 @@ pub fn read_folder(
     progress: &ReadProgress,
     stop: Option<&AtomicBool>,
 ) -> Result<FolderReading, ReadError> {
-    read_folder_only(
-        access,
-        folder,
-        progress,
-        stop,
-        None,
-        UnknownFiles::Extract,
-    )
+    read_folder_only(access, folder, progress, stop, None, UnknownFiles::Extract)
 }
 
 /// What becomes of a file the index does not know.

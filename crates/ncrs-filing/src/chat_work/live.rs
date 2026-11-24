@@ -240,7 +240,7 @@ fn plan_from(
         wanted.as_ref(),
         UnknownFiles::Extract,
     )
-        .map_err(read_failed)?;
+    .map_err(read_failed)?;
     let target_reading = read_folder_only(
         access,
         target,

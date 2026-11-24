@@ -733,7 +733,10 @@ fn the_target_folder_is_not_read_for_text_while_the_plan_waits_on_the_source() {
         .all(|path| !path.starts_with(&archive)));
     assert!(!reads.lock().unwrap().is_empty());
     let first = model.seen.lock().unwrap()[0].clone().unwrap();
-    assert!(first.files.iter().all(|file| file.state == LiveState::Waiting));
+    assert!(first
+        .files
+        .iter()
+        .all(|file| file.state == LiveState::Waiting));
     let counted = tally(&published(&run));
     assert_eq!(counted.waiting + counted.looking, 0);
 }

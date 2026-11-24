@@ -84,8 +84,10 @@ impl App {
         } else {
             Vec::new()
         };
+        // Read before Hermes is taken out: the tools come from its module.
+        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let mut ctx = self.hermes_ctx(&hermes, Vec::new());
+        let mut ctx = self.hermes_ctx(&hermes, Vec::new(), continuous);
         ctx.action_sources = action_sources;
         let asked = ncrs_hermes_ui::update(
             &mut hermes,
@@ -146,6 +148,7 @@ impl App {
         &self,
         hermes: &ncrs_hermes_ui::Hermes,
         inquiry_paths: Vec<PathBuf>,
+        continuous: Option<ncrs_hermes_ui::ContinuousTools>,
     ) -> ncrs_hermes_ui::Ctx<'_> {
         let side = self.panels.active;
         let panel = self.panel(side);
@@ -170,7 +173,7 @@ impl App {
             chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
-            continuous: self.continuous_tools(),
+            continuous,
             trash: ncrs_hermes_ui::Bin(Arc::clone(&self.trash)),
             filing_tab_source: self
                 .filing_view
@@ -236,8 +239,10 @@ impl App {
         inquiry_paths: Vec<PathBuf>,
         step: impl FnOnce(&mut ncrs_hermes_ui::Hermes, &ncrs_hermes_ui::Ctx<'_>) -> R,
     ) -> R {
+        // Read before Hermes is taken out: the tools come from its module.
+        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let ctx = self.hermes_ctx(&hermes, inquiry_paths);
+        let ctx = self.hermes_ctx(&hermes, inquiry_paths, continuous);
         let outcome = step(&mut hermes, &ctx);
         self.hermes = hermes;
         outcome

@@ -360,16 +360,19 @@ impl ReviewAccess {
         for item in items {
             let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
                 _ if !folder_fits => Err(FOLDER_ESCAPES_TARGET.to_owned().into()),
-                Some(stem) => self.still_describes(item).map_err(NotMoved::from).and_then(|()| {
-                    self.confirm_in(
-                        &root,
-                        &mut batches,
-                        item.entry,
-                        item.document_id,
-                        &item.fields,
-                        Naming::Fixed(stem),
-                    )
-                }),
+                Some(stem) => self
+                    .still_describes(item)
+                    .map_err(NotMoved::from)
+                    .and_then(|()| {
+                        self.confirm_in(
+                            &root,
+                            &mut batches,
+                            item.entry,
+                            item.document_id,
+                            &item.fields,
+                            Naming::Fixed(stem),
+                        )
+                    }),
                 None => Err(PATTERN_DOES_NOT_FIT.to_owned().into()),
             };
             summary.record(outcome);

@@ -10,6 +10,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::*;
 use crate::chat_work::picks::remember_from_readings;
+use crate::chat_work::{classify, LiveState};
 
 /// Records each folder choice it is asked and answers the first folder, or
 /// fails, or picks no folder. With a `run`, it notes the plan that is
@@ -21,6 +22,8 @@ pub struct RecordingModel {
     /// Fails like a model that cannot answer the question at all.
     pub unsupported: bool,
     pub declines: bool,
+    /// Picks the folder of this name instead of the first one.
+    pub picks_folder: Option<&'static str>,
     pub run: Option<Arc<LiveRun>>,
     pub stops_the_run: bool,
     pub seen: StdMutex<Vec<Option<LivePlan>>>,
@@ -78,7 +81,7 @@ impl ChatModel for RecordingModel {
 
     fn choose_folders(
         &self,
-        _folders: &[(String, Vec<String>)],
+        folders: &[(String, Vec<String>)],
         documents: &[String],
         lane: FolderChoiceLane,
     ) -> Result<Vec<Option<usize>>, AiError> {
@@ -106,7 +109,11 @@ impl ChatModel for RecordingModel {
         if self.fails {
             return Err(AiError::Model("closed"));
         }
-        let pick = if self.declines { None } else { Some(0) };
+        let pick = match self.picks_folder {
+            _ if self.declines => None,
+            Some(wanted) => folders.iter().position(|(folder, _)| folder == wanted),
+            None => Some(0),
+        };
         Ok(vec![pick; documents.len()])
     }
 
@@ -249,4 +256,91 @@ fn files_the_model_could_not_answer_for_do_not_count_as_staying() {
         })
         .count();
     assert_eq!(plan.stays, staying);
+}
+
+fn alfa_new_file() -> FolderReading {
+    let mut file = plan_file("new.pdf", 100, Some("Alfa AG"), date(2022, 7, 4));
+    file.text = Some("Alfa AG invoice".to_owned());
+    reading("/inbox", vec![file])
+}
+
+fn trial_with_model_pick(
+    source: &FolderReading,
+    target: &FolderReading,
+    pick: Option<&'static str>,
+) -> TrialPlan {
+    let setup = Setup::new();
+    let model = RecordingModel {
+        picks_folder: pick,
+        ..RecordingModel::default()
+    };
+    crate::chat_work::trial::trial(
+        &setup.access,
+        source,
+        target,
+        &AnsweredGroups::default(),
+        None,
+        Some(&model),
+        &ModelScope::FirstPage,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_model_that_picks_the_folder_the_neighbours_offered_first_makes_the_place_sure() {
+    let plan = trial_with_model_pick(
+        &alfa_new_file(),
+        &super::groups::alfa_in_two_areas(),
+        Some("Firma/Alfa"),
+    );
+
+    let entry = &plan.entries[0];
+    assert_eq!(
+        entry.outcome,
+        TrialOutcome::Filed {
+            to: PathBuf::from("Firma/Alfa/2022/2022-07-04 Alfa Rechnung.pdf")
+        },
+        "{:?}",
+        entry.outcome
+    );
+    assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
+    assert_eq!((plan.filed, plan.unsure), (1, 0));
+    let live = classify(&plan, &alfa_new_file());
+    assert!(
+        matches!(live.files[0].state, LiveState::Filed { unsure: false, .. }),
+        "{:?}",
+        live.files[0].state
+    );
+}
+
+#[test]
+fn a_model_that_picks_another_folder_than_the_neighbours_first_leaves_the_place_unsure() {
+    let plan = trial_with_model_pick(
+        &alfa_new_file(),
+        &super::groups::alfa_in_two_areas(),
+        Some("Haus/Alfa"),
+    );
+
+    let TrialOutcome::Unsure { choices, .. } = &plan.entries[0].outcome else {
+        panic!("{:?}", plan.entries[0].outcome);
+    };
+    assert_eq!(choices[0], PathBuf::from("Haus/Alfa/2022"));
+    assert_eq!((plan.filed, plan.unsure), (0, 1));
+    let live = classify(&plan, &alfa_new_file());
+    assert!(
+        matches!(live.files[0].state, LiveState::Filed { unsure: true, .. }),
+        "{:?}",
+        live.files[0].state
+    );
+}
+
+#[test]
+fn a_model_pick_without_any_neighbour_choice_is_unsure() {
+    let plan = trial_with_model_pick(&source_of(1), &target_reading(), Some("Alfa"));
+
+    assert!(
+        matches!(plan.entries[0].outcome, TrialOutcome::Unsure { .. }),
+        "{:?}",
+        plan.entries[0].outcome
+    );
 }

@@ -358,7 +358,11 @@ fn a_pattern_that_cannot_be_rendered_moves_nothing() {
             pattern,
         );
 
-        assert_eq!(result, Err(NotMoved::other(PATTERN_DOES_NOT_FIT)), "{pattern}");
+        assert_eq!(
+            result,
+            Err(NotMoved::other(PATTERN_DOES_NOT_FIT)),
+            "{pattern}"
+        );
     }
     assert!(setup.inbox.join("scan.pdf").exists());
     assert_eq!(access.load().unwrap().len(), 1);
