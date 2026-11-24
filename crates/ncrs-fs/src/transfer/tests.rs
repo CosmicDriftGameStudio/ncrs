@@ -970,4 +970,27 @@ mod refused_quarantine {
         assert_eq!(progress.0[0].kind, SkipKind::Attributes);
         assert!(progress.0[0].detail.contains("com.apple.quarantine"));
     }
+
+    /// Against a real drive that refuses the quarantine (a Cryptomator vault
+    /// over macFUSE): `NCRS_REFUSING_DIR` is an empty folder on it.
+    #[test]
+    #[ignore = "needs a mounted drive that refuses the quarantine"]
+    fn a_quarantined_download_moves_onto_a_drive_that_refuses_the_mark() {
+        let target_dir = PathBuf::from(std::env::var_os("NCRS_REFUSING_DIR").unwrap());
+        let dir = scratch("quarantine-real-drive");
+        let (source, _) = quarantined_source_and_refusing_target(dir.path());
+        fs::write(&source, vec![7u8; 300_000]).unwrap();
+        let target = target_dir.join("download.pdf");
+        let mut progress = Skips::default();
+
+        let moved = transfer_to(&source, &target, &Move, &mut progress, OnConflict::Fail);
+
+        let size = fs::metadata(&target).map(|meta| meta.len());
+        let _cleanup = fs::remove_file(&target);
+        moved.unwrap();
+        assert_eq!(size.unwrap(), 300_000);
+        assert!(!source.exists());
+        assert_eq!(progress.0.len(), 1, "{:?}", progress.0);
+        assert_eq!(progress.0[0].kind, SkipKind::Attributes);
+    }
 }
