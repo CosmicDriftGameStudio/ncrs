@@ -303,9 +303,7 @@ impl PathFilter {
                 Some(build_glob_set(include_patterns.iter(), case_sensitive)?)
             },
             exclude: build_glob_set(
-                exclude_patterns
-                    .iter()
-                    .filter(|pattern| !pattern.dirs_only),
+                exclude_patterns.iter().filter(|pattern| !pattern.dirs_only),
                 case_sensitive,
             )?,
             exclude_dirs: build_glob_set(

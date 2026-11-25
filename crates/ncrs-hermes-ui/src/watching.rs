@@ -95,7 +95,8 @@ impl Watching {
                 .collect()
         };
         let (watched_before, watched_after) = (watched(before), watched(after));
-        self.switched_on.extend(watched_after.difference(&watched_before).cloned());
+        self.switched_on
+            .extend(watched_after.difference(&watched_before).cloned());
         watched_before.difference(&watched_after).cloned().collect()
     }
 

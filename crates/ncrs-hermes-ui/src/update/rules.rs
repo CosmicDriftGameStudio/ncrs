@@ -215,7 +215,10 @@ pub fn open_rule_form(
     match hermes.rules.as_mut() {
         Some(view) => view.open_form(form_in_target),
         None => {
-            hermes.rules = Some(RulesPage::for_form(form_in_target, Arc::clone(&ctx.kinds.catalog)));
+            hermes.rules = Some(RulesPage::for_form(
+                form_in_target,
+                Arc::clone(&ctx.kinds.catalog),
+            ));
         }
     }
     Task::batch([
@@ -277,7 +280,9 @@ fn run_rule_try(hermes: &mut Hermes, generation: u64, ctx: &Ctx<'_>) -> Task<Mes
         return Task::none();
     };
     Task::perform(
-        tokio::task::spawn_blocking(move || try_in_target(&sorting_access, &tried_source, &target, rule)),
+        tokio::task::spawn_blocking(move || {
+            try_in_target(&sorting_access, &tried_source, &target, rule)
+        }),
         move |joined| {
             let result = joined.unwrap_or_else(|join| Err(join.to_string()));
             Message::Rules(RulesMessage::Tried { generation, result })

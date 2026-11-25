@@ -463,7 +463,10 @@ fn a_copying_source_copies_on_enter_and_moves_when_asked() {
     let message = filing_key(&key, Modifiers::empty(), key_facts(&state)).unwrap();
     assert!(matches!(message, Message::File(LocationTransfer::Copy)));
     let shifted_message = filing_key(&key, Modifiers::SHIFT, key_facts(&state)).unwrap();
-    assert!(matches!(shifted_message, Message::File(LocationTransfer::Move)));
+    assert!(matches!(
+        shifted_message,
+        Message::File(LocationTransfer::Move)
+    ));
     let (_dropped_run, _) = update(&mut state, shifted_message, &setup.ctx());
     assert!(session(&state).running.is_some());
 }
@@ -517,7 +520,9 @@ fn folders_that_only_lead_to_one_other_share_its_row() {
 
     let reopened = state.session.as_mut().unwrap();
     reopened.closed_folders.clear();
-    reopened.changes.insert(PathBuf::from("b.txt"), place("Bank"));
+    reopened
+        .changes
+        .insert(PathBuf::from("b.txt"), place("Bank"));
     assert_eq!(
         rows(&state),
         [row("", 0), row("Bank", 1), row("North/2026", 2)]
@@ -801,7 +806,11 @@ fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
     assert!(answering.answering.contains(Path::new("both.txt")));
     assert!(answering.changes.is_empty());
 
-    let document = answering.row(Path::new("both.txt")).unwrap().document.unwrap();
+    let document = answering
+        .row(Path::new("both.txt"))
+        .unwrap()
+        .document
+        .unwrap();
     let chosen = Change::Places(vec![in_target("t2", "Letters", "B1.txt")]);
     let answer = carry_answer(
         &setup.access,
@@ -812,7 +821,11 @@ fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
         LANG,
     )
     .unwrap();
-    let message = Message::Answered(answering.id, PathBuf::from("both.txt"), Ok(Box::new(answer)));
+    let message = Message::Answered(
+        answering.id,
+        PathBuf::from("both.txt"),
+        Ok(Box::new(answer)),
+    );
     let action = send(&mut state, message, &ctx);
     assert!(setup.path("Company/Letters/B1.txt").exists());
     assert!(matches!(action, Some(Action::Filed { filed: 1, .. })));

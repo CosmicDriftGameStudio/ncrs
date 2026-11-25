@@ -183,10 +183,15 @@ fn a_document_is_asked_once_per_version_even_when_nothing_was_found_and_after_a_
     let fixture = IndexFixture::new();
     let provider = found_nothing();
 
-    let first = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as Arc<dyn Provider>, 1)
-        .wait_for("asked", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[3].unchanged == 1
-        });
+    let first = start_with_ai(
+        &fixture,
+        &inbox,
+        Arc::clone(&provider) as Arc<dyn Provider>,
+        1,
+    )
+    .wait_for("asked", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].unchanged == 1
+    });
     assert_eq!(count(&first, ChangeOutcome::FilledByAi), 0);
     assert_eq!(provider.requests().len(), 1);
     let id = document_ids(&fixture, &inbox)[0];
@@ -195,10 +200,15 @@ fn a_document_is_asked_once_per_version_even_when_nothing_was_found_and_after_a_
         AI_READ_VERSION
     );
 
-    let second = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as Arc<dyn Provider>, 1)
-        .wait_for("scanned again", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[0].unchanged == 1
-        });
+    let second = start_with_ai(
+        &fixture,
+        &inbox,
+        Arc::clone(&provider) as Arc<dyn Provider>,
+        1,
+    )
+    .wait_for("scanned again", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[0].unchanged == 1
+    });
 
     assert_eq!(second.steps[1].done, 0);
     assert_eq!(provider.requests().len(), 1, "a restart does not ask again");

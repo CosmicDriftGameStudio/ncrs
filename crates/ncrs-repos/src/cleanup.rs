@@ -940,11 +940,7 @@ mod tests {
         let repos = BTreeMap::from([(repo.clone(), RepoState::Scanned(Box::new(scan)))]);
         let with_ignored = Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos);
         assert_eq!(with_ignored.ticked(), (2, 1));
-        assert!(with_ignored
-            .plan_for(&repo)
-            .unwrap()
-            .worktrees
-            .is_empty());
+        assert!(with_ignored.plan_for(&repo).unwrap().worktrees.is_empty());
     }
 
     #[test]

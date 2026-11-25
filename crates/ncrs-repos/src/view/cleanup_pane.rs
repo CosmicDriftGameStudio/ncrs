@@ -170,9 +170,7 @@ fn group<'a>(cleanup: &Cleanup, repo: &Path, ctx: ViewCtx<'a>) -> Element<'a, Me
         for item in items {
             body = body.push(item_row(cleanup, item, ctx));
         }
-        let stays = cleanup
-            .scan(repo)
-            .map_or(&[][..], |scan| &*scan.list.kept);
+        let stays = cleanup.scan(repo).map_or(&[][..], |scan| &*scan.list.kept);
         for kept in stays.iter().filter(|kept| kept.is_worktree) {
             let name = Path::new(&kept.name).file_name().map_or_else(
                 || kept.name.clone(),

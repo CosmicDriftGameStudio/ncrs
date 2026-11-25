@@ -136,9 +136,7 @@ pub fn job(root: PathBuf, token: JobToken, job: Job) -> Task<Message> {
 pub fn reset_loss(root: PathBuf, sha: String) -> Task<Message> {
     let asked = sha.clone();
     Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || Git::open(&root)?.reset_loss(&sha)).await
-        },
+        async move { tokio::task::spawn_blocking(move || Git::open(&root)?.reset_loss(&sha)).await },
         move |joined| {
             Message::ResetLossLoaded(
                 asked.clone(),

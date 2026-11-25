@@ -79,7 +79,9 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::RefsLoaded(generation, result) => refs_loaded(state, ctx, generation, *result),
         Message::LogLoaded(generation, result) => log_loaded(state, ctx, generation, *result),
         Message::DetailLoaded(generation, result) => detail_loaded(state, ctx, generation, *result),
-        Message::WorkingLoaded(generation, result) => working_loaded(state, ctx, generation, result),
+        Message::WorkingLoaded(generation, result) => {
+            working_loaded(state, ctx, generation, result)
+        }
         Message::DiffLoaded(generation, result) => diff_loaded(state, ctx, generation, *result),
         Message::FilterChanged(filter) => {
             state.filter = filter;

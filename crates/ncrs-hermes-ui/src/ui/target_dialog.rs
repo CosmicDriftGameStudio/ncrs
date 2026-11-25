@@ -127,7 +127,9 @@ pub fn question<'a>(
 ) -> Element<'a, Message> {
     match asked {
         TargetQuestion::Remove(removal) => removal_question(removal, window, lang, palette),
-        TargetQuestion::Confirm(confirmation) => confirm_question(confirmation, window, lang, palette),
+        TargetQuestion::Confirm(confirmation) => {
+            confirm_question(confirmation, window, lang, palette)
+        }
     }
 }
 

@@ -232,7 +232,13 @@ impl Git {
         self.refuse_unsafe_checkout()?;
         self.refuse_left_autostash()?;
         self.refuse_own_merge_options()?;
-        let args = ["merge", "--ff-only", "--no-autostash", "--no-stat", "@{upstream}"];
+        let args = [
+            "merge",
+            "--ff-only",
+            "--no-autostash",
+            "--no-stat",
+            "@{upstream}",
+        ];
         let output = self.run(&args, None)?;
         if output.success {
             return Ok(());

@@ -53,7 +53,8 @@ fn facts_height(state: &State, ctx: ViewCtx<'_>) -> f32 {
     let Some(commit_info) = info else {
         return text("", font_size::ROW);
     };
-    let has_committer = commit_info.committer != commit_info.author || commit_info.committer_time != commit_info.author_time;
+    let has_committer = commit_info.committer != commit_info.author
+        || commit_info.committer_time != commit_info.author_time;
     let has_branches = state
         .containing
         .as_ref()

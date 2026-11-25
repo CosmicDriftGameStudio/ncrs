@@ -481,13 +481,8 @@ fn the_copy_is_made_once_and_never_overwritten() {
     let second = tempfile::tempdir().unwrap();
     let second_path = config_in(&second, &legacy_config(&second));
     std::fs::write(backup_of(&second_path), "earlier copy").unwrap();
-    upsert_sort_source_with_home(
-        &second_path,
-        &source_at(&paths(&second).0, &[]),
-        None,
-        None,
-    )
-    .unwrap();
+    upsert_sort_source_with_home(&second_path, &source_at(&paths(&second).0, &[]), None, None)
+        .unwrap();
     assert_eq!(
         std::fs::read_to_string(backup_of(&second_path)).unwrap(),
         "earlier copy"

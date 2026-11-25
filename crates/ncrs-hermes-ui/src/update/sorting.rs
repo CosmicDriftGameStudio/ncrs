@@ -31,11 +31,7 @@ fn sorting(message: SortingMessage) -> Message {
     Message::Sorting(message)
 }
 
-pub fn open(
-    hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
-    _actions: &mut Vec<Action>,
-) -> Task<Message> {
+pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, _actions: &mut Vec<Action>) -> Task<Message> {
     hermes.sorting = Some(SortingPage::default());
     load(hermes, ctx)
 }

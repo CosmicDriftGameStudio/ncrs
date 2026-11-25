@@ -394,12 +394,19 @@ mod tests {
         std::fs::create_dir_all(target.join("in")).expect("folders");
         let real_target = target.canonicalize().expect("a real path");
         let (filing, id) = filing_with_target(&real_target);
-        let mut draft =
-            SourceDialog::new(SourceDialogKind::Watched, Some(&real_target.join("in")), &filing);
+        let mut draft = SourceDialog::new(
+            SourceDialogKind::Watched,
+            Some(&real_target.join("in")),
+            &filing,
+        );
         draft.toggle_target(&id);
         look(&mut draft, dir.path());
         assert_eq!(draft.problems(&filing), vec![SourceProblem::InsideTarget]);
-        let mut once = SourceDialog::new(SourceDialogKind::Once, Some(&real_target.join("in")), &filing);
+        let mut once = SourceDialog::new(
+            SourceDialogKind::Once,
+            Some(&real_target.join("in")),
+            &filing,
+        );
         look(&mut once, dir.path());
         assert!(!once.watch);
         assert!(!once

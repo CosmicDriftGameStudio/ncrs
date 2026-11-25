@@ -175,10 +175,7 @@ pub fn plan(
 }
 
 /// The plan of a watched source, which nobody looks at before it is run.
-pub fn plan_watched(
-    access: &SortingAccess,
-    request: &PlanRequest,
-) -> Result<SortPlan, PlanError> {
+pub fn plan_watched(access: &SortingAccess, request: &PlanRequest) -> Result<SortPlan, PlanError> {
     plan_over(
         access,
         request,

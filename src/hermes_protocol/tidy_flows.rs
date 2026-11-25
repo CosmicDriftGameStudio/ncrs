@@ -488,7 +488,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 .file_name()
                 .and_then(|name| folders.get(&(name.to_owned(), size)));
             match (belongs, place.relative.parent()) {
-                (Some(original_folders), Some(folder)) if original_folders.contains(folder) => right += 1,
+                (Some(original_folders), Some(folder)) if original_folders.contains(folder) => {
+                    right += 1
+                }
                 (Some(_), _) => wrong += 1,
                 (None, _) => unknown += 1,
             }

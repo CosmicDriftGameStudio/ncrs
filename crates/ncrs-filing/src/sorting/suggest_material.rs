@@ -195,12 +195,7 @@ impl Material {
 }
 
 /// A rule that only exists to be tried.
-pub fn candidate(
-    target: &TargetId,
-    name: &str,
-    conditions: RuleConditions,
-    pattern: &str,
-) -> Rule {
+pub fn candidate(target: &TargetId, name: &str, conditions: RuleConditions, pattern: &str) -> Rule {
     Rule {
         id: RuleId::unused_in(&[]),
         position: 1,
@@ -273,10 +268,7 @@ impl WordIndex {
         found.sort_by(|left, right| {
             let share = |entry: &(&str, usize, usize)| {
                 // Compared as fractions of the same denominator.
-                entry
-                    .2
-                    .saturating_mul(1000)
-                    .div_euclid(others.len().max(1))
+                entry.2.saturating_mul(1000).div_euclid(others.len().max(1))
             };
             share(left)
                 .cmp(&share(right))

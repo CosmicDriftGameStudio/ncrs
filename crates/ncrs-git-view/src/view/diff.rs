@@ -119,7 +119,8 @@ fn toolbar_rows<'a>(
     };
     let subject = match compare_ends(&shown.subject) {
         Some((from, to)) => {
-            let to_side = to.unwrap_or_else(|| ctx.lang.text(Msg::GitViewCompareWorking).to_owned());
+            let to_side =
+                to.unwrap_or_else(|| ctx.lang.text(Msg::GitViewCompareWorking).to_owned());
             Some(format!("{from} \u{2192} {to_side}"))
         }
         None => commit_of_diff(state, shown).map(|commit| {

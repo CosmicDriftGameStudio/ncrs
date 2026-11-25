@@ -24,11 +24,7 @@ fn unconfirmed(suggested: &Suggested) -> RuleSpec {
 
 /// Whether the suggestion may still be shown: not discarded before and not a
 /// rule already.
-pub fn is_new(
-    index: &Index,
-    target: &TargetId,
-    suggested: &Suggested,
-) -> Result<bool, String> {
+pub fn is_new(index: &Index, target: &TargetId, suggested: &Suggested) -> Result<bool, String> {
     index
         .is_new_suggestion(&unconfirmed(suggested), target)
         .map_err(text)

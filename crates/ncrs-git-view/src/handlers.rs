@@ -879,7 +879,8 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
         }
     }
     refresh_sync(state, ctx);
-    let folders = (!removed_folders.is_empty()).then_some(Action::WorktreesRemoved(removed_folders));
+    let folders =
+        (!removed_folders.is_empty()).then_some(Action::WorktreesRemoved(removed_folders));
     (load::everything(state), folders)
 }
 

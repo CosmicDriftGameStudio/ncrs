@@ -62,7 +62,10 @@ pub fn special_folders_of<'a>(
     let source_folders = sources
         .into_iter()
         .map(|path| (path.to_path_buf(), SpecialFolder::ReadFolder));
-    target_folders.chain(source_folders).chain(system_folders(home)).collect()
+    target_folders
+        .chain(source_folders)
+        .chain(system_folders(home))
+        .collect()
 }
 
 /// What `folders` say about `path`. The first entry for a path wins, so a

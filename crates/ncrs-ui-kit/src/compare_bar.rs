@@ -39,10 +39,7 @@ pub fn compare_bar<'a, M: Clone + 'a>(
         .clip(true)
         .align_y(alignment::Vertical::Center);
     bar(
-        column![
-            padded_line,
-            theme::horizontal_rule(palette.border_inactive)
-        ],
+        column![padded_line, theme::horizontal_rule(palette.border_inactive)],
         palette,
     )
 }
