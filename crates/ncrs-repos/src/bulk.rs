@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use ncrs_git::{ActionError, Git, IntegrateOutcome, RepoSummary};
+use ncrs_git::{ActionError, Git, RepoSummary};
 use ncrs_ui_kit::git_state::RunOutcome;
 
 use crate::summary::{self, Reading};
@@ -359,7 +359,7 @@ pub fn execute(
 fn pull(git: &Git, behind: u32, switched: Option<(String, String)>, ran: &mut Vec<Ran>) -> Outcome {
     let command = "git merge --ff-only @{upstream}".to_owned();
     match git.fast_forward() {
-        Ok(IntegrateOutcome::Completed) => {
+        Ok(()) => {
             ran.push(Ran {
                 command,
                 result: format!("\u{2193}{behind}"),
@@ -367,15 +367,6 @@ fn pull(git: &Git, behind: u32, switched: Option<(String, String)>, ran: &mut Ve
             match switched {
                 Some((from, to)) => Outcome::Switched { from, to, behind },
                 None => Outcome::Updated { behind },
-            }
-        }
-        Ok(IntegrateOutcome::Conflicts(files)) => {
-            ran.push(Ran {
-                command,
-                result: format!("{} files in conflict", files.len()),
-            });
-            Outcome::Failed {
-                last_line: format!("{} files in conflict", files.len()),
             }
         }
         Err(error) => {

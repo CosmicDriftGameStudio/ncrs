@@ -1,3 +1,4 @@
+use crate::action_error::classify_sync_failure;
 use crate::cli::{repository_runs_commands, Git};
 use crate::integrate::IntegrateOutcome;
 use crate::refname::plain_ref;
@@ -150,6 +151,20 @@ impl Git {
         Ok(())
     }
 
+    /// They can turn a fast-forward into a merge of any strategy.
+    fn refuse_own_merge_options(&self) -> Result<(), ActionError> {
+        let is_merge_option = |name: &str, _: &str| {
+            name.starts_with("branch.") && name.ends_with(".mergeoptions")
+                || matches!(name, "pull.twohead" | "pull.octopus")
+        };
+        if self.is_unattended() && self.any_repository_setting(is_merge_option) {
+            return Err(ActionError::Other {
+                git_output: "the config of this repository sets merge options".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// An older git takes whatever the file says, a newer one only a ref, which
     /// need not be a file.
     fn has_left_autostash(&self) -> Result<bool, ActionError> {
@@ -167,8 +182,8 @@ impl Git {
     /// checkout would overwrite.
     fn has_its_files_here(&self) -> bool {
         let top = self.try_text(&["rev-parse", "--show-toplevel"]);
-        let top = top.and_then(|path| std::fs::canonicalize(path).ok());
-        top.is_some() && top == std::fs::canonicalize(self.root()).ok()
+        let real_top = top.and_then(|path| std::fs::canonicalize(path).ok());
+        real_top.is_some() && real_top == std::fs::canonicalize(self.root()).ok()
     }
 
     /// Whether this repository's own config names content filters (git-crypt,
@@ -213,15 +228,17 @@ impl Git {
     }
 
     /// Moves the checked-out branch to what was fetched of its upstream.
-    pub fn fast_forward(&self) -> Result<IntegrateOutcome, ActionError> {
+    pub fn fast_forward(&self) -> Result<(), ActionError> {
         self.refuse_unsafe_checkout()?;
         self.refuse_left_autostash()?;
+        self.refuse_own_merge_options()?;
         let args = ["merge", "--ff-only", "--no-autostash", "--no-stat", "@{upstream}"];
         let output = self.run(&args, None)?;
         if output.success {
-            return Ok(IntegrateOutcome::Completed);
+            return Ok(());
         }
-        self.failed_integration(&output, "origin")
+        // Nothing more is run here: the merge can have changed what was checked.
+        Err(classify_sync_failure(&output.combined(), "origin"))
     }
 
     /// Pushes the checked-out branch.
@@ -354,7 +371,7 @@ impl Git {
         expected_tip: Option<&str>,
     ) -> Result<(), ActionError> {
         self.refuse_commands_beyond_a_fetch()?;
-        let remote = plain_ref(remote)?;
+        let remote_name = plain_ref(remote)?;
         let full_name = format!("refs/heads/{branch}");
         let lease = match expected_tip {
             Some(tip) => {
@@ -368,8 +385,8 @@ impl Git {
         let mut args = vec!["push"];
         args.extend(lease.as_deref());
         // The full name: a tag of the same name on the remote makes the short one ambiguous.
-        args.extend(["--delete", "--", remote, &full_name]);
-        self.talk(&args, remote)?;
+        args.extend(["--delete", "--", remote_name, &full_name]);
+        self.talk(&args, remote_name)?;
         Ok(())
     }
 

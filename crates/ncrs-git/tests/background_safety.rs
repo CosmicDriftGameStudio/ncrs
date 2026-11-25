@@ -253,6 +253,18 @@ fn a_fast_forward_is_refused_while_a_merge_has_left_its_stash() {
 }
 
 #[test]
+fn a_fast_forward_is_refused_when_the_repository_sets_merge_options() {
+    let (_origin, repo) = with_origin();
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    for name in ["branch.main.mergeOptions", "pull.twohead"] {
+        unattended.fast_forward().unwrap();
+        repo.sh(&["config", name, "ours"]);
+        unattended.fast_forward().unwrap_err();
+        repo.sh(&["config", "--unset", name]);
+    }
+}
+
+#[test]
 fn an_unattended_git_never_pulls() {
     let (_origin, repo) = with_origin();
     let unattended = Git::open_unattended(repo.path()).unwrap();
