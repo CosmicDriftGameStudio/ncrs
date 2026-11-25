@@ -236,3 +236,33 @@ fn an_unattended_push_runs_no_hook_of_a_local_remote() {
         .unwrap();
     assert!(marker.exists(), "git itself runs it");
 }
+
+#[test]
+fn an_unattended_pull_is_refused_while_a_merge_has_left_its_stash() {
+    let (_origin, repo) = with_origin();
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    unattended.pull(None).unwrap();
+
+    let head = repo.sh(&["rev-parse", "HEAD"]);
+    write(repo.path(), ".git/MERGE_AUTOSTASH", &head);
+    unattended.pull(None).unwrap_err();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_filter_is_switched_off_however_its_section_is_spelled() {
+    let repo = repo();
+    let outside = TempDir::new().unwrap();
+    let marker = outside.path().join("filter-ran");
+    let config = std::fs::read_to_string(repo.path().join(".git/config")).unwrap();
+    let filter = format!("[filter.Evil]\n\tclean = touch {}; cat\n", marker.display());
+    write(repo.path(), ".git/config", &(config + &filter));
+    write(repo.path(), ".git/info/attributes", "* filter=evil\n");
+    write(repo.path(), "a.txt", "ONE\ntwo\nthree\n");
+
+    Git::open_reading(repo.path()).unwrap().changes().unwrap();
+    assert!(!marker.exists());
+
+    repo.sh(&["status"]);
+    assert!(marker.exists(), "git itself runs it");
+}

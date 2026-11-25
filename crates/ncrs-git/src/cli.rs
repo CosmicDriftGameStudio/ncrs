@@ -305,7 +305,7 @@ impl Git {
     /// names, so showing a folder never runs what a downloaded `.git/config` says.
     pub fn open_reading(root: &Path) -> Result<Self, ActionError> {
         let mut git = Self::open(root)?;
-        let filters = crate::repo_access::repository_filter_names(root);
+        let filters = git.repository_filter_names()?;
         // `-c` cuts a name at its first `=`, so such a filter would stay on.
         let cannot_be_emptied =
             |name: &String| name.is_empty() || name.contains(['=', char::REPLACEMENT_CHARACTER]);
@@ -406,7 +406,7 @@ impl Git {
             command.args(["-c", setting]);
         }
         self.apply_prompts(&mut command);
-        if self.is_unattended() && args.contains(&"push") {
+        if self.is_unattended() && args.first() == Some(&"push") {
             command.env("GIT_ALLOW_PROTOCOL", UNATTENDED_PUSH_PROTOCOLS);
         }
         if let Some(filters) = &self.reading_without {

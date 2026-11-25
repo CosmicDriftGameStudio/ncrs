@@ -82,11 +82,26 @@ impl Git {
     }
 
     fn any_repository_setting(&self, found: impl Fn(&str, &str) -> bool) -> bool {
-        match self.run(&["config", "--show-scope", "-z", "--list"], None) {
-            Ok(output) if output.success => settings_of_the_repository(&output.stdout_text())
-                .any(|(name, value)| found(&name, value)),
-            Ok(_) | Err(_) => true,
-        }
+        self.config_listing().map_or(true, |listing| {
+            settings_of_the_repository(&listing).any(|(name, value)| found(&name, value))
+        })
+    }
+
+    fn config_listing(&self) -> Result<String, ActionError> {
+        self.text(&["config", "--show-scope", "-z", "--list"])
+    }
+
+    /// The filter drivers the repository's own config names, spelled as git
+    /// itself knows them.
+    pub(crate) fn repository_filter_names(&self) -> Result<Vec<String>, ActionError> {
+        let listing = self.config_listing()?;
+        let mut names: Vec<String> = spelled_settings_of_the_repository(&listing)
+            .filter_map(|(name, _)| name.strip_prefix("filter.")?.rsplit_once('.'))
+            .map(|(driver, _)| driver.to_owned())
+            .collect();
+        names.sort();
+        names.dedup();
+        Ok(names)
     }
 
     /// Nobody looks at what an unattended call starts, so the repository's own
@@ -124,6 +139,17 @@ impl Git {
         Ok(())
     }
 
+    /// A pull applies a stash left by an earlier merge, which looks into submodules.
+    fn refuse_left_autostash(&self) -> Result<(), ActionError> {
+        let left = ["rev-parse", "--verify", "--quiet", "MERGE_AUTOSTASH"];
+        if self.is_unattended() && self.try_text(&left).is_some() {
+            return Err(ActionError::Other {
+                git_output: "a merge has left its stash (MERGE_AUTOSTASH)".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// `core.worktree` can name a folder outside the repository, whose files a
     /// checkout would overwrite.
     fn has_its_files_here(&self) -> bool {
@@ -136,13 +162,7 @@ impl Git {
     /// a local LFS setup). An unattended call switches them off, so a checkout
     /// in it would write the raw content.
     pub fn has_content_filters(&self) -> Result<bool, GitError> {
-        let output = self
-            .run(&["config", "--show-scope", "-z", "--list"], None)
-            .map_err(GitError::read)?;
-        if !output.success {
-            return Err(GitError::read(output.combined()));
-        }
-        let listing = output.stdout_text();
+        let listing = self.config_listing().map_err(GitError::read)?;
         let has_filters = settings_of_the_repository(&listing).any(|(name, value)| {
             let last = name.rsplit('.').next().unwrap_or_default();
             name.starts_with("filter.")
@@ -157,6 +177,7 @@ impl Git {
     /// Conflicts come back as an outcome, not as an error.
     pub fn pull(&self, strategy: Option<PullStrategy>) -> Result<IntegrateOutcome, ActionError> {
         self.refuse_unsafe_checkout()?;
+        self.refuse_left_autostash()?;
         let remote = self
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
@@ -169,7 +190,7 @@ impl Git {
         args.push("pull");
         if self.is_unattended() {
             // A setting of one submodule beats `fetch.recurseSubmodules`.
-            args.push("--no-recurse-submodules");
+            args.extend(["--no-recurse-submodules", "--no-autostash"]);
         }
         let output = self.run(&args, None)?;
         if output.success {
@@ -358,13 +379,16 @@ impl Git {
 /// and value. Without `-z` a name could hide behind an `=` or a line break of
 /// its own.
 fn settings_of_the_repository(listing: &str) -> impl Iterator<Item = (String, &str)> {
+    spelled_settings_of_the_repository(listing)
+        .map(|(name, value)| (name.to_ascii_lowercase(), value))
+}
+
+/// The same with the names as they are spelled.
+fn spelled_settings_of_the_repository(listing: &str) -> impl Iterator<Item = (&str, &str)> {
     let mut parts = listing.split('\0');
     std::iter::from_fn(move || Some((parts.next()?, parts.next()?)))
         .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
-        .map(|(_, setting)| {
-            let (name, value) = setting.split_once('\n').unwrap_or((setting, ""));
-            (name.to_ascii_lowercase(), value)
-        })
+        .map(|(_, setting)| setting.split_once('\n').unwrap_or((setting, "")))
 }
 
 /// `name` is lowercase; the part between the first and last dot (a remote or

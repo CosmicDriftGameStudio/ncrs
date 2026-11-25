@@ -38,28 +38,6 @@ fn drop_repository_command_drivers(repository: &mut gix::Repository) {
     }
 }
 
-/// The names of the filter drivers the repository's own config defines: the
-/// ones a `git` call for reading has to switch off.
-pub fn repository_filter_names(root: &Path) -> Vec<String> {
-    let Ok(mut repository) = gix::open(root) else {
-        return Vec::new();
-    };
-    let snapshot = repository.config_snapshot_mut();
-    let mut names: Vec<String> = snapshot
-        .sections_and_ids()
-        .filter(|(section, _)| is_repository_driver_section(section, b"filter"))
-        .filter_map(|(section, _)| {
-            section
-                .header()
-                .subsection_name()
-                .map(|name| name.to_string())
-        })
-        .collect();
-    names.sort();
-    names.dedup();
-    names
-}
-
 pub fn short_hash(id: &ObjectId) -> String {
     id.to_string().chars().take(SHORT_HASH_LENGTH).collect()
 }
