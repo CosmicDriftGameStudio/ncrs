@@ -1773,8 +1773,8 @@
     {
       "key": "action.filing_status",
       "context": "Entry of the command palette that runs the key action filing_status. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Status and errors",
-      "de": "Status und Fehler"
+      "en": "Activity",
+      "de": "Aktivität"
     },
     {
       "key": "action.filing_status.theme",
@@ -2060,7 +2060,7 @@
     },
     {
       "key": "filing_status.pdf_missing",
-      "context": "Warning at the top of the Inspection while the PDF library cannot be loaded.",
+      "context": "Warning at the top of the Read errors page while the PDF library cannot be loaded.",
       "en": "PDF library missing, PDFs are not read.",
       "de": "PDF-Bibliothek fehlt, PDFs werden nicht gelesen."
     },
@@ -2126,15 +2126,15 @@
     },
     {
       "key": "filing_setup.saved_running",
-      "context": "Notice in the title bar after saving the filing setup when Hermes starts with the saved folders right away. Takes the key that opens the Inspection (the filing status page), spelled for the platform.",
-      "en": "Hermes is on. Open Status and errors with {key}.",
-      "de": "Hermes ist eingeschaltet. Status und Fehler öffnest du mit {key}."
+      "context": "Notice in the title bar after saving the filing setup when Hermes starts with the saved folders right away. Takes the key that opens the Activity page, spelled for the platform.",
+      "en": "Hermes is on. Open Activity with {key}.",
+      "de": "Hermes ist eingeschaltet. Die Aktivität öffnest du mit {key}."
     },
     {
       "key": "filing_setup.saved_running_unbound",
-      "context": "Notice in the title bar after saving the filing setup when Hermes starts right away but no key is bound to the Inspection (the filing status page). Palette means the command palette of the app.",
-      "en": "Hermes is on. Open Status and errors from the command palette.",
-      "de": "Hermes ist eingeschaltet. Status und Fehler öffnest du über „Aktion ausführen“."
+      "context": "Notice in the title bar after saving the filing setup when Hermes starts right away but no key is bound to the Activity page. Palette means the command palette of the app.",
+      "en": "Hermes is on. Open Activity from the command palette.",
+      "de": "Hermes ist eingeschaltet. Die Aktivität öffnest du über „Aktion ausführen“."
     },
     {
       "key": "filing_setup.saved_next_start",
@@ -3944,9 +3944,9 @@
     },
     {
       "key": "settings.ai_consent_rules_need_both",
-      "context": "Last line under the row about folders and file names in the AI page: learning a filing rule sends data of two kinds, so both agreements are needed. Filed documents is the name of the other row.",
-      "en": "Learning a filing rule needs this agreement and the one for filed documents.",
-      "de": "Eine Ablageregel zu lernen braucht diese Freigabe und die für abgelegte Dokumente."
+      "context": "Last line under the row about folders and file names in the AI page: suggesting rules sends data of two kinds, so both agreements are needed. Filed documents is the name of the other row.",
+      "en": "Suggesting rules needs this agreement and the one for filed documents.",
+      "de": "Regeln vorzuschlagen braucht diese Freigabe und die für abgelegte Dokumente."
     },
     {
       "key": "settings.ai_consent_state_given",
@@ -3986,9 +3986,9 @@
     },
     {
       "key": "settings.ai_consent_item_rules",
-      "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it learns a filing rule or works out how a folder is organised.",
-      "en": "When Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags).",
-      "de": "Wenn Hermes eine Ablageregel lernt oder erkennt, wie ein Ordner aufgebaut ist: die Ordner von Beispieldokumenten und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
+      "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it works out how a folder is organised.",
+      "en": "When Hermes works out how a folder is organised: the folders of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags).",
+      "de": "Wenn Hermes erkennt, wie ein Ordner aufgebaut ist: die Ordner von Beispieldokumenten und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
     },
     {
       "key": "settings.ai_consent_item_names",
@@ -4376,9 +4376,9 @@
     },
     {
       "key": "hermes_menu.inspect",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Hermes inspection page, at the file's error if it has one.",
-      "en": "Show in Status and errors",
-      "de": "In Status und Fehler zeigen"
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Read errors page, at the file's error if it has one.",
+      "en": "Show in Read errors",
+      "de": "In Lesefehlern zeigen"
     },
     {
       "key": "status.hermes_processing_again_many",
@@ -4514,9 +4514,9 @@
     },
     {
       "key": "action.hermes_inspect",
-      "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Hermes inspection page for the file under the cursor.",
-      "en": "Show in Status and errors",
-      "de": "In Status und Fehler zeigen"
+      "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Read errors page for the file under the cursor.",
+      "en": "Show in Read errors",
+      "de": "In Lesefehlern zeigen"
     },
     {
       "key": "shortcut.hermes_chat",
@@ -7730,9 +7730,9 @@
     },
     {
       "key": "settings.feature_index_intro",
-      "context": "Sentence under the title of the Index page of the settings tab. The index is the database in which ncrs keeps what it read from the files. The Hermes overview says whether it is encrypted.",
-      "en": "What ncrs knows about your files: text, sender, kind, date. Stored on this computer; the Hermes overview says whether it is encrypted.",
-      "de": "Was ncrs über deine Dateien weiß: Text, Absender, Art, Datum. Liegt auf diesem Computer; die Hermes-Übersicht zeigt, ob er verschlüsselt ist."
+      "context": "Sentence under the title of the Index page of the settings tab. The index is the database in which ncrs keeps what it read from the files. The Protection group further down says whether it is encrypted.",
+      "en": "What ncrs knows about your files: text, sender, kind, date. Stored on this computer; Protection below says whether it is encrypted.",
+      "de": "Was ncrs über deine Dateien weiß: Text, Absender, Art, Datum. Liegt auf diesem Computer; unter Schutz steht, ob er verschlüsselt ist."
     },
     {
       "key": "settings.feature_hermes_sorting",

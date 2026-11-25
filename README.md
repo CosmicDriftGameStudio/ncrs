@@ -832,7 +832,7 @@ names from the show beside the plain ones:
 | Plain name (English / German) | Futurama variants add (English / German) |
 | --- | --- |
 | Hermes / Hermes | Hermes / Hermes |
-| Status and errors / Status und Fehler | Inspection / Inspektion |
+| Activity / Aktivität | Inspection / Inspektion |
 | Rules / Regeln | Bureaucratic Regulations / Bürokratische Vorschriften |
 | Gentle / Schonend (`gentle`) | By the book / Dienst nach Vorschrift |
 | Balanced / Ausgewogen (`balanced`) | Business as usual / Normalbetrieb |
