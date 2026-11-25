@@ -16,7 +16,7 @@ use ncrs_ui_kit::kit::{Check, Tone};
 use ncrs_ui_kit::setting_rows::{Group, RowButton, RuleCells, SettingRow};
 
 use crate::message::{Message, RulesMessage};
-use crate::rules_page::{conditions_short, hits_text, RulesPage};
+use crate::rules_page::{conditions_short, hits_text, rule_title, RulesPage};
 use crate::target_dialog::{target_name, TargetsMessage};
 
 fn send(message: TargetsMessage) -> Message {
@@ -211,7 +211,7 @@ fn rule_row<'a>(
     let spec = &listed.rule.spec;
     let idle = rules.is_some_and(|page| !page.is_busy());
     let cells = RuleCells {
-        name: spec.name.clone().unwrap_or_default(),
+        name: rules.map_or_else(String::new, |page| rule_title(spec, lang, page.kinds())),
         condition: rules.map_or_else(String::new, |page| {
             conditions_short(spec, lang, page.kinds())
         }),

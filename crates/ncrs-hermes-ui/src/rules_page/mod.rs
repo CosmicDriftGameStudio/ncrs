@@ -369,6 +369,22 @@ fn condition_sentence(condition: &Condition, lang: Language, kinds: &KindCatalog
     )
 }
 
+/// The name of the rule, or what it looks for while it has none: rules from
+/// before 1.8 often have none.
+pub fn rule_title(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> String {
+    if let Some(name) = spec.name.as_ref().filter(|name| !name.is_empty()) {
+        return name.clone();
+    }
+    let values: Vec<_> = spec
+        .conditions
+        .list
+        .iter()
+        .filter(|condition| !condition.negated)
+        .map(|condition| shown_value(condition, lang, kinds))
+        .collect();
+    values.join(", ")
+}
+
 /// "Word in the text: policy and Sender: Company A": the conditions as a list
 /// shows them.
 pub fn conditions_short(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> String {

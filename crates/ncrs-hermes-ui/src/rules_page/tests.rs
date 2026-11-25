@@ -498,3 +498,19 @@ fn the_conditions_in_a_list_name_kind_and_value() {
         "Sender: Company A or Company B or Word in the text has not draft"
     );
 }
+
+#[test]
+fn a_rule_without_a_name_is_called_by_what_it_looks_for() {
+    let mut excluded = Condition::new(ConditionKind::Word, "draft");
+    excluded.negated = true;
+    let mut spec = spec(RuleConditions::all_of(vec![
+        Condition::new(ConditionKind::Sender, "Company A"),
+        excluded,
+        Condition::new(ConditionKind::Word, "invoice"),
+    ]));
+    let title = |spec: &RuleSpec| rule_title(spec, Language::English, &KindCatalog::built_in());
+    spec.name = None;
+    assert_eq!(title(&spec), "Company A, invoice");
+    spec.name = Some("Bills".to_owned());
+    assert_eq!(title(&spec), "Bills");
+}
