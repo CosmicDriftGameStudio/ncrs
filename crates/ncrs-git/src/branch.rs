@@ -25,7 +25,11 @@ impl Git {
     /// `remote_branch` is `origin/feature`: makes a local `feature` that tracks it.
     pub fn checkout_remote_branch(&self, remote_branch: &str) -> Result<(), ActionError> {
         self.refuse_unsafe_checkout()?;
-        self.ok(&[self.checkout_args(), &["--track", plain_ref(remote_branch)?]].concat())?;
+        self.ok(&[
+            self.checkout_args(),
+            &["--track", plain_ref(remote_branch)?],
+        ]
+        .concat())?;
         Ok(())
     }
 

@@ -20,16 +20,16 @@ impl Index {
         files: &[(PathBuf, FileStamp)],
         own_volume: Option<bool>,
     ) -> Result<(), IndexError> {
-        let source = utf8(source)?;
+        let source_column = utf8(source)?;
         let tx = self.conn_mut().transaction()?;
-        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source])?;
+        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source_column])?;
         let mut insert = tx.prepare(
             "INSERT OR REPLACE INTO source_backlog (source, path, file_size, file_mtime)
              VALUES (?1, ?2, ?3, ?4)",
         )?;
         for (path, stamp) in files {
             insert.execute(params![
-                source,
+                source_column,
                 utf8(path)?,
                 stamp.size_column(),
                 stamp.mtime_nanos()
@@ -38,7 +38,7 @@ impl Index {
         drop(insert);
         tx.execute(
             "INSERT OR REPLACE INTO source_watch (source, own_volume) VALUES (?1, ?2)",
-            params![source, own_volume],
+            params![source_column, own_volume],
         )?;
         tx.commit()?;
         Ok(())
@@ -91,10 +91,10 @@ impl Index {
     }
 
     pub fn forget_backlog(&self, source: &Path) -> Result<(), IndexError> {
-        let source = utf8(source)?;
+        let source_column = utf8(source)?;
         let tx = self.connection().unchecked_transaction()?;
-        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source])?;
-        tx.execute("DELETE FROM source_watch WHERE source = ?1", [source])?;
+        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source_column])?;
+        tx.execute("DELETE FROM source_watch WHERE source = ?1", [source_column])?;
         tx.commit()?;
         Ok(())
     }

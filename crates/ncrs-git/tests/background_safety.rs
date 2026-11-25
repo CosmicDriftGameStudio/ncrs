@@ -13,12 +13,7 @@ use git_cli::{repo, with_origin, write};
 use ncrs_git::Git;
 use tempfile::TempDir;
 #[cfg(unix)]
-use {
-    git_cli::Repo,
-    std::path::PathBuf,
-    std::sync::atomic::AtomicBool,
-    std::sync::Arc,
-};
+use {git_cli::Repo, std::path::PathBuf, std::sync::atomic::AtomicBool, std::sync::Arc};
 
 #[test]
 fn a_fresh_repository_runs_nothing() {
@@ -231,9 +226,13 @@ fn an_unattended_push_runs_no_hook_of_a_local_remote() {
     std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let unattended = Git::open_unattended(repo.path()).unwrap();
-    unattended.delete_remote_branch("origin", "topic", None).unwrap_err();
+    unattended
+        .delete_remote_branch("origin", "topic", None)
+        .unwrap_err();
     assert!(!marker.exists());
 
-    repo.git.delete_remote_branch("origin", "topic", None).unwrap();
+    repo.git
+        .delete_remote_branch("origin", "topic", None)
+        .unwrap();
     assert!(marker.exists(), "git itself runs it");
 }

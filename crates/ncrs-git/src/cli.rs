@@ -307,9 +307,8 @@ impl Git {
         let mut git = Self::open(root)?;
         let filters = crate::repo_access::repository_filter_names(root);
         // `-c` cuts a name at its first `=`, so such a filter would stay on.
-        let cannot_be_emptied = |name: &String| {
-            name.is_empty() || name.contains(['=', char::REPLACEMENT_CHARACTER])
-        };
+        let cannot_be_emptied =
+            |name: &String| name.is_empty() || name.contains(['=', char::REPLACEMENT_CHARACTER]);
         if filters.iter().any(cannot_be_emptied) {
             return Err(repository_runs_commands());
         }
