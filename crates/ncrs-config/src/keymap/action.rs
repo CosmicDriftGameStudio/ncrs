@@ -454,6 +454,7 @@ impl KeyAction {
             | Self::Rules
             | Self::SavedQueries
             | Self::Notes
+            | Self::Repos
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -489,7 +490,6 @@ impl KeyAction {
             | Self::GitView
             | Self::GitFileHistory
             | Self::GitFileBlame
-            | Self::Repos
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments
@@ -575,6 +575,7 @@ impl KeyAction {
             | Self::Rules
             | Self::SavedQueries
             | Self::Notes
+            | Self::Repos
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -611,7 +612,6 @@ impl KeyAction {
             | Self::GitView
             | Self::GitFileHistory
             | Self::GitFileBlame
-            | Self::Repos
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments

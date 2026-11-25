@@ -31,6 +31,7 @@ const BUNDLED_BOLD: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono
 pub mod action_rows;
 pub mod badge_dot;
 pub mod blame_rows;
+pub mod check_rows;
 pub mod choice_rows;
 pub mod column_header;
 pub mod commit_graph;
@@ -87,6 +88,7 @@ pub mod section_head;
 pub mod setting_rows;
 #[cfg(any(test, feature = "test-support"))]
 pub mod snapshot_support;
+pub mod split_button;
 pub mod splitter;
 pub use ncrs_core::tags;
 pub mod theme;

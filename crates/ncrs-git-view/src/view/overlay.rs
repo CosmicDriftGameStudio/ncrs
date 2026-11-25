@@ -324,7 +324,7 @@ fn new_branch_dialog<'a>(draft: &'a NewBranch, ctx: ViewCtx<'a>) -> Element<'a, 
 }
 
 /// The dialog with a cancel button and a confirm button that Enter presses.
-fn dialog_frame<'a>(
+pub(super) fn dialog_frame<'a>(
     title: &str,
     content: Element<'a, Message>,
     confirm: &str,
@@ -445,6 +445,7 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
             return ignore_dialog(path, folder.as_deref(), extension.as_deref(), *chosen, ctx);
         }
         Question::ResetHard { .. } => return super::commit_menu::reset_dialog(question, ctx),
+        Question::ForcePush { plan } => return super::sync_menu::force_push_dialog(plan, ctx),
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(
@@ -586,6 +587,17 @@ pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Me
                 ),
             ],
         ),
+        Notice::LeaseRejected => (
+            lang.text(Msg::GitViewLeaseRejected).to_owned(),
+            lang.text(Msg::GitViewLeaseRejectedText).to_owned(),
+            None,
+            vec![button(
+                lang.text(Msg::GitViewLeaseRejectedFetch),
+                Some(Message::Fetch),
+                Tone::Primary,
+                palette,
+            )],
+        ),
         Notice::NothingToCommit => (
             lang.text(Msg::GitViewNothingToCommit).to_owned(),
             lang.text(Msg::GitViewNothingToCommitText).to_owned(),
@@ -636,7 +648,7 @@ pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Me
     };
     let asks = matches!(
         notice,
-        Notice::BranchNotMerged { .. } | Notice::NeedsPullStrategy
+        Notice::BranchNotMerged { .. } | Notice::NeedsPullStrategy | Notice::LeaseRejected
     );
     let mut buttons = vec![button(
         lang.text(if asks {
@@ -677,6 +689,9 @@ pub fn over<'a>(
         }
         Some(Dialog::Tag(draft)) => {
             return stack![page, scrim(super::commit_menu::tag_dialog(draft, ctx))].into();
+        }
+        Some(Dialog::Credential(ask)) => {
+            return stack![page, scrim(super::credentials::credential_dialog(ask, ctx))].into();
         }
         None => {}
     }

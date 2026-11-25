@@ -39,6 +39,8 @@ pub enum SettingChange {
     Notes(ncrs_core::notes_sync::NotesSettings),
     /// The `[repos]` settings of the Repos tab, all of them as they are to be written.
     Repos(ncrs_config::repos::ReposSettings),
+    /// The `[git]` settings: how a pull joins and how often the Git tab fetches.
+    Git(ncrs_config::git::GitSettings),
     Load(Load),
     /// The `[hermes]` switch: off, nothing is watched and no model is called.
     HermesSwitch(bool),

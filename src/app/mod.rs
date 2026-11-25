@@ -422,6 +422,8 @@ pub struct App {
     columns: ncrs_config::panel_columns::PanelColumns,
     /// The `[git_view]` setting: the commit columns and the folded groups of the Git tabs.
     git_view_settings: ncrs_config::git_view::GitViewSettings,
+    /// How the Git tab pulls and how often it fetches in the background.
+    git_settings: ncrs_config::git::GitSettings,
     /// Folders that get a symbol of their own, worked out from the Hermes
     /// folders in `special_folders_source` so a frame only reads them.
     special_folders: Vec<(PathBuf, ncrs_ui_kit::file_icon::SpecialFolder)>,

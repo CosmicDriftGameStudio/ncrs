@@ -14,6 +14,7 @@ use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::cleanup::CleanupMessage;
 use crate::message::{MenuEntry, Message};
 use crate::rows::{is_hidden_worktree, RowKind};
 use crate::run;
@@ -60,13 +61,13 @@ pub fn open(ctx: &Ctx) -> (State, Task<Message>) {
     (state, Task::batch([reads, scan]))
 }
 
-fn enqueue_read(state: &mut State, path: PathBuf) {
+pub(crate) fn enqueue_read(state: &mut State, path: PathBuf) {
     if !state.read_queue.contains(&path) {
         state.read_queue.push_back(path);
     }
 }
 
-fn pump_reads(state: &mut State, ctx: &Ctx) -> Task<Message> {
+pub(crate) fn pump_reads(state: &mut State, ctx: &Ctx) -> Task<Message> {
     let limit = usize::from(ctx.settings.concurrency).max(1);
     let mut started = Vec::new();
     while state.reads_running < limit {
@@ -182,6 +183,7 @@ fn toggle_favourite(state: &mut State, path: &Path, ctx: &Ctx) {
 fn remove(state: &mut State, path: &Path, ctx: &Ctx) {
     if state.store.remove(path) {
         state.readings.remove(path);
+        state.cleanable.remove(path);
         state.read_queue.retain(|queued| queued != path);
         persist(state, ctx);
     }
@@ -288,6 +290,7 @@ fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
         (MenuEntry::Remove, Some(path)) => Message::RowRemoved(path),
         (MenuEntry::Bulk(action), _) => Message::Bulk(action),
         (MenuEntry::OpenInTabs, _) => Message::OpenInTabs,
+        (MenuEntry::Cleanup, _) => Message::Cleanup(CleanupMessage::Open),
         (_, None) => return quiet(Task::none()),
     };
     update(state, message, ctx)
@@ -295,7 +298,11 @@ fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
 
 pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
     state.open_roots.clone_from(&ctx.open_roots);
-    let message = match crate::clone::update(state, incoming, ctx) {
+    let message = match crate::cleanup::update(state, incoming, ctx) {
+        Ok(outcome) => return outcome,
+        Err(other) => other,
+    };
+    let message = match crate::clone::update(state, message, ctx) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
@@ -433,6 +440,13 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(learn(state, root, Origin::Learned, ctx))
         }
+        Message::CleanableRead(path, count) => {
+            match count {
+                Some(count) => state.cleanable.insert(path, count),
+                None => state.cleanable.remove(&path),
+            };
+            quiet(Task::none())
+        }
         Message::SummaryRead(path, reading) => {
             state.reads_running = state.reads_running.saturating_sub(1);
             if state.store.contains(&path) {
@@ -455,6 +469,7 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(pump_reads(state, ctx))
         }
+        Message::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
         Message::Bulk(action) => quiet(run::start(state, action, ctx)),
         Message::StepDone(path, executed) => {
             run::finish(state, ctx, path, *executed);
@@ -490,6 +505,8 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(Task::none())
         }
+        // Taken by `cleanup::update` above, and only while the pane is open.
+        Message::Left | Message::Right | Message::Cleanup(_) => quiet(Task::none()),
         // Taken by `clone::update` above.
         Message::CloneOpen
         | Message::CloneUrlChanged(_)

@@ -12,12 +12,16 @@ use crate::commit_menu::CommitAction;
 use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
 use crate::picker::PickerKind;
+use crate::sync_menu::SyncKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
     Fetch,
     Pull,
     Push,
+    PullMenu,
+    PushMenu,
+    ForcePush,
     Stash,
     Undo,
     Commit,
@@ -62,6 +66,9 @@ impl Shortcut {
         Self::Fetch,
         Self::Pull,
         Self::Push,
+        Self::PullMenu,
+        Self::PushMenu,
+        Self::ForcePush,
         Self::Stash,
         Self::Undo,
         Self::Commit,
@@ -107,6 +114,9 @@ impl Shortcut {
             Self::Fetch => "fetch",
             Self::Pull => "pull",
             Self::Push => "push",
+            Self::PullMenu => "pull_menu",
+            Self::PushMenu => "push_menu",
+            Self::ForcePush => "force_push",
             Self::Stash => "stash",
             Self::Undo => "undo",
             Self::Commit => "commit",
@@ -193,6 +203,9 @@ impl Shortcut {
             Self::Fetch => letter(shifted, "e"),
             Self::Pull => letter(shifted, "l"),
             Self::Push => letter(shifted, "u"),
+            Self::PullMenu => letter(shifted | Modifiers::ALT, "l"),
+            Self::PushMenu => letter(shifted | Modifiers::ALT, "u"),
+            Self::ForcePush => letter(shifted | Modifiers::ALT, "f"),
             Self::Stash => letter(shifted, "s"),
             Self::Undo => letter(shifted, "y"),
             Self::Commit => named(command, Named::Enter),
@@ -256,6 +269,9 @@ impl Shortcut {
             Self::Fetch => Msg::GitViewToolbarFetch,
             Self::Pull => Msg::GitViewToolbarPull,
             Self::Push => Msg::GitViewToolbarPush,
+            Self::PullMenu => Msg::GitViewCommandPullMenu,
+            Self::PushMenu => Msg::GitViewCommandPushMenu,
+            Self::ForcePush => Msg::GitViewCommandForcePush,
             Self::Stash => Msg::GitViewToolbarStash,
             Self::Undo => Msg::GitViewCommandUndo,
             Self::Commit => Msg::GitViewCommandCommit,
@@ -298,6 +314,9 @@ impl Shortcut {
             Self::Fetch => Message::Fetch,
             Self::Pull => Message::Pull,
             Self::Push => Message::Push,
+            Self::PullMenu => Message::OpenSyncMenu(SyncKind::Pull),
+            Self::PushMenu => Message::OpenSyncMenu(SyncKind::Push),
+            Self::ForcePush => Message::ForcePush,
             Self::Stash => Message::Stash,
             Self::Undo => Message::Undo,
             Self::Commit => Message::Commit,

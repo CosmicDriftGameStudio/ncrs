@@ -10,6 +10,7 @@ use ncrs_ui_kit::repo_row::result_banner;
 use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 use crate::bulk::BulkAction;
+use crate::cleanup::CleanupMessage;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
@@ -76,8 +77,8 @@ pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 
 fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
     let (msg, count) = match scope {
-        Scope::Marked(count) => (Msg::ReposForSelected, count),
-        Scope::Favourites(count) => (Msg::ReposForFavourites, count),
+        Scope::Marked(count) => (Msg::ReposSelected, count),
+        Scope::Favourites(count) => (Msg::ReposScopeFavourites, count),
     };
     fill_template(ctx.lang.text(msg), &[("{n}", &count.to_string())])
 }
@@ -87,17 +88,18 @@ fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
 pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let (scope, targets) = state.targets();
-    let busy = state.run().is_some_and(|run| !run.is_finished());
+    let busy = state.run().is_some_and(|run| !run.is_finished()) || state.cleanup.is_some();
     let can_run = ctx.actions_available && !busy && !targets.is_empty();
     let bulk = |action: BulkAction, shortcut: Shortcut| {
         let label = format!(
-            "{}  {}",
+            "{} · {}  {}",
             ctx.lang.text(match action {
                 BulkAction::Fetch => Msg::GitViewToolbarFetch,
                 BulkAction::SwitchToDefault => Msg::ReposActionSwitchDefault,
                 BulkAction::PullFastForward => Msg::ReposActionPullFf,
                 BulkAction::Both => Msg::ReposActionBoth,
             }),
+            scope_text(scope, ctx),
             ctx.keys.label(shortcut),
         );
         kit::button(
@@ -111,26 +113,22 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let mut line = row![]
         .spacing(spacing::L)
         .align_y(alignment::Vertical::Center);
-    if marked > 0 {
-        line = line.push(page_line(
-            fill_template(
-                ctx.lang.text(Msg::ReposSelected),
-                &[("{n}", &marked.to_string())],
-            ),
-            font_size::BODY,
-            palette.text,
-        ));
-    }
     line = line
-        .push(page_line(
-            scope_text(scope, ctx),
-            font_size::BODY,
-            palette.dim_text,
-        ))
         .push(bulk(BulkAction::Fetch, Shortcut::Fetch))
         .push(bulk(BulkAction::SwitchToDefault, Shortcut::SwitchToDefault))
         .push(bulk(BulkAction::PullFastForward, Shortcut::PullFastForward))
         .push(bulk(BulkAction::Both, Shortcut::Both))
+        .push(kit::button(
+            &format!(
+                "{} · {}  {}",
+                ctx.lang.text(Msg::ReposToolbarCleanup),
+                scope_text(scope, ctx),
+                ctx.keys.label(Shortcut::CleanUp)
+            ),
+            can_run.then_some(Message::Cleanup(CleanupMessage::Open)),
+            Tone::Secondary,
+            palette,
+        ))
         .push(kit::button(
             ctx.lang.text(Msg::ReposOpenInTabs),
             (marked > 0 && !busy).then_some(Message::OpenInTabs),

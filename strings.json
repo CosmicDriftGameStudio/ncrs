@@ -14455,18 +14455,6 @@
       "de": "Von Hand oder aus einem Panel hinzugefügt"
     },
     {
-      "key": "repos.for_favourites",
-      "context": "Label before the bulk action buttons of the Repos tab when nothing is ticked: they act on the favourites.",
-      "en": "On ★ favourites ({n}):",
-      "de": "Für ★ Favoriten ({n}):"
-    },
-    {
-      "key": "repos.for_selected",
-      "context": "Label before the bulk action buttons of the Repos tab when repositories are ticked: they act on those.",
-      "en": "On {n} selected:",
-      "de": "Für {n} gewählte:"
-    },
-    {
       "key": "repos.action_switch_default",
       "context": "Bulk action button and command in the Repos tab: switches each repository to its default branch.",
       "en": "To default branch",
@@ -14779,6 +14767,78 @@
       "de": "Repositories, die eine Aktion gleichzeitig bearbeitet."
     },
     {
+      "key": "settings.git_title_pull",
+      "context": "Title of the group on the Git settings page with what a pull does when the branches have diverged.",
+      "en": "Pull",
+      "de": "Pull"
+    },
+    {
+      "key": "settings.git_title_fetch",
+      "context": "Title of the group on the Git settings page with the fetch the Git tab does in the background.",
+      "en": "Fetch in the background",
+      "de": "Holen im Hintergrund"
+    },
+    {
+      "key": "settings.git_row_pull_default",
+      "context": "Label of the choice on the Git settings page: how a pull joins the fetched commits when the branches have diverged.",
+      "en": "Default for a pull",
+      "de": "Standard beim Pull"
+    },
+    {
+      "key": "settings.git_row_pull_default_note",
+      "context": "Note under the pull choice on the Git settings page: the Pull menu of the Git tab can pick another way for a single pull.",
+      "en": "The Pull menu picks another way for a single pull.",
+      "de": "Das Pull-Menü wählt für einen einzelnen Pull einen anderen Weg."
+    },
+    {
+      "key": "settings.git_pull_merge",
+      "context": "Option of the pull choice on the Git settings page: join with a merge commit. Keep it short, it is a button.",
+      "en": "Merge",
+      "de": "Merge"
+    },
+    {
+      "key": "settings.git_pull_rebase",
+      "context": "Option of the pull choice on the Git settings page: put the own commits on top of the fetched ones. Keep it short, it is a button.",
+      "en": "Rebase",
+      "de": "Rebase"
+    },
+    {
+      "key": "settings.git_pull_ff_only",
+      "context": "Option of the pull choice on the Git settings page: only move the branch forward, ask when that is not possible. Keep it short, it is a button.",
+      "en": "Fast-forward only",
+      "de": "Nur vorspulen"
+    },
+    {
+      "key": "settings.git_row_fetch",
+      "context": "Label of the choice on the Git settings page: how often the Git tab fetches the repositories you opened.",
+      "en": "Fetch",
+      "de": "Holen"
+    },
+    {
+      "key": "settings.git_row_fetch_note",
+      "context": "Note under the fetch choice on the Git settings page: a fetch only downloads, it changes no branch and no file.",
+      "en": "Only fetches; it changes no branch and no file.",
+      "de": "Holt nur, ändert nichts an Branches oder Dateien."
+    },
+    {
+      "key": "settings.git_fetch_off",
+      "context": "Option of the fetch choice on the Git settings page: never fetch in the background. Keep it short, it is a button.",
+      "en": "Off",
+      "de": "Aus"
+    },
+    {
+      "key": "settings.git_fetch_quarter_hour",
+      "context": "Option of the fetch choice on the Git settings page: fetch every 15 minutes. Keep it short, it is a button.",
+      "en": "Every 15 min",
+      "de": "Alle 15 min"
+    },
+    {
+      "key": "settings.git_fetch_hourly",
+      "context": "Option of the fetch choice on the Git settings page: fetch every hour. Keep it short, it is a button.",
+      "en": "Hourly",
+      "de": "Stündlich"
+    },
+    {
       "key": "settings.git_row_local_changes",
       "context": "Label of an info row on the Git settings page: what an action does with repositories that have local changes.",
       "en": "Local changes",
@@ -14843,6 +14903,276 @@
       "context": "Problem line in the clone dialog of the Repos tab when the chosen folder does not exist. Placeholder is the folder.",
       "en": "The folder {folder} does not exist.",
       "de": "Der Ordner {folder} existiert nicht."
+    },
+    {
+      "key": "repos.column_cleanable",
+      "context": "Column head in the list of the Repos tab: how many merged branches and worktrees a repository has that can be deleted. Short, one word.",
+      "en": "Cleanable",
+      "de": "Aufräumbar"
+    },
+    {
+      "key": "repos.cleanup_keep_title",
+      "context": "Title of the shut Keep section of the clean-up pane of the Repos tab: what is never offered. {count} entries.",
+      "en": "Stays · {count}",
+      "de": "Bleibt · {count}"
+    },
+    {
+      "key": "repos.cleanable_note",
+      "context": "Quiet line under the list of the Repos tab that explains the Cleanable column.",
+      "en": "Cleanable counts merged branches and worktrees as of the last fetch.",
+      "de": "Aufräumbar zählt gemergte Branches und Worktrees nach dem letzten Holen."
+    },
+    {
+      "key": "repos.toolbar_cleanup",
+      "context": "Button in the bar of the bulk actions of the Repos tab: opens the pane that deletes merged branches and worktrees. The dots say that a pane asks first.",
+      "en": "Clean up…",
+      "de": "Aufräumen…"
+    },
+    {
+      "key": "repos.command_cleanup",
+      "context": "Entry of the command list while the Repos tab is shown: opens the clean-up of merged branches and worktrees over the chosen repositories.",
+      "en": "Clean up merged branches and worktrees…",
+      "de": "Gemergte Branches und Worktrees aufräumen…"
+    },
+    {
+      "key": "repos.scope_favourites",
+      "context": "Added to the label of a bulk action button of the Repos tab when nothing is ticked and the action runs on the favourites. {n} is how many.",
+      "en": "{n} favourites",
+      "de": "{n} Favoriten"
+    },
+    {
+      "key": "repos.cleanup_title",
+      "context": "Heading of the clean-up pane of the Repos tab. {count} is the number of repositories it covers.",
+      "en": "Clean up · {count} repos",
+      "de": "Aufräumen · {count} Repos"
+    },
+    {
+      "key": "repos.cleanup_intro",
+      "context": "First paragraph of the clean-up pane of the Repos tab: what happens when it opens. fetch --prune is a git command and stays.",
+      "en": "Fetches every chosen repo (fetch --prune), then lists merged branches and worktrees. Nothing is deleted without a tick.",
+      "de": "Holt alle gewählten Repos (fetch --prune), dann listet es gemergte Branches und Worktrees. Ohne Haken wird nichts gelöscht."
+    },
+    {
+      "key": "repos.cleanup_reading",
+      "context": "Line in the clean-up pane of the Repos tab while the repositories are fetched and read. {done} of {total} repositories are finished.",
+      "en": "Fetching… {done} of {total} repos",
+      "de": "Holt … {done} von {total} Repos"
+    },
+    {
+      "key": "repos.cleanup_summary",
+      "context": "Summary line of the clean-up pane of the Repos tab: what can be deleted. Placeholders are counts.",
+      "en": "{branches} branches and {worktrees} worktrees in {repos} repos",
+      "de": "{branches} Branches und {worktrees} Worktrees in {repos} Repos"
+    },
+    {
+      "key": "repos.cleanup_fetched_at",
+      "context": "Right of the summary line of the clean-up pane of the Repos tab: the time of day the fetch ended. {time} is hours and minutes.",
+      "en": "fetched {time}",
+      "de": "geholt {time}"
+    },
+    {
+      "key": "repos.cleanup_fetch_failed",
+      "context": "Warning in the clean-up pane of the Repos tab: fetching one repository failed, so its list is the state of the last fetch. {repo} is the name, {reason} the last line git said.",
+      "en": "{repo}: fetch failed, showing the state of the last fetch ({reason})",
+      "de": "{repo}: Holen fehlgeschlagen, Stand des letzten Holens ({reason})"
+    },
+    {
+      "key": "repos.cleanup_read_failed",
+      "context": "Warning in the clean-up pane of the Repos tab: a repository could not be read at all. {repo} is the name, {reason} what went wrong.",
+      "en": "{repo} could not be read: {reason}",
+      "de": "{repo} ist nicht lesbar: {reason}"
+    },
+    {
+      "key": "repos.cleanup_group_sub",
+      "context": "Under the name of a shut repository group in the clean-up pane of the Repos tab: what is inside. Placeholders are counts.",
+      "en": "{branches} branches, {worktrees} worktrees",
+      "de": "{branches} Branches, {worktrees} Worktrees"
+    },
+    {
+      "key": "repos.cleanup_nothing",
+      "context": "Line in the clean-up pane of the Repos tab: the repositories that have nothing to delete. {repos} is a comma separated list of names.",
+      "en": "Nothing to clean up: {repos}",
+      "de": "Nichts zum Aufräumen: {repos}"
+    },
+    {
+      "key": "repos.cleanup_keep_explain",
+      "context": "Text under the shut Keep section of the clean-up pane of the Repos tab: what is never offered. {example} is empty or the text of repos.cleanup_keep_example.",
+      "en": "Current branch, the default branch, new branches without commits, branches with commits that are neither pushed nor merged{example}, worktrees with local changes.",
+      "de": "Aktueller Branch, Standard-Branch, neue Branches ohne Commits, Branches mit Commits, die weder gepusht noch gemergt sind{example}, Worktrees mit lokalen Änderungen."
+    },
+    {
+      "key": "repos.cleanup_keep_example",
+      "context": "Example inside the Keep text of the clean-up pane of the Repos tab, with a leading space and in brackets. {example} is repository, branch and reason.",
+      "en": " (e.g. {example})",
+      "de": " (z. B. {example})"
+    },
+    {
+      "key": "repos.cleanup_delete_remote",
+      "context": "Checkbox in the clean-up pane of the Repos tab: also delete the branch on the server, not only the local one.",
+      "en": "Also delete remote branches",
+      "de": "Auch Remote-Branches löschen"
+    },
+    {
+      "key": "repos.cleanup_delete_remote_sub",
+      "context": "Under the remote checkbox of the clean-up pane of the Repos tab: only branches that are in the default branch are deleted there. {count} branches on {remote}.",
+      "en": "only those in the default branch, {count} on {remote}",
+      "de": "nur die im Standard-Branch enthaltenen, {count} auf {remote}"
+    },
+    {
+      "key": "repos.cleanup_undo_hint",
+      "context": "Quiet line in the clean-up pane of the Repos tab: what Undo does after deleting, and until when. Deleted remote branches and worktree folders are not brought back.",
+      "en": "Undo brings deleted branches back as long as the tab is open.",
+      "de": "Rückgängig holt gelöschte Branches zurück, solange der Tab offen ist."
+    },
+    {
+      "key": "repos.cleanup_confirm",
+      "context": "Red button of the clean-up pane of the Repos tab: deletes what is ticked. {count} branches and worktrees in {repos} repositories.",
+      "en": "Delete {count} in {repos} repos",
+      "de": "{count} löschen in {repos} Repos"
+    },
+    {
+      "key": "repos.cleanup_chosen",
+      "context": "Right side of the status bar while the clean-up pane of the Repos tab is open: how many of the offered entries are ticked.",
+      "en": "{chosen} of {count} chosen for deletion",
+      "de": "{chosen} von {count} zum Löschen gewählt"
+    },
+    {
+      "key": "repos.cleanup_hint",
+      "context": "Status bar hint while the clean-up pane of the Repos tab is open: the keys that work in it.",
+      "en": "Up/Down choose · Space tick · Left/Right shut/open repo · Enter deletes · Esc closes",
+      "de": "Hoch/Runter wählen · Leertaste Haken · Links/Rechts Repo zu/auf · Enter löscht · Esc schließt"
+    },
+    {
+      "key": "repos.cleanup_row_deleted",
+      "context": "Result next to an entry of the clean-up pane of the Repos tab after it was deleted. Lowercase, one word.",
+      "en": "deleted",
+      "de": "gelöscht"
+    },
+    {
+      "key": "repos.cleanup_deleted",
+      "context": "Summary line of the clean-up pane of the Repos tab after the deleting ended. {count} entries were deleted.",
+      "en": "{count} deleted",
+      "de": "{count} gelöscht"
+    },
+    {
+      "key": "repos.cleanup_undo",
+      "context": "Button in the clean-up pane of the Repos tab after deleting: brings the deleted branches back.",
+      "en": "Undo",
+      "de": "Rückgängig"
+    },
+    {
+      "key": "repos.cleanup_undone",
+      "context": "Summary line of the clean-up pane of the Repos tab after Undo. {count} branches are back.",
+      "en": "{count} branches brought back",
+      "de": "{count} Branches zurückgeholt"
+    },
+    {
+      "key": "repos.cleanup_undo_failed",
+      "context": "Warning in the clean-up pane of the Repos tab: Undo failed in one repository. {repo} is the name, {reason} what git said.",
+      "en": "Undo failed in {repo}: {reason}",
+      "de": "Rückgängig fehlgeschlagen in {repo}: {reason}"
+    },
+    {
+      "key": "git_cleanup.reason_in_main",
+      "context": "Reason in the clean-up lists (Git tab and Repos tab) why a branch can be deleted: everything on it is in the default branch. {main} is its name, usually main.",
+      "en": "in {main}",
+      "de": "in {main} enthalten"
+    },
+    {
+      "key": "git_cleanup.reason_gone",
+      "context": "Reason in the clean-up lists why a branch can be deleted: its pull request was merged and the branch on the server is gone. Short, fits a narrow column.",
+      "en": "PR merged, remote deleted",
+      "de": "PR gemergt, Remote gelöscht"
+    },
+    {
+      "key": "git_cleanup.reason_worktree",
+      "context": "Reason in the clean-up lists why a worktree can be deleted: nothing but the worktree goes, its branch is merged. Short, fits a narrow column.",
+      "en": "worktree only, branch merged",
+      "de": "nur Worktree, Branch gemergt"
+    },
+    {
+      "key": "git_cleanup.keep_default",
+      "context": "Reason in the clean-up lists why a branch is never offered: it is the default branch of the repository.",
+      "en": "default branch",
+      "de": "Standard-Branch"
+    },
+    {
+      "key": "git_cleanup.keep_current",
+      "context": "Reason in the clean-up lists why a branch is never offered: it is checked out in the repository.",
+      "en": "current branch",
+      "de": "aktueller Branch"
+    },
+    {
+      "key": "git_cleanup.keep_empty",
+      "context": "Reason in the clean-up lists why a branch is never offered: it was just made and holds no commit of its own yet.",
+      "en": "new, nothing on it yet",
+      "de": "neu, noch nichts darauf"
+    },
+    {
+      "key": "git_cleanup.keep_unpushed_one",
+      "context": "Reason in the clean-up lists why a branch is never offered: it holds one commit that is neither merged nor pushed.",
+      "en": "1 commit not pushed",
+      "de": "1 Commit nicht gepusht"
+    },
+    {
+      "key": "git_cleanup.keep_unpushed_many",
+      "context": "Reason in the clean-up lists why a branch is never offered: it holds {count} commits that are neither merged nor pushed.",
+      "en": "{count} commits not pushed",
+      "de": "{count} Commits nicht gepusht"
+    },
+    {
+      "key": "git_cleanup.keep_not_merged",
+      "context": "Reason in the clean-up lists why a branch is never offered: it is pushed but not merged into the default branch.",
+      "en": "not merged",
+      "de": "nicht gemergt"
+    },
+    {
+      "key": "git_cleanup.keep_after_last_push",
+      "context": "Reason in the clean-up lists why a branch is never offered: its remote branch is gone but it got commits after the last push, or the state before is unknown.",
+      "en": "changed since its last push",
+      "de": "seit dem letzten Push geändert"
+    },
+    {
+      "key": "git_cleanup.keep_worktree_changes",
+      "context": "Reason in the clean-up lists why a worktree is never offered: it has {count} local changes (edited or new files).",
+      "en": "worktree with {count} local changes",
+      "de": "Worktree mit {count} lokalen Änderungen"
+    },
+    {
+      "key": "git_cleanup.keep_main_worktree",
+      "context": "Reason in the clean-up lists why a folder is never offered: it is the main worktree, the repository itself.",
+      "en": "main worktree",
+      "de": "Haupt-Worktree"
+    },
+    {
+      "key": "git_cleanup.keep_current_worktree",
+      "context": "Reason in the clean-up lists why a folder is never offered: it is the worktree that is open.",
+      "en": "open worktree",
+      "de": "geöffneter Worktree"
+    },
+    {
+      "key": "git_cleanup.keep_detached",
+      "context": "Reason in the clean-up lists why a worktree is never offered: it has no branch checked out (detached head).",
+      "en": "detached",
+      "de": "losgelöst"
+    },
+    {
+      "key": "git_cleanup.keep_locked",
+      "context": "Reason in the clean-up lists why a worktree is never offered: it is locked with git worktree lock.",
+      "en": "locked",
+      "de": "gesperrt"
+    },
+    {
+      "key": "git_cleanup.keep_in_kept_worktree",
+      "context": "Reason in the clean-up lists why a branch is never offered: it is checked out in a worktree that stays.",
+      "en": "in a worktree that stays",
+      "de": "in einem Worktree, der bleibt"
+    },
+    {
+      "key": "git_cleanup.row_failed",
+      "context": "Result next to an entry of the clean-up lists that could not be deleted. {reason} is the last line git said.",
+      "en": "Not deleted: {reason}",
+      "de": "Nicht gelöscht: {reason}"
     },
     {
       "key": "settings.git_row_last_scan",
@@ -14915,6 +15245,144 @@
       "context": "Git tab, command list (F1): commits the staged files and pushes the branch afterwards. Push is the Git word.",
       "en": "Commit and push",
       "de": "Committen und pushen"
+    },
+    {
+      "key": "git_view.pull_menu_merge",
+      "context": "Git tab, entry of the menu behind the Pull button: pull and join with a merge commit. Merge is the Git word.",
+      "en": "Pull (merge)",
+      "de": "Pull (Merge)"
+    },
+    {
+      "key": "git_view.pull_menu_rebase",
+      "context": "Git tab, entry of the menu behind the Pull button: pull and put the own commits on top. Rebase is the Git word.",
+      "en": "Pull (rebase)",
+      "de": "Pull (Rebase)"
+    },
+    {
+      "key": "git_view.pull_menu_fast_forward",
+      "context": "Git tab, entry of the menu behind the Pull button: pull only when the branch can just move forward, otherwise stop.",
+      "en": "Pull (fast-forward only)",
+      "de": "Pull (nur fast-forward)"
+    },
+    {
+      "key": "git_view.menu_default_mark",
+      "context": "Git tab, note at the right of the entry of the Pull menu that the Pull button itself does (the default from the settings).",
+      "en": "Default",
+      "de": "Standard"
+    },
+    {
+      "key": "git_view.push_menu_push",
+      "context": "Git tab, entry of the menu behind the Push button: the normal push. Push is the Git word.",
+      "en": "Push",
+      "de": "Push"
+    },
+    {
+      "key": "git_view.push_menu_force_with_lease",
+      "context": "Git tab, entry of the menu behind the Push button: replaces the branch on the remote, but only while nobody pushed there since the last look. It asks first.",
+      "en": "Force push with lease…",
+      "de": "Force-Push mit Lease…"
+    },
+    {
+      "key": "git_view.command_pull_menu",
+      "context": "Git tab, command list (F1): opens the menu with the ways to pull (merge, rebase, fast-forward only).",
+      "en": "Pull options",
+      "de": "Pull-Optionen"
+    },
+    {
+      "key": "git_view.command_push_menu",
+      "context": "Git tab, command list (F1): opens the menu with the ways to push.",
+      "en": "Push options",
+      "de": "Push-Optionen"
+    },
+    {
+      "key": "git_view.command_force_push",
+      "context": "Git tab, command list (F1): force push with lease; it asks before anything is sent.",
+      "en": "Force push with lease",
+      "de": "Force-Push mit Lease"
+    },
+    {
+      "key": "git_view.ask_force_push",
+      "context": "Git tab, title of the question before a force push. {remote} and {branch} are the names of the remote and the branch, kept as they are.",
+      "en": "Force push to {remote}/{branch}?",
+      "de": "Force-Push nach {remote}/{branch}?"
+    },
+    {
+      "key": "git_view.ask_force_push_text",
+      "context": "Git tab, text of the question before a force push that loses commits. {count} is the number of commits on the remote that the local branch does not have.",
+      "en": "Your {branch} replaces {remote}/{branch}. {count} commits on the remote that you do not have are lost there. If someone pushes before you confirm, nothing is overwritten.",
+      "de": "Dein {branch} ersetzt {remote}/{branch}. {count} Commits auf dem Remote, die du nicht hast, gehen dort verloren. Pusht vorher jemand, wird nichts überschrieben."
+    },
+    {
+      "key": "git_view.ask_force_push_text_none",
+      "context": "Git tab, text of the question before a force push that loses no commit.",
+      "en": "Your {branch} replaces {remote}/{branch}. No commits are lost.",
+      "de": "Dein {branch} ersetzt {remote}/{branch}. Es gehen keine Commits verloren."
+    },
+    {
+      "key": "git_view.ask_force_push_confirm",
+      "context": "Git tab, the button that does the force push. Keep it short.",
+      "en": "Force push",
+      "de": "Force-Push"
+    },
+    {
+      "key": "git_view.lease_rejected",
+      "context": "Git tab, title of the notice when a force push with lease stopped because the remote branch moved.",
+      "en": "The remote changed",
+      "de": "Remote hat sich geändert"
+    },
+    {
+      "key": "git_view.lease_rejected_text",
+      "context": "Git tab, text of the notice when a force push with lease stopped because someone pushed to the remote after the last look. Nothing was overwritten.",
+      "en": "Someone pushed to the remote branch after you looked. Nothing was overwritten. Fetch, look at the new commits, then try again.",
+      "de": "Nach deinem letzten Blick hat jemand auf den Remote-Branch gepusht. Nichts wurde überschrieben. Hol den Stand, sieh dir die neuen Commits an und versuch es noch einmal."
+    },
+    {
+      "key": "git_view.lease_rejected_fetch",
+      "context": "Git tab, the button of the notice that the remote changed: fetches the new commits. Keep it short.",
+      "en": "Fetch",
+      "de": "Holen"
+    },
+    {
+      "key": "git_view.credentials_title",
+      "context": "Git tab, title of the dialog in which Git asks for a user name, a password, a passphrase or a yes or no during a pull, push or fetch.",
+      "en": "Git asks for a login",
+      "de": "Git fragt nach einer Anmeldung"
+    },
+    {
+      "key": "git_view.credentials_ask",
+      "context": "Git tab, the question of the login dialog. {prompt} is the text Git printed, for example the user name it wants for a server; keep it as it is.",
+      "en": "Git asks: {prompt}",
+      "de": "Git fragt: {prompt}"
+    },
+    {
+      "key": "git_view.credentials_note",
+      "context": "Git tab, note in the login dialog: the app only passes the answer on.",
+      "en": "ncrs hands the answer to git and keeps nothing. Your git credential helper may save it.",
+      "de": "ncrs gibt die Antwort an git weiter und speichert nichts. Dein Git-Credential-Helper merkt sie sich vielleicht."
+    },
+    {
+      "key": "git_view.credentials_send",
+      "context": "Git tab, the button of the login dialog that hands the typed answer to Git. Keep it short.",
+      "en": "Send",
+      "de": "Senden"
+    },
+    {
+      "key": "git_view.credentials_connect",
+      "context": "Git tab, the button of the login dialog that answers Git's yes/no question about an unknown server with yes. Keep it short.",
+      "en": "Connect",
+      "de": "Verbinden"
+    },
+    {
+      "key": "git_view.status_sync_menu",
+      "context": "Git tab, hint line while the menu behind Pull or Push is open.",
+      "en": "↑↓ choose · Enter run · Esc close",
+      "de": "↑↓ wählen · Enter ausführen · Esc schließt"
+    },
+    {
+      "key": "git_view.status_credentials",
+      "context": "Git tab, hint line while the login dialog is open.",
+      "en": "Enter send · Esc cancel",
+      "de": "Enter senden · Esc abbrechen"
     },
     {
       "key": "git_view.command_focus_title",

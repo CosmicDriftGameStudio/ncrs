@@ -6,6 +6,7 @@ use iced::keyboard::{Key, Modifiers};
 use ncrs_i18n::{Language, Msg};
 
 use crate::bulk::BulkAction;
+use crate::cleanup::CleanupMessage;
 use crate::keys::{Chord, ReposKeys};
 use crate::message::Message;
 
@@ -17,6 +18,7 @@ pub enum Shortcut {
     Both,
     RetryFailed,
     OpenInTabs,
+    CleanUp,
     SelectAll,
     Favourite,
     Remove,
@@ -31,6 +33,7 @@ impl Shortcut {
         Self::Both,
         Self::RetryFailed,
         Self::OpenInTabs,
+        Self::CleanUp,
         Self::SelectAll,
         Self::Favourite,
         Self::Remove,
@@ -46,6 +49,7 @@ impl Shortcut {
             Self::Both => "both",
             Self::RetryFailed => "retry_failed",
             Self::OpenInTabs => "open_in_tabs",
+            Self::CleanUp => "clean_up",
             Self::SelectAll => "select_all",
             Self::Favourite => "favourite",
             Self::Remove => "remove",
@@ -91,6 +95,7 @@ impl Shortcut {
             Self::Both => letter(shifted, "j"),
             Self::RetryFailed => letter(command, "r"),
             Self::OpenInTabs => named(shifted, Named::Enter),
+            Self::CleanUp => letter(command | Modifiers::ALT, "a"),
             Self::SelectAll => letter(command, "a"),
             Self::Favourite => letter(Modifiers::empty(), "*"),
             Self::Remove => named(Modifiers::empty(), Named::Delete),
@@ -111,6 +116,7 @@ impl Shortcut {
             Self::Both => Msg::ReposActionBoth,
             Self::RetryFailed => Msg::ReposRetryFailed,
             Self::OpenInTabs => Msg::ReposOpenInTabs,
+            Self::CleanUp => Msg::ReposCommandCleanup,
             Self::SelectAll => Msg::ReposSelectAll,
             Self::Favourite => Msg::ReposToggleFavourite,
             Self::Remove => Msg::ReposRemove,
@@ -126,6 +132,7 @@ impl Shortcut {
             Self::Both => Message::Bulk(BulkAction::Both),
             Self::RetryFailed => Message::RetryFailed,
             Self::OpenInTabs => Message::OpenInTabs,
+            Self::CleanUp => Message::Cleanup(CleanupMessage::Open),
             Self::SelectAll => Message::MarkAll,
             Self::Favourite => Message::ToggleFavouriteAtCursor,
             Self::Remove => Message::RemoveAtCursor,

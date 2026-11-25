@@ -456,6 +456,10 @@ impl App {
                 self.repos_settings = settings;
                 Task::none()
             }
+            SettingChange::Git(settings) => {
+                self.git_settings = settings;
+                Task::none()
+            }
             SettingChange::GitView(settings) => {
                 self.git_view_settings = settings;
                 Task::none()

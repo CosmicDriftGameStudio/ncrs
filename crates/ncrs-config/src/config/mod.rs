@@ -30,6 +30,7 @@ use serde::Deserialize;
 use serde_spanned::Spanned;
 
 use crate::file_list_tags::{FileListTags, TagGroup};
+use crate::git::{GitSection, GitSettings};
 use crate::git_view::GitViewSettings;
 use crate::keymap::{KeyAction, Keymap, TabKeys, TAB_KEY_TABLES};
 use crate::palette::{
@@ -196,6 +197,12 @@ pub struct Config {
     /// The columns the file panels show and how they write dates and sizes.
     #[serde(skip)]
     pub columns: PanelColumns,
+    /// The `[git]` section as written; `load` checks it into `git`.
+    #[serde(default, rename = "git")]
+    pub git_section: GitSection,
+    /// How the Git tab pulls and fetches.
+    #[serde(skip)]
+    pub git: GitSettings,
     /// The `[git_view]` section as written; `load` checks it into `git_view`.
     #[serde(default, rename = "git_view")]
     pub git_view_section: GitViewSection,
@@ -258,6 +265,7 @@ mod error;
 pub mod instance_lock;
 mod loading;
 mod paths;
+mod git_writes;
 mod repos_writes;
 mod resolving;
 mod sections;
@@ -277,6 +285,7 @@ pub use self::paths::{
     default_state_path, default_view_copies_dir, portable_data_dir, portable_data_dir_of,
     use_data_dir,
 };
+pub use self::git_writes::{git_settings, write_git};
 pub use self::repos_writes::{repos_settings, write_repos};
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};

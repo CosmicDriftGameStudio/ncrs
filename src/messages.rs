@@ -177,6 +177,10 @@ pub enum Message {
     GitView(GitTabId, ncrs_git_view::Message),
     OpenGitView,
     OpenGitFile(GitFileView),
+    /// A running git job asks for a login.
+    GitAsked(ncrs_git::askpass::AskRequest),
+    /// The clock of the background fetch.
+    GitFetchDue,
     // --- The Repos tab, every repository of the machine in one list ---
     Repos(ncrs_repos::Message),
     OpenRepos,

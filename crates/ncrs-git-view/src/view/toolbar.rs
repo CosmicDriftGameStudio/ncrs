@@ -6,6 +6,7 @@ use iced::widget::row;
 use iced::{alignment, Element};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::kit::{toolbar_button, Tone};
+use ncrs_ui_kit::split_button::split_button;
 use ncrs_ui_kit::theme::spacing;
 
 use crate::actions::{MenuAction, Operation, SyncBar, Unavailable};
@@ -14,6 +15,7 @@ use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::State;
+use crate::sync_menu::SyncKind;
 
 /// Shown on the button whose operation is running.
 const BUSY_LABEL: &str = "\u{2026}";
@@ -77,10 +79,31 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             palette,
         )
     };
-    let pull_tone = if sync.behind > 0 {
-        Tone::Primary
-    } else {
-        Tone::Secondary
+    let split = |operation: Operation,
+                 kind: SyncKind,
+                 label: String,
+                 what: Msg,
+                 shortcut: Shortcut,
+                 message: Message| {
+        let enabled = locked_reason.is_none() && busy != Some(operation);
+        let help = match locked_reason {
+            Some(reason) => lang.text(reason).to_owned(),
+            None => tip(lang.text(what), shortcut, ctx.keys),
+        };
+        let open = state
+            .actions
+            .sync_menu
+            .filter(|menu| menu.kind == kind)
+            .map(|menu| super::sync_menu::rows(&menu, ctx));
+        split_button(
+            &word(operation, label),
+            None,
+            &help,
+            enabled.then_some(message),
+            enabled.then_some(Message::OpenSyncMenu(kind)),
+            open,
+            palette,
+        )
     };
     let pull_label = counted(lang.text(Msg::GitViewToolbarPull), "\u{2193}", sync.behind);
     let push_label = counted(lang.text(Msg::GitViewToolbarPush), "\u{2191}", sync.ahead);
@@ -104,22 +127,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Message::Fetch,
             Tone::Secondary
         ),
-        action(
-            Some(Operation::Pull),
-            pull_label,
-            Msg::GitViewToolbarPull,
-            Shortcut::Pull,
-            Message::Pull,
-            pull_tone
-        ),
-        action(
-            Some(Operation::Push),
-            push_label,
-            Msg::GitViewToolbarPush,
-            Shortcut::Push,
-            Message::Push,
-            Tone::Secondary
-        ),
+        split(Operation::Pull, SyncKind::Pull, pull_label, Msg::GitViewToolbarPull, Shortcut::Pull, Message::Pull),
+        split(Operation::Push, SyncKind::Push, push_label, Msg::GitViewToolbarPush, Shortcut::Push, Message::Push),
         action(
             None,
             lang.text(Msg::GitViewToolbarBranch).to_owned(),

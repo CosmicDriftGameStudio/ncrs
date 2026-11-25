@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use iced::Size;
+use ncrs_git::PullStrategy;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::format::DateFormat;
 use ncrs_ui_kit::git_rows::CommitColumns;
@@ -25,6 +26,8 @@ pub struct Ctx {
     pub panes: PaneWidths,
     /// The repositories the app knows besides the open one, for the repository picker.
     pub repositories: Vec<RepoEntry>,
+    /// How the Pull button joins the fetched commits; the Pull menu picks another way for one pull.
+    pub pull_default: PullStrategy,
 }
 
 impl Ctx {
@@ -36,6 +39,7 @@ impl Ctx {
             columns: CommitColumns::STANDARD,
             panes: PaneWidths::STANDARD,
             repositories: Vec::new(),
+            pull_default: PullStrategy::FastForwardOnly,
         }
     }
 }
@@ -56,4 +60,6 @@ pub struct ViewCtx<'a> {
     pub home: &'a Path,
     /// The keys of the Git actions, `[keys.git]` applied.
     pub keys: &'a GitKeys,
+    /// The way the Pull button takes, marked in the Pull menu.
+    pub pull_default: PullStrategy,
 }

@@ -131,6 +131,9 @@ pub struct State {
     pub menu: Option<PathBuf>,
     pub failure: Option<String>,
     pub clone: Option<crate::clone::CloneDraft>,
+    pub cleanup: Option<crate::cleanup::Cleanup>,
+    /// Branches and worktrees each repository could lose, as of the last read.
+    pub cleanable: BTreeMap<PathBuf, usize>,
     pub stop: Arc<AtomicBool>,
 }
 
@@ -154,6 +157,8 @@ impl State {
             menu: None,
             failure: None,
             clone: None,
+            cleanup: None,
+            cleanable: BTreeMap::new(),
             stop: Arc::new(AtomicBool::new(false)),
         }
     }

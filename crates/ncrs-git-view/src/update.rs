@@ -27,6 +27,7 @@ use crate::state::{
     Subject, PAGE,
 };
 use crate::view::{DIFF_ID, FILTER_ID};
+use crate::sync_handlers;
 use crate::wip;
 
 /// Lines an arrow key scrolls the diff by.
@@ -271,6 +272,9 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             shown.ignore_whitespace = !shown.ignore_whitespace;
             quiet(reload_diff(state))
         }
+        Message::Up if state.actions.sync_menu.is_some() => sync_handlers::step_menu(state, false),
+        Message::Down if state.actions.sync_menu.is_some() => sync_handlers::step_menu(state, true),
+        Message::Enter if state.actions.sync_menu.is_some() => sync_handlers::run_cursor(state),
         Message::Up | Message::Down | Message::Left | Message::Right | Message::Enter
             if commit_menu::is_open(state) =>
         {
@@ -352,6 +356,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 }
             }
             state.actions.menu = Some(OpenMenu::new(target));
+            file_views::start_menu_on_first_enabled(state);
             state.close_menu_if_stale();
             quiet(Task::none())
         }
@@ -368,6 +373,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                     .and_then(|item| menu_target_of(state, *item)),
             };
             state.actions.menu = target.map(OpenMenu::new);
+            file_views::start_menu_on_first_enabled(state);
             quiet(Task::none())
         }
         file @ (Message::OpenHistory(_)
@@ -397,8 +403,17 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::CompareLoaded(..)) => commit_menu::handle(state, commit, ctx),
         Message::CloseMenu => {
             state.actions.menu = None;
+            sync_handlers::close_menu(state);
             quiet(Task::none())
         }
+        Message::OpenSyncMenu(kind) => sync_handlers::toggle_menu(state, kind, ctx),
+        Message::SyncMenuPressed(action) => sync_handlers::run_entry(state, action),
+        Message::SyncMenuCursor(entry) => sync_handlers::hover(state, entry),
+        Message::SyncMenuLetter(typed) => sync_handlers::letter(state, typed),
+        Message::ForcePush => sync_handlers::force_push(state),
+        Message::CredentialAsked(request) => sync_handlers::credential_asked(state, request),
+        Message::CredentialTyped(typed) => sync_handlers::credential_typed(state, typed),
+        Message::BackgroundFetch => sync_handlers::background_fetch(state),
         Message::Refresh => {
             state.problem = None;
             let files = file_views::reload(state);
@@ -787,6 +802,10 @@ fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
     }
     if state.actions.dialog_open() {
         return handlers::act(state, Message::CloseDialog, ctx);
+    }
+    if state.actions.sync_menu.is_some() {
+        sync_handlers::close_menu(state);
+        return quiet(Task::none());
     }
     if state.actions.menu.is_some() {
         state.actions.menu = None;

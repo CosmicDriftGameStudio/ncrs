@@ -53,3 +53,5 @@ pub const REPO_ROW: f32 = 26.0;
 pub const SECTION_HEAD: f32 = 26.0;
 /// The label column of the facts of a commit (author, committer, parent, SHA).
 pub const FACT_LABEL: f32 = 90.0;
+/// A row of a list with ticks (Git clean-up, Repos clean-up).
+pub const CHECK_ROW: f32 = 28.0;

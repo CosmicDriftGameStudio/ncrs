@@ -23,6 +23,7 @@ use crate::load;
 use crate::message::Message;
 use crate::snapshot::{self, IntegrationSnapshot, Snapshot};
 use crate::state::{Area, State};
+use crate::sync_handlers;
 use crate::update::{ensure_detail, failed, menu_target_of, quiet, Outcome};
 use crate::view::{NAME_ID, RENAME_ID};
 use crate::wip;
@@ -121,7 +122,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::Commit => commit(state, false),
         Message::CommitAndPush => commit(state, true),
         Message::Fetch => start(state, Job::Fetch),
-        Message::Pull | Message::PullFirst => start(state, Job::Pull(None)),
+        Message::Pull | Message::PullFirst => start(state, Job::Pull(Some(ctx.pull_default))),
         Message::PullWith(strategy) => start(state, Job::Pull(Some(strategy))),
         Message::Push => start(state, Job::Push),
         Message::Stash => {
@@ -157,6 +158,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         Message::CreateBranch => create_branch(state),
+        Message::CloseDialog if sync_handlers::cancel_credential(state) => quiet(Task::none()),
         Message::CloseDialog => {
             state.actions.new_branch = None;
             state.actions.dialog = None;
@@ -258,9 +260,13 @@ pub fn start(state: &mut State, job: Job) -> Outcome {
     let Some(root) = state.root.clone() else {
         return quiet(Task::none());
     };
+    if state.actions.background_fetch {
+        state.actions.queued = Some(job);
+        return quiet(Task::none());
+    }
     state.actions.busy = Some(job.operation());
     state.actions.notice = None;
-    quiet(load::job(root, job))
+    quiet(load::job(root, state.job_token, job))
 }
 
 fn files_of(local: &LocalChanges, side: ChangeSide) -> &[ChangedFile] {
@@ -505,6 +511,10 @@ pub fn ask(state: &mut State, question: Option<Question>) -> Outcome {
 
 /// The answer of a dialog: a question runs its job, a new name renames.
 fn confirm_dialog(state: &mut State) -> Outcome {
+    // The job that asked is the busy one: the answer must get through.
+    if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
+        return sync_handlers::send_credential(state);
+    }
     if state.actions.busy.is_some() {
         return quiet(Task::none());
     }
@@ -520,7 +530,7 @@ fn confirm_dialog(state: &mut State) -> Outcome {
                 to,
             }
         }
-        Some(Dialog::Tag(_)) | None => return quiet(Task::none()),
+        Some(Dialog::Tag(_) | Dialog::Credential(_)) | None => return quiet(Task::none()),
     };
     start(state, job)
 }
@@ -767,8 +777,16 @@ fn undo_text(lang: Language, summary: &UndoSummary) -> String {
 }
 
 fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
+    if finished.job == Job::BackgroundFetch {
+        return sync_handlers::background_done(state, finished.result.is_ok());
+    }
     state.actions.busy = None;
+    sync_handlers::end_of_job(state);
     let Finished { job, result } = finished;
+    let result = match result {
+        Ok(Done::ForcePlan(plan)) => return sync_handlers::ask_force_push(state, plan),
+        other => other,
+    };
     match result {
         Ok(Done::CommittedButNotPushed { undo, error }) => {
             if undo.is_some() {
@@ -781,7 +799,10 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
             match done {
                 Done::Undoable(Some(record)) => state.actions.undo = Some(record),
                 Done::Undone => state.actions.undo = None,
-                Done::Undoable(None) | Done::Plain | Done::CommittedButNotPushed { .. } => {}
+                Done::Undoable(None)
+                | Done::Plain
+                | Done::ForcePlan(_)
+                | Done::CommittedButNotPushed { .. } => {}
             }
             state.actions.retry = None;
             after_success(state, &job);
@@ -854,18 +875,18 @@ fn notice_of(state: &State, error: ActionError) -> Notice {
         },
         ActionError::BranchNotMerged { branch } => Notice::BranchNotMerged { branch },
         ActionError::NothingToCommit => Notice::NothingToCommit,
-        ActionError::NeedsPullStrategy { .. } => Notice::NeedsPullStrategy,
+        ActionError::NeedsPullStrategy { .. } | ActionError::NotFastForward { .. } => {
+            Notice::NeedsPullStrategy
+        }
+        ActionError::LeaseRejected => Notice::LeaseRejected,
         ActionError::UnresolvedConflicts { count } => Notice::UnresolvedConflicts { count },
         ActionError::UndoNotSafe(_) => Notice::UndoNotSafe,
         ActionError::InvalidName { name } => Notice::InvalidName { name },
-        ActionError::Other { git_output } | ActionError::NotFastForward { git_output } => {
-            Notice::Other {
-                output: git_output,
-                details_open: false,
-            }
-        }
-        ActionError::LeaseRejected
-        | ActionError::GitNotFound
+        ActionError::Other { git_output } => Notice::Other {
+            output: git_output,
+            details_open: false,
+        },
+        ActionError::GitNotFound
         | ActionError::DisabledInSandbox
         | ActionError::Io(_)
         | ActionError::Read(_) => Notice::Other {

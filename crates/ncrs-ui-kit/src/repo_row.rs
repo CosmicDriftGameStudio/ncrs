@@ -160,6 +160,19 @@ pub fn repo_header<'a, M: Clone + 'a>(
     all: Check,
     on_toggle_all: Option<M>,
 ) -> Element<'a, M> {
+    repo_header_titled(columns, lang, palette, all, on_toggle_all, None)
+}
+
+/// [`repo_header`] with a title over the last column, which holds what the
+/// caller puts in `RepoRow::actions`.
+pub fn repo_header_titled<'a, M: Clone + 'a>(
+    columns: RepoColumns,
+    lang: Language,
+    palette: &Palette,
+    all: Check,
+    on_toggle_all: Option<M>,
+    actions_title: Option<&str>,
+) -> Element<'a, M> {
     let title = |msg: Msg| label(lang.text(msg).to_owned(), palette.dim_text);
     let fixed = |width: f32, content: Element<'a, M>| cell(Length::Fixed(width), content);
     container(
@@ -172,7 +185,13 @@ pub fn repo_header<'a, M: Clone + 'a>(
             fixed(columns.standing, title(Msg::RepoRowColumnStanding)),
             fixed(columns.changes, title(Msg::RepoRowColumnChanges)),
             fixed(columns.fetched, title(Msg::RepoRowColumnFetched)),
-            fixed(columns.actions, Space::new().into()),
+            fixed(
+                columns.actions,
+                actions_title.map_or_else(
+                    || Space::new().into(),
+                    |words| label(words.to_owned(), palette.dim_text),
+                ),
+            ),
         ]
         .align_y(alignment::Vertical::Center),
     )

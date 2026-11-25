@@ -283,6 +283,19 @@ async fn the_menu_of_a_file_opens_its_history_with_the_keys() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_menu_of_an_untracked_file_starts_on_an_entry_that_works() {
+    let dir = repo();
+    fs::write(dir.path().join("junk.log"), "x").unwrap();
+    let mut state = opened(dir.path()).await;
+    let path = "junk.log".to_owned();
+    send(&mut state, Message::OpenMenu(MenuTarget::File { path, at: None })).await;
+    let cursor = state.actions.menu.as_ref().unwrap().cursor;
+    let entries = menu_entries(&state, "junk.log");
+    assert!(entries[cursor].1, "{:?} is greyed out", entries[cursor].0);
+    assert_eq!(entries[cursor].0, FileAction::OpenEditor);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_file_menu_closes_when_its_file_is_gone() {
     let dir = repo();
     fs::write(dir.path().join("junk.log"), "x").unwrap();

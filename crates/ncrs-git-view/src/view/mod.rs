@@ -7,6 +7,7 @@ mod changes;
 mod commit_box;
 mod commit_menu;
 mod commits;
+mod credentials;
 mod detail;
 mod diff;
 mod diff_toolbar;
@@ -16,6 +17,7 @@ mod history;
 mod merge;
 mod overlay;
 mod sidebar;
+mod sync_menu;
 mod toolbar;
 mod wip_pane;
 
@@ -30,7 +32,7 @@ use ncrs_ui_kit::splitter::{splitter, width_label, SplitterMessages};
 use ncrs_ui_kit::theme::git::SplitterLook;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
-use crate::actions::{Unavailable, WipFocus};
+use crate::actions::{Dialog, Unavailable, WipFocus};
 use crate::ctx::ViewCtx;
 use crate::file_views::{middle, Middle};
 use crate::message::Message;
@@ -374,6 +376,12 @@ fn drag_label<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message
 /// The keys of the focus; with the actions on, the keys of the actions too.
 fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
     let key = |shortcut: Shortcut| shortcut.label(ctx.keys);
+    if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
+        return ctx.lang.text(Msg::GitViewStatusCredentials).to_owned();
+    }
+    if state.actions.sync_menu.is_some() {
+        return ctx.lang.text(Msg::GitViewStatusSyncMenu).to_owned();
+    }
     if crate::commit_menu::is_open(state) {
         return ctx.lang.text(Msg::GitViewStatusCommitMenu).to_owned();
     }

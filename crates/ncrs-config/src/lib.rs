@@ -5,6 +5,7 @@
 pub mod commands;
 pub mod config;
 pub mod file_list_tags;
+pub mod git;
 pub mod git_view;
 pub mod keymap;
 pub mod palette;

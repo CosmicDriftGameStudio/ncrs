@@ -391,6 +391,7 @@ pub(super) fn picture_in(
         panes,
         home: Path::new("/Users/marc"),
         keys: &ncrs_git_view::GitKeys::default(),
+        pull_default: ncrs_git::PullStrategy::FastForwardOnly,
     };
     let mut simulator = Simulator::with_size(
         iced::Settings {

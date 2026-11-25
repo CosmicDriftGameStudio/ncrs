@@ -3,11 +3,12 @@
 use std::path::Path;
 
 use ncrs_git::{
-    ActionError, CommitMessage, ConflictChoice, DiffHunk, Git, PullStrategy, ResetMode,
-    UndoRecord,
+    ActionError, CommitMessage, ConflictChoice, DiffHunk, ForcePushPlan, Git, PullStrategy,
+    ResetMode, UndoRecord,
 };
 
 use crate::actions::Operation;
+use crate::credentials::JobToken;
 
 /// One call to git, with everything it needs, so it can run off the UI thread
 /// and be repeated.
@@ -105,6 +106,11 @@ pub enum Job {
         mode: ResetMode,
         sha: String,
     },
+    /// Reads what a force push would replace; sends nothing.
+    PrepareForcePush,
+    ForcePushWithLease(ForcePushPlan),
+    /// Fetches without anyone asking: never prompts, never opens a window.
+    BackgroundFetch,
 }
 
 /// What a job that worked leaves for the state.
@@ -114,6 +120,8 @@ pub enum Done {
     /// The way back, if the action has one.
     Undoable(Option<UndoRecord>),
     Undone,
+    /// What a force push would replace, for the question.
+    ForcePlan(ForcePushPlan),
     /// Commit and push: the commit is made (and undoable), the push failed.
     CommittedButNotPushed {
         undo: Option<UndoRecord>,
@@ -155,9 +163,12 @@ impl Job {
             }
             Self::Commit { .. } | Self::CommitAndPush { .. } => Operation::Commit,
             Self::Ignore { .. } => Operation::Stage,
-            Self::Fetch => Operation::Fetch,
+            Self::Fetch | Self::BackgroundFetch => Operation::Fetch,
             Self::Pull(_) => Operation::Pull,
-            Self::Push | Self::PushBranch(_) => Operation::Push,
+            Self::Push
+            | Self::PushBranch(_)
+            | Self::PrepareForcePush
+            | Self::ForcePushWithLease(_) => Operation::Push,
             Self::StashPush { .. }
             | Self::StashApply(_)
             | Self::StashPop(_)
@@ -230,7 +241,11 @@ impl Job {
                 }
             }
             Self::Ignore { pattern } => git.ignore_pattern(pattern).map(Done::Undoable),
-            Self::Fetch => git.fetch(None).map(|()| Done::Plain),
+            Self::Fetch | Self::BackgroundFetch => git.fetch(None).map(|()| Done::Plain),
+            Self::PrepareForcePush => git.prepare_force_push().map(Done::ForcePlan),
+            Self::ForcePushWithLease(plan) => {
+                git.force_push_with_lease(plan).map(|()| Done::Plain)
+            }
             Self::Pull(strategy) => git.pull(*strategy).map(|_| Done::Plain),
             Self::Push => git.push().map(|()| Done::Plain),
             Self::PushBranch(name) => git.push_branch(name, None).map(|()| Done::Plain),
@@ -299,9 +314,29 @@ impl Job {
         }
     }
 
-    /// Opens the repository at `root` and runs the job there.
-    pub fn run_in(self, root: &Path) -> Finished {
-        let result = Git::open(root).and_then(|git| self.run(&git));
+    /// The job talks to a remote, which may ask for a login.
+    const fn may_ask(&self) -> bool {
+        matches!(
+            self,
+            Self::Fetch
+                | Self::Pull(_)
+                | Self::Push
+                | Self::PushBranch(_)
+                | Self::CommitAndPush { .. }
+                | Self::DeleteOnRemote { .. }
+                | Self::ForcePushWithLease(_)
+        )
+    }
+
+    /// Opens the repository at `root` and runs the job there. A job that may
+    /// need a login asks through `token`; a background fetch never asks.
+    pub fn run_in(self, root: &Path, token: JobToken) -> Finished {
+        let opened = match &self {
+            Self::BackgroundFetch => Git::open_unattended(root),
+            job if job.may_ask() => Git::open_interactive(root, token.0),
+            _ => Git::open(root),
+        };
+        let result = opened.and_then(|git| self.run(&git));
         Finished { job: self, result }
     }
 }

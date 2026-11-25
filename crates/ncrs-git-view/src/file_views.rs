@@ -553,6 +553,26 @@ pub fn menu_entries(state: &State, path: &str) -> Vec<(FileAction, bool)> {
     entries
 }
 
+/// A freshly opened menu of a file starts on its first entry that works, not
+/// on a greyed one.
+pub fn start_menu_on_first_enabled(state: &mut State) {
+    let Some(MenuTarget::File { path, .. }) = state
+        .actions
+        .menu
+        .as_ref()
+        .map(|open| open.target.clone())
+    else {
+        return;
+    };
+    let first = menu_entries(state, &path)
+        .iter()
+        .position(|(_, enabled)| *enabled)
+        .unwrap_or(0);
+    if let Some(open) = state.actions.menu.as_mut() {
+        open.cursor = first;
+    }
+}
+
 /// The menu of a file is open: its entries and the cursor.
 pub fn menu_is_open(state: &State) -> bool {
     state

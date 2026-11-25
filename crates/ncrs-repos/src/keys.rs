@@ -133,6 +133,8 @@ pub fn repos_key(
     match key.as_ref() {
         Key::Named(Named::ArrowUp) => Some(Message::Up),
         Key::Named(Named::ArrowDown) => Some(Message::Down),
+        Key::Named(Named::ArrowLeft) => Some(Message::Left),
+        Key::Named(Named::ArrowRight) => Some(Message::Right),
         Key::Named(Named::PageUp) => Some(Message::PageUp),
         Key::Named(Named::PageDown) => Some(Message::PageDown),
         Key::Named(Named::Home) => Some(Message::First),

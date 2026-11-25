@@ -321,6 +321,7 @@ impl App {
                 self.file_list_tags = config.file_list_tags;
                 self.columns = config.columns;
                 self.git_view_settings = config.git_view;
+                self.git_settings = config.git;
                 self.start_appearance(config.appearance);
                 self.keymap = config.keymap;
                 self.apply_git_keys(&config.git_keys);
@@ -604,6 +605,7 @@ impl App {
             kinds: Kinds::default(),
             columns: ncrs_config::panel_columns::PanelColumns::default(),
             git_view_settings: ncrs_config::git_view::GitViewSettings::default(),
+            git_settings: ncrs_config::git::GitSettings::default(),
             special_folders: Vec::new(),
             special_folders_source: Vec::new(),
             appearance: ncrs_config::panel_columns::Appearance::default(),

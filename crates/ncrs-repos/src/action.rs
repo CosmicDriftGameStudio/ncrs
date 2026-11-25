@@ -12,4 +12,8 @@ pub enum Action {
     PickFolder,
     /// Ask for the folder a clone goes into; the answer comes back as `Message::CloneTargetPicked`.
     PickCloneTarget,
+    /// A worktree folder was deleted: close the Git tab that shows it.
+    WorktreeRemoved(PathBuf),
+    /// Branches of this repository changed: a Git tab that shows it reads it again.
+    RepoChanged(PathBuf),
 }

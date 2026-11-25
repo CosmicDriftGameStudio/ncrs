@@ -3,6 +3,7 @@
 
 pub mod action;
 pub mod actions;
+pub mod credentials;
 pub mod ctx;
 pub mod commit_menu;
 mod diff_layout;
@@ -19,6 +20,8 @@ pub mod picker;
 pub mod shortcuts;
 pub mod snapshot;
 pub mod state;
+mod sync_handlers;
+pub mod sync_menu;
 pub mod update;
 pub mod view;
 mod wip;

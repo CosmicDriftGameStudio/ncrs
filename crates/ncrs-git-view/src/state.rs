@@ -11,6 +11,7 @@ use ncrs_git::{
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
 use crate::actions::{Actions, MenuTarget, WipFocus};
+use crate::credentials::JobToken;
 use crate::file_views::{self, BlameState, HistoryState};
 use crate::panes::{PaneDrag, Split};
 use crate::picker::Picker;
@@ -332,6 +333,8 @@ pub struct State {
     pub problem: Option<String>,
     /// The actions of #338, filled by the caller while the design is open.
     pub actions: Actions,
+    /// What the interactive jobs of this tab call themselves when git asks for a login.
+    pub job_token: JobToken,
     pub loads: Loads,
 }
 
@@ -342,6 +345,8 @@ impl State {
 
     pub fn close(&mut self) {
         self.stop();
+        // A login question of a job of this tab would wait for an answer nobody can give.
+        crate::credentials::cancel_job(self.job_token);
         // The counters go on: an answer for the closed repository must not fit a new read.
         let loads = std::mem::take(&mut self.loads);
         *self = Self {
@@ -401,6 +406,7 @@ impl State {
             list_covered: self.list_is_covered(),
             dialog_open: self.actions.dialog_open(),
             picker_open: self.picker.is_some(),
+            sync_menu_open: self.actions.sync_menu.is_some(),
             area: self.area,
         }
     }

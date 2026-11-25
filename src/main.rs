@@ -311,6 +311,12 @@ fn data_dir_of(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> 
 }
 
 fn main() -> iced::Result {
+    // Git and ssh start this binary as their askpass helper: that run answers
+    // the prompt and exits, before anything else (console, instance lock, GUI).
+    let helper_arguments: Vec<String> = env::args().skip(1).collect();
+    if let Some(code) = ncrs_git::askpass::run_if_asked(&helper_arguments) {
+        std::process::exit(code);
+    }
     let mut arguments: Vec<std::ffi::OsString> = env::args_os().skip(1).collect();
     if !arguments.is_empty() {
         // The Windows build has no console of its own; every command line run

@@ -3,9 +3,12 @@
 //! phase: the state is filled by the caller, nothing here reads a repository.
 
 use iced::widget::text_editor;
-use ncrs_git::{ChangedFile, FileDiff, UndoRecord};
+use ncrs_git::askpass::AskRequest;
+use ncrs_git::{ChangedFile, FileDiff, ForcePushPlan, UndoRecord};
 
+use crate::credentials::CredentialAsk;
 use crate::job::Job;
+use crate::sync_menu::SyncMenu;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChangeSide {
@@ -213,6 +216,10 @@ pub enum Question {
         commits: u32,
         changed_files: u32,
     },
+    /// A force push with lease: what it would replace was read before the question.
+    ForcePush {
+        plan: ForcePushPlan,
+    },
 }
 
 impl Question {
@@ -224,13 +231,13 @@ impl Question {
             | Self::DeleteBranch { .. }
             | Self::Ignore { .. }
             | Self::ResetHard { .. } => true,
-            Self::DeleteOnRemote { .. } | Self::DropStash { .. } => false,
+            Self::DeleteOnRemote { .. } | Self::DropStash { .. } | Self::ForcePush { .. } => false,
         }
     }
 
     /// Enter presses the cancel button, not the one that does the harm.
     pub fn enter_is_safe(&self) -> bool {
-        matches!(self, Self::ResetHard { .. })
+        matches!(self, Self::ResetHard { .. } | Self::ForcePush { .. })
     }
 
     pub fn job(&self) -> Job {
@@ -250,6 +257,7 @@ impl Question {
                 branch: branch.clone(),
             },
             Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
+            Self::ForcePush { plan } => Job::ForcePushWithLease(plan.clone()),
             Self::Ignore {
                 path,
                 folder,
@@ -290,6 +298,8 @@ pub enum Dialog {
     Ask(Question),
     Rename(RenameBranch),
     Tag(TagDraft),
+    /// Git asked for a user name, a password or a yes or no.
+    Credential(CredentialAsk),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,6 +380,8 @@ pub enum Notice {
     },
     /// A pull on diverged branches: merge or rebase, the user decides.
     NeedsPullStrategy,
+    /// A force push with lease stopped: the remote branch moved after the last look.
+    LeaseRejected,
     NothingToCommit,
     CommitTitleMissing,
     UnresolvedConflicts {
@@ -441,4 +453,12 @@ pub struct Actions {
     pub retry: Option<Job>,
     /// Every file that was in conflict during this merge, resolved ones too.
     pub seen_conflicts: Vec<String>,
+    /// The menu behind Pull or Push that is open.
+    pub sync_menu: Option<SyncMenu>,
+    /// A fetch nobody asked for is running: it sets no `busy` and shows nothing.
+    pub background_fetch: bool,
+    /// The job the user started while the background fetch ran; it starts after it.
+    pub queued: Option<Job>,
+    /// Questions of git that came while another one is on the screen.
+    pub waiting_credentials: Vec<AskRequest>,
 }

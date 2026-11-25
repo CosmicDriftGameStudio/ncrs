@@ -467,6 +467,8 @@ impl App {
                 Task::none()
             }
             Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
+            Message::GitAsked(request) => self.route_git_request(request),
+            Message::GitFetchDue => self.fetch_git_tabs_in_background(),
             Message::OpenGitView => self.open_git_view(),
             Message::OpenGitFile(view) => self.open_git_file(view),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),

@@ -12,7 +12,8 @@ use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
 use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::repo_row::{
-    path_tail, repo_changes, repo_header, repo_row, repo_standing, BranchTag, RepoColumns, RepoRow,
+    path_tail, repo_changes, repo_header_titled, repo_row, repo_standing, BranchTag, RepoColumns,
+    RepoRow,
 };
 use ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID;
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
@@ -44,6 +45,11 @@ fn columns(is_run: bool) -> RepoColumns {
         },
         ..RepoColumns::STANDARD
     }
+}
+
+/// What a repository could lose; none when nothing or not known yet.
+fn cleanable_count(state: &State, path: &Path) -> Option<usize> {
+    state.cleanable.get(path).copied().filter(|count| *count > 0)
 }
 
 fn shortened(path: &Path, home: Option<&Path>) -> String {
@@ -134,6 +140,8 @@ fn one_row<'a>(
     };
     let actions = if is_run {
         result_cell(&row.owner, state, ctx).filter(|_| !is_worktree)
+    } else if let Some(count) = cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable) {
+        Some(page_line(count.to_string(), font_size::BODY, ctx.palette.text))
     } else if unreachable {
         Some(kit::button(
             ctx.lang.text(Msg::ReposRemove),
@@ -144,7 +152,7 @@ fn one_row<'a>(
     } else {
         None
     };
-    let is_cursor = cursor == Some(&path);
+    let is_cursor = cursor == Some(&path) && state.cleanup.is_none();
     let item = RepoRow {
         name: name_of(&path),
         location: shortened(&path, ctx.home),
@@ -221,12 +229,14 @@ fn all_checked(state: &State) -> Check {
 /// The column head and the scrolling groups below it.
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let is_run = state.run().is_some();
-    let header = container(repo_header(
+    let cleanable_title = (!is_run).then(|| ctx.lang.text(Msg::ReposColumnCleanable));
+    let header = container(repo_header_titled(
         columns(is_run),
         ctx.lang,
         ctx.palette,
         all_checked(state),
         Some(Message::AllToggled),
+        cleanable_title,
     ))
     .padding(Padding::from([0.0, spacing::XXL]));
     let cursor = state.cursor();
@@ -251,7 +261,21 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     column![
         header,
         page_scroll_padded(LIST_ID, body, Padding::from([0.0, spacing::XXL])),
+        footnote(is_run, ctx),
     ]
     .height(Length::Fill)
+    .into()
+}
+
+fn footnote<'a>(is_run: bool, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    if is_run {
+        return iced::widget::Space::new().into();
+    }
+    container(page_line(
+        ctx.lang.text(Msg::ReposCleanableNote),
+        font_size::SMALL,
+        ctx.palette.dim_text,
+    ))
+    .padding(Padding::from([spacing::M, spacing::XXL]))
     .into()
 }

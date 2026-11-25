@@ -8,6 +8,7 @@ use std::sync::Arc;
 use iced::Task;
 use ncrs_git::{ActionError, ChangedFile, DiffTarget, Git, GitError};
 
+use crate::credentials::JobToken;
 use crate::job::{Finished, Job};
 use crate::message::Message;
 use crate::snapshot::{self, Want};
@@ -118,10 +119,10 @@ pub fn actions(state: &mut State) -> Task<Message> {
 }
 
 /// Runs one call to git on the blocking pool.
-pub fn job(root: PathBuf, job: Job) -> Task<Message> {
+pub fn job(root: PathBuf, token: JobToken, job: Job) -> Task<Message> {
     let kept = job.clone();
     Task::perform(
-        async move { tokio::task::spawn_blocking(move || job.run_in(&root)).await },
+        async move { tokio::task::spawn_blocking(move || job.run_in(&root, token)).await },
         move |joined| {
             Message::JobDone(Box::new(joined.unwrap_or_else(|error| Finished {
                 job: kept,

@@ -13,7 +13,8 @@ use crate::scan::{self, ScanRequest};
 use crate::summary::{self, Reading};
 
 pub fn read(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
-    Task::perform(
+    let cleanable = crate::cleanup_tasks::cleanable(path.clone(), Arc::clone(&stop));
+    let summary = Task::perform(
         async move {
             let to_read = path.clone();
             let reading = tokio::task::spawn_blocking(move || summary::read(&to_read, &stop))
@@ -22,7 +23,8 @@ pub fn read(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
             (path, reading)
         },
         |(root, reading)| Message::SummaryRead(root, Box::new(reading)),
-    )
+    );
+    Task::batch([summary, cleanable])
 }
 
 pub fn scan(request: ScanRequest) -> Task<Message> {

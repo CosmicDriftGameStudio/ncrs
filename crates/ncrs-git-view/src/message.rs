@@ -1,5 +1,6 @@
 //! What happens in the Git tab.
 
+use ncrs_git::askpass::{AskRequest, Secret};
 use ncrs_git::{
     ActionError, Blame, ChangedFile, CommitDetail, FileDiff, FileHistory, Log, PullStrategy,
     RefLabel, RefsOverview, ResetLoss,
@@ -20,6 +21,7 @@ use crate::panes::Split;
 use crate::picker::PickerKind;
 use crate::snapshot::Snapshot;
 use crate::state::Fold;
+use crate::sync_menu::{SyncAction, SyncKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
@@ -200,6 +202,22 @@ pub enum Message {
     BlameScrolled(f32),
     /// An entry of the menu of a file: it acts on the file of the open menu.
     FileMenu(FileAction),
+    /// The arrow of the Pull or Push button, or the key for it: opens that menu, or closes it.
+    OpenSyncMenu(SyncKind),
+    /// An entry of the Pull or Push menu.
+    SyncMenuPressed(SyncAction),
+    /// The pointer is over this entry of the Pull or Push menu.
+    SyncMenuCursor(usize),
+    /// A letter typed while the Pull or Push menu is open.
+    SyncMenuLetter(char),
+    /// Force push with lease: asks first.
+    ForcePush,
+    /// Git asked for a login in a job of this tab.
+    CredentialAsked(AskRequest),
+    /// The user typed in the field of the login dialog.
+    CredentialTyped(Secret),
+    /// The timer of the background fetch: the tab fetches if it is idle.
+    BackgroundFetch,
 }
 
 /// The state chips of the head that jump somewhere when pressed.

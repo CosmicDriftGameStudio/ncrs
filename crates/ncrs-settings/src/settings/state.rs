@@ -627,6 +627,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::FavouritesBar(_)
         | SettingChange::Notes(_)
         | SettingChange::Repos(_)
+        | SettingChange::Git(_)
         | SettingChange::Load(_)
         | SettingChange::HermesSwitch(_)
         | SettingChange::HermesChatKeepDays(_)

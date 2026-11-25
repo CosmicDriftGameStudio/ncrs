@@ -20,6 +20,8 @@ pub struct KeyContext {
     pub list_covered: bool,
     pub dialog_open: bool,
     pub picker_open: bool,
+    /// The menu behind Pull or Push is open: it takes the arrows, Enter and its letters.
+    pub sync_menu_open: bool,
     pub area: Area,
 }
 
@@ -38,6 +40,11 @@ pub fn git_view_key(
     }
     if context.picker_open {
         return picker_key(keys, key, modifiers);
+    }
+    if context.sync_menu_open {
+        if let Some(message) = sync_menu_key(key, modifiers) {
+            return Some(message);
+        }
     }
     if context.filter_focused {
         return None;
@@ -83,6 +90,27 @@ pub fn git_view_key(
         Key::Named(Named::F3) if context.in_diff => Some(Message::ViewFile),
         Key::Character("n") if context.in_diff => Some(Message::NextHunk),
         Key::Character("p") if context.in_diff => Some(Message::PreviousHunk),
+        _ => None,
+    }
+}
+
+/// The open Pull or Push menu: arrows, Enter and the letter of an entry. Other
+/// keys, the chords of the menus themselves among them, go on to the shortcuts.
+fn sync_menu_key(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    if !modifiers.is_empty() {
+        return None;
+    }
+    match key.as_ref() {
+        Key::Named(Named::ArrowUp) => Some(Message::Up),
+        Key::Named(Named::ArrowDown) => Some(Message::Down),
+        Key::Named(Named::Enter) => Some(Message::Enter),
+        Key::Character(typed) => {
+            let mut letters = typed.chars();
+            match (letters.next(), letters.next()) {
+                (Some(letter), None) => Some(Message::SyncMenuLetter(letter)),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }

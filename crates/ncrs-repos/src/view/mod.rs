@@ -1,27 +1,33 @@
 //! The Repos tab: head, bulk bar, result banner, grouped list, log and status bar.
 
+mod cleanup_pane;
 mod clone;
 mod head;
 mod list;
 mod log;
 
-use iced::widget::{column, stack};
+use iced::widget::{column, row, stack};
 use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
-use ncrs_ui_kit::theme;
+use ncrs_ui_kit::theme::{self, size};
 
 use crate::bulk::BulkAction;
+use crate::cleanup::Phase;
 use crate::ctx::ViewCtx;
 use crate::message::{MenuEntry, Message};
 use crate::shortcuts::Shortcut;
 use crate::state::State;
 
 
-/// Where the menu opens: the keyboard and the right click both land here.
-const MENU_ORIGIN: Point = Point::new(280.0, 150.0);
+/// Where the menu opens horizontally; its height follows the row of the cursor.
+const MENU_X: f32 = 280.0;
+/// The title, the bar of the actions, the rule and the column head above the list.
+const LIST_TOP: f32 = 32.0 + 1.0 + 32.0 + 22.0;
+/// What the menu needs below its top edge before it must move up.
+const MENU_HEIGHT: f32 = 300.0;
 
 /// The title of the tab.
 pub fn tab_title(ctx: ViewCtx<'_>) -> String {
@@ -85,6 +91,12 @@ fn menu_entries(state: &State, ctx: ViewCtx<'_>) -> Vec<PopupEntry<Message>> {
             run,
         ),
         entry(
+            Msg::ReposCommandCleanup,
+            Some(Shortcut::CleanUp),
+            MenuEntry::Cleanup,
+            run,
+        ),
+        entry(
             Msg::ReposOpenInTabs,
             Some(Shortcut::OpenInTabs),
             MenuEntry::OpenInTabs,
@@ -98,6 +110,8 @@ fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let progress;
     let line = if let Some(failure) = state.failure() {
         PageStatusLine::Failure(failure)
+    } else if state.cleanup.is_some() {
+        PageStatusLine::Hint(ctx.lang.text(Msg::ReposCleanupHint))
     } else if let Some(run) = state.run().filter(|run| !run.is_finished()) {
         progress = fill_template(
             ctx.lang.text(Msg::ReposRunProgress),
@@ -113,11 +127,25 @@ fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     } else {
         PageStatusLine::Hint(ctx.lang.text(Msg::ReposHint))
     };
+    let right = state
+        .cleanup
+        .as_ref()
+        .filter(|cleanup| cleanup.phase == Phase::Ready)
+        .map(|cleanup| {
+            let (branches, worktrees, _) = cleanup.offered();
+            fill_template(
+                ctx.lang.text(Msg::ReposCleanupChosen),
+                &[
+                    ("{chosen}", &cleanup.ticked().0.to_string()),
+                    ("{count}", &(branches + worktrees).to_string()),
+                ],
+            )
+        });
     page_status_bar(
         PageStatusBar {
             mode: ctx.lang.text(Msg::ReposMode),
             line,
-            right: None,
+            right: right.as_deref(),
         },
         ctx.palette,
     )
@@ -137,11 +165,18 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(run) = state.run() {
         page = page.push(log::view(run, ctx));
     }
-    let full_page = page.push(status_bar(state, ctx)).height(Length::Fill);
+    let page = page.width(Length::Fill).height(Length::Fill);
+    let upper: Element<'a, Message> = match &state.cleanup {
+        Some(cleanup) => row![page, cleanup_pane::view(cleanup, ctx)]
+            .height(Length::Fill)
+            .into(),
+        None => page.into(),
+    };
+    let full_page = column![upper, status_bar(state, ctx)].height(Length::Fill);
     if let Some(draft) = state.clone_draft() {
         stack![full_page, scrim(clone::dialog(draft, ctx))].into()
     } else if state.menu_open() {
-        let menu = popup_menu(menu_entries(state, ctx), MENU_ORIGIN, palette);
+        let menu = popup_menu(menu_entries(state, ctx), menu_origin(state, ctx), palette);
         stack![
             full_page,
             popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss)
@@ -150,4 +185,22 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     } else {
         full_page.into()
     }
+}
+
+/// The menu opens at the row of the cursor, where the pointer went for a
+/// right click and where the keyboard is. The scroll position of the list is
+/// not known here, so a scrolled list puts it too low or too high.
+fn menu_origin(state: &State, ctx: ViewCtx<'_>) -> Point {
+    let cursor = state.cursor();
+    let mut top = LIST_TOP;
+    'found: for group in state.groups() {
+        top += size::SECTION_HEAD;
+        for row in &group.rows {
+            if Some(&row.path) == cursor.as_ref() {
+                break 'found;
+            }
+            top += size::REPO_ROW;
+        }
+    }
+    Point::new(MENU_X, top.min((ctx.window.height - MENU_HEIGHT).max(0.0)))
 }

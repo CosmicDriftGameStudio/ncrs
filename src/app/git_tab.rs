@@ -9,7 +9,7 @@ use ncrs_ui_kit::git_rows::CommitColumns;
 use std::path::{Path, PathBuf};
 
 impl App {
-    fn git_ctx(&self, root: Option<&Path>) -> ncrs_git_view::Ctx {
+    pub(in crate::app) fn git_ctx(&self, root: Option<&Path>) -> ncrs_git_view::Ctx {
         let settings = &self.git_view_settings;
         ncrs_git_view::Ctx {
             lang: self.lang,
@@ -19,6 +19,17 @@ impl App {
             columns: self.git_columns(),
             panes: self.git_panes(),
             repositories: self.git_known_repositories(),
+            pull_default: self.git_pull_default(),
+        }
+    }
+
+    /// The way the Pull button joins what it fetched, from `[git] pull`.
+    fn git_pull_default(&self) -> ncrs_git::PullStrategy {
+        use ncrs_config::git::PullDefault;
+        match self.git_settings.pull {
+            PullDefault::Merge => ncrs_git::PullStrategy::Merge,
+            PullDefault::Rebase => ncrs_git::PullStrategy::Rebase,
+            PullDefault::FastForwardOnly => ncrs_git::PullStrategy::FastForwardOnly,
         }
     }
 
@@ -70,6 +81,7 @@ impl App {
             panes: self.git_panes(),
             home: &self.home,
             keys: &self.git_keys,
+            pull_default: self.git_pull_default(),
         };
         let content: Element<'_, Message> = match self
             .shown_git_tab()
@@ -163,6 +175,35 @@ impl App {
             task.map(move |inner| Message::GitView(id, inner)),
             action_task,
         ])
+    }
+
+    /// Hands a login question to the tab whose job asked; no tab left, no answer.
+    pub(in crate::app) fn route_git_request(
+        &mut self,
+        request: ncrs_git::askpass::AskRequest,
+    ) -> Task<Message> {
+        let asking = self
+            .git_tabs
+            .iter()
+            .find_map(|(id, state)| (state.job_token.0 == request.job).then_some(id));
+        match asking {
+            Some(id) => self.update_git_tab(id, ncrs_git_view::Message::CredentialAsked(request)),
+            None => {
+                ncrs_git::askpass::answer(request.id, None);
+                Task::none()
+            }
+        }
+    }
+
+    /// The timer of the quiet fetch: every open tab looks at its own remote.
+    pub(in crate::app) fn fetch_git_tabs_in_background(&mut self) -> Task<Message> {
+        let tasks: Vec<_> = self
+            .git_tabs
+            .ids()
+            .into_iter()
+            .map(|id| self.update_git_tab(id, ncrs_git_view::Message::BackgroundFetch))
+            .collect();
+        Task::batch(tasks)
     }
 
     fn run_git_action(&mut self, action: Ask) -> Task<Message> {

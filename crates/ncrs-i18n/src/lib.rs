@@ -416,6 +416,10 @@ mod tests {
                 | Msg::GitViewColumnGraph
                 | Msg::GitViewTagNamePlaceholder
                 | Msg::GitViewBlame
+                | Msg::GitViewPushMenuPush
+                | Msg::SettingsGitTitlePull
+                | Msg::SettingsGitPullMerge
+                | Msg::SettingsGitPullRebase
                 | Msg::RepoRowColumnName
                 | Msg::RepoRowColumnBranch
                 | Msg::KeyBindingsGitHeading

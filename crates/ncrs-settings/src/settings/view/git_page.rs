@@ -1,6 +1,7 @@
 //! The Git page: where the Repos tab looks for repositories, what it skips and
 //! how the bulk actions behave.
 
+use ncrs_config::git::{FetchInterval, GitSettings, PullDefault};
 use ncrs_config::repos::{ReposSettings, CONCURRENCY_CHOICES, DEPTH_CHOICES};
 use ncrs_ui_kit::format::{date_text, local_time, DateFormat};
 
@@ -14,6 +15,11 @@ pub fn git_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .state
         .config()
         .map(|config| config.repos.clone())
+        .unwrap_or_default();
+    let git = view
+        .state
+        .config()
+        .map(|config| config.git)
         .unwrap_or_default();
     vec![
         Group {
@@ -36,7 +42,85 @@ pub fn git_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             title: lang.text(Msg::SettingsGitTitleBulk).to_owned(),
             rows: bulk_rows(view, &current),
         },
+        Group {
+            intro: None,
+            title: lang.text(Msg::SettingsGitTitlePull).to_owned(),
+            rows: pull_rows(view, &git),
+        },
+        Group {
+            intro: None,
+            title: lang.text(Msg::SettingsGitTitleFetch).to_owned(),
+            rows: fetch_rows(view, &git),
+        },
     ]
+}
+
+fn pull_label(choice: PullDefault) -> Msg {
+    match choice {
+        PullDefault::Merge => Msg::SettingsGitPullMerge,
+        PullDefault::Rebase => Msg::SettingsGitPullRebase,
+        PullDefault::FastForwardOnly => Msg::SettingsGitPullFfOnly,
+    }
+}
+
+fn fetch_label(choice: FetchInterval) -> Msg {
+    match choice {
+        FetchInterval::Off => Msg::SettingsGitFetchOff,
+        FetchInterval::Every15Minutes => Msg::SettingsGitFetchQuarterHour,
+        FetchInterval::Hourly => Msg::SettingsGitFetchHourly,
+    }
+}
+
+fn pull_rows<'a>(view: &SettingsView<'a>, current: &GitSettings) -> Vec<SettingRow<'a>> {
+    let chosen = PullDefault::ALL
+        .iter()
+        .position(|choice| *choice == current.pull)
+        .unwrap_or_default();
+    let options: Vec<(&str, Message)> = PullDefault::ALL
+        .iter()
+        .map(|choice| {
+            (
+                view.lang.text(pull_label(*choice)),
+                change(SettingChange::Git(GitSettings {
+                    pull: *choice,
+                    ..*current
+                })),
+            )
+        })
+        .collect();
+    let keys = options.iter().map(|(_, message)| message.clone()).collect();
+    vec![SettingRow::text(
+        view.lang.text(Msg::SettingsGitRowPullDefault).to_owned(),
+        Some(view.lang.text(Msg::SettingsGitRowPullDefaultNote).to_owned()),
+        kit::segmented(&options, chosen, true, view.palette),
+    )
+    .keyed_maybe(choice_key(keys, chosen))]
+}
+
+fn fetch_rows<'a>(view: &SettingsView<'a>, current: &GitSettings) -> Vec<SettingRow<'a>> {
+    let chosen = FetchInterval::ALL
+        .iter()
+        .position(|choice| *choice == current.fetch)
+        .unwrap_or_default();
+    let options: Vec<(&str, Message)> = FetchInterval::ALL
+        .iter()
+        .map(|choice| {
+            (
+                view.lang.text(fetch_label(*choice)),
+                change(SettingChange::Git(GitSettings {
+                    fetch: *choice,
+                    ..*current
+                })),
+            )
+        })
+        .collect();
+    let keys = options.iter().map(|(_, message)| message.clone()).collect();
+    vec![SettingRow::text(
+        view.lang.text(Msg::SettingsGitRowFetch).to_owned(),
+        Some(view.lang.text(Msg::SettingsGitRowFetchNote).to_owned()),
+        kit::segmented(&options, chosen, true, view.palette),
+    )
+    .keyed_maybe(choice_key(keys, chosen))]
 }
 
 fn changed(current: &ReposSettings, edit: impl FnOnce(&mut ReposSettings)) -> SettingChange {

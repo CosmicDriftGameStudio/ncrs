@@ -127,6 +127,7 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
     })
     .map_err(|err| invalid(err.span, err.reason))?;
     config.repos = crate::repos::resolve_repos(&config.repos_section);
+    config.git = crate::git::resolve_git(&config.git_section);
     if !config.theme.entries.is_empty() {
         let vscode = load_vscode(&config.theme, path, home);
         let configured =

@@ -486,3 +486,96 @@ mod favourites_bar_ui_tests {
         }
     }
 }
+
+/// The ticked rows apart from the grid, for the same reason.
+mod check_rows_ui_tests {
+    use super::*;
+    use crate::check_rows::{check_group_head, check_row, CheckGroupHead, CheckRow};
+
+    fn picture(preset: ThemePreset) {
+        let palette = preset.palette();
+        let plain = |name: &str, check: Check, cursor: bool| {
+            check_row(
+                CheckRow {
+                    check,
+                    name: name.to_owned(),
+                    detail: None,
+                    reason: "in main".to_owned(),
+                    worktree: false,
+                    kept: false,
+                    cursor,
+                    on_toggle: Some(()),
+                    trailing: None,
+                },
+                &palette,
+            )
+        };
+        let content: Element<'_, ()> = iced::widget::column![
+            check_group_head(
+                CheckGroupHead {
+                    title: "infra".to_owned(),
+                    subtitle: "~/code/infra".to_owned(),
+                    count: 5,
+                    open: true,
+                    check: Check::Mixed,
+                    cursor: false,
+                    on_toggle_open: (),
+                    on_toggle_check: (),
+                },
+                &palette,
+            ),
+            plain("chore/renovate-oct", Check::On, false),
+            plain("fix/etcd-snapshot-s3", Check::Off, true),
+            check_row(
+                CheckRow {
+                    check: Check::On,
+                    name: "fix/redis-probe-timeout".to_owned(),
+                    detail: Some("~/code/infra-wt-redis".to_owned()),
+                    reason: "worktree only, branch merged".to_owned(),
+                    worktree: true,
+                    kept: false,
+                    cursor: false,
+                    on_toggle: Some(()),
+                    trailing: None,
+                },
+                &palette,
+            ),
+            check_row(
+                CheckRow {
+                    check: Check::Off,
+                    name: "feat/connector-oauth".to_owned(),
+                    detail: None,
+                    reason: "3 local changes".to_owned(),
+                    worktree: false,
+                    kept: true,
+                    cursor: false,
+                    on_toggle: None,
+                    trailing: None,
+                },
+                &palette,
+            ),
+        ]
+        .into();
+        let name = format!("check-rows-{}", format!("{preset:?}").to_lowercase());
+        let matches = Simulator::with_size(
+            iced::Settings {
+                default_font: crate::APP_FONT,
+                ..iced::Settings::default()
+            },
+            Size::new(560.0, 180.0),
+            container(content).style(theme::panel(&palette)),
+        )
+        .snapshot(&iced::Theme::Dark)
+        .unwrap()
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
+        .unwrap();
+        assert!(matches, "{name} differs from its image");
+    }
+
+    #[test]
+    fn the_ticked_rows_look_the_same_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            picture(preset);
+        }
+    }
+}

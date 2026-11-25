@@ -103,6 +103,30 @@ impl App {
                     )))
                 })
             }),
+            Ask::WorktreeRemoved(folder) => {
+                let was_open = self.open_pages();
+                if let Some(state) = self
+                    .git_tabs
+                    .id_of(&folder)
+                    .and_then(|id| self.git_tabs.get_mut(id))
+                {
+                    state.close();
+                }
+                self.git_tabs.drop_closed();
+                self.follow_opened_pages(was_open);
+                Task::none()
+            }
+            Ask::RepoChanged(root) => {
+                let Some(id) = self.git_tabs.id_of(&root) else {
+                    return Task::none();
+                };
+                let name = root
+                    .file_name()
+                    .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+                let ctx = self.git_ctx(Some(&root));
+                let (_, task) = self.git_tabs.open(root, name, &ctx);
+                task.map(move |message| Message::GitView(id, message))
+            }
         }
     }
 

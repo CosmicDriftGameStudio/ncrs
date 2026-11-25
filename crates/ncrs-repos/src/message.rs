@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::bulk::{BulkAction, Executed};
+use crate::cleanup::CleanupMessage;
 use crate::rows::GroupKey;
 use crate::scan::ScanResult;
 use crate::summary::Reading;
@@ -13,6 +14,7 @@ pub enum MenuEntry {
     Remove,
     Bulk(BulkAction),
     OpenInTabs,
+    Cleanup,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +22,8 @@ pub enum Message {
     // Keys of the list.
     Up,
     Down,
+    Left,
+    Right,
     ExtendUp,
     ExtendDown,
     PageUp,
@@ -58,6 +62,8 @@ pub enum Message {
     /// A file panel opened a repository (the app sends its root).
     Learn(PathBuf),
     SummaryRead(PathBuf, Box<Reading>),
+    /// How many branches and worktrees a repository could lose; none when it could not be read.
+    CleanableRead(PathBuf, Option<usize>),
     /// Every minute while the tab is shown: reads the visible repos again.
     Tick,
     // Bulk actions.
@@ -78,4 +84,6 @@ pub enum Message {
     CloneRun,
     CloneDone(Result<PathBuf, String>),
     CloneClose,
+    // The clean-up pane.
+    Cleanup(CleanupMessage),
 }

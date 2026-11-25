@@ -36,6 +36,30 @@ pub(in crate::app) fn receiver_stream(
     })
 }
 
+/// The login questions of git jobs. A blocking thread waits on the broker's
+/// receiver, because it is not async; it ends with the process.
+fn git_requests() -> impl futures::Stream<Item = ncrs_git::askpass::AskRequest> {
+    use futures::{channel::mpsc, SinkExt as _, StreamExt as _};
+    iced::stream::channel(8, async |mut output| {
+        let Some(receiver) = ncrs_git::askpass::take_requests() else {
+            return;
+        };
+        let (sender, mut received) = mpsc::unbounded();
+        std::thread::spawn(move || {
+            while let Ok(request) = receiver.recv() {
+                if sender.unbounded_send(request).is_err() {
+                    break;
+                }
+            }
+        });
+        while let Some(request) = received.next().await {
+            if output.send(request).await.is_err() {
+                break;
+            }
+        }
+    })
+}
+
 impl App {
     pub fn subscription(&self) -> Subscription<Message> {
         // `listen` yields the event stream, so the mapping can decide
@@ -106,6 +130,15 @@ impl App {
                     }
                 }),
             self.store_subscription(),
+            Subscription::run(git_requests).map(Message::GitAsked),
+            match self.git_settings.fetch.period() {
+                Some(every)
+                    if ncrs_git::WRITE_ACTIONS_ENABLED && !self.git_tabs.ids().is_empty() =>
+                {
+                    iced::time::every(every).map(|_| Message::GitFetchDue)
+                }
+                _ => Subscription::none(),
+            },
             // The clock of the notes: auto-lock and the timed sync.
             iced::time::every(NOTES_TICK_EVERY)
                 .map(|now| Message::Notes(ncrs_notes::Message::Tick(now))),
