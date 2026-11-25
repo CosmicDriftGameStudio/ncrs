@@ -50,6 +50,7 @@ impl Git {
         self.refuse_commands_of_the_repository()?;
         let mut args = vec!["fetch", "--prune"];
         if self.is_unattended() {
+            // A setting of one submodule beats `fetch.recurseSubmodules`.
             args.push("--no-recurse-submodules");
         }
         match remote {
@@ -139,7 +140,7 @@ impl Git {
         Ok(())
     }
 
-    /// A pull applies a stash left by an earlier merge, which looks into submodules.
+    /// A merge applies a stash left by an earlier one, which looks into submodules.
     fn refuse_left_autostash(&self) -> Result<(), ActionError> {
         if self.is_unattended() && self.has_left_autostash()? {
             return Err(ActionError::Other {
@@ -153,6 +154,9 @@ impl Git {
     /// need not be a file.
     fn has_left_autostash(&self) -> Result<bool, ActionError> {
         let file = self.text(&["rev-parse", "--git-path", "MERGE_AUTOSTASH"])?;
+        if file.contains(char::REPLACEMENT_CHARACTER) {
+            return Ok(true);
+        }
         let is_file_absent = std::fs::symlink_metadata(self.root().join(file))
             .is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound);
         let as_ref = ["rev-parse", "--verify", "--quiet", "MERGE_AUTOSTASH"];
@@ -185,8 +189,12 @@ impl Git {
     /// or the way `strategy` says for this call; the config is never written.
     /// Conflicts come back as an outcome, not as an error.
     pub fn pull(&self, strategy: Option<PullStrategy>) -> Result<IntegrateOutcome, ActionError> {
-        self.refuse_unsafe_checkout()?;
-        self.refuse_left_autostash()?;
+        if self.is_unattended() {
+            // Its fetch could change what `fast_forward` checks before it merges.
+            return Err(ActionError::Other {
+                git_output: "a call nobody watches fetches and fast-forwards".to_string(),
+            });
+        }
         let remote = self
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
@@ -197,15 +205,23 @@ impl Git {
             args.extend(["-c", rebase, "-c", fast_forward]);
         }
         args.push("pull");
-        if self.is_unattended() {
-            // A setting of one submodule beats `fetch.recurseSubmodules`.
-            args.extend(["--no-recurse-submodules", "--no-autostash"]);
-        }
         let output = self.run(&args, None)?;
         if output.success {
             return Ok(IntegrateOutcome::Completed);
         }
         self.failed_integration(&output, &remote)
+    }
+
+    /// Moves the checked-out branch to what was fetched of its upstream.
+    pub fn fast_forward(&self) -> Result<IntegrateOutcome, ActionError> {
+        self.refuse_unsafe_checkout()?;
+        self.refuse_left_autostash()?;
+        let args = ["merge", "--ff-only", "--no-autostash", "--no-stat", "@{upstream}"];
+        let output = self.run(&args, None)?;
+        if output.success {
+            return Ok(IntegrateOutcome::Completed);
+        }
+        self.failed_integration(&output, "origin")
     }
 
     /// Pushes the checked-out branch.

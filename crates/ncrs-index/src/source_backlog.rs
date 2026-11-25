@@ -22,7 +22,10 @@ impl Index {
     ) -> Result<(), IndexError> {
         let source_column = utf8(source)?;
         let tx = self.conn_mut().transaction()?;
-        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source_column])?;
+        tx.execute(
+            "DELETE FROM source_backlog WHERE source = ?1",
+            [source_column],
+        )?;
         let mut insert = tx.prepare(
             "INSERT OR REPLACE INTO source_backlog (source, path, file_size, file_mtime)
              VALUES (?1, ?2, ?3, ?4)",
@@ -93,8 +96,14 @@ impl Index {
     pub fn forget_backlog(&self, source: &Path) -> Result<(), IndexError> {
         let source_column = utf8(source)?;
         let tx = self.connection().unchecked_transaction()?;
-        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source_column])?;
-        tx.execute("DELETE FROM source_watch WHERE source = ?1", [source_column])?;
+        tx.execute(
+            "DELETE FROM source_backlog WHERE source = ?1",
+            [source_column],
+        )?;
+        tx.execute(
+            "DELETE FROM source_watch WHERE source = ?1",
+            [source_column],
+        )?;
         tx.commit()?;
         Ok(())
     }

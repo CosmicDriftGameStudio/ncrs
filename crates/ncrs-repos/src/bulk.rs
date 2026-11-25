@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use ncrs_git::{ActionError, Git, IntegrateOutcome, PullStrategy, RepoSummary};
+use ncrs_git::{ActionError, Git, IntegrateOutcome, RepoSummary};
 use ncrs_ui_kit::git_state::RunOutcome;
 
 use crate::summary::{self, Reading};
@@ -357,8 +357,8 @@ pub fn execute(
 }
 
 fn pull(git: &Git, behind: u32, switched: Option<(String, String)>, ran: &mut Vec<Ran>) -> Outcome {
-    let command = "git pull --ff-only".to_owned();
-    match git.pull(Some(PullStrategy::FastForwardOnly)) {
+    let command = "git merge --ff-only @{upstream}".to_owned();
+    match git.fast_forward() {
         Ok(IntegrateOutcome::Completed) => {
             ran.push(Ran {
                 command,

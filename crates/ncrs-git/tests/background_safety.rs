@@ -63,7 +63,7 @@ fn an_unattended_fetch_is_refused_when_the_repository_config_runs_commands() {
 
     repo.sh(&["config", "credential.helper", "!echo evil"]);
     unattended.fetch(Some("origin")).unwrap_err();
-    unattended.pull(None).unwrap_err();
+    unattended.fast_forward().unwrap_err();
     unattended.push().unwrap_err();
     unattended.switch_to_default().unwrap_err();
     repo.git.fetch(Some("origin")).unwrap();
@@ -83,7 +83,7 @@ fn content_filters_of_the_repository_are_found_and_the_users_own_are_not() {
 
 #[cfg(unix)]
 #[test]
-fn an_unattended_pull_leaves_submodules_alone() {
+fn an_unattended_fast_forward_leaves_submodules_alone() {
     let (_origin, repo) = with_origin();
     let library = git_cli::repo();
     let marker = library.path().join("program-ran");
@@ -110,7 +110,8 @@ fn an_unattended_pull_leaves_submodules_alone() {
 
     let unattended = Git::open_unattended(repo.path()).unwrap();
     unattended.fetch(Some("origin")).unwrap();
-    unattended.pull(None).unwrap();
+    unattended.fetch(None).unwrap();
+    unattended.fast_forward().unwrap();
     assert!(!marker.exists());
 
     let _attended = repo.git.pull(None);
@@ -188,7 +189,7 @@ fn a_filter_that_only_one_branch_includes_is_seen_after_the_switch() {
     let unattended = Git::open_unattended(repo.path()).unwrap();
     assert!(!unattended.has_content_filters().unwrap());
     unattended.switch_to_default().unwrap();
-    unattended.pull(None).unwrap_err();
+    unattended.fast_forward().unwrap_err();
     unattended.checkout("feature").unwrap_err();
 }
 
@@ -238,16 +239,24 @@ fn an_unattended_push_runs_no_hook_of_a_local_remote() {
 }
 
 #[test]
-fn an_unattended_pull_is_refused_while_a_merge_has_left_its_stash() {
+fn a_fast_forward_is_refused_while_a_merge_has_left_its_stash() {
     let (_origin, repo) = with_origin();
     let unattended = Git::open_unattended(repo.path()).unwrap();
-    unattended.pull(None).unwrap();
+    unattended.fetch(None).unwrap();
+    unattended.fast_forward().unwrap();
 
     let head = repo.sh(&["rev-parse", "HEAD"]);
     for left in [head.as_str(), "refs/stash", &head[..8], ""] {
         write(repo.path(), ".git/MERGE_AUTOSTASH", left);
-        unattended.pull(None).unwrap_err();
+        unattended.fast_forward().unwrap_err();
     }
+}
+
+#[test]
+fn an_unattended_git_never_pulls() {
+    let (_origin, repo) = with_origin();
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    unattended.pull(None).unwrap_err();
 }
 
 #[cfg(unix)]
