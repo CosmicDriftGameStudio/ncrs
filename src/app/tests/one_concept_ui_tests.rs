@@ -73,16 +73,20 @@ fn typing_a_value_makes_the_rule_saveable_and_is_saved() {
     let mut app = app_with_new_rule_form();
     assert!(!app.rules_for_test().unwrap().form().unwrap().is_valid());
 
-    let messages: Vec<Message> = {
-        let mut simulator = simulator_of(&app, WINDOW);
-        simulator
-            .click(Id::new("condition-value-0"))
-            .expect("the value field");
-        let _ = simulator.typewrite("firma-a");
-        simulator.into_messages().collect()
-    };
-    for message in messages {
-        drop(app.update(message));
+    for (field, typed) in [
+        ("rule-form-name", "Firma A"),
+        ("rule-form-pattern", "Firma A/{year}/{kind}.pdf"),
+        ("condition-value-0", "firma-a"),
+    ] {
+        let messages: Vec<Message> = {
+            let mut simulator = simulator_of(&app, WINDOW);
+            simulator.click(Id::new(field)).expect(field);
+            let _ = simulator.typewrite(typed);
+            simulator.into_messages().collect()
+        };
+        for message in messages {
+            drop(app.update(message));
+        }
     }
 
     let form = app.hermes.rules.as_mut().unwrap().form_mut().unwrap();
