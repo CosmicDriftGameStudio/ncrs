@@ -169,11 +169,7 @@ impl App {
             } else {
                 Subscription::none()
             },
-            if self.takes_handoffs() {
-                iced::time::every(super::handoff::POLL_EVERY).map(|_| Message::HandoffPoll)
-            } else {
-                Subscription::none()
-            },
+            self.watch_handoffs(),
             if ncrs_filing_view::is_running(&self.filing_view) {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)
                     .map(|_| Message::FilingView(ncrs_filing_view::Message::Tick))

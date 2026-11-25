@@ -72,3 +72,16 @@ async fn a_handed_over_path_that_is_gone_changes_nothing() {
     assert_eq!(app.panels.left.path, before);
     drop(scratch);
 }
+
+#[tokio::test]
+async fn the_inbox_speaks_only_when_something_was_handed_over() {
+    let (scratch, folder) = scratch_with_file();
+    let mut looks = std::pin::pin!(crate::app::handoff::found_in(scratch.path().to_path_buf()));
+    let nothing = tokio::time::timeout(std::time::Duration::from_millis(1200), looks.next()).await;
+    assert!(nothing.is_err());
+    ncrs_handoff::send(scratch.path(), &[Request::Open(folder.clone())]).unwrap();
+    let Some(Message::HandedOver(found)) = looks.next().await else {
+        panic!("the request was not found");
+    };
+    assert_eq!(found, [Request::Open(folder)]);
+}

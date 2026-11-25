@@ -2,10 +2,11 @@
 //! manager D-Bus service and, on macOS, the Finder's "Open With".
 
 use crate::app::*;
+use futures::{SinkExt as _, Stream};
 use ncrs_handoff::{Request, Target};
 
 /// How often the inbox is looked at.
-pub(in crate::app) const POLL_EVERY: std::time::Duration = std::time::Duration::from_millis(500);
+const POLL_EVERY: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// What was handed over since the last look: the inbox of this data folder and,
 /// on macOS, the files the system opened ncrs with.
@@ -24,6 +25,19 @@ fn collect(data_dir: Option<&Path>) -> Vec<Request> {
     requests
 }
 
+pub(in crate::app) fn found_in(data_dir: PathBuf) -> impl Stream<Item = Message> {
+    iced::stream::channel(1, async move |mut output| loop {
+        tokio::time::sleep(POLL_EVERY).await;
+        let looked_in = data_dir.clone();
+        let found = tokio::task::spawn_blocking(move || collect(Some(&looked_in)))
+            .await
+            .unwrap_or_default();
+        if !found.is_empty() && output.send(Message::HandedOver(found)).await.is_err() {
+            return;
+        }
+    })
+}
+
 impl App {
     /// The inbox folder: next to the session state, so only the first ncrs of
     /// a data folder has one (a second one has no state path).
@@ -34,9 +48,15 @@ impl App {
             .map(Path::to_path_buf)
     }
 
-    /// Whether the poll runs at all.
-    pub(in crate::app) fn takes_handoffs(&self) -> bool {
-        self.state_path.is_some() && !self.quitting
+    /// The inbox, looked at for as long as it is there. Only a find is a
+    /// message: one on every look would rebuild the window twice a second.
+    pub(in crate::app) fn watch_handoffs(&self) -> Subscription<Message> {
+        match self.handoff_dir() {
+            Some(dir) if !self.quitting => {
+                Subscription::run_with(dir, |dir| found_in(dir.clone()))
+            }
+            _ => Subscription::none(),
+        }
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as

@@ -473,7 +473,6 @@ impl App {
             Message::OpenGitFile(view) => self.open_git_file(view),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),
             Message::NoteOnFile => self.note_on_file(),
-            Message::HandoffPoll => self.poll_handoffs(),
             Message::HandedOver(requests) => self.open_handed_over(requests),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::Store(store_message) => self.update_store(store_message),

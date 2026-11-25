@@ -190,10 +190,8 @@ pub enum Message {
     /// The note on the file under the cursor, made when there is none.
     NoteOnFile,
     // --- Paths other programs hand to ncrs ---
-    /// Time to look at the inbox of the second starts and, on macOS, at the
-    /// files the system opened ncrs with.
-    HandoffPoll,
-    /// What the look found, oldest first.
+    /// What was found in the inbox of the second starts and, on macOS, the
+    /// files the system opened ncrs with, oldest first.
     HandedOver(Vec<ncrs_handoff::Request>),
     // --- The check for a newer release ---
     Updates(ncrs_updates::Message),
