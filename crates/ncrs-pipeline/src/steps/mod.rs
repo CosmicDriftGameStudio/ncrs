@@ -113,9 +113,12 @@ impl IntakeStep {
             // review list, where an app quit before the rules step left it
             // unseen. Reading it again is asked for by force.
             DocumentStatus::New => {
-                let stored_empty = index
-                    .document_text(id)?
+                let stored = index.document_text(id)?;
+                let stored_empty = stored
+                    .as_deref()
                     .is_some_and(|text| text.trim().is_empty());
+                // Text stored for these bytes is not read (PDF, OCR) again.
+                item.stored_text_is_current = stored.is_some() && !stored_empty;
                 if stored_empty {
                     match index.add_review(id, ReviewReason::NoMatchingRule) {
                         Ok(_) => {}

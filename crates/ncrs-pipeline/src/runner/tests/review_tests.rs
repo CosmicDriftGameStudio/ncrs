@@ -171,7 +171,7 @@ fn the_text_of_a_file_is_stored_in_the_index() {
 }
 
 #[derive(Debug)]
-struct CountingText(Arc<std::sync::atomic::AtomicUsize>);
+pub struct CountingText(pub Arc<std::sync::atomic::AtomicUsize>);
 
 impl TextSource for CountingText {
     fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {

@@ -2,6 +2,7 @@ use ncrs_ai::{FakeProvider, Provider};
 use ncrs_index::{DocumentId, ReviewReason};
 use ncrs_intake::ImageTextSource;
 
+use super::review_tests::CountingText;
 use super::rule_tests::invoice_rule;
 use super::*;
 use crate::ai_step::AI_READ_VERSION;
@@ -13,12 +14,12 @@ fn text_chain(text: &str) -> TextChain {
     TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))))
 }
 
-fn scan(
+fn start_scan(
     fixture: &IndexFixture,
     location: &Location,
     chain: TextChain,
     provider: Option<&Arc<FakeProvider>>,
-) -> Snapshot {
+) -> Runner {
     let steps = intake_steps(
         Arc::new(SharedIndex(Arc::clone(&fixture.index))),
         Arc::new(chain),
@@ -31,7 +32,15 @@ fn scan(
         vec![location.clone()],
         stepping_clock(),
     )
-    .wait_for("the location scanned", is_idle)
+}
+
+fn scan(
+    fixture: &IndexFixture,
+    location: &Location,
+    chain: TextChain,
+    provider: Option<&Arc<FakeProvider>>,
+) -> Snapshot {
+    start_scan(fixture, location, chain, provider).wait_for("the location scanned", is_idle)
 }
 
 fn only_document(fixture: &IndexFixture, location: &Location) -> DocumentId {
@@ -332,4 +341,71 @@ fn an_archive_document_is_not_asked_whether_it_is_a_document() {
     let asked = provider.requests();
     assert_eq!(asked.len(), 1);
     assert!(!asked[0].judge_document);
+}
+
+/// A document in a location that files by itself: the rules leave it open, so
+/// it stays new after the model was asked, and every scan meets it again.
+fn asked_once_in_a_watched_source() -> (TempDir, Location, PathBuf, IndexFixture) {
+    let dir = TempDir::new().unwrap();
+    let watched = location(&dir, LocationMode::Inbox).with_continuous(true);
+    let file = put(&watched, "invoice.pdf", INVOICE);
+    (dir, watched, file, IndexFixture::new())
+}
+
+fn counting_chain(reads: &Arc<AtomicUsize>) -> TextChain {
+    TextChain::new().with_source(CountingText(Arc::clone(reads)))
+}
+
+#[test]
+fn a_new_document_in_a_watched_source_is_neither_read_nor_asked_again_on_the_next_scan() {
+    let (_dir, watched, _file, fixture) = asked_once_in_a_watched_source();
+    let provider = Arc::new(FakeProvider::replying(SENDER_REPLY));
+    let reads = Arc::new(AtomicUsize::new(0));
+
+    scan(&fixture, &watched, counting_chain(&reads), Some(&provider));
+    let id = only_document(&fixture, &watched);
+    assert_eq!(status_of(&fixture, id), DocumentStatus::New);
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.requests().len(), 1);
+
+    let second = scan(&fixture, &watched, counting_chain(&reads), Some(&provider));
+
+    assert!(second.errors.is_empty(), "{:?}", second.errors);
+    assert_eq!(reads.load(Ordering::SeqCst), 1, "not read again");
+    assert_eq!(provider.requests().len(), 1, "not asked again");
+    assert_eq!(status_of(&fixture, id), DocumentStatus::New);
+    assert!(fixture.index.lock().unwrap().document_text(id).unwrap().is_some());
+}
+
+#[test]
+fn a_new_document_in_a_watched_source_is_read_and_asked_again_after_its_content_changed() {
+    let (_dir, watched, _file, fixture) = asked_once_in_a_watched_source();
+    let provider = Arc::new(FakeProvider::replying(SENDER_REPLY));
+    let reads = Arc::new(AtomicUsize::new(0));
+    scan(&fixture, &watched, counting_chain(&reads), Some(&provider));
+
+    put(&watched, "invoice.pdf", b"another invoice, longer than before");
+    scan(&fixture, &watched, counting_chain(&reads), Some(&provider));
+
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+    assert_eq!(provider.requests().len(), 2);
+}
+
+#[test]
+fn processing_a_new_document_in_a_watched_source_again_reads_and_asks_again() {
+    let (_dir, watched, file, fixture) = asked_once_in_a_watched_source();
+    let provider = Arc::new(FakeProvider::replying(SENDER_REPLY));
+    let reads = Arc::new(AtomicUsize::new(0));
+    let runner = start_scan(&fixture, &watched, counting_chain(&reads), Some(&provider));
+    runner.wait_for("the location scanned", is_idle);
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.requests().len(), 1);
+
+    assert!(runner.process_again(&file));
+    runner.wait_for("the file processed again", |snapshot| {
+        is_idle(snapshot) && snapshot.left_pipeline == 2
+    });
+
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+    assert_eq!(provider.requests().len(), 2);
 }

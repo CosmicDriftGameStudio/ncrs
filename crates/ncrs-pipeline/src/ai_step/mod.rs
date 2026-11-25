@@ -98,6 +98,16 @@ impl AiStep {
             .map(|found| (found, kinds, origins)))
     }
 
+    fn asked_this_version(&self, item: &Item) -> Result<bool, String> {
+        let id = item
+            .document
+            .ok_or_else(|| "the file has no document".to_owned())?;
+        with_index_value(self.index.as_ref(), |index| index.ai_read_version(id))
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map(|version| version >= AI_READ_VERSION)
+            .map_err(|err| err.to_string())
+    }
+
     fn remember_asked(&self, item: &Item) -> Result<(), String> {
         let id = item
             .document
@@ -186,6 +196,16 @@ impl Step for AiStep {
         let review_reason = item.review.filter(|&reason| wants_fields(reason));
         let fields_only = item.review.is_none() && item.plan.is_none();
         if review_reason.is_none() && !fields_only {
+            return Ok(StepOutcome::Continue);
+        }
+        // The stored text of unchanged bytes was already asked about: only
+        // new bytes (text read this scan) or a forced run ask again. The
+        // review stays as it is.
+        if review_reason.is_some()
+            && item.stored_text_is_current
+            && !item.force
+            && self.asked_this_version(item)?
+        {
             return Ok(StepOutcome::Continue);
         }
         if item.not_a_document {
