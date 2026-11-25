@@ -262,6 +262,9 @@ fn build_base(raw: &Path, bed: &Bed<'_>, kept: &Path) -> Built {
         "NCRS_SEED_KEPT exists already"
     );
     fs::create_dir_all(kept).unwrap();
+    // Texts and files lie here unencrypted.
+    #[cfg(unix)]
+    fs::set_permissions(kept, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
     let master = kept.join(MASTER);
     for file in files_below(bed.archive).unwrap() {
         let copy = master.join(&file);
@@ -614,6 +617,12 @@ fn the_base_holds_the_files_of_the_bed_the_index_had_read() {
     assert!(scene.kept.join("master/2019/read.txt").is_file());
     assert!(!scene.kept.join("master/.hidden.txt").exists());
     assert!(!scene.kept.join("run").exists());
+    #[cfg(unix)]
+    assert_eq!(
+        std::os::unix::fs::PermissionsExt::mode(&fs::metadata(&scene.kept).unwrap().permissions())
+            & 0o777,
+        0o700
+    );
 }
 
 #[test]

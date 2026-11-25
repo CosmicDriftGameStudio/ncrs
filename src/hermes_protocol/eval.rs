@@ -111,6 +111,10 @@ fn brother_eval_read() {
             .join("eval")
             .join(stamp);
         std::fs::create_dir_all(&kept).unwrap();
+        // Texts and files lie here unencrypted.
+        #[cfg(unix)]
+        std::fs::set_permissions(&kept, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+            .unwrap();
         copy_tree(&archive, &kept.join("master")).unwrap();
         kept
     };
