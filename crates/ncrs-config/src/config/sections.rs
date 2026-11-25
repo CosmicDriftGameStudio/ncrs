@@ -249,7 +249,7 @@ pub struct FilingSection {
     /// Keeps the position of the table for an error about a missing key.
     #[serde(default)]
     pub ai: Option<Spanned<AiSection>>,
-    /// Checked by `resolve_filing`: a pattern Hermes cannot render is ignored.
+    /// Files of before 1.8.0 have it; accepted, not read.
     #[serde(default)]
     pub default_pattern: Option<String>,
     /// Checked by `resolve_filing`: empty entries are dropped.
@@ -477,9 +477,6 @@ pub struct Filing {
     /// capped when the pipeline starts.
     pub load: Load,
     pub ai: AiSetting,
-    /// The one pattern proposed for documents no rule covers, instead of the
-    /// built-in ones; only ever a pattern `pattern_is_valid` accepts.
-    pub default_pattern: Option<String>,
     /// Names and companies of the user; never taken for a sender.
     pub own_names: Vec<String>,
     pub own_ibans: Vec<String>,
@@ -506,7 +503,6 @@ impl Default for Filing {
             dropped_entries: Vec::new(),
             load: Load::default(),
             ai: AiSetting::default(),
-            default_pattern: None,
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),

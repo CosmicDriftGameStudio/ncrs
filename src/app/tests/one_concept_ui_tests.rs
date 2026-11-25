@@ -44,7 +44,7 @@ fn shows(app: &App, label: &str) -> bool {
 fn app_with_new_rule_form() -> App {
     let mut page = RulesPage::new();
     page.loaded(RulesLoad::default());
-    page.begin_new();
+    page.begin_new_in(ncrs_index::TargetId::main());
     App::with_rules(page)
 }
 
@@ -400,7 +400,7 @@ fn the_palette_does_not_open_behind_a_dialog_of_a_page() {
 fn the_problem_of_the_page_shows_in_the_rule_form() {
     let mut page = RulesPage::new();
     page.loaded(RulesLoad::default());
-    page.begin_new();
+    page.begin_new_in(ncrs_index::TargetId::main());
     page.failed("disk full".to_owned());
     let app = App::with_rules(page);
 

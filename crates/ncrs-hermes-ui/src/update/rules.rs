@@ -15,7 +15,7 @@ use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::message::{HermesPage, Message, RuleFormMessage, RulesMessage};
+use crate::message::{Message, RuleFormMessage, RulesMessage};
 use crate::rule_form::{FormTry, RuleForm, RulePrefill, RuleSave, TRY_DEBOUNCE};
 use crate::rules_page::RulesPage;
 use crate::state::Hermes;
@@ -87,12 +87,6 @@ pub fn update(
                     Task::none()
                 }
             }
-        }
-        RulesMessage::New => {
-            if let Some(view) = hermes.rules.as_mut() {
-                view.begin_new();
-            }
-            Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
         RulesMessage::NewIn(target) => {
             if let Some(view) = hermes.rules.as_mut() {
@@ -173,7 +167,7 @@ fn drop_if_spent(hermes: &mut Hermes) {
 }
 
 /// Closes the form without saving, if there is one; whether there was one.
-pub fn cancel_rule_form(hermes: &mut Hermes) -> bool {
+fn cancel_rule_form(hermes: &mut Hermes) -> bool {
     let cancelled = hermes.rules.as_mut().is_some_and(RulesPage::cancel_form);
     drop_if_spent(hermes);
     cancelled
@@ -226,25 +220,6 @@ pub fn open_rule_form(
         }
     }
     Task::batch([read_document, focus_rule_form(hermes), schedule_rule_try(hermes)])
-}
-
-/// Shows the page Einsortieren of the settings with `form` open in its dialog.
-/// The page loads here, so the form can be put in before the settings show it.
-pub fn open_form_page(
-    hermes: &mut Hermes,
-    form: RuleForm,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    actions.push(Action::ShowPage(HermesPage::Sorting));
-    hermes.close_pages();
-    let rules_opened = open(hermes, ctx, actions);
-    let opened = Task::batch([super::sorting::open(hermes, ctx, actions), rules_opened]);
-    let Some(view) = hermes.rules.as_mut() else {
-        return opened;
-    };
-    view.open_form(form);
-    Task::batch([opened, focus_rule_form(hermes), schedule_rule_try(hermes)])
 }
 
 /// The form changed: its try waits for the form to rest.

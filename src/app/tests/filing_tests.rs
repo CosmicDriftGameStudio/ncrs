@@ -11,7 +11,6 @@ fn a_module_that_is_off_leaves_no_module_and_no_file() {
         locations: Vec::new(),
         load: ncrs_pipeline::Load::default(),
         ai: crate::config::AiSetting::Off,
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),

@@ -6,12 +6,10 @@ mod archive_profile;
 mod classify;
 mod conditions;
 mod date_detection;
-mod default_pattern;
 mod duplicate_copies;
 mod error;
 mod extract;
 mod field_detection;
-pub mod filing_pieces;
 mod filing_plan;
 mod image_text;
 mod location;
@@ -20,8 +18,8 @@ mod ocr;
 mod office;
 mod page_budget;
 mod page_trim;
+mod pattern_words;
 mod pdf_text;
-mod placement;
 mod plain_words;
 mod reading_marker;
 mod recipient_detection;
@@ -42,16 +40,10 @@ pub mod test_support;
 mod text;
 mod watcher;
 
-pub use archive_profile::{
-    date_in_file_stem, learn_archive, subtree_per_document, ArchiveDocument,
-};
+pub use archive_profile::{date_in_file_stem, learn_archive, ArchiveDocument};
 pub use classify::{classify, is_eml_file, is_image_file, is_mail_body, text_is_readable, Skip};
-pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
+pub use conditions::word_condition_holds;
 pub use date_detection::detect_letter_date;
-pub use default_pattern::{
-    choose_pattern, default_pattern_for, pattern_without_tax_context, upgraded_pattern,
-    ChosenPattern, PatternSource, DEFAULT_PATTERNS, FALLBACK_PATTERN,
-};
 pub use duplicate_copies::{duplicate_copies, DuplicateCopy, PlanFile};
 pub use error::IntakeError;
 pub use extract::{
@@ -59,15 +51,12 @@ pub use extract::{
 };
 pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
-    contains_condition_holds, missing_field, pattern_is_valid, plan, render_complete_pattern,
-    render_pattern, render_pattern_folder, render_pattern_in, render_pattern_parts,
-    unknown_placeholder, FilingPlan, PatternPart, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
-    FILING_PLACEHOLDERS,
+    contains_condition_holds, pattern_is_valid, plan, render_pattern_in, unknown_placeholder,
+    FilingPlan, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
 pub use location::{
-    canonical_path, location_of, relative_to_location, without_verbatim_prefix, Location,
-    LocationMode,
+    canonical_path, location_of, without_verbatim_prefix, Location, LocationMode,
 };
 pub use location_documents::{location_documents, location_structure};
 pub use ocr::{
@@ -76,8 +65,8 @@ pub use ocr::{
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
 pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUnavailable};
-pub use placement::{Candidate, NeighbourIndex, Placement, Signal};
-pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
+pub use pattern_words::pattern_in_words;
+pub use plain_words::{branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use rule_check::{
     condition_problem, pattern_problem, rule_problem, ConditionProblem, PatternProblem,

@@ -1,9 +1,9 @@
 //! Lists, rows and content areas.
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, column, container, mouse_area, pick_list, scrollable, Column, Row, Space,
+    button, column, container, mouse_area, pick_list, scrollable, Column, Row,
 };
-use iced::{alignment, Background, Border, Color, Element, Length, Padding, Pixels};
+use iced::{alignment, Color, Element, Length, Padding, Pixels};
 
 use crate::format;
 use crate::kit::{self, Check};
@@ -252,38 +252,6 @@ pub fn path<'a, M: 'a>(parts: Vec<(String, bool)>, palette: &Palette) -> Element
         .height(CONTROL_HEIGHT)
         .align_y(alignment::Vertical::Center)
         .clip(true)
-        .into()
-}
-
-/// The page of a document as a stand-in of 48 x 64 px; a press shows the
-/// preview.
-pub fn thumbnail<'a, M: Clone + 'a>(on_press: Option<M>, palette: &Palette) -> Element<'a, M> {
-    let colors = *palette;
-    let lines = Column::with_children(
-        std::iter::repeat_with(|| {
-            container(Space::new())
-                .width(Length::Fill)
-                .height(3.0)
-                .style(fill_style(colors.border_inactive))
-                .into()
-        })
-        .take(6),
-    )
-    .spacing(GAP_XS);
-    button(lines)
-        .on_press_maybe(on_press)
-        .width(THUMBNAIL_WIDTH)
-        .height(THUMBNAIL_HEIGHT)
-        .padding([GAP_S, GAP_S - GAP_XS / 2.0])
-        .style(move |_, _| button::Style {
-            background: Some(Background::Color(colors.title)),
-            border: Border {
-                color: colors.border_inactive,
-                width: 1.0,
-                radius: RADIUS.into(),
-            },
-            ..button::Style::default()
-        })
         .into()
 }
 

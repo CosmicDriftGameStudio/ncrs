@@ -23,7 +23,7 @@ fn filing_continuously_is_written_and_read_back_and_is_off_by_default() {
         chosen(&archive, LocationMode::Archive, false, true),
     ];
 
-    let config = write_filing_locations_with_home(&path, &locations, None).unwrap();
+    let config = write_read_folders_with_home(&path, &locations, None).unwrap();
 
     let read: Vec<_> = config
         .filing

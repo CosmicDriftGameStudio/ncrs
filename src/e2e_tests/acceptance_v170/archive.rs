@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use ncrs_index::{Condition, ConditionKind, DocumentFields, RuleConditions, RuleSpec};
+use ncrs_index::{
+    Condition, ConditionKind, DocumentFields, KindLanguage, Kinds, RuleConditions, RuleSpec,
+};
 
 pub const YEARS: [i32; 4] = [2022, 2023, 2024, 2025];
 
@@ -205,8 +207,12 @@ impl Category {
 
     /// The path below the archive that the rule files this letter in.
     pub fn target(&self, date: NaiveDate, serial: usize) -> PathBuf {
-        let relative = ncrs_intake::render_pattern(self.pattern, &self.fields(Some(date), serial))
-            .unwrap_or_else(|| panic!("pattern {} does not render", self.pattern));
+        let relative = ncrs_intake::render_pattern_in(
+            self.pattern,
+            &self.fields(Some(date), serial),
+            &Kinds::built_in(KindLanguage::English),
+        )
+        .unwrap_or_else(|| panic!("pattern {} does not render", self.pattern));
         let mut name = relative.into_os_string();
         name.push(".txt");
         PathBuf::from(name)

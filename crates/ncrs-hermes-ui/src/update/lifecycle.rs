@@ -184,8 +184,8 @@ fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<Path
 /// may still index a file that arrives in a removed location.
 fn forget_removed_locations(hermes: &Hermes, filing: &Filing) -> Task<Message> {
     let removed = removed_locations(&hermes.filing_config.locations, &filing.locations);
-    let review_access = hermes.filing.as_ref().and_then(FilingModule::review_access);
-    let (false, Some(access)) = (removed.is_empty(), review_access) else {
+    let path_access = hermes.filing.as_ref().and_then(FilingModule::path_access);
+    let (false, Some(access)) = (removed.is_empty(), path_access) else {
         return Task::none();
     };
     Task::perform(

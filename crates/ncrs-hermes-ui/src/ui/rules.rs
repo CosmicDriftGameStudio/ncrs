@@ -1,28 +1,26 @@
-//! The rules page of the settings: every confirmed rule as a row of the list,
-//! in the order Hermes tries them in, and the small dialog in which one rule
-//! is made or changed. Pure view over [`RulesPage`].
+//! The dialog in which one rule is made or changed, and the question before
+//! one is removed. Pure view over [`RulesPage`].
 
 use chrono::NaiveDate;
 use iced::widget::{Column, Row};
 use iced::{alignment, Element, Length, Size};
 use ncrs_config::config::{Filing, TargetSetting};
 use ncrs_config::palette::Palette;
-use ncrs_filing::rules_work::{ListedRule, SortTryRow, SortTryState};
+use ncrs_filing::rules_work::{SortTryRow, SortTryState};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::{render_pattern_in, FILING_PLACEHOLDERS};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, MenuItem, RowTwo, GAP_S, GAP_XS};
-use ncrs_ui_kit::kit::{self, Check, PatternField, Tone};
-use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
+use ncrs_ui_kit::kit::{self, PatternField, Tone};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
 };
 use crate::message::{Message, RuleFormMessage, RulesMessage};
 use crate::rule_form::{chip_text, RuleForm, RuleFormTarget, TryStatus};
-use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage};
+use crate::rules_page::{rule_sentence, RulesPage};
 
 /// Characters of a path of the try, so that it stays readable in the wide
 /// dialog.
@@ -43,101 +41,6 @@ fn send(message: RulesMessage) -> Message {
 
 fn send_form(message: RuleFormMessage) -> Message {
     send(RulesMessage::Form(message))
-}
-
-/// The sections of the page: the list with the button under it.
-pub fn groups<'a>(
-    state: &'a RulesPage,
-    lang: Language,
-    palette: &Palette,
-) -> Vec<Group<'a, Message>> {
-    let idle = !state.is_busy();
-    let count = state.rows().len();
-    let mut rows: Vec<SettingRow<'a, Message>> = state
-        .rows()
-        .iter()
-        .enumerate()
-        .map(|(index, listed)| rule_row(index, count, listed, state, lang, palette))
-        .collect();
-    let empty = if count > 0 {
-        None
-    } else if state.is_busy() {
-        Some(lang.text(Msg::RulesLoading).to_owned())
-    } else {
-        Some(lang.text(Msg::RulesEmpty).to_owned())
-    };
-    let problem = state
-        .problem()
-        .filter(|_| !state.dialog_is_open())
-        .map(|detail| problem_text(detail, lang));
-    rows.push(SettingRow::adding_buttons(
-        empty,
-        problem,
-        vec![RowButton::new(
-            lang.text(Msg::HermesPagesRuleAdd),
-            idle.then(|| send(RulesMessage::New)),
-            Tone::Secondary,
-        )],
-        palette,
-    ));
-    vec![Group {
-        intro: None,
-        title: String::new(),
-        rows,
-    }]
-}
-
-fn rule_row<'a>(
-    index: usize,
-    count: usize,
-    listed: &ListedRule,
-    state: &RulesPage,
-    lang: Language,
-    palette: &Palette,
-) -> SettingRow<'a, Message> {
-    let spec = &listed.rule.spec;
-    let sentence = rule_sentence(spec, lang, state.kinds());
-    let named = spec.name.as_deref().filter(|name| !name.is_empty());
-    let (label, second) = match named {
-        Some(name) => (
-            name.to_owned(),
-            format!("{sentence}\n{}", origin_text(listed.rule.origin, lang)),
-        ),
-        None => (sentence, origin_text(listed.rule.origin, lang).to_owned()),
-    };
-    let idle = !state.is_busy();
-    let status = if spec.enabled {
-        hits_text(listed.hits, lang)
-    } else {
-        lang.text(Msg::RulesOff).to_owned()
-    };
-    let actions = vec![
-        RowButton::check(
-            if spec.enabled { Check::On } else { Check::Off },
-            idle.then(|| send(RulesMessage::ToggleAt(index))),
-        ),
-        RowButton::new(
-            "↑",
-            (idle && index > 0).then(|| send(RulesMessage::ReorderAt { index, delta: -1 })),
-            Tone::Secondary,
-        ),
-        RowButton::new(
-            "↓",
-            (idle && index + 1 < count).then(|| send(RulesMessage::ReorderAt { index, delta: 1 })),
-            Tone::Secondary,
-        ),
-        RowButton::new(
-            lang.text(Msg::HermesPagesChange),
-            idle.then(|| send(RulesMessage::Edit(index))),
-            Tone::Secondary,
-        ),
-        RowButton::new(
-            lang.text(Msg::SettingsRemove),
-            idle.then(|| send(RulesMessage::AskDelete(index))),
-            Tone::Secondary,
-        ),
-    ];
-    SettingRow::listed_buttons(label, Some(second), Some(status), actions, palette)
 }
 
 fn problem_text(raw_detail: &str, lang: Language) -> String {
@@ -651,44 +554,7 @@ fn pattern_row<'a>(form: &'a RuleForm, lang: Language, palette: &Palette) -> Ele
 mod tests {
     use super::*;
     use crate::rules_page::fixtures::page;
-    use ncrs_ui_kit::setting_rows::{keyed_rows, RowKey};
-
-    #[test]
-    fn the_switch_and_the_order_of_a_rule_are_reached_by_keyboard() {
-        let rules = page();
-        let keys = keyed_rows(
-            groups(&rules, Language::English, &Palette::default()),
-            |_| true,
-        );
-        // Three rules and the add row.
-        assert_eq!(keys.len(), 4);
-        let RowKey::Buttons(middle) = &keys[1] else {
-            panic!("a rule row has several buttons: {:?}", keys[1]);
-        };
-        assert_eq!(
-            middle,
-            &[
-                send(RulesMessage::ToggleAt(1)),
-                send(RulesMessage::ReorderAt {
-                    index: 1,
-                    delta: -1
-                }),
-                send(RulesMessage::ReorderAt { index: 1, delta: 1 }),
-                send(RulesMessage::Edit(1)),
-                send(RulesMessage::AskDelete(1)),
-            ]
-        );
-        let RowKey::Buttons(first) = &keys[0] else {
-            panic!("a rule row has several buttons");
-        };
-        assert!(
-            !first.contains(&send(RulesMessage::ReorderAt {
-                index: 0,
-                delta: -1
-            })),
-            "the first rule cannot move up"
-        );
-    }
+    use ncrs_index::TargetId;
 
     #[test]
     fn the_dialog_of_a_listed_rule_asks_before_it_removes_that_rule() {
@@ -709,7 +575,7 @@ mod tests {
     #[test]
     fn the_dialog_of_a_new_rule_removes_nothing() {
         let mut rules = page();
-        rules.begin_new();
+        rules.begin_new_in(TargetId::main());
         let form = rules.form().unwrap();
 
         assert_eq!(remove_message(&rules, form), None);

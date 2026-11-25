@@ -4504,7 +4504,6 @@ dependencies = [
  "ncrs-config",
  "ncrs-core",
  "ncrs-fs",
- "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
  "ncrs-ocr-vision",
@@ -4665,7 +4664,6 @@ dependencies = [
  "rusqlite",
  "tempfile",
  "tokio",
- "unicode-normalization",
  "zeroize",
 ]
 

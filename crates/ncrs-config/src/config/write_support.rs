@@ -78,25 +78,6 @@ pub fn not_a_table(path: &Path, key: &str) -> FilingWriteError {
     })
 }
 
-/// `source` with `enabled = true` in `[hermes]` and `locations` in
-/// `[modules.filing]`.
-pub fn with_filing_locations(
-    source: &str,
-    path: &Path,
-    locations: &[FilingLocation],
-) -> Result<String, FilingWriteError> {
-    let mut document = parse_document(source, path)?;
-    let hermes = sub_table(document.as_table_mut(), "hermes", false)
-        .ok_or_else(|| not_a_table(path, "hermes"))?;
-    hermes.insert("enabled", toml_edit::value(true));
-    let modules = sub_table(document.as_table_mut(), "modules", true)
-        .ok_or_else(|| not_a_table(path, "modules"))?;
-    let filing =
-        sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
-    set_locations(filing, locations)?;
-    Ok(document.to_string())
-}
-
 /// `source` with `locations` as the read folders of `[modules.filing]` and
 /// nothing else changed: whether Hermes is on and its AI settings stay as the
 /// user left them. An empty list removes the entries. Folders that are in the

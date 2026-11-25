@@ -24,7 +24,7 @@ pub use ncrs_fs::{
 };
 use ncrs_index::{iban_is_valid, CustomKind, KindCatalog, KindSkip};
 pub use ncrs_intake::LocationTransfer;
-use ncrs_intake::{pattern_is_valid, LocationMode};
+use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
@@ -281,14 +281,14 @@ pub use self::sorting::{
     TargetSetting, IMAGE_EXCLUDE,
 };
 pub use self::sorting_writes::{
-    add_sort_target, add_sort_target_with_home, load_filing_settings, remove_sort_source,
+    add_sort_target, add_sort_target_with_home, remove_sort_source,
     remove_sort_source_with_home, remove_sort_target, remove_sort_target_with_home,
     upsert_sort_source, upsert_sort_source_with_home, upsert_sort_target,
     upsert_sort_target_with_home, BACKUP_SUFFIX,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,
-    write_columns, write_default_pattern, write_favourites_bar, write_file_list_tags,
+    write_columns, write_favourites_bar, write_file_list_tags,
     write_filing_load, write_git_view, write_hermes_chat_keep_days, write_hermes_enabled,
     write_keys, write_language, write_notes_settings, write_open_rules, write_own_details,
     write_program, write_system_settings, write_theme_preset, AiProviderChoice, KeyChange,
@@ -297,7 +297,7 @@ pub use self::setting_writes::{
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{
-    check_filing_rules, check_vscode_theme_writable, write_filing_locations, write_read_folders,
+    check_filing_rules, check_vscode_theme_writable, write_read_folders,
     write_servers, write_vscode_theme, FilingRuleViolation, FilingWriteError,
 };
 

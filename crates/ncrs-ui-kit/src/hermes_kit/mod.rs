@@ -10,8 +10,6 @@ use iced::{Background, Color, Element, Font, Length, Pixels, Theme};
 
 pub const ROW_ONE_LINE: f32 = 28.0;
 pub const ROW_TWO_LINE: f32 = 48.0;
-pub const THUMBNAIL_WIDTH: f32 = 48.0;
-pub const THUMBNAIL_HEIGHT: f32 = 64.0;
 pub const LABEL_WIDTH: f32 = 160.0;
 pub const CONTROL_HEIGHT: f32 = 28.0;
 pub const CHIP_HEIGHT: f32 = 20.0;
@@ -23,7 +21,6 @@ pub const GAP_XS: f32 = crate::theme::spacing::XS;
 pub const GAP_S: f32 = crate::theme::spacing::M;
 pub const GAP_M: f32 = crate::theme::spacing::XL;
 pub const GAP_L: f32 = crate::theme::spacing::XXL;
-pub const FORM_WIDTH: f32 = 760.0;
 pub const SELECTION_BAR: f32 = 2.0;
 
 const RADIUS: f32 = crate::theme::radius::CORNER;

@@ -23,7 +23,6 @@ fn configured() -> Filing {
         ],
         load: Default::default(),
         ai: AiSetting::Local { threads: None },
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),

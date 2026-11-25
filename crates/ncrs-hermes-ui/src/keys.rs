@@ -4,27 +4,12 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 
-use crate::message::{HermesFileMessage, HermesOverviewMessage, Message, QuickFixMessage};
+use crate::message::{HermesFileMessage, HermesOverviewMessage, Message};
 
 /// What the keys read of the state of the app.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KeyFacts {
     pub start_over_dialog: bool,
-}
-
-/// The quick-fix menu takes the arrows and Enter; any other key does nothing
-/// until it is closed.
-pub fn quick_fix_key(key: &Key) -> Option<Message> {
-    let fix = |message| Some(Message::QuickFix(message));
-    match key.as_ref() {
-        Key::Named(Named::Escape) => fix(QuickFixMessage::Close),
-        Key::Named(Named::Enter) => fix(QuickFixMessage::Activate),
-        Key::Named(Named::ArrowUp) => fix(QuickFixMessage::Move(-1)),
-        Key::Named(Named::ArrowDown) => fix(QuickFixMessage::Move(1)),
-        Key::Named(Named::Home) => fix(QuickFixMessage::First),
-        Key::Named(Named::End) => fix(QuickFixMessage::Last),
-        _ => None,
-    }
 }
 
 /// The question about many files to process again: Enter says yes, Escape no;

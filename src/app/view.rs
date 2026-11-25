@@ -269,7 +269,6 @@ impl App {
                 .as_ref()
                 .filter(|card| card.is_downloading())
                 .and_then(AiModelCard::progress),
-            system_reads_scans: crate::ocr_models::system_reads_scans(),
             home: &self.home,
         }
     }

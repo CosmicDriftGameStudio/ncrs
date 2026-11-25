@@ -117,40 +117,25 @@ impl App {
             kinds: &self.kinds,
             start_over_dialog_open: self.start_over_dialog,
             hermes_is_restarting: hermes.is_restarting(),
-            hermes_has_open_reviews: hermes
-                .filing_status
-                .hermes_counts()
-                .is_some_and(|counts| counts.open_reviews > 0),
             file_list_tags: &self.file_list_tags,
             filing_status_shortcut: self
                 .keymap
                 .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Open)),
             active_panel_path: &panel.path,
             other_panel_path: &self.panel(side.other()).path,
-            context_menu_open: self.panels.context_menu.is_some(),
             search_open: self.search.open,
-            hermes_active: hermes.is_active(),
-            chat_open: self.hermes_chat.open,
-            hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
             // Locked, the background filing waits without a word.
             watching_allowed: self.changes_allowed(),
             trash: ncrs_hermes_ui::Bin(Arc::clone(&self.trash)),
             filing_tab_source: ncrs_filing_view::busy_source(&self.filing_view),
-            window_size: self.window_size,
             config_path: self.config_path.as_deref(),
             home: &self.home,
-            quick_fix_anchor: iced::Point::ORIGIN,
-            inquiry_paths: Vec::new(),
             now: self.wall_clock.now(),
             panels: [
                 self.panel_facts(PanelSide::Left),
                 self.panel_facts(PanelSide::Right),
             ],
-            cursor_entry: Some(self.active_panel())
-                .filter(|active| !active.is_virtual())
-                .and_then(PanelState::selected_entry)
-                .map(|entry| entry.path.as_path()),
             cursor_row: self
                 .hermes_cursor_entry()
                 .map(|entry| (entry.path.as_path(), entry.is_dir)),
@@ -222,18 +207,11 @@ impl App {
         use ncrs_hermes_ui::Action as Ask;
         match action {
             Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
-            // Only pages that are no longer shown ask for these two.
-            Ask::OpenChatAbout(_) | Ask::PickReviewFolder(_) => Task::none(),
             Ask::IndexReplaced => self.update_hermes_chat(HermesChatMessage::IndexReplaced),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
                 self.close_context_menu();
-                Task::none()
-            }
-            Ask::ClearStatus => {
-                self.job_error = None;
-                self.notice = None;
                 Task::none()
             }
             Ask::ShowNotice(text) => self.show_notice(text),
@@ -258,10 +236,6 @@ impl App {
                 ncrs_hermes_ui::read_paths_again(hermes, paths, ctx)
             }),
             Ask::ShowPage(page) => self.show_hermes_page(page),
-            Ask::RefreshFilingSnapshot => {
-                self.hermes.refresh_filing_snapshot(self.wall_clock.now());
-                Task::none()
-            }
             Ask::ChangeProtection(begin) => self.run_hermes_flow(|hermes, ctx| {
                 ncrs_hermes_ui::change_protection(hermes, begin, ctx)
             }),
@@ -300,20 +274,11 @@ impl App {
             Ask::RulesChanged => {
                 self.update_filing_tab(ncrs_filing_view::Message::RulesChanged)
             }
-            Ask::PreviewFile(path) => {
-                let left = self.leave_settings_page();
-                let opened = self.open_in_viewer(path);
-                Task::batch([left, opened])
-            }
             Ask::StartJobWithProgress(start) => {
                 self.start_job_with_progress(start.job, start.build)
             }
             Ask::FinishJob => {
                 self.jobs.finish();
-                Task::none()
-            }
-            Ask::SetJobProgress(tick) => {
-                self.job_progress = Some(tick);
                 Task::none()
             }
             Ask::ClearJobProgress => {

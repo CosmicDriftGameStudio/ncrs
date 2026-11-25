@@ -2,6 +2,7 @@
 //! the status line, and the latest runs that moved files with what they
 //! moved. Pure view over [`ActivityPage`].
 
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use ncrs_config::palette::Palette;
@@ -12,10 +13,29 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::Tone;
 use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
-use super::reviews::{file_name, folder_of, MAX_FILES_SHOWN};
 use crate::activity_page::ActivityPage;
 use crate::hermes_status::{waiting_text, HermesStatus};
 use crate::message::{ActivityMessage, Message};
+
+/// A run lists this many files; the rest is a count.
+const MAX_FILES_SHOWN: usize = 50;
+const FOLDER_CHARS: usize = 60;
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+fn folder_of(path: &Path) -> String {
+    format::ellipsize_middle(
+        &path
+            .parent()
+            .map_or_else(String::new, |parent| parent.display().to_string()),
+        FOLDER_CHARS,
+    )
+}
 
 fn send(message: ActivityMessage) -> Message {
     Message::Activity(message)

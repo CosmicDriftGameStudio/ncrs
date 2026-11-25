@@ -272,7 +272,6 @@ mod ui_tests {
             file_list_tags: &tags,
             jobs_busy: false,
             ai_download: None,
-            system_reads_scans: true,
             home: Path::new(HOME),
         };
         let shown: Element<'_, Message> = match dialogs(hermes, &ctx).pop() {

@@ -475,7 +475,7 @@ fn a_changed_source_is_replaced_at_its_old_folder_and_applies_when_loaded_again(
     };
     upsert_sort_source_with_home(&path, &moved, Some(&inbox), None).unwrap();
 
-    let filing = load_filing_settings(&path).unwrap();
+    let filing = load(&path).unwrap().filing;
     assert_eq!(filing.sources.len(), 1);
     assert_eq!(filing.sources[0].source, moved);
 }
@@ -584,7 +584,7 @@ fn a_removed_target_is_no_read_folder_after_the_read_folders_were_written() {
     let (_, archive, other) = paths(&base);
     let path = config_in(&base, &new_form(&base));
     let read_only = base.path().join("read");
-    let mut folders = load_filing_settings(&path).unwrap().locations;
+    let mut folders = load(&path).unwrap().filing.locations;
     assert!(folders.iter().any(|found| found.path == other));
     folders.push(FilingLocation {
         path: read_only.clone(),
@@ -619,7 +619,7 @@ fn a_folder_the_file_lists_stays_a_read_folder_when_its_target_is_removed() {
         location(&quoted(&other), "mode = \"archive\"\nimages = true"),
     );
     let path = config_in(&base, &text);
-    let folders = load_filing_settings(&path).unwrap().locations;
+    let folders = load(&path).unwrap().filing.locations;
 
     write_read_folders_with_home(&path, &folders, None).unwrap();
     let config = remove_sort_target_with_home(&path, &id("t2"), None).unwrap();

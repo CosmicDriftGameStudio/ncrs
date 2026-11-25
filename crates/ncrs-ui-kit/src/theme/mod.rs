@@ -604,9 +604,8 @@ pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
 /// The color of a folder's role tag.
 pub fn hermes_role_color(palette: &Palette, role: FolderRole) -> Color {
     match role {
-        FolderRole::Inbox => palette.primary_button().0,
-        FolderRole::FilingLocation => palette.success,
-        FolderRole::Archive => palette.dim_text,
+        FolderRole::Source => palette.primary_button().0,
+        FolderRole::Target => palette.success,
     }
 }
 

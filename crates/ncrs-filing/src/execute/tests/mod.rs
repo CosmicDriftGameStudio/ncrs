@@ -2,8 +2,8 @@ use chrono::{TimeZone as _, Utc};
 use ncrs_index::{DocumentSource, NewDocument};
 use tempfile::TempDir;
 
+use super::test_runs::{execute_run, ExecutionReport};
 use super::*;
-use ncrs_fs::transfer::Counting;
 
 struct Setup {
     _dir: TempDir,
@@ -55,12 +55,17 @@ impl Setup {
     }
 
     fn run(&self, items: &[ExecutionItem]) -> ExecutionReport {
-        execute(
+        execute_run(
             &self.index,
             BatchKind::Reorganisation,
-            &self.root,
+            "Tidy up",
+            Transfer::Move,
+            RunPlaces {
+                source: &self.root,
+                target: &self.root,
+                inside_target: false,
+            },
             items,
-            &mut Counting,
         )
         .unwrap()
     }
@@ -72,18 +77,6 @@ impl Setup {
             .into_iter()
             .map(|item| item.state)
             .collect()
-    }
-}
-
-struct StopAfter(usize);
-
-impl Progress for StopAfter {
-    fn advanced(&mut self, done: usize, _total: usize) -> io::Result<()> {
-        if done >= self.0 {
-            Err(io::Error::other("stopped"))
-        } else {
-            Ok(())
-        }
     }
 }
 
@@ -159,13 +152,8 @@ fn nothing_is_overwritten_and_nothing_foreign_is_touched() {
 
     let report = setup.run(&[taken.clone(), changed.clone(), missing, outside.clone()]);
 
-    let outcomes: Vec<_> = report
-        .items
-        .iter()
-        .map(|item| item.outcome.clone())
-        .collect();
     assert_eq!(
-        outcomes,
+        report.outcomes,
         [
             ItemOutcome::Skipped(SkipReason::TargetExists),
             ItemOutcome::Skipped(SkipReason::SourceChanged),
@@ -184,31 +172,6 @@ fn nothing_is_overwritten_and_nothing_foreign_is_touched() {
     );
     assert!(outside.from.exists());
     assert_eq!(setup.states(report.batch), [JournalState::Skipped; 4]);
-}
-
-#[test]
-fn a_cancel_between_two_items_journals_the_rest_as_cancelled() {
-    let setup = Setup::new();
-    let first = setup.document("1.pdf", "one");
-    let second = setup.document("2.pdf", "two");
-    let third = setup.document("3.pdf", "three");
-
-    let report = execute(
-        &setup.index,
-        BatchKind::Reorganisation,
-        &setup.root,
-        &[first.clone(), second.clone(), third.clone()],
-        &mut StopAfter(1),
-    )
-    .unwrap();
-
-    assert_eq!(report.moved(), 1);
-    assert!(first.to.exists());
-    assert!(second.from.exists() && third.from.exists());
-    let items = setup.index.journal_items(report.batch).unwrap();
-    assert_eq!(items[1].state, JournalState::Skipped);
-    assert_eq!(items[1].reason.as_deref(), Some("cancelled"));
-    assert_eq!(items[2].reason.as_deref(), Some("cancelled"));
 }
 
 #[test]
@@ -471,7 +434,7 @@ fn a_link_folder_that_leads_out_of_the_location_is_not_followed() {
     let report = setup.run(std::slice::from_ref(&item));
 
     assert_eq!(
-        report.items[0].outcome,
+        report.outcomes[0],
         ItemOutcome::Skipped(SkipReason::LeavesLocation)
     );
     assert!(item.from.exists());
@@ -538,7 +501,6 @@ fn copy_run(setup: &Setup, items: &[ExecutionItem]) -> ExecutionReport {
             inside_target: false,
         },
         items,
-        &mut Counting,
     )
     .unwrap()
 }
@@ -581,7 +543,6 @@ fn a_move_run_of_the_chat_files_the_document() {
             inside_target: false,
         },
         std::slice::from_ref(&item),
-        &mut Counting,
     )
     .unwrap();
 

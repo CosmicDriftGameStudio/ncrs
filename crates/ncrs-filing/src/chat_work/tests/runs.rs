@@ -81,13 +81,17 @@ fn files_filed_by_hermes_itself_are_the_last_run_and_can_be_put_back() {
     setup
         .access
         .with_index(|index| {
-            crate::execute::execute_with(
+            execute_run(
                 index,
                 BatchKind::Filing,
-                &archive,
+                "Downloads",
+                Transfer::Move,
+                RunPlaces {
+                    source: &setup.dir.path().join("inbox"),
+                    target: &archive,
+                    inside_target: false,
+                },
                 &[item],
-                &mut Counting,
-                &ncrs_fs::transfer::Move,
             )
             .map_err(|err| err.to_string())
         })
@@ -96,7 +100,7 @@ fn files_filed_by_hermes_itself_are_the_last_run_and_can_be_put_back() {
     let summary = setup.last_run().unwrap();
     assert!(summary.automatic);
     assert_eq!(summary.items, 1);
-    assert_eq!(summary.name, archive.to_string_lossy());
+    assert_eq!(summary.name, "Downloads");
     assert_eq!(setup.undo(summary.batch), 1);
     assert!(from.exists());
     assert_eq!(setup.last_run(), None);

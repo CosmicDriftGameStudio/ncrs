@@ -276,7 +276,7 @@ fn inside_a_target(path: &Path, filing: &Filing) -> bool {
 mod tests {
     use super::*;
     use ncrs_config::config::{
-        add_sort_target_with_home, load_filing_settings, upsert_sort_source_with_home,
+        add_sort_target_with_home, load, upsert_sort_source_with_home,
         TargetSetting,
     };
     use ncrs_intake::SortTarget;
@@ -404,7 +404,7 @@ mod tests {
         let source = draft.source(dir.path());
         upsert_sort_source_with_home(&config_path, &source, None, Some(dir.path()))
             .expect("written");
-        let read = load_filing_settings(&config_path).expect("read back");
+        let read = load(&config_path).expect("read back").filing;
         assert_eq!(read.targets.len(), 1);
         assert_eq!(read.sources.len(), 1);
         assert_eq!(read.sources[0].paused, None);

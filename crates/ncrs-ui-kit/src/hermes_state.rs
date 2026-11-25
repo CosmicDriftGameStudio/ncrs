@@ -21,11 +21,10 @@ pub enum HermesFileState {
 /// The part a configured folder plays for Hermes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FolderRole {
-    Inbox,
-    /// An archive that files are moved into.
-    FilingLocation,
-    /// An archive that is only read.
-    Archive,
+    /// Files are taken from it.
+    Source,
+    /// Files are filed into it.
+    Target,
 }
 
 /// The counts and flags of one folder. `None` counts are not read yet.
@@ -115,9 +114,8 @@ pub fn state_label(state: HermesFileState, lang: Language) -> &'static str {
 
 pub const fn role_message(role: FolderRole) -> Msg {
     match role {
-        FolderRole::Inbox => Msg::HermesColumnRoleInbox,
-        FolderRole::FilingLocation => Msg::HermesColumnRoleFilingLocation,
-        FolderRole::Archive => Msg::HermesColumnRoleArchive,
+        FolderRole::Source => Msg::HermesColumnRoleSource,
+        FolderRole::Target => Msg::HermesColumnRoleTarget,
     }
 }
 

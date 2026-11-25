@@ -188,14 +188,14 @@ fn sources_and_targets_have_a_role_at_their_exact_path_and_the_target_wins() {
         targets: vec![target("/target"), target("/both")],
         ..Filing::default()
     };
-    assert_eq!(role_of(&p("/in"), &filing), Some(FolderRole::Inbox));
+    assert_eq!(role_of(&p("/in"), &filing), Some(FolderRole::Source));
     assert_eq!(
         role_of(&p("/target"), &filing),
-        Some(FolderRole::FilingLocation)
+        Some(FolderRole::Target)
     );
     assert_eq!(
         role_of(&p("/both"), &filing),
-        Some(FolderRole::FilingLocation)
+        Some(FolderRole::Target)
     );
     assert_eq!(role_of(&p("/target/2024"), &filing), None);
     assert_eq!(role_of(&p("/other"), &filing), None);

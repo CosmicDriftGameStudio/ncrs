@@ -11,7 +11,7 @@ impl App {
         &'a self,
         state: &'a settings_ui::SettingsState,
     ) -> settings_ui::SettingsView<'a> {
-        let overview = self.overview_facts(state.ocr_models_present);
+        let overview = self.overview_facts();
         settings_ui::SettingsView {
             facts: self.documents_facts(&overview, state),
             favourites: self.favourites_facts(),
@@ -160,12 +160,7 @@ impl App {
             Ask::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
             Ask::OpenServer(url) => self.update(Message::Remote(RemoteMessage::OpenServer(url))),
             Ask::Protection(position) => {
-                let facts = self.overview_facts(
-                    self.settings
-                        .page
-                        .as_ref()
-                        .is_some_and(|state| state.ocr_models_present),
-                );
+                let facts = self.overview_facts();
                 match hermes_overview_ui::protection_actions(&facts)
                     .into_iter()
                     .nth(position)

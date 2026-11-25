@@ -62,27 +62,6 @@ impl ModuleState {
     }
 }
 
-/// How the text recognition stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OcrFacts {
-    /// The system reads scans itself.
-    BuiltIn,
-    ModelsPresent,
-    ModelsMissing,
-}
-
-impl OcrFacts {
-    pub fn of(built_in: bool, models_present: bool) -> Self {
-        if built_in {
-            Self::BuiltIn
-        } else if models_present {
-            Self::ModelsPresent
-        } else {
-            Self::ModelsMissing
-        }
-    }
-}
-
 /// How the index is protected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protection {
@@ -110,30 +89,6 @@ impl Protection {
     }
 }
 
-/// The status pill beside the headline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pill {
-    Running,
-    NeedsYou,
-    Off,
-    Starting,
-}
-
-/// The color of a tile: green when fine, orange when it needs something,
-/// quiet when the user chose to leave it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tone {
-    Good,
-    Needs,
-    Quiet,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OcrTile {
-    Ready,
-    Missing,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiTile {
     Off,
@@ -157,17 +112,11 @@ pub enum AiTile {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OverviewFacts {
     pub module: ModuleState,
-    /// Why the module failed, while it did.
-    pub failure: Option<String>,
-    pub has_locations: bool,
     pub counts: Option<HermesCounts>,
-    /// Files of the sources that wait for an answer of the user.
-    pub waiting: usize,
     pub ai_on: bool,
     pub ai_status: AiStatus,
     /// Bytes on disk and in all, while the model downloads.
     pub ai_download: Option<(u64, u64)>,
-    pub ocr: OcrFacts,
     pub protection: Protection,
     /// The key of the index is missing or wrong, and the user has not solved it.
     pub key_problem: Option<KeyProblem>,
@@ -178,28 +127,6 @@ pub struct OverviewFacts {
 }
 
 impl OverviewFacts {
-    pub fn pill(&self) -> Pill {
-        match self.module {
-            ModuleState::Off => Pill::Off,
-            ModuleState::Starting | ModuleState::Encrypting | ModuleState::StartingOver => {
-                Pill::Starting
-            }
-            ModuleState::WaitsForYou
-            | ModuleState::KeyMissing
-            | ModuleState::Failed
-            | ModuleState::Dismissed => Pill::NeedsYou,
-            ModuleState::Ready if !self.has_locations || self.waiting > 0 => Pill::NeedsYou,
-            ModuleState::Ready => Pill::Running,
-        }
-    }
-
-    pub fn ocr_tile(&self) -> OcrTile {
-        match self.ocr {
-            OcrFacts::BuiltIn | OcrFacts::ModelsPresent => OcrTile::Ready,
-            OcrFacts::ModelsMissing => OcrTile::Missing,
-        }
-    }
-
     pub fn ai_tile(&self) -> AiTile {
         if !self.ai_on {
             return AiTile::Off;
@@ -232,61 +159,16 @@ mod tests {
     fn facts(module: ModuleState) -> OverviewFacts {
         OverviewFacts {
             module,
-            failure: None,
-            has_locations: true,
             counts: Some(HermesCounts::default()),
-            waiting: 0,
             ai_on: true,
             ai_status: AiStatus::NotDownloaded,
             ai_download: None,
-            ocr: OcrFacts::BuiltIn,
             protection: Protection::Encrypted,
             key_problem: None,
             can_encrypt: false,
             can_start_over: false,
             protection_note: None,
         }
-    }
-
-    #[test]
-    fn the_pill_is_green_only_for_a_module_that_works_and_has_nothing_open() {
-        assert_eq!(facts(ModuleState::Ready).pill(), Pill::Running);
-        let mut with_questions = facts(ModuleState::Ready);
-        with_questions.waiting = 5;
-        assert_eq!(with_questions.pill(), Pill::NeedsYou);
-        let mut without_folders = facts(ModuleState::Ready);
-        without_folders.has_locations = false;
-        assert_eq!(without_folders.pill(), Pill::NeedsYou);
-    }
-
-    #[test]
-    fn the_pill_asks_for_the_user_when_the_module_cannot_go_on_by_itself() {
-        for state in [
-            ModuleState::KeyMissing,
-            ModuleState::Failed,
-            ModuleState::Dismissed,
-            ModuleState::WaitsForYou,
-        ] {
-            assert_eq!(facts(state).pill(), Pill::NeedsYou, "{state:?}");
-        }
-    }
-
-    #[test]
-    fn the_pill_says_off_and_starting_for_a_module_that_is_not_there() {
-        assert_eq!(facts(ModuleState::Off).pill(), Pill::Off);
-        assert_eq!(facts(ModuleState::Starting).pill(), Pill::Starting);
-        assert_eq!(facts(ModuleState::Encrypting).pill(), Pill::Starting);
-        assert_eq!(facts(ModuleState::StartingOver).pill(), Pill::Starting);
-    }
-
-    #[test]
-    fn scans_need_models_unless_the_system_reads_them() {
-        let mut facts = facts(ModuleState::Ready);
-        assert_eq!(facts.ocr_tile(), OcrTile::Ready);
-        facts.ocr = OcrFacts::of(false, true);
-        assert_eq!(facts.ocr_tile(), OcrTile::Ready);
-        facts.ocr = OcrFacts::of(false, false);
-        assert_eq!(facts.ocr_tile(), OcrTile::Missing);
     }
 
     #[test]

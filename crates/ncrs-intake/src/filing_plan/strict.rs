@@ -31,9 +31,7 @@ pub(crate) fn render_strict(
         .collect::<Result<Vec<_>, _>>()?;
     let file_name = match pattern.explicit_file_name() {
         Some(tokens) => fill(tokens, fields, &[], kinds)?,
-        None => automatic_file_name(fields)
-            .map(|parts| parts.into_iter().map(|part| part.text).collect())
-            .ok_or(Unrenderable::MissingValue(Field::Date))?,
+        None => automatic_file_name(fields).ok_or(Unrenderable::MissingValue(Field::Date))?,
     };
     segments.push(file_name_with_extension(&file_name, extension));
     if !segments.iter().all(|segment| is_keepable_name(segment)) {

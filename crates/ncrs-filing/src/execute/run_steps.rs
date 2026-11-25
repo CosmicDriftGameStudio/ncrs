@@ -6,7 +6,7 @@ use ncrs_index::{BatchId, BatchInfo, BatchKind, Index, JournalItem, Transfer};
 
 use super::{
     io, remember_source_root, run_item, stamp_of, DocumentStatus, ExecuteError, ExecutionItem,
-    ItemOutcome, Places, RunPlaces,
+    ItemOutcome, RunPlaces,
 };
 
 /// Opens a batch that records the folders it works between.
@@ -36,10 +36,9 @@ pub(crate) fn run_one(
     places: &RunPlaces<'_>,
     item: &ExecutionItem,
 ) -> Result<ItemOutcome, ExecuteError> {
-    let checked = Places::from(places);
     match transfer {
-        Transfer::Move => run_item(index, batch, transfer, checked, item, &Move),
-        Transfer::Copy => run_item(index, batch, transfer, checked, item, &Copy),
+        Transfer::Move => run_item(index, batch, transfer, places, item, &Move),
+        Transfer::Copy => run_item(index, batch, transfer, places, item, &Copy),
         Transfer::Trash => Err(ExecuteError::Io {
             path: places.target.to_path_buf(),
             source: io::Error::other("a trash run goes through trash_run"),

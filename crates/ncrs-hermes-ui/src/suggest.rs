@@ -141,18 +141,10 @@ impl Suggest {
     }
 
     pub fn ticked(&self) -> Vec<Suggested> {
-        self.picked(true)
-    }
-
-    pub fn unticked(&self) -> Vec<Suggested> {
-        self.picked(false)
-    }
-
-    fn picked(&self, ticked: bool) -> Vec<Suggested> {
         self.items()
             .iter()
             .zip(&self.ticks)
-            .filter(|(_, tick)| **tick == ticked)
+            .filter(|(_, tick)| **tick)
             .map(|(item, _)| item.clone())
             .collect()
     }
@@ -273,14 +265,13 @@ mod tests {
     }
 
     #[test]
-    fn everything_is_ticked_at_first_and_unticking_splits_the_taken_from_the_rest() {
+    fn everything_is_ticked_at_first_and_an_unticked_one_is_not_taken() {
         let mut state = done(&["a", "b", "c"]);
         state.toggle(1);
 
         let taken: Vec<_> = state.ticked().into_iter().map(|item| item.name).collect();
-        let rest: Vec<_> = state.unticked().into_iter().map(|item| item.name).collect();
 
-        assert_eq!((taken, rest), (vec!["a".into(), "c".into()], vec!["b".into()]));
+        assert_eq!(taken, ["a", "c"]);
         assert_eq!(state.ticked_count(), 2);
     }
 

@@ -18,7 +18,7 @@ pub use ncrs_hermes_chat::Message as HermesChatMessage;
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
-    HermesOverviewMessage, HermesPage, QuickFixMessage, ReviewsMessage, RulesMessage,
+    HermesOverviewMessage, HermesPage, RulesMessage,
     SortingMessage, SuggestMessage, TargetsMessage,
     SavedQueriesMessage, TagsMessage,
 };
@@ -215,11 +215,9 @@ pub enum Message {
     Sorting(SortingMessage),
     Targets(TargetsMessage),
     Suggest(SuggestMessage),
-    QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
-    Reviews(ReviewsMessage),
     Activity(ActivityMessage),
     /// Opens one of the single pages.
     HermesPage(HermesPage),
@@ -411,10 +409,8 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::Sorting(inner) => Self::Sorting(inner),
             Hermes::Targets(inner) => Self::Targets(inner),
             Hermes::Suggest(inner) => Self::Suggest(inner),
-            Hermes::QuickFix(inner) => Self::QuickFix(inner),
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),
-            Hermes::Reviews(inner) => Self::Reviews(inner),
             Hermes::Activity(inner) => Self::Activity(inner),
             Hermes::ContinuousFiled(result) => Self::ContinuousFiled(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),

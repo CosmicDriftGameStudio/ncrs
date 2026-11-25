@@ -19,12 +19,6 @@ const NEXT_TARGET: &str = "next_target";
 /// The first number a `t<n>` id gets: `main` is the first target.
 const FIRST_NUMBERED_TARGET: i64 = 2;
 
-/// The filing settings of the config at `path` as the next start reads them.
-/// A change of targets or sources applies by loading them again with this.
-pub fn load_filing_settings(path: &Path) -> Result<Filing, ConfigError> {
-    load(path).map(|config| config.filing)
-}
-
 /// Adds a target with the next free id: `main` while no target was ever
 /// there, else `t<n>`. Returns the id and the config read back.
 pub fn add_sort_target(

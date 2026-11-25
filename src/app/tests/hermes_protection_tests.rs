@@ -112,7 +112,7 @@ fn overview_message(message: HermesOverviewMessage) -> Message {
 }
 
 fn facts_of(app: &App) -> OverviewFacts {
-    app.overview_facts(false)
+    app.overview_facts()
 }
 
 #[test]

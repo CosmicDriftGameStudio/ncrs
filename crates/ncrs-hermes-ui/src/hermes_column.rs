@@ -35,9 +35,9 @@ pub fn role_of(path: &Path, filing: &Filing) -> Option<FolderRole> {
         .iter()
         .any(|setting| same_folder(&setting.source.path, path));
     if is_target {
-        Some(FolderRole::FilingLocation)
+        Some(FolderRole::Target)
     } else if is_source {
-        Some(FolderRole::Inbox)
+        Some(FolderRole::Source)
     } else {
         None
     }

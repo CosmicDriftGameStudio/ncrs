@@ -1,15 +1,14 @@
 use super::*;
 
 #[test]
-fn the_setup_writes_the_locations_and_they_load_back() {
+fn the_read_folders_are_written_and_load_back() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
     std::fs::write(&path, "lang = \"de\"\n").unwrap();
     let chosen = one_of_each(&folders);
 
-    let written = write_filing_locations_with_home(&path, &chosen, None).unwrap();
+    let written = write_read_folders_with_home(&path, &chosen, None).unwrap();
 
-    assert!(written.filing.enabled);
     assert_eq!(written.filing.locations, chosen);
     assert_eq!(written.lang, Some(Language::German));
     let reloaded = load_with_home(&path, None).unwrap();
@@ -68,58 +67,6 @@ fn read_folders_that_overlap_are_refused_and_the_file_stays() {
 }
 
 #[test]
-fn the_first_setup_writes_no_ai_table_and_leaves_hermes_on() {
-    let folders = setup_folders();
-    let path = folders.base.path().join("config.toml");
-    std::fs::write(&path, "lang = \"de\"\n").unwrap();
-
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
-
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(!text.contains("[modules.filing.ai]"), "{text}");
-    assert!(text.contains("[hermes]\nenabled = true\n"), "{text}");
-    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
-}
-
-#[test]
-fn a_setup_switches_hermes_on_that_was_off() {
-    let folders = setup_folders();
-    let path = folders.base.path().join("config.toml");
-    std::fs::write(&path, "[hermes]\nenabled = false\n").unwrap();
-
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
-
-    assert!(written.filing.enabled);
-    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        text.contains("enabled = true") && !text.contains("enabled = false"),
-        "{text}"
-    );
-}
-
-#[test]
-fn a_setup_over_existing_locations_does_not_add_an_ai_table() {
-    let folders = setup_folders();
-    let path = folders.base.path().join("config.toml");
-    let old_location = folders.base.path().join("old");
-    std::fs::write(
-        &path,
-        format!(
-            "[modules.filing]\nenabled = true\n\n[[modules.filing.locations]]\npath = {}\nmode = \"archive\"\ntarget = true\n",
-            quoted(&old_location)
-        ),
-    )
-    .unwrap();
-
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
-
-    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(!text.contains("[modules.filing.ai]"), "{text}");
-}
-
-#[test]
 fn comments_and_other_sections_survive_the_write() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
@@ -135,7 +82,7 @@ fn comments_and_other_sections_survive_the_write() {
     );
     std::fs::write(&path, &original).unwrap();
 
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+    let written = write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
 
     let text = std::fs::read_to_string(&path).unwrap();
     for kept in [
@@ -164,37 +111,9 @@ fn a_filing_section_written_inline_becomes_a_table() {
     let path = folders.base.path().join("config.toml");
     std::fs::write(&path, "modules = { filing = { enabled = false } }\n").unwrap();
 
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+    let written = write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
 
-    assert!(written.filing.enabled);
     assert_eq!(written.filing.locations, one_of_each(&folders));
-}
-
-#[test]
-fn an_invalid_choice_is_rejected_before_writing() {
-    let folders = setup_folders();
-    let path = folders.base.path().join("config.toml");
-    let original = "# untouched\nlang = \"en\"\n";
-    std::fs::write(&path, original).unwrap();
-    let nested = folders.target.join("inside");
-    std::fs::create_dir(&nested).unwrap();
-    let cases = [
-        (
-            vec![
-                chosen(&folders.target, LocationMode::Archive, false, true),
-                chosen(&nested, LocationMode::Inbox, false, false),
-            ],
-            FilingRuleViolation::Overlap {
-                earlier: 0,
-                later: 1,
-            },
-        ),
-    ];
-    for (locations, expected) in cases {
-        let result = write_filing_locations_with_home(&path, &locations, None);
-        assert_eq!(result, Err(FilingWriteError::Rule(expected)));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
-    }
 }
 
 #[test]
@@ -203,7 +122,7 @@ fn a_config_that_does_not_load_is_not_overwritten() {
     let path = folders.base.path().join("config.toml");
     for broken in ["[open\nview = [\"viewer\"]\n", "lang = 5\n", "colour = 1\n"] {
         std::fs::write(&path, broken).unwrap();
-        let result = write_filing_locations_with_home(&path, &one_of_each(&folders), None);
+        let result = write_read_folders_with_home(&path, &one_of_each(&folders), None);
         assert!(
             matches!(
                 result,
@@ -220,7 +139,7 @@ fn a_missing_config_is_created_with_its_folder() {
     let folders = setup_folders();
     let path = folders.base.path().join("ncrs").join("config.toml");
 
-    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+    let written = write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
 
     assert_eq!(written.filing.locations, one_of_each(&folders));
     assert_eq!(load_with_home(&path, None).unwrap(), written);
@@ -236,7 +155,7 @@ fn a_symlinked_config_stays_a_symlink_and_its_target_is_written() {
     let link = folders.base.path().join("config.toml");
     std::os::unix::fs::symlink(&real, &link).unwrap();
 
-    write_filing_locations_with_home(&link, &one_of_each(&folders), None).unwrap();
+    write_read_folders_with_home(&link, &one_of_each(&folders), None).unwrap();
 
     assert!(std::fs::symlink_metadata(&link)
         .unwrap()
@@ -255,7 +174,7 @@ fn the_permissions_of_the_old_file_are_kept() {
     std::fs::write(&path, "").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
 
-    write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+    write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
 
     let mode = std::fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o640);
@@ -959,7 +878,7 @@ fn what_hermes_does_with_the_files_of_a_read_folder_is_written_and_read_back() {
         chosen(&archive, LocationMode::Archive, false, true),
     ];
 
-    let config = write_filing_locations_with_home(&path, &locations, None).unwrap();
+    let config = write_read_folders_with_home(&path, &locations, None).unwrap();
 
     let read: Vec<_> = config
         .filing

@@ -3,22 +3,19 @@
 
 use std::path::PathBuf;
 
-use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
 use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem, TargetComparison};
 use ncrs_filing::rules_work::{DocumentForRule, RulesLoad, SortTry};
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
-use ncrs_index::{DocumentId, HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
+use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
 use crate::filing_status::SourceQuestions;
 use crate::hermes_column::{ColumnReading, ColumnStage};
-use crate::reviews_page::{Answer, Question, ReviewsLoad};
 pub use crate::sorting_page::SortingMessage;
 pub use crate::suggest::SuggestMessage;
 pub use crate::target_dialog::TargetsMessage;
@@ -34,10 +31,8 @@ pub enum Message {
     Sorting(SortingMessage),
     Targets(TargetsMessage),
     Suggest(SuggestMessage),
-    QuickFix(QuickFixMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
-    Reviews(ReviewsMessage),
     Activity(ActivityMessage),
     /// The background filing of the watched sources is done: what each one
     /// came to.
@@ -234,8 +229,6 @@ pub enum HermesFileMessage {
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
     ShowInInspection,
-    /// The configured locations after a role was set, as written.
-    RoleSaved(Box<Result<Filing, FilingWriteError>>),
     /// The files "process again" stands for: folders resolved to their
     /// documents, excluded ones left out.
     ProcessAgainFound(Result<Vec<PathBuf>, String>),
@@ -250,28 +243,6 @@ pub enum HermesFileMessage {
         path: PathBuf,
         result: Result<IncludeOutcome, String>,
     },
-}
-
-/// Everything the quick-fix menu of an inquiry sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum QuickFixMessage {
-    /// The key: opens the menu on the cursor row or the marked files.
-    Open,
-    Close,
-    /// The reviews of the generation's files. Dropped when the menu was closed
-    /// or opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
-    },
-    Move(isize),
-    First,
-    Last,
-    Hover(usize),
-    Activate,
-    Click(usize),
-    /// The sequential filing of the accepted suggestions is done.
-    Filed(AcceptSummary),
 }
 
 /// Everything the rules page sends.
@@ -298,8 +269,6 @@ pub enum RulesMessage {
         generation: u64,
         result: Result<(), String>,
     },
-    /// Opens the form for a new rule.
-    New,
     /// "Ändern" on the rule at this position: its dialog opens.
     Edit(usize),
     Form(RuleFormMessage),
@@ -343,40 +312,6 @@ pub enum RuleFormMessage {
         generation: u64,
         result: Result<RuleId, String>,
     },
-}
-
-/// Everything the reviews page sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReviewsMessage {
-    /// The open reviews of the generation. Dropped when the page was closed
-    /// or opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<ReviewsLoad, String>,
-    },
-    /// Folds or unfolds the group of a question.
-    ToggleGroup(Question),
-    /// Answers the question of a group for all its documents.
-    Answer(Question, Answer),
-    /// Answers the question for one document of the group.
-    AnswerFile(Question, Answer, DocumentId),
-    /// Answers the question about the inbox file at the path, which is no
-    /// document.
-    AnswerRepeat(Answer, PathBuf),
-    /// The name of a file: opens it in the viewer.
-    OpenFile(PathBuf),
-    /// The text of the input in the row of a document changed.
-    InputChanged(DocumentId, String),
-    /// How the files in the taken places compare with the incoming ones. Dropped
-    /// when the list was read again meanwhile.
-    Compared {
-        generation: u64,
-        result: Vec<(DocumentId, Option<TargetComparison>)>,
-    },
-    /// The folder the user picked for the documents that wait for one.
-    FolderPicked(Option<PathBuf>),
-    /// What an answer did to its documents.
-    Filed(AcceptSummary),
 }
 
 /// Everything the activity page sends.

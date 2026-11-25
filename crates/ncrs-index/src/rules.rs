@@ -78,13 +78,6 @@ impl RuleRow {
     }
 }
 
-/// Whether a chat rule was added or an existing one changed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuleSaved {
-    Added,
-    Changed,
-}
-
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
     let blank = |condition: &Condition| condition.value.trim().is_empty();
     if spec.conditions.list.is_empty() || spec.conditions.list.iter().any(blank) {
@@ -212,75 +205,7 @@ impl Index {
             .collect()
     }
 
-    /// Stores a rule from the chat: a rule with the same name is changed in
-    /// place, keeping its id and position, otherwise a new one is added. Says
-    /// whether an existing rule was changed.
-    pub fn save_rule_from(
-        &mut self,
-        spec: &RuleSpec,
-        origin: RuleOrigin,
-    ) -> Result<RuleSaved, IndexError> {
-        self.save_rule_in(spec, origin, &TargetId::main())
-    }
-
-    /// `save_rule_from` within one target: a rule of the same name in another
-    /// target is left alone.
-    pub fn save_rule_in(
-        &mut self,
-        spec: &RuleSpec,
-        origin: RuleOrigin,
-        target: &TargetId,
-    ) -> Result<RuleSaved, IndexError> {
-        match self.rule_replaced_in(spec, target)? {
-            Some(id) => {
-                self.update_rule_with_origin(id, spec, Some(origin))?;
-                Ok(RuleSaved::Changed)
-            }
-            None => {
-                self.create_rule_in(spec, origin, target)?;
-                Ok(RuleSaved::Added)
-            }
-        }
-    }
-
-    /// The stored rule a chat rule takes the place of: the first one with the
-    /// same name. Not the same conditions: two folders of one sender share
-    /// them, and each keeps its own rule.
-    pub fn rule_replaced_by(&self, spec: &RuleSpec) -> Result<Option<RuleId>, IndexError> {
-        self.rule_replaced_in(spec, &TargetId::main())
-    }
-
-    /// `rule_replaced_by` among the rules of `target`.
-    pub fn rule_replaced_in(
-        &self,
-        spec: &RuleSpec,
-        target: &TargetId,
-    ) -> Result<Option<RuleId>, IndexError> {
-        let Some(name) = spec
-            .name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-        else {
-            return Ok(None);
-        };
-        Ok(self
-            .rules_of(target)?
-            .into_iter()
-            .find(|rule| rule.spec.name.as_deref() == Some(name))
-            .map(|rule| rule.id))
-    }
-
     pub fn update_rule(&mut self, id: RuleId, spec: &RuleSpec) -> Result<(), IndexError> {
-        self.update_rule_with_origin(id, spec, None)
-    }
-
-    fn update_rule_with_origin(
-        &mut self,
-        id: RuleId,
-        spec: &RuleSpec,
-        origin: Option<RuleOrigin>,
-    ) -> Result<(), IndexError> {
         require_condition(spec)?;
         let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
@@ -288,7 +213,7 @@ impl Index {
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, filing_pattern = ?7,
-                 confirmed = ?8, enabled = ?9, name = ?10, origin = COALESCE(?11, origin)
+                 confirmed = ?8, enabled = ?9, name = ?10
              WHERE id = ?1",
             params![
                 id.get(),
@@ -304,7 +229,6 @@ impl Index {
                     .as_deref()
                     .map(str::trim)
                     .filter(|name| !name.is_empty()),
-                origin.map(RuleOrigin::as_str),
             ],
         )?;
         if changed == 0 {
@@ -507,40 +431,6 @@ mod tests {
         let updated = index.rule(id).unwrap().unwrap().spec;
         assert_eq!(updated.name, None);
         assert_eq!(updated.kind.as_deref(), Some("invoice"));
-    }
-
-    #[test]
-    fn a_chat_rule_changes_the_rule_of_its_name_and_not_one_of_the_same_sender() {
-        let (_dir, mut index) = encrypted_index();
-        let named = |name: &str, pattern: &str| RuleSpec {
-            name: Some(name.to_owned()),
-            conditions: RuleConditions::all_of(vec![Condition::new(
-                ConditionKind::Sender,
-                "Cosmicdrift GmbH",
-            )]),
-            filing_pattern: pattern.to_owned(),
-            ..rule_spec()
-        };
-
-        let salary = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}/{date}");
-        let contracts = named("Arbeit / Verträge", "Arbeit/Verträge/{date}");
-        let saved = [
-            index.save_rule_from(&salary, RuleOrigin::Chat).unwrap(),
-            index.save_rule_from(&contracts, RuleOrigin::Chat).unwrap(),
-        ];
-        assert_eq!(saved, [RuleSaved::Added, RuleSaved::Added]);
-        let first = ids_in_order(&index)[0];
-
-        let changed = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}-{month}/{date}");
-        assert_eq!(
-            index.save_rule_from(&changed, RuleOrigin::Chat).unwrap(),
-            RuleSaved::Changed
-        );
-        let rules = index.rules().unwrap();
-        assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].id, first);
-        assert_eq!(rules[0].spec.filing_pattern, changed.filing_pattern);
-        assert_eq!(rules[1].spec.filing_pattern, contracts.filing_pattern);
     }
 
     #[test]

@@ -1,21 +1,21 @@
-//! State of the rules page: the confirmed rules in their order, the rule the
-//! last action was on, the delete question, and the sentences the rules are
+//! The rules of the sorting page: the confirmed rules in their order, the rule
+//! the last action was on, the delete question, and the sentences the rules are
 //! shown as. No widgets and no tasks; the Hermes UI state owns it and changes it from
-//! `update`, the view is `ui::rules`.
+//! `update`, the views are `ui::targets` and `ui::rules`.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleOrigin, RuleSpec, TargetId,
+    Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleSpec, TargetId,
 };
 
-use crate::filing_pieces::FilingTarget;
 use crate::rule_form::{RuleForm, RuleFormTarget, RuleSave};
 use ncrs_filing::rules_work::{ListedRule, RuleChange, RulesLoad};
 use ncrs_filing::sorting::TargetState;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
+use ncrs_intake::pattern_in_words;
 use ncrs_ui_kit::kit::condition_kind_name;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -125,11 +125,6 @@ impl RulesPage {
         &self.kinds
     }
 
-    /// The next load puts the cursor on this rule, if it is listed.
-    pub fn select_on_load(&mut self, id: RuleId) {
-        self.select_on_load = Some(id);
-    }
-
     pub fn rows(&self) -> &[ListedRule] {
         &self.rows
     }
@@ -166,11 +161,6 @@ impl RulesPage {
     /// The list takes no change while a change runs.
     fn list_is_locked(&self) -> bool {
         self.busy
-    }
-
-    /// Opens the form for a new rule of the main target.
-    pub fn begin_new(&mut self) {
-        self.begin_new_in(TargetId::main());
     }
 
     /// Opens the form for a new rule of `target`.
@@ -456,7 +446,7 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> St
                 .join(" "),
         );
     }
-    target.push(FilingTarget::parse(&spec.filing_pattern).in_words(lang));
+    target.push(pattern_in_words(&spec.filing_pattern, lang));
     fill_template(
         lang.text(Msg::RulesRuleIf),
         &[
@@ -464,15 +454,6 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> St
             ("{target}", &target.join(" · ")),
         ],
     )
-}
-
-pub fn origin_text(origin: RuleOrigin, lang: Language) -> &'static str {
-    lang.text(match origin {
-        RuleOrigin::Hand => Msg::RulesOriginHand,
-        RuleOrigin::Suggestion => Msg::RulesOriginSuggestion,
-        RuleOrigin::Filing => Msg::RulesOriginFiling,
-        RuleOrigin::Chat => Msg::RulesOriginChat,
-    })
 }
 
 pub fn hits_text(hits: u64, lang: Language) -> String {

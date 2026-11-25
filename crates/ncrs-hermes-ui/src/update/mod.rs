@@ -7,8 +7,6 @@ mod filing_job;
 mod hermes_file;
 mod lifecycle;
 mod overview;
-mod quick_fix;
-mod reviews;
 mod rules;
 mod saved_queries;
 mod sorting;
@@ -26,10 +24,9 @@ use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
-use crate::hermes_column::FolderRole;
 use crate::message::{
     ActivityMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    Message, QuickFixMessage, ReviewsMessage, RulesMessage, SavedQueriesMessage, SortingMessage,
+    Message, RulesMessage, SavedQueriesMessage, SortingMessage,
     TargetsMessage,
     TagsMessage,
 };
@@ -157,10 +154,8 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::Sorting(inner) => update_sorting(hermes, inner, ctx),
         Message::Targets(inner) => update_targets(hermes, inner, ctx),
         Message::Suggest(inner) => suggest::update(hermes, inner, ctx),
-        Message::QuickFix(inner) => update_quick_fix(hermes, inner, ctx),
         Message::SavedQueries(inner) => update_saved_queries(hermes, inner, ctx),
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
-        Message::Reviews(inner) => update_reviews(hermes, inner, ctx),
         Message::Activity(inner) => update_activity(hermes, inner),
         Message::ContinuousFiled(result) => continuous_filed(hermes, result, ctx),
         Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
@@ -182,12 +177,6 @@ pub fn update_hermes_overview(
 fn update_hermes_file(hermes: &mut Hermes, message: HermesFileMessage, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = hermes_file::update(hermes, message, ctx, &mut actions);
-    (task, actions)
-}
-
-pub fn update_quick_fix(hermes: &mut Hermes, message: QuickFixMessage, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = quick_fix::update(hermes, message, ctx, &mut actions);
     (task, actions)
 }
 
@@ -244,12 +233,6 @@ pub fn update_saved_queries(
     (task, actions)
 }
 
-pub fn update_reviews(hermes: &mut Hermes, message: ReviewsMessage, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = reviews::update(hermes, message, ctx, &mut actions);
-    (task, actions)
-}
-
 pub fn update_activity(hermes: &mut Hermes, message: ActivityMessage) -> Outcome {
     let mut actions = Vec::new();
     let task = activity::update(hermes, message, &mut actions);
@@ -264,7 +247,7 @@ pub fn update_tags(hermes: &mut Hermes, message: TagsMessage, ctx: &Ctx<'_>) -> 
 
 pub fn exclude_from_hermes(hermes: &Hermes, paths: Vec<PathBuf>) -> Outcome {
     let mut actions = Vec::new();
-    let task = quick_fix::exclude_from_hermes(hermes, paths, &mut actions);
+    let task = hermes_file::exclude_from_hermes(hermes, paths, &mut actions);
     (task, actions)
 }
 
@@ -292,12 +275,6 @@ pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>)
     let mut actions = Vec::new();
     hermes_file::read_paths_again(hermes, paths, ctx, &mut actions);
     (Task::none(), actions)
-}
-
-pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_file::set_folder_role(hermes, folder, role, ctx, &mut actions);
-    (task, actions)
 }
 
 pub fn role_save_failed(hermes: &Hermes, error: &FilingWriteError, ctx: &Ctx<'_>) -> Outcome {

@@ -315,98 +315,14 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     }
 }
 
-/// The path a pattern gives for these fields, below the root of the archive.
-/// `None` when the pattern cannot be rendered, a value it needs is missing, or
-/// the result would not stay below the root.
-pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> {
-    Pattern::parse(source)?
-        .render(fields, None)
-        .filter(|path| stays_below(path))
-}
-
-/// [`render_pattern`], with the kind written as the word of the language of `kinds`.
+/// The path a pattern gives for these fields, below the root of the archive,
+/// with the kind written as the word of the language of `kinds`. `None` when
+/// the pattern cannot be rendered, a value it needs is missing, or the result
+/// would not stay below the root.
 pub fn render_pattern_in(source: &str, fields: &DocumentFields, kinds: &Kinds) -> Option<PathBuf> {
     Pattern::parse(source)?
         .render(fields, Some(kinds))
         .filter(|path| stays_below(path))
-}
-
-/// The folders `source` gives for these fields, without a file name; `None`
-/// when a value a folder needs is missing, the result is empty or would not
-/// stay below the root.
-pub fn render_pattern_folder(
-    source: &str,
-    fields: &DocumentFields,
-    kinds: &Kinds,
-) -> Option<PathBuf> {
-    let pattern = Pattern::parse(source)?;
-    let folders = pattern
-        .folders()
-        .iter()
-        .map(|component| render_tokens(component, fields, false, Some(kinds)))
-        .collect::<Option<Vec<_>>>()?;
-    let path = path_of(&folders);
-    (!path.as_os_str().is_empty() && stays_below(&path)).then_some(path)
-}
-
-/// [`render_pattern_in`] with `extension` appended to the file name, and only
-/// when every placeholder of the pattern has a value: no partial names.
-pub fn render_complete_pattern(
-    source: &str,
-    fields: &DocumentFields,
-    kinds: &Kinds,
-    extension: &str,
-) -> Option<PathBuf> {
-    let pattern = Pattern::parse(source)?;
-    let every_value_known = pattern
-        .components
-        .iter()
-        .flatten()
-        .all(|token| match token {
-            Token::Placeholder(placeholder) => placeholder.value(fields, Some(kinds)).is_some(),
-            Token::Literal(_) => true,
-        });
-    if !every_value_known {
-        return None;
-    }
-    let rendered = pattern
-        .render(fields, Some(kinds))
-        .filter(|path| stays_below(path))?;
-    let name = rendered.file_name()?.to_str()?;
-    Some(rendered.with_file_name(format!("{name}.{extension}")))
-}
-
-/// A piece of a rendered filing path: the folder separators and the literal
-/// text of the pattern have no field, a value filled in has the field it is
-/// from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PatternPart {
-    pub text: String,
-    pub field: Option<Field>,
-}
-
-/// [`render_pattern`], in the pieces the path is made of; their texts joined
-/// are the path.
-pub fn render_pattern_parts(
-    source: &str,
-    fields: &DocumentFields,
-    kinds: &Kinds,
-) -> Option<Vec<PatternPart>> {
-    let components = Pattern::parse(source)?.render_components(fields, Some(kinds))?;
-    if !stays_below(&path_of(&components)) {
-        return None;
-    }
-    let mut parts = Vec::new();
-    for (position, component) in components.into_iter().enumerate() {
-        if position > 0 {
-            parts.push(PatternPart {
-                text: std::path::MAIN_SEPARATOR_STR.to_owned(),
-                field: None,
-            });
-        }
-        parts.extend(component);
-    }
-    Some(parts)
 }
 
 /// The most bytes a file system accepts in one path component.
@@ -414,17 +330,10 @@ const MAX_COMPONENT_BYTES: usize = 255;
 /// The longest ending (with its dot) kept when a name is cut.
 const MAX_EXTENSION_BYTES: usize = 16;
 
-fn path_of(components: &[Vec<PatternPart>]) -> PathBuf {
+fn path_of(components: &[String]) -> PathBuf {
     components
         .iter()
-        .map(|component| {
-            clip_component(
-                &component
-                    .iter()
-                    .map(|part| part.text.as_str())
-                    .collect::<String>(),
-            )
-        })
+        .map(|component| clip_component(component))
         .collect()
 }
 
@@ -492,16 +401,6 @@ fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
         Field::Number => fields.number.as_deref().and_then(sanitise_value).is_some(),
         Field::Amount => fields.amount.is_some(),
     }
-}
-
-/// The first field the pattern uses that is empty in `fields`; `None` when
-/// none is, or the pattern does not read.
-pub fn missing_field(source: &str, fields: &DocumentFields) -> Option<Field> {
-    let pattern = Pattern::parse(source)?;
-    AI_FIELD_ORDER
-        .into_iter()
-        .find(|&field| pattern.uses_in_folders(field) && !field_is_present(fields, field))
-        .or_else(|| pattern.file_name_missing(fields))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -704,7 +603,7 @@ impl Pattern {
         &self,
         fields: &DocumentFields,
         kinds: Option<&Kinds>,
-    ) -> Option<Vec<Vec<PatternPart>>> {
+    ) -> Option<Vec<String>> {
         let mut rendered = self
             .folders()
             .iter()
@@ -725,23 +624,17 @@ fn render_tokens(
     fields: &DocumentFields,
     dashed: bool,
     kinds: Option<&Kinds>,
-) -> Option<Vec<PatternPart>> {
+) -> Option<String> {
     tokens
         .iter()
         .map(|token| match token {
-            Token::Literal(literal) => Some(PatternPart {
-                text: literal.clone(),
-                field: None,
-            }),
+            Token::Literal(literal) => Some(literal.clone()),
             Token::Placeholder(placeholder) => {
                 let value = placeholder.value(fields, kinds)?;
-                Some(PatternPart {
-                    text: if dashed {
-                        value.replace(' ', "-")
-                    } else {
-                        value
-                    },
-                    field: Some(placeholder.field()),
+                Some(if dashed {
+                    value.replace(' ', "-")
+                } else {
+                    value
                 })
             }
         })
@@ -779,13 +672,13 @@ fn render_file_name(
     tokens: &[Token],
     fields: &DocumentFields,
     kinds: Option<&Kinds>,
-) -> Option<Vec<PatternPart>> {
+) -> Option<String> {
     let has_placeholder = |piece: &[Token]| {
         piece
             .iter()
             .any(|token| matches!(token, Token::Placeholder(_)))
     };
-    let mut kept: Vec<Vec<PatternPart>> = Vec::new();
+    let mut kept: Vec<String> = Vec::new();
     let mut any_value = false;
     let mut any_placeholder = false;
     for piece in file_name_pieces(tokens) {
@@ -799,20 +692,10 @@ fn render_file_name(
     if any_placeholder && !any_value {
         return None;
     }
-    let mut parts = Vec::new();
-    for (position, piece) in kept.into_iter().enumerate() {
-        if position > 0 {
-            parts.push(PatternPart {
-                text: "_".to_owned(),
-                field: None,
-            });
-        }
-        parts.extend(piece);
-    }
-    Some(parts)
+    Some(kept.join("_"))
 }
 
-fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
+fn automatic_file_name(fields: &DocumentFields) -> Option<String> {
     AUTOMATIC_FILE_NAMES.iter().find_map(|source| {
         let tokens = Pattern::parse_component(source)?;
         render_tokens(&tokens, fields, true, None)

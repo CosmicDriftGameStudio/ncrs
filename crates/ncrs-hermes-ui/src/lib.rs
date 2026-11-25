@@ -1,14 +1,12 @@
-//! The Hermes pages: the filing setup and status, the overview, the review
-//! list, the rules, the rule suggestions, the reorganisation plan, the saved
-//! queries, the tags and the quick-fix menu. Their state types, messages and
-//! views, and the update logic of the pages that have moved.
+//! The Hermes pages: the sources, targets and rules of sorting, the filing
+//! status, the overview, the saved queries, the tags and the activity. Their
+//! state types, messages and views, and their update logic.
 
 pub mod action;
 pub mod condition_editor;
 pub mod ctx;
 pub mod cursor_roles;
 pub mod documents_facts;
-pub use ncrs_intake::filing_pieces;
 pub mod activity_page;
 pub mod filing_setup;
 pub mod filing_status;
@@ -17,9 +15,7 @@ pub mod hermes_overview;
 pub mod hermes_status;
 pub mod keys;
 pub mod message;
-pub mod quick_fix;
 pub mod reading_again;
-pub mod reviews_page;
 pub mod rule_form;
 pub mod rules_page;
 pub mod saved_queries;
@@ -39,7 +35,7 @@ pub use ctx::{Bin, Ctx};
 pub use cursor_roles::CursorRoles;
 pub use message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
-    HermesOverviewMessage, HermesPage, Message, QuickFixMessage, ReviewsMessage, RuleFormMessage,
+    HermesOverviewMessage, HermesPage, Message, RuleFormMessage,
     RulesMessage, SavedQueriesMessage, SortingMessage, SuggestMessage, TagsMessage,
     TargetsMessage,
 };
@@ -50,9 +46,9 @@ pub use update::{
     continuous_filed, dialog_is_open, exclude_from_hermes, filing_restarted, leave_pages,
     open_filing_status_page, read_paths_again, refresh_hermes_column, request_hermes_column,
     request_hermes_counts, restart_hermes_module, role_save_failed, run_filing_work,
-    run_filing_work_after, set_folder_role, show_page, start_filing_module,
+    run_filing_work_after, show_page, start_filing_module,
     update, update_activity, update_filing, update_filing_status, update_hermes_column,
-    open_rule_form, open_source_dialog, open_suggest_rule, open_suggest_scheme, open_target_dialog, update_hermes_overview, update_quick_fix, update_reviews, update_rules, update_saved_queries,
+    open_rule_form, open_source_dialog, open_suggest_rule, open_suggest_scheme, open_target_dialog, update_hermes_overview, update_rules, update_saved_queries,
     update_sorting, update_tags, Outcome, SavedFilingApplies,
 };
 pub use watching::{SourceRun, Watching};

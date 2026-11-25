@@ -40,8 +40,6 @@ pub enum Action {
     IndexReplaced,
     /// Opens the Hermes chat.
     OpenChat,
-    /// Opens the Hermes chat on these documents, which it asks about.
-    OpenChatAbout(Vec<ncrs_filing::review_work::ReviewItem>),
     /// The settings show this page of the Hermes crate.
     ShowPage(HermesPage),
     /// Shows the file in the active panel.
@@ -51,8 +49,6 @@ pub enum Action {
     FilingRestarted(u64),
     /// Both panels read their folder again, keeping the cursor.
     ReloadPanels,
-    /// Clears the error and the notice in the status bar.
-    ClearStatus,
     ShowNotice(String),
     ShowError(String),
     RequestHermesCounts,
@@ -62,8 +58,6 @@ pub enum Action {
     EnsureChatModel,
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
-    /// Takes in the latest snapshot of the pipeline and of the module.
-    RefreshFilingSnapshot,
     /// Stops the pipeline and runs the job that encrypts or removes the index.
     ChangeProtection(ProtectionStep),
     /// Opens the question whether to begin again, with this button focused.
@@ -85,18 +79,12 @@ pub enum Action {
     },
     /// Asks for the folder the reports are exported to, starting at the path.
     PickExportFolder(PathBuf),
-    /// Asks for the folder the documents of the reviews page are filed in,
-    /// starting at the path.
-    PickReviewFolder(PathBuf),
-    /// Opens the file in the viewer.
-    PreviewFile(PathBuf),
     /// Put the job into the queue and start it if nothing runs; the work
     /// sends its progress through the app's channel, which the app makes
     /// first.
     StartJobWithProgress(StartProgressJob),
     /// The running job is over: the next one may start.
     FinishJob,
-    SetJobProgress(ncrs_fs::transfer::Tick),
     ClearJobProgress,
     /// Opens the plan of this source in the filing tab; `once` for a folder
     /// that is filed one time.

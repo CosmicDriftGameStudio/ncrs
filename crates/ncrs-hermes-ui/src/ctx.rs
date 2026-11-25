@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use iced::{Point, Size};
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_core::PanelSide;
 use ncrs_i18n::Language;
@@ -28,14 +27,7 @@ pub struct Ctx<'a> {
     pub start_over_dialog_open: bool,
     /// The module is being built again.
     pub hermes_is_restarting: bool,
-    /// The counts say that something waits for review.
-    pub hermes_has_open_reviews: bool,
-    pub context_menu_open: bool,
     pub search_open: bool,
-    pub hermes_active: bool,
-    /// The Hermes chat is open.
-    pub chat_open: bool,
-    pub hermes_counts_missing: bool,
     pub jobs_busy: bool,
     /// The watched sources may be filed from: a locked trial holds the
     /// background filing back without a word.
@@ -43,7 +35,6 @@ pub struct Ctx<'a> {
     pub trash: Bin,
     /// The source folder of the "Ablegen" tab while it plans or files.
     pub filing_tab_source: Option<&'a Path>,
-    pub window_size: Size,
     pub config_path: Option<&'a Path>,
     /// What a leading `~` in a path stands for.
     pub home: &'a Path,
@@ -51,18 +42,10 @@ pub struct Ctx<'a> {
     pub filing_status_shortcut: Option<String>,
     pub active_panel_path: &'a Path,
     pub other_panel_path: &'a Path,
-    /// Where the quick-fix menu opens: under the cursor row of the active panel.
-    pub quick_fix_anchor: Point,
-    /// The inquiries under the cursor or among the marked files; read for the
-    /// opening of the quick-fix menu only.
-    pub inquiry_paths: Vec<PathBuf>,
     /// The wall clock the status page measures the time of a worker by.
     pub now: SystemTime,
     /// The left and the right panel, in this order.
     pub panels: [PanelFacts<'a>; 2],
-    /// The entry under the cursor of the active panel; `None` for a virtual
-    /// panel or an empty one.
-    pub cursor_entry: Option<&'a Path>,
     /// The row under the cursor of the active panel, not the `..` row, and
     /// whether it is a folder: what the Hermes file commands act on.
     pub cursor_row: Option<(&'a Path, bool)>,

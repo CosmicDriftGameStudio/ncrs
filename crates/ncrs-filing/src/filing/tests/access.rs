@@ -366,7 +366,6 @@ fn a_module_that_is_off_opens_and_creates_nothing() {
         locations: vec![location(dir.path())],
         load: Load::default(),
         ai: ncrs_config::config::AiSetting::Off,
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),

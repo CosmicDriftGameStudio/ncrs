@@ -141,16 +141,6 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
         .collect()
 }
 
-/// The subtree each document belongs to, in the order of `documents`; `None`
-/// for a path that cannot be a document of the location. The same assignment
-/// `learn_archive` counts with.
-pub fn subtree_per_document(documents: &[ArchiveDocument]) -> Vec<Option<String>> {
-    documents
-        .iter()
-        .map(|document| parse_document(document).map(|parsed| subtree_of(&parsed.tokens)))
-        .collect()
-}
-
 /// The pattern one document follows on its own, and the subtree it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentPattern {

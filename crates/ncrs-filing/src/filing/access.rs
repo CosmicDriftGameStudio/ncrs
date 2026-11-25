@@ -93,19 +93,10 @@ impl FilingModule {
         self.snapshots.forget();
     }
 
-    /// The handle of the review list: only when the module is `Ready` and the
-    /// archive marked as the target can be reached.
-    pub fn review_access(&self) -> Option<ReviewAccess> {
-        let root = self.target_root()?;
-        Some(
-            ReviewAccess::new(Arc::clone(&self.index), root)
-                .with_neighbour_cache(self.neighbour_cache.clone())
-                .with_location_roots(self.location_roots())
-                .with_copy_roots(self.copy_roots())
-                .with_kind_language(self.own.kind_language)
-                .with_own(self.own.clone())
-                .with_index_work(self.index_work.clone()),
-        )
+    /// Excluding and including paths only changes the index, so the module
+    /// being `Ready` is enough.
+    pub fn path_access(&self) -> Option<PathAccess> {
+        matches!(self.phase, Phase::Ready).then(|| PathAccess::new(Arc::clone(&self.index)))
     }
 
     /// The handle of the saved queries: they only read the index, so the
@@ -121,40 +112,11 @@ impl FilingModule {
     }
 
     /// The rules page reads and changes the index only, so the module being
-    /// `Ready` is enough; the try reads the documents of the locations that
-    /// can be reached.
+    /// `Ready` is enough.
     pub fn rules_access(&self) -> Option<RulesAccess> {
         matches!(self.phase, Phase::Ready).then(|| {
-            RulesAccess::new(
-                Arc::clone(&self.index),
-                self.reachable_locations().cloned().collect(),
-            )
-            .with_target(self.target_root())
-            .with_kind_language(self.own.kind_language)
-            .with_snapshots(self.snapshots.clone())
+            RulesAccess::new(Arc::clone(&self.index)).with_snapshots(self.snapshots.clone())
         })
-    }
-
-    fn location_roots(&self) -> Vec<PathBuf> {
-        self.reachable_locations()
-            .map(|location| location.path.clone())
-            .collect()
-    }
-
-    /// The roots of the read folders whose files are copied, not moved. Every
-    /// configured one counts, whatever became of the folder since: one that
-    /// cannot be reached or overlaps another is still not to be emptied.
-    pub(in crate::filing) fn copy_roots(&self) -> Vec<PathBuf> {
-        self.locations
-            .iter()
-            .filter(|entry| entry.configured.transfer == LocationTransfer::Copy)
-            .map(|entry| match &entry.status {
-                LocationStatus::Ready(location) => location.path.clone(),
-                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => {
-                    entry.configured.path.clone()
-                }
-            })
-            .collect()
     }
 
     /// Takes the saved sources and targets, and copy or move for the locations
@@ -215,19 +177,6 @@ impl FilingModule {
             self.locations.push(entry);
         }
         usable
-    }
-
-    fn target_root(&self) -> Option<PathBuf> {
-        if !matches!(self.phase, Phase::Ready) {
-            return None;
-        }
-        self.locations
-            .iter()
-            .filter(|entry| entry.configured.is_target)
-            .find_map(|entry| match &entry.status {
-                LocationStatus::Ready(location) => Some(location.path.clone()),
-                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
-            })
     }
 
     pub fn locations(&self) -> &[ResolvedLocation] {

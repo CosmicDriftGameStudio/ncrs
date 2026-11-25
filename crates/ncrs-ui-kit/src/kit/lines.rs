@@ -272,30 +272,6 @@ pub fn panel_frame<'a, M: 'a>(
         .into()
 }
 
-/// One setting: its name, the name of the theme it belongs to and a
-/// description on the left, the control in a column of `control_width` on the
-/// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
-/// description.
-pub fn form_row_with_problem<'a, M: Clone + 'a>(
-    label: &str,
-    theme_name: Option<&str>,
-    description: Option<&str>,
-    lines_below: Vec<Element<'a, M>>,
-    control: Element<'a, M>,
-    control_width: Length,
-    palette: &Palette,
-) -> Element<'a, M> {
-    form_row_titled(
-        paragraph(label.to_owned(), palette),
-        theme_name,
-        description,
-        lines_below,
-        control,
-        control_width,
-        palette,
-    )
-}
-
 /// A paragraph that can be pressed, in the accent: the name of a row that
 /// opens what it names.
 pub fn text_link<'a, M: Clone + 'a>(
@@ -314,8 +290,10 @@ pub fn text_link<'a, M: Clone + 'a>(
         .into()
 }
 
-/// [`form_row_with_problem`] with the title as an element, for a title that
-/// is more than text.
+/// One setting: its title, the name of the theme it belongs to and a
+/// description on the left, the control in a column of `control_width` on the
+/// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
+/// description.
 pub fn form_row_titled<'a, M: Clone + 'a>(
     title: Element<'a, M>,
     theme_name: Option<&str>,

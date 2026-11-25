@@ -3,14 +3,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use chrono::NaiveDate;
-use ncrs_fs::transfer::Counting;
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_index::{BatchKind, ContentHash, DocumentFields, Index, Transfer};
 use ncrs_intake::{hash_path, PdfUnavailable, PlainText, PlanFile, TextError};
 use tempfile::TempDir;
 
 use super::*;
-use crate::execute::{execute_run, trash_run, ExecutionItem, RunPlaces, TrashItem};
+use crate::execute::test_runs::execute_run;
+use crate::execute::{trash_run, ExecutionItem, RunPlaces, TrashItem};
 
 mod diagnosis;
 mod reading;
@@ -115,7 +115,6 @@ impl Setup {
                         inside_target,
                     },
                     items,
-                    &mut Counting,
                 )
                 .map_err(|err| err.to_string())
             })

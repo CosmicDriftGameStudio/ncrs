@@ -3,7 +3,7 @@ use crate::model::{
     RuleSuggestion, TargetId,
 };
 use crate::test_support::{encrypted_index, rule_spec};
-use crate::{Index, RuleSaved};
+use crate::Index;
 
 fn target(name: &str) -> TargetId {
     TargetId::new(name).unwrap()
@@ -81,54 +81,6 @@ fn a_rule_listed_for_a_target_carries_it_and_the_listing_of_all_has_every_target
     assert_eq!(ids_of(&index, &TargetId::main()), [main]);
     assert_eq!(index.rules().unwrap().len(), 2);
     assert!(index.rules_of(&target("t3")).unwrap().is_empty());
-}
-
-#[test]
-fn the_same_name_in_two_targets_is_two_rules() {
-    let (_dir, mut index) = encrypted_index();
-    let (first, second) = (target("t1"), target("t2"));
-    let spec = RuleSpec {
-        name: Some("Gehalt".to_owned()),
-        filing_pattern: "one/{year}".to_owned(),
-        ..rule_spec()
-    };
-    assert_eq!(
-        index.save_rule_in(&spec, RuleOrigin::Chat, &first).unwrap(),
-        RuleSaved::Added
-    );
-    let for_second = RuleSpec {
-        filing_pattern: "two/{year}".to_owned(),
-        ..spec.clone()
-    };
-
-    assert_eq!(
-        index
-            .save_rule_in(&for_second, RuleOrigin::Chat, &second)
-            .unwrap(),
-        RuleSaved::Added
-    );
-    assert!(index.rule_replaced_in(&spec, &first).unwrap().is_some());
-    let changed = RuleSpec {
-        filing_pattern: "one/{year}/{month}".to_owned(),
-        ..spec
-    };
-    assert_eq!(
-        index
-            .save_rule_in(&changed, RuleOrigin::Chat, &first)
-            .unwrap(),
-        RuleSaved::Changed
-    );
-
-    let patterns = |target: &TargetId| -> Vec<String> {
-        index
-            .rules_of(target)
-            .unwrap()
-            .into_iter()
-            .map(|rule| rule.spec.filing_pattern)
-            .collect()
-    };
-    assert_eq!(patterns(&first), ["one/{year}/{month}"]);
-    assert_eq!(patterns(&second), ["two/{year}"]);
 }
 
 #[test]

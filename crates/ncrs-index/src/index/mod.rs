@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{ErrorKind, Read as _};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rusqlite::{Connection, ErrorCode};
@@ -25,24 +24,9 @@ const FULL_TEXT_TABLES: [&str; 5] = [
 
 const PLAINTEXT_HEADER: &[u8; 16] = b"SQLite format 3\0";
 
-static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
-
-fn next_instance() -> u64 {
-    NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed)
-}
-
-/// Differs whenever the index was written to or replaced by another one; two
-/// equal stamps mean nothing was written in between.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChangeStamp {
-    instance: u64,
-    changed_rows: u64,
-}
-
 #[derive(Debug)]
 pub struct Index {
     conn: Connection,
-    instance: u64,
     encrypted: bool,
     kinds: Arc<KindCatalog>,
 }
@@ -229,7 +213,6 @@ impl Index {
         Ok((
             Self {
                 conn,
-                instance: next_instance(),
                 encrypted: true,
                 kinds: Arc::default(),
             },
@@ -252,7 +235,6 @@ impl Index {
             .map_err(|err| discard_half_created(db_path, err))?;
         Ok(Self {
             conn,
-            instance: next_instance(),
             encrypted: false,
             kinds: Arc::default(),
         })
@@ -288,17 +270,9 @@ impl Index {
         crate::names::fold_name_keys(&mut conn)?;
         Ok(Self {
             conn,
-            instance: next_instance(),
             encrypted,
             kinds: Arc::default(),
         })
-    }
-
-    pub fn change_stamp(&self) -> ChangeStamp {
-        ChangeStamp {
-            instance: self.instance,
-            changed_rows: self.conn.total_changes(),
-        }
     }
 
     /// The kinds this index knows; the built-in ones until the config is applied.

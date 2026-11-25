@@ -72,30 +72,9 @@ impl fmt::Display for FilingWriteError {
     }
 }
 
-/// Turns the filing module on and replaces its locations in the config at
-/// `path`, keeping every other line, comment and section as written. Returns
-/// the config read back from disk.
-pub fn write_filing_locations(
-    path: &Path,
-    locations: &[FilingLocation],
-) -> Result<Config, FilingWriteError> {
-    write_filing_locations_with_home(path, locations, home_from_env().as_deref())
-}
-
-pub fn write_filing_locations_with_home(
-    path: &Path,
-    locations: &[FilingLocation],
-    home: Option<&Path>,
-) -> Result<Config, FilingWriteError> {
-    check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
-    write_edited(path, home, |source| {
-        with_filing_locations(source, path, locations)
-    })
-}
-
 /// Replaces the read folders in the config at `path`, keeping every other
-/// line as written; unlike [`write_filing_locations`] it does not turn Hermes
-/// or its AI on, and an empty list is fine. Returns the config read back.
+/// line as written; it does not turn Hermes or its AI on, and an empty list is
+/// fine. Returns the config read back.
 pub fn write_read_folders(
     path: &Path,
     locations: &[FilingLocation],

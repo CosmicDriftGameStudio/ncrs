@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 #[test]
 fn the_rule_to_select_on_load_is_the_selected_one() {
     let mut page = RulesPage::new();
-    page.select_on_load(rule_id(3));
+    page.saved(rule_id(3));
 
     page.loaded(RulesLoad {
         rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
@@ -18,7 +18,7 @@ fn the_rule_to_select_on_load_is_the_selected_one() {
 #[test]
 fn a_rule_to_select_that_is_not_listed_keeps_the_cursor() {
     let mut page = RulesPage::new();
-    page.select_on_load(rule_id(9));
+    page.saved(rule_id(9));
 
     page.loaded(RulesLoad {
         rules: vec![listed(1, 0), listed(2, 2)],
@@ -200,7 +200,7 @@ fn a_new_rule_has_no_place_in_the_list() {
     let mut page = page();
     assert_eq!(page.edited_index(), None);
 
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
 
     assert_eq!(page.edited_index(), None);
 }
@@ -208,7 +208,7 @@ fn a_new_rule_has_no_place_in_the_list() {
 #[test]
 fn cancelling_a_form_closes_the_dialog_and_drops_what_was_typed() {
     let mut page = page();
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     assert!(page.dialog_is_open());
     page.form_mut()
         .unwrap()
@@ -241,7 +241,7 @@ fn while_a_change_runs_the_list_takes_no_change() {
     assert!(page.begin_toggle(0).is_some());
 
     page.ask_delete(2);
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     page.begin_edit(1);
 
     assert!(!page.is_confirming_delete());
@@ -259,11 +259,11 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
 
     let dir = tempfile::TempDir::new().unwrap();
     let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-    let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))), Vec::new());
+    let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))));
     let mut page = RulesPage::new();
     page.loaded(access.load().unwrap());
 
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     assert_eq!(page.begin_save(), None);
     page.form_mut()
         .unwrap()

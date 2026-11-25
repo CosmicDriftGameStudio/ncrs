@@ -18,7 +18,6 @@ pub fn problem_text(lang: Language, problem: ncrs_ai::ModelProblem) -> String {
     use ncrs_ai::ModelProblem;
     match problem {
         ModelProblem::TooLong => text(lang, Msg::HermesChatModelTooLong),
-        ModelProblem::Unsupported => text(lang, Msg::HermesChatModelUnsupported),
         ModelProblem::BadReply => text(lang, Msg::HermesChatModelBadReply),
         ModelProblem::Unreachable => text(lang, Msg::HermesChatModelUnreachable),
         ModelProblem::ConsentMissing => text(lang, Msg::HermesChatModelConsentMissing),

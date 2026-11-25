@@ -44,13 +44,6 @@ pub fn resolve_filing(
         dropped_entries: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
         ai,
-        default_pattern: section
-            .default_pattern
-            .as_deref()
-            .map(str::trim)
-            .filter(|pattern| !pattern.is_empty())
-            .map(ncrs_intake::upgraded_pattern)
-            .filter(|pattern| pattern_is_valid(pattern)),
         own_names: OwnDetail::Names.entries_in(section),
         own_ibans: OwnDetail::Ibans.entries_in(section),
         own_tax_ids: OwnDetail::TaxIds.entries_in(section),

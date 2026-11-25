@@ -1,8 +1,8 @@
 use crate::app::*;
 
 impl App {
-    pub(in crate::app) fn overview_facts(&self, ocr_models_present: bool) -> OverviewFacts {
-        ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx(), ocr_models_present)
+    pub(in crate::app) fn overview_facts(&self) -> OverviewFacts {
+        ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx())
     }
 
     /// Opens the settings on the page of Settings that shows this Hermes page.
@@ -40,10 +40,8 @@ impl App {
             Message::Sorting(inner) => Page::Sorting(inner),
             Message::Targets(inner) => Page::Targets(inner),
             Message::Suggest(inner) => Page::Suggest(inner),
-            Message::QuickFix(inner) => Page::QuickFix(inner),
             Message::SavedQueries(inner) => Page::SavedQueries(inner),
             Message::Tags(inner) => Page::Tags(inner),
-            Message::Reviews(inner) => Page::Reviews(inner),
             Message::Activity(inner) => Page::Activity(inner),
             Message::ContinuousFiled(result) => Page::ContinuousFiled(result),
             Message::HermesColumn(inner) => Page::HermesColumn(inner),

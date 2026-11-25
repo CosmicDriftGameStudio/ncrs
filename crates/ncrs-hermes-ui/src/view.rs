@@ -14,7 +14,7 @@ use ncrs_index::KindCatalog;
 use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::setting_rows;
 
-use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
+use crate::hermes_overview::{ModuleState, OverviewFacts, Protection};
 use crate::hermes_status::HermesStatus;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
 use crate::rules_page::RulesPage;
@@ -38,8 +38,6 @@ pub struct ViewCtx<'a> {
     pub jobs_busy: bool,
     /// Bytes on disk and bytes in all, while the AI model downloads.
     pub ai_download: Option<(u64, u64)>,
-    /// The system reads scans itself, without the OCR models.
-    pub system_reads_scans: bool,
     /// What a leading `~` in a typed path stands for.
     pub home: &'a Path,
 }
@@ -55,11 +53,7 @@ pub struct FilingBadge {
 
 /// What the overview and the protection panel of the settings say about the
 /// module.
-pub fn overview_facts(
-    hermes: &Hermes,
-    ctx: &ViewCtx<'_>,
-    ocr_models_present: bool,
-) -> OverviewFacts {
+pub fn overview_facts(hermes: &Hermes, ctx: &ViewCtx<'_>) -> OverviewFacts {
     let module = hermes.filing.as_ref();
     let module_state = if hermes.is_restarting() {
         ModuleState::Starting
@@ -72,23 +66,12 @@ pub fn overview_facts(
     let at_rest = !ctx.jobs_busy
         && !hermes.is_restarting()
         && !module.is_some_and(FilingModule::index_work_running);
-    let failure = match module.map(FilingModule::phase) {
-        Some(Phase::Failed(reason)) => Some(reason.clone()),
-        Some(Phase::FromNewerVersion) => {
-            Some(ctx.lang.text(Msg::FilingFromNewerVersion).to_owned())
-        }
-        _ => None,
-    };
     OverviewFacts {
         module: module_state,
-        failure,
-        has_locations: !hermes.filing_config.locations.is_empty(),
         counts: hermes.filing_status.hermes_counts().copied(),
-        waiting: hermes.filing_status.waiting(),
         ai_on: hermes.filing_config.hermes_on(),
         ai_status: module.map(FilingModule::ai_status).unwrap_or_default(),
         ai_download: ctx.ai_download,
-        ocr: OcrFacts::of(ctx.system_reads_scans, ocr_models_present),
         protection: Protection::of(
             module_state,
             module.and_then(FilingModule::index_encryption),

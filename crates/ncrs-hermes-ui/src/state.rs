@@ -10,9 +10,7 @@ use crate::activity_page::ActivityPage;
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
 use crate::message::HermesPage;
-use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
-use crate::reviews_page::ReviewsPage;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::sorting_page::SortingPage;
@@ -27,9 +25,6 @@ use crate::watching::Watching;
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
-    /// The fixes for an inquiry; at most one of it and the context menu.
-    pub quick_fix: Option<QuickFix>,
-    pub quick_fix_generation: u64,
     /// The files "process again" found, held while the question about many
     /// files of the Lesen folders is up.
     pub confirm_again: Option<Vec<PathBuf>>,
@@ -46,8 +41,6 @@ pub struct Hermes {
     pub saved_queries_generation: u64,
     pub tags: Option<TagsPage>,
     pub tags_generation: u64,
-    pub reviews: Option<ReviewsPage>,
-    pub reviews_generation: u64,
     pub activity: Option<ActivityPage>,
     pub activity_generation: u64,
     /// What the filing status page and the status bar show of the pipeline.
@@ -60,8 +53,6 @@ pub struct Hermes {
     pub hermes_reads: HashSet<(PathBuf, ColumnStage)>,
     /// Reads of the column that gave up, until something is invalidated.
     pub hermes_failed_reads: HashSet<(PathBuf, ColumnStage)>,
-    /// Files whose status bar detail is being read.
-    pub hermes_detail_reads: HashSet<PathBuf>,
     /// How far the spinner of a file being read has turned, in radians.
     pub hermes_spinner_angle: f32,
     /// The folder the PDF library is missing from, as of the last pipeline start.
@@ -129,7 +120,6 @@ impl Hermes {
     pub fn invalidate_hermes_path(&mut self, path: &Path) {
         self.hermes_column.invalidate_path(path);
         self.hermes_failed_reads.clear();
-        self.hermes_detail_reads.remove(path);
     }
 
     /// The page of this state that is loaded, if any.
@@ -155,7 +145,6 @@ impl Hermes {
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
-        self.reviews = None;
         self.activity = None;
         self.filing_status.close_page();
     }

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::{same_folder, Filing, FilingLocation, FilingWriteError};
+use ncrs_config::config::{same_folder, Filing, FilingWriteError};
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::{fill_template, Msg};
@@ -12,9 +12,7 @@ use ncrs_index::IncludeOutcome;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::filing_setup::{self, SetupProblem};
-use crate::hermes_column::FolderRole;
-use crate::message::{HermesFileMessage, HermesPage, Message, TargetsMessage};
+use crate::message::{HermesColumnMessage, HermesFileMessage, HermesPage, Message, TargetsMessage};
 use crate::source_dialog::SourceDialogKind;
 use crate::state::Hermes;
 use crate::ui::filing_setup as filing_setup_ui;
@@ -166,67 +164,6 @@ fn queue_again(hermes: &mut Hermes, found: Vec<PathBuf>, ctx: &Ctx<'_>, actions:
     actions.push(Action::ShowNotice(text));
 }
 
-pub fn set_folder_role(
-    hermes: &Hermes,
-    folder: &Path,
-    role: FolderRole,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    let Some(config_path) = ctx.config_path.map(Path::to_path_buf) else {
-        actions.push(Action::ShowNotice(
-            ctx.lang.text(Msg::FilingSetupNoConfigPath).to_owned(),
-        ));
-        return Task::none();
-    };
-    match locations_with_role_or_say(hermes, folder, role, ctx, actions) {
-        Some(chosen) => save_locations(config_path, chosen),
-        None => Task::none(),
-    }
-}
-
-fn locations_with_role_or_say(
-    hermes: &Hermes,
-    folder: &Path,
-    role: FolderRole,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Option<Vec<FilingLocation>> {
-    match filing_setup::locations_with_role(&hermes.filing_config.locations, folder, role) {
-        Ok(chosen) => Some(chosen),
-        Err(refused) => {
-            let text = match refused.problem {
-                SetupProblem::NoDocumentFolder => ctx
-                    .lang
-                    .text(Msg::StatusHermesRoleNeedsFilingLocation)
-                    .to_owned(),
-                problem => {
-                    filing_setup_ui::problem_sentence(problem, &refused.chosen, ctx.lang, ctx.home)
-                }
-            };
-            actions.push(Action::ShowError(text));
-            None
-        }
-    }
-}
-
-fn save_locations(config_path: PathBuf, chosen: Vec<FilingLocation>) -> Task<Message> {
-    let written_path = config_path.clone();
-    Task::perform(
-        tokio::task::spawn_blocking(move || filing_setup::write_locations(&written_path, &chosen)),
-        move |joined| {
-            Message::HermesFile(HermesFileMessage::RoleSaved(Box::new(
-                joined.unwrap_or_else(|join| {
-                    Err(FilingWriteError::Io {
-                        path: config_path,
-                        reason: join.to_string(),
-                    })
-                }),
-            )))
-        },
-    )
-}
-
 pub fn role_save_failed(
     hermes: &Hermes,
     error: &FilingWriteError,
@@ -246,6 +183,29 @@ pub fn role_save_failed(
     actions.push(Action::ShowError(text));
 }
 
+/// Tells the index that Hermes leaves `paths` alone from now on; the column
+/// shows them as excluded once the index has answered.
+pub fn exclude_from_hermes(
+    hermes: &Hermes,
+    paths: Vec<PathBuf>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::path_access) else {
+        actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+        return Task::none();
+    };
+    let excluded = paths.clone();
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.exclude(&paths)),
+        move |joined| {
+            Message::HermesColumn(HermesColumnMessage::Excluded {
+                paths: excluded.clone(),
+                result: joined.unwrap_or_else(|err| Err(err.to_string())),
+            })
+        },
+    )
+}
+
 /// `excluded` is whether the file or folder under the cursor is excluded now:
 /// it is included again, otherwise excluded.
 pub fn toggle_hermes_exclusion(
@@ -255,9 +215,9 @@ pub fn toggle_hermes_exclusion(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     if !excluded {
-        return super::quick_fix::exclude_from_hermes(hermes, vec![path], actions);
+        return exclude_from_hermes(hermes, vec![path], actions);
     }
-    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::path_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -301,31 +261,6 @@ pub fn hermes_included(
         }
     };
     actions.push(Action::ShowNotice(text));
-}
-
-/// The file with the new role is written: the module follows it, and the
-/// column asks again.
-pub fn role_saved(
-    hermes: &mut Hermes,
-    result: Result<Filing, FilingWriteError>,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    match result {
-        Ok(filing) => {
-            let (applies, task) = super::lifecycle::apply_saved_filing(hermes, filing, ctx);
-            hermes.hermes_column.invalidate_all();
-            hermes.hermes_failed_reads.clear();
-            actions.push(Action::ShowNotice(super::lifecycle::saved_filing_notice(
-                applies, ctx,
-            )));
-            task
-        }
-        Err(error) => {
-            role_save_failed(hermes, &error, ctx, actions);
-            Task::none()
-        }
-    }
 }
 
 /// Opens the settings on the Read errors page.
@@ -372,7 +307,6 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        HermesFileMessage::RoleSaved(result) => return role_saved(hermes, *result, ctx, actions),
         HermesFileMessage::ProcessAgainFound(result) => {
             process_found_again(hermes, result, ctx, actions);
             return Task::none();
@@ -444,7 +378,6 @@ pub fn update(
         HermesFileMessage::FileOnce
         | HermesFileMessage::WatchSource
         | HermesFileMessage::AddTarget
-        | HermesFileMessage::RoleSaved(_)
         | HermesFileMessage::ProcessAgainFound(_)
         | HermesFileMessage::TextlessFound(_)
         | HermesFileMessage::ConfirmProcessAgain

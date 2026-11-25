@@ -389,7 +389,6 @@ mod tests {
                 | Msg::GitViewNoticeDetails
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
-                | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 // Loanwords German uses for these file kinds, as in "Kaputter Link".

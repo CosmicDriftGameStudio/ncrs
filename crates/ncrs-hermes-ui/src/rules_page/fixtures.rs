@@ -1,5 +1,5 @@
 use super::*;
-use ncrs_index::{Index, Rule, RuleConditions, RuleId, TargetId};
+use ncrs_index::{Index, Rule, RuleConditions, RuleId, RuleOrigin, TargetId};
 use std::collections::BTreeSet;
 
 /// The `n`th id (from 1) an index hands out.

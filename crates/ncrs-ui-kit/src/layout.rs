@@ -135,10 +135,6 @@ pub const MENU_WIDTH: f32 = 300.0;
 pub const MENU_SUB_WIDTH: f32 = 340.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;
-/// The quick-fix menu: wider than the context menu for a target path, with a
-/// two-line header above its entries.
-pub const QUICK_FIX_WIDTH: f32 = 480.0;
-pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
 
 /// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
 /// or ending there when it would not fit.

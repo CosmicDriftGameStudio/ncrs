@@ -445,10 +445,8 @@ impl App {
             | Message::Sorting(_)
             | Message::Targets(_)
             | Message::Suggest(_)
-            | Message::QuickFix(_)
             | Message::SavedQueries(_)
             | Message::Tags(_)
-            | Message::Reviews(_)
             | Message::Activity(_)) => self.update_hermes_plain(plain),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
