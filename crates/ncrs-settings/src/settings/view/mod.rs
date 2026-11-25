@@ -382,12 +382,17 @@ fn feature_matches(feature: SettingsFeature, query: &str, view: &SettingsView<'_
         .any(|setting| row_matches(setting, query))
 }
 
-/// The page's label or its theme name contains the query (lower case).
+/// The page's label, its theme name or the title of one of its groups that the
+/// app fills contains the query (lower case).
 fn feature_name_matches(feature: SettingsFeature, query: &str, lang: Language) -> bool {
     contains_query(lang.text(feature_label(feature)), query)
         || feature_theme_name(feature)
             .and_then(|name| lang.futurama_name(name))
             .is_some_and(|name| contains_query(name, query))
+        || feature == SettingsFeature::Hermes
+            && [Msg::SortingSourcesTitle, Msg::SortingTargetsTitle]
+                .into_iter()
+                .any(|title| contains_query(lang.text(title), query))
 }
 
 fn row_matches(setting: &SettingRow<'_>, query: &str) -> bool {

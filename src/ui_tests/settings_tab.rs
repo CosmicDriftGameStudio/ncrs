@@ -241,17 +241,19 @@ fn the_search_filters_the_rows_by_label() {
     ))));
     let switch_hidden = simulator(&app).find("On").is_err();
     assert!(switch_hidden);
-    simulator(&app).find("Rules").expect("the rules row");
+    simulator(&app).find("Sorting").expect("the page with the rules");
 }
 
 #[test]
 fn the_pages_of_hermes_are_always_in_the_list() {
     let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
     let shows = |label: &str| simulator(&app).find(label).is_ok();
-    for label in ["Index", "Sorting", "Rules", "Tags", "Reports", "Read errors"] {
+    for label in ["Index", "Sorting", "Tags", "Reports", "Read errors"] {
         assert!(shows(label), "{label}");
     }
-    assert!(!shows("Advanced"));
+    for label in ["Rules", "Advanced"] {
+        assert!(!shows(label), "{label}");
+    }
 }
 
 #[test]

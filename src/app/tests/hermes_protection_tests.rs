@@ -1,6 +1,7 @@
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
-use ncrs_intake::LocationMode;
+use ncrs_config::config::SourceSetting;
+use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
 use tempfile::TempDir;
 
 use crate::app::*;
@@ -588,18 +589,28 @@ fn found_in(location_dir: &str, count: usize) -> Vec<PathBuf> {
         .collect()
 }
 
-fn app_with_read_and_archive_folder() -> App {
+fn app_with_a_watched_source() -> App {
     let mut app = App::with_fixed_panels();
-    app.hermes.filing_config.locations = vec![
-        location("/home/test/Scans", LocationMode::Inbox, false),
-        location("/home/test/Archive", LocationMode::Archive, true),
-    ];
+    app.hermes.filing_config.sources = vec![SourceSetting {
+        source: SortSource {
+            path: PathBuf::from("/home/test/Scans"),
+            include: String::new(),
+            exclude: String::new(),
+            targets: Vec::new(),
+            watch: true,
+            transfer: LocationTransfer::Move,
+            no_text: OnNoText::Ask,
+            several: OnSeveralTargets::Ask,
+            own_volume: Some(false),
+        },
+        paused: None,
+    }];
     app
 }
 
 #[tokio::test]
-async fn several_files_in_a_read_folder_ask_before_they_are_processed_again() {
-    let mut app = app_with_read_and_archive_folder();
+async fn several_files_in_a_watched_source_ask_before_they_are_processed_again() {
+    let mut app = app_with_a_watched_source();
     let found = found_in("/home/test/Scans", 3);
 
     settle(
@@ -614,7 +625,7 @@ async fn several_files_in_a_read_folder_ask_before_they_are_processed_again() {
 
 #[tokio::test]
 async fn cancelling_the_question_queues_nothing() {
-    let mut app = app_with_read_and_archive_folder();
+    let mut app = app_with_a_watched_source();
     settle(
         &mut app,
         Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
@@ -636,7 +647,7 @@ async fn cancelling_the_question_queues_nothing() {
 
 #[tokio::test]
 async fn confirming_the_question_queues_the_files() {
-    let mut app = app_with_read_and_archive_folder();
+    let mut app = app_with_a_watched_source();
     settle(
         &mut app,
         Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
@@ -658,8 +669,8 @@ async fn confirming_the_question_queues_the_files() {
 }
 
 #[tokio::test]
-async fn one_file_or_files_outside_read_folders_are_processed_without_a_question() {
-    let mut app = app_with_read_and_archive_folder();
+async fn one_file_or_files_outside_watched_sources_are_processed_without_a_question() {
+    let mut app = app_with_a_watched_source();
     for found in [
         found_in("/home/test/Scans", 1),
         found_in("/home/test/Archive", 3),
