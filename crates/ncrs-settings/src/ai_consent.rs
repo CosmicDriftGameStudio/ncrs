@@ -464,4 +464,26 @@ mod tests {
             None
         );
     }
+
+    /// Sample documents reach the model with these fields (`document_line` in
+    /// `ncrs-ai`), whatever they are sent for.
+    #[test]
+    fn every_agreement_about_sample_documents_names_all_their_fields() {
+        for item in [
+            Msg::SettingsAiConsentItemRules,
+            Msg::SettingsAiConsentItemSuggest,
+            Msg::SettingsAiConsentItemSuggestFile,
+        ] {
+            let english = ncrs_i18n::Language::English.text(item);
+            assert!(
+                english.contains("(sender, recipient, kind, date, number, tags)"),
+                "{english}"
+            );
+            let german = ncrs_i18n::Language::German.text(item);
+            assert!(
+                german.contains("(Absender, Empfänger, Art, Datum, Nummer, Tags)"),
+                "{german}"
+            );
+        }
+    }
 }

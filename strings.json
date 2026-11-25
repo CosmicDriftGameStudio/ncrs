@@ -3975,20 +3975,20 @@
     {
       "key": "settings.ai_consent_item_suggest",
       "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when you ask it to suggest rules for a target. A target is a folder where files are filed into.",
-      "en": "When you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, kind, date).",
-      "de": "Wenn du Hermes bittest, Regeln für ein Ziel vorzuschlagen: die Ordner und Dateinamen von bis zu 12 Beispieldokumenten je Ordner des Ziels und was Hermes darin gefunden hat (Absender, Art, Datum)."
+      "en": "When you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, recipient, kind, date, number, tags).",
+      "de": "Wenn du Hermes bittest, Regeln für ein Ziel vorzuschlagen: die Ordner und Dateinamen von bis zu 12 Beispieldokumenten je Ordner des Ziels und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
     },
     {
       "key": "settings.ai_consent_item_suggest_file",
       "context": "One point of the list of what goes to the AI model on another computer: what Hermes shows the model when you ask it for a rule for one file that no rule takes. A target is a folder where files are filed into.",
-      "en": "When you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind) and the folders and file names of up to 12 sample documents of the target.",
-      "de": "Wenn du Hermes um eine Regel für eine Datei bittest: was Hermes in der Datei gefunden hat (Absender, Art) und die Ordner und Dateinamen von bis zu 12 Beispieldokumenten des Ziels."
+      "en": "When you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind), the folders of up to 12 sample documents of the target and what Hermes found in them (sender, recipient, kind, date, number, tags).",
+      "de": "Wenn du Hermes um eine Regel für eine Datei bittest: was Hermes in der Datei gefunden hat (Absender, Art), die Ordner von bis zu 12 Beispieldokumenten des Ziels und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
     },
     {
       "key": "settings.ai_consent_item_rules",
       "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it works out how a folder is organised.",
-      "en": "When Hermes works out how a folder is organised: the folders of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags).",
-      "de": "Wenn Hermes erkennt, wie ein Ordner aufgebaut ist: die Ordner von Beispieldokumenten und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
+      "en": "When Hermes works out how a folder is organised: the folders and file names of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags).",
+      "de": "Wenn Hermes erkennt, wie ein Ordner aufgebaut ist: die Ordner und Dateinamen von Beispieldokumenten und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
     },
     {
       "key": "settings.ai_consent_item_names",
