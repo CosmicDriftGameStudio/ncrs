@@ -146,7 +146,7 @@ fn watch_locations<W: Watcher>(
                 io::ErrorKind::NotFound => notify::Error::path_not_found(),
                 _ => notify::Error::io(err),
             })
-            .and_then(|_| W::new(handler, config))
+            .and_then(|_| W::new(handler, config.clone()))
             .and_then(|mut watcher| {
                 watcher
                     .watch(&location.path, RecursiveMode::Recursive)
