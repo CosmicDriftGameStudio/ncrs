@@ -5,6 +5,8 @@ mod backup;
 mod condition_store;
 mod documents;
 mod error;
+#[cfg(test)]
+mod eval_seed;
 mod filed_inbox;
 mod folder_pick;
 mod hermes_column;

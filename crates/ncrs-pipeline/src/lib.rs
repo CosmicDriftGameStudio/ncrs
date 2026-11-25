@@ -6,6 +6,8 @@
 
 mod ai_step;
 mod clock;
+#[cfg(test)]
+mod eval_base;
 mod load;
 mod runner;
 mod step;
