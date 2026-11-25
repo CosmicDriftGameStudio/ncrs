@@ -93,10 +93,10 @@ rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 sandbox = ["dep:ncrs-sandbox"]
 # The real-trash scene, the in-memory stores and the guards that panic in tests,
 # for the tests of the app.
-test-support = []
+test-support = ["tokio/fs", "tokio/io-util"]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["test-util"] }
+tokio = { version = "1", features = ["test-util", "fs", "io-util"] }
 
 [lints]
 workspace = true

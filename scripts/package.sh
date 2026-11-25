@@ -47,7 +47,7 @@ usage() {
 
 # Absolute path of an existing file or directory.
 absolute() {
-  if [ -d "$1" ]; then
+  if [[ -d "$1" ]]; then
     (cd "$1" && pwd)
   else
     echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
@@ -85,7 +85,7 @@ check_layout() {
   (cd "$root" && find . -type f -o -type l | sort | while read -r f; do ls -l "$f"; done)
   local missing=0 path
   for path in "$@"; do
-    if [ ! -f "$root/$path" ]; then
+    if [[ ! -f "$root/$path" ]]; then
       echo "error: missing in $root: $path" >&2
       missing=1
     fi
@@ -145,17 +145,17 @@ llama_vulkan_module_for() {
 
 parse_licenses_option() {
   licenses=""
-  if [ "$#" -eq 0 ]; then
+  if [[ "$#" -eq 0 ]]; then
     return 0
   fi
-  if [ "$#" -ne 2 ] || [ "$1" != "--licenses" ]; then
+  if [[ "$#" -ne 2 ]] || [[ "$1" != "--licenses" ]]; then
     usage
   fi
   licenses="$(absolute "$2")"
 }
 
 package_archive() {
-  [ "$#" -ge 4 ] || usage
+  [[ "$#" -ge 4 ]] || usage
   local triple="$1" binary pdfium_dir out_dir
   binary="$(absolute "$2")"
   pdfium_dir="$(absolute "$3")"
@@ -164,8 +164,8 @@ package_archive() {
   shift 4
   licenses=""
   local llama=""
-  while [ "$#" -gt 0 ]; do
-    [ "$#" -ge 2 ] || usage
+  while [[ "$#" -gt 0 ]]; do
+    [[ "$#" -ge 2 ]] || usage
     case "$1" in
       --licenses) licenses="$(absolute "$2")" ;;
       --llama) llama="$(absolute "$2")" ;;
@@ -175,11 +175,11 @@ package_archive() {
   done
   local llama_libraries
   llama_libraries="$(llama_libraries_for "$triple")"
-  if [ -n "$llama_libraries" ] && [ -z "$llama" ]; then
+  if [[ -n "$llama_libraries" ]] && [[ -z "$llama" ]]; then
     echo "error: $triple needs --llama <dir> (scripts/llama-runtime-dir.sh $triple)" >&2
     exit 2
   fi
-  if [ -z "$llama_libraries" ] && [ -n "$llama" ]; then
+  if [[ -z "$llama_libraries" ]] && [[ -n "$llama" ]]; then
     echo "error: $triple links llama.cpp in; --llama does not apply" >&2
     exit 2
   fi
@@ -187,7 +187,7 @@ package_archive() {
   local library_name library_subdir
   read -r library_name library_subdir <<<"$(library_for "$triple")"
   local library="$pdfium_dir/$library_subdir/$library_name"
-  [ -f "$library" ] || { echo "error: no $library_name in $pdfium_dir/$library_subdir" >&2; exit 1; }
+  [[ -f "$library" ]] || { echo "error: no $library_name in $pdfium_dir/$library_subdir" >&2; exit 1; }
 
   local name="ncrs-$triple" binary_name=ncrs
   case "$triple" in *-windows-*) binary_name=ncrs.exe ;; esac
@@ -200,7 +200,7 @@ package_archive() {
   cp "$repo_root/LICENSE" "$repo_root/README.md" "$stage/"
   # The notices of pdfium and of the components built into it (FreeType, ICU,
   # zlib, ...) must ship with the library.
-  [ -f "$pdfium_dir/LICENSE" ] && [ -d "$pdfium_dir/licenses" ] \
+  [[ -f "$pdfium_dir/LICENSE" ]] && [[ -d "$pdfium_dir/licenses" ]] \
     || { echo "error: no LICENSE and licenses/ in $pdfium_dir" >&2; exit 1; }
   mkdir -p "$stage/licenses/pdfium"
   cp "$pdfium_dir/LICENSE" "$stage/licenses/pdfium/"
@@ -221,27 +221,27 @@ package_archive() {
       done
       ;;
   esac
-  if [ -n "$licenses" ]; then
+  if [[ -n "$licenses" ]]; then
     cp "$licenses" "$stage/THIRD_PARTY_LICENSES.html"
     expected+=(THIRD_PARTY_LICENSES.html)
   fi
-  if [ -n "$llama" ]; then
+  if [[ -n "$llama" ]]; then
     local llama_library backend llama_subdir
     llama_subdir="$(llama_library_subdir_for "$triple")"
     for llama_library in $llama_libraries; do
       # -L: the file in lib/ is a symlink chain; the stage holds a regular file
       # under the soname.
-      [ -f "$llama/$llama_subdir/$llama_library" ] \
+      [[ -f "$llama/$llama_subdir/$llama_library" ]] \
         || { echo "error: no $llama_library in $llama/$llama_subdir" >&2; ls -l "$llama/$llama_subdir" >&2; exit 1; }
       cp -L "$llama/$llama_subdir/$llama_library" "$stage/$llama_library"
       expected+=("$llama_library")
     done
-    [ -f "$llama/backends/$(llama_vulkan_module_for "$triple")" ] \
+    [[ -f "$llama/backends/$(llama_vulkan_module_for "$triple")" ]] \
       || { echo "error: no $(llama_vulkan_module_for "$triple") in $llama/backends" >&2; ls -l "$llama/backends" >&2; exit 1; }
     mkdir -p "$stage/backends"
     cp -RL "$llama/backends/." "$stage/backends/"
     for backend in "$stage"/backends/*; do
-      [ -f "$backend" ] || { echo "error: $backend is not a file" >&2; exit 1; }
+      [[ -f "$backend" ]] || { echo "error: $backend is not a file" >&2; exit 1; }
       expected+=("backends/$(basename "$backend")")
     done
     case "$triple" in
@@ -270,7 +270,7 @@ package_archive() {
       list_zip "$out_dir/$name.zip"
       echo "archive $name-portable.zip:"
       list_zip "$out_dir/$name-portable.zip"
-      [ -z "$llama" ] || ls -l "$out_dir/$name.zip" "$out_dir/$name-portable.zip"
+      [[ -z "$llama" ]] || ls -l "$out_dir/$name.zip" "$out_dir/$name-portable.zip"
       ;;
     *)
       tar -czf "$out_dir/$name.tar.gz" -C "$out_dir" "$name"
@@ -284,13 +284,13 @@ package_archive() {
         echo "$listing" | grep -qx "$name/$path" \
           || { echo "error: $name.tar.gz does not contain $path" >&2; exit 1; }
       done
-      [ -z "$llama" ] || { ls -l "$out_dir/$name.tar.gz"; du -h "$out_dir/$name.tar.gz"; }
+      [[ -z "$llama" ]] || { ls -l "$out_dir/$name.tar.gz"; du -h "$out_dir/$name.tar.gz"; }
       ;;
   esac
 }
 
 package_app() {
-  [ "$#" -ge 4 ] || usage
+  [[ "$#" -ge 4 ]] || usage
   local source_dir version min_macos out_dir
   source_dir="$(absolute "$1")"
   version="$2"
@@ -300,10 +300,10 @@ package_app() {
   shift 4
   parse_licenses_option "$@"
 
-  [ -f "$source_dir/ncrs" ] || { echo "error: no ncrs binary in $source_dir" >&2; exit 1; }
-  [ -f "$source_dir/libpdfium.dylib" ] || { echo "error: no libpdfium.dylib in $source_dir" >&2; exit 1; }
+  [[ -f "$source_dir/ncrs" ]] || { echo "error: no ncrs binary in $source_dir" >&2; exit 1; }
+  [[ -f "$source_dir/libpdfium.dylib" ]] || { echo "error: no libpdfium.dylib in $source_dir" >&2; exit 1; }
 
-  [ -f "$source_dir/licenses/pdfium/LICENSE" ] \
+  [[ -f "$source_dir/licenses/pdfium/LICENSE" ]] \
     || { echo "error: no licenses/pdfium/LICENSE in $source_dir" >&2; exit 1; }
 
   local app="$out_dir/ncrs.app"
@@ -318,7 +318,7 @@ package_app() {
   mkdir -p "$app/Contents/Resources/licenses"
   cp -R "$source_dir/licenses/pdfium" "$app/Contents/Resources/licenses/pdfium"
   local expected=(Contents/MacOS/ncrs Contents/Frameworks/libpdfium.dylib Contents/Resources/ncrs.icns Contents/Info.plist Contents/Resources/licenses/pdfium/LICENSE)
-  if [ -n "$licenses" ]; then
+  if [[ -n "$licenses" ]]; then
     # Inside Resources so it is covered by the bundle signature.
     cp "$licenses" "$app/Contents/Resources/THIRD_PARTY_LICENSES.html"
     expected+=(Contents/Resources/THIRD_PARTY_LICENSES.html)
@@ -333,10 +333,10 @@ package_app() {
 
 # package_app with the binary swapped for <binary> and the given bundle ID.
 package_app_with_binary() {
-  [ "$#" -ge 6 ] || usage
+  [[ "$#" -ge 6 ]] || usage
   local bundle_id="$1" source_dir="$2" swapped_binary="$3"
   shift 3
-  [ -f "$swapped_binary" ] || { echo "error: no binary at $swapped_binary" >&2; exit 1; }
+  [[ -f "$swapped_binary" ]] || { echo "error: no binary at $swapped_binary" >&2; exit 1; }
   local out_dir="$3"
 
   local stage_root
@@ -353,22 +353,22 @@ package_app_with_binary() {
 }
 
 package_sandbox_app() {
-  [ "$#" -ge 5 ] || usage
+  [[ "$#" -ge 5 ]] || usage
   package_app_with_binary "$SANDBOX_BUNDLE_ID" "$@"
 }
 
 package_store_app() {
-  [ "$#" -ge 5 ] || usage
+  [[ "$#" -ge 5 ]] || usage
   local source_dir="$1" store_binary="$2" version="$3" profile="$4" out_dir="$5"
   shift 5
-  [ -f "$profile" ] || { echo "error: no provisioning profile at $profile" >&2; exit 1; }
+  [[ -f "$profile" ]] || { echo "error: no provisioning profile at $profile" >&2; exit 1; }
   # App Review rejects private API (guideline 2.5.1). _CGShieldingWindowLevel is
   # public and does not match: the private ones have an upper-case letter after CGS.
   local undefined_symbols private_symbols
   undefined_symbols="$(nm -u "$store_binary")" \
     || { echo "error: nm failed on $store_binary" >&2; exit 1; }
   private_symbols="$(printf '%s\n' "$undefined_symbols" | grep -E '^_(CGS|SLS)[A-Z]' || true)"
-  [ -z "$private_symbols" ] \
+  [[ -z "$private_symbols" ]] \
     || { echo "error: $store_binary references private API:" >&2; echo "$private_symbols" >&2; exit 1; }
   package_app_with_binary "$STORE_BUNDLE_ID" "$source_dir" "$store_binary" "$version" "$STORE_MIN_MACOS" "$out_dir" "$@"
   out_dir="$(absolute "$out_dir")"
@@ -388,7 +388,7 @@ package_store_app() {
 # Fails unless the signed app has (sandboxed) or lacks (plain) the App Sandbox
 # entitlement.
 check_sandbox() {
-  [ "$#" -eq 2 ] || usage
+  [[ "$#" -eq 2 ]] || usage
   local app="$1" expected="$2" entitlements
   case "$expected" in
     sandboxed | plain) ;;
@@ -406,7 +406,7 @@ check_sandbox() {
   case "$entitlements" in
     *"$sandbox_entitlement"*) actual=sandboxed ;;
   esac
-  if [ "$actual" != "$expected" ]; then
+  if [[ "$actual" != "$expected" ]]; then
     echo "error: $app is $actual, expected $expected" >&2
     exit 1
   fi
@@ -417,13 +417,13 @@ check_sandbox() {
 # application and team identifier in the entitlements, the given profile
 # embedded and both slices in the executable and the library.
 check_store() {
-  [ "$#" -ge 3 ] || usage
+  [[ "$#" -ge 3 ]] || usage
   local app="$1" profile="$2" bundle_id entitlements file arch
   shift 2
   codesign --verify --deep --strict "$app" \
     || { echo "error: $app does not pass codesign --verify --deep --strict" >&2; exit 1; }
   bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
-  [ "$bundle_id" = "$STORE_BUNDLE_ID" ] \
+  [[ "$bundle_id" = "$STORE_BUNDLE_ID" ]] \
     || { echo "error: bundle ID is $bundle_id, expected $STORE_BUNDLE_ID" >&2; exit 1; }
   check_sandbox "$app" sandboxed
   entitlements="$(codesign -d --entitlements - --xml "$app" 2>/dev/null | tr -d '[:space:]')"
@@ -441,7 +441,7 @@ check_store() {
   # The installer keeps these modes; an owner-only file is unreadable for the user.
   local unreadable
   unreadable="$(find "$app" ! -perm -o+r | head -n 1)"
-  [ -z "$unreadable" ] || { echo "error: $unreadable is not world-readable" >&2; exit 1; }
+  [[ -z "$unreadable" ]] || { echo "error: $unreadable is not world-readable" >&2; exit 1; }
   for file in "$app/Contents/MacOS/ncrs" "$app/Contents/Frameworks/libpdfium.dylib"; do
     for arch in "$@"; do
       lipo "$file" -verify_arch "$arch" \
@@ -469,7 +469,7 @@ highest_symbol_version() {
 }
 
 package_linux() {
-  [ "$#" -eq 5 ] || usage
+  [[ "$#" -eq 5 ]] || usage
   local triple="$1" stage version out_dir nfpm
   stage="$(absolute "$2")"
   version="$3"
@@ -489,19 +489,19 @@ package_linux() {
   local binary="$stage/ncrs" library="$stage/libpdfium.so" path
   for path in ncrs libpdfium.so LICENSE README.md THIRD_PARTY_LICENSES.html \
     licenses/pdfium/LICENSE share/applications/ncrs.desktop share/icons/hicolor; do
-    [ -e "$stage/$path" ] || { echo "error: no $path in $stage" >&2; exit 1; }
+    [[ -e "$stage/$path" ]] || { echo "error: no $path in $stage" >&2; exit 1; }
   done
 
   # The x86_64 build runs the Hermes model with llama.cpp as shared libraries
   # and backend modules next to the binary; the aarch64 build links it in.
   local llama_libraries=() backends=()
-  if [ "$arch" = amd64 ]; then
+  if [[ "$arch" = amd64 ]]; then
     mapfile -t llama_libraries < <(llama_libraries_for "$triple")
     for path in "${llama_libraries[@]}" backends/"$(llama_vulkan_module_for "$triple")"; do
-      [ -f "$stage/$path" ] || { echo "error: no $path in $stage" >&2; exit 1; }
+      [[ -f "$stage/$path" ]] || { echo "error: no $path in $stage" >&2; exit 1; }
     done
     mapfile -t backends < <(cd "$stage/backends" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
-    [ "${#backends[@]}" -gt 1 ] || { echo "error: no CPU backend modules in $stage/backends" >&2; exit 1; }
+    [[ "${#backends[@]}" -gt 1 ]] || { echo "error: no CPU backend modules in $stage/backends" >&2; exit 1; }
   fi
 
   # What the dynamic loader needs before main() runs. Anything outside this
@@ -530,7 +530,7 @@ package_linux() {
       esac
     done
   done
-  [ "$unexpected" -eq 0 ] || exit 1
+  [[ "$unexpected" -eq 0 ]] || exit 1
 
   # The lowest glibc / libstdc++ / libgcc the binaries run on is whatever they
   # were linked against, so it is read from them, not written down.
@@ -539,13 +539,13 @@ package_linux() {
   glibcxx="$(highest_symbol_version GLIBCXX "${elf_files[@]}")"
   cxxabi="$(highest_symbol_version CXXABI "${elf_files[@]}")"
   gcc="$(highest_symbol_version GCC "${elf_files[@]}")"
-  [ -n "$glibc" ] || { echo "error: no GLIBC_ symbol versions found in $binary" >&2; exit 1; }
+  [[ -n "$glibc" ]] || { echo "error: no GLIBC_ symbol versions found in $binary" >&2; exit 1; }
   echo "minimum versions: glibc ${glibc}, GLIBCXX ${glibcxx:-none}, CXXABI ${cxxabi:-none}, GCC ${gcc:-none}"
 
   # Capability names of the rpm. Soname capabilities instead of package names
   # because Fedora, RHEL and openSUSE name the packages differently.
   rpm_capability() {
-    if [ -n "$2" ]; then echo "$1($2)(64bit)"; else echo "$1()(64bit)"; fi
+    if [[ -n "$2" ]]; then echo "$1($2)(64bit)"; else echo "$1()(64bit)"; fi
   }
   # Debian's libstdc++6 and libgcc-s1 carry the gcc version (14.2.0), not the
   # GLIBCXX_ or GCC_ symbol version, so only libc6 can be versioned. A
@@ -563,7 +563,7 @@ package_linux() {
   local config format built
   config="$(mktemp)"
   trap 'rm -f "${config:-}"' RETURN
-  if [ "$arch" = amd64 ]; then
+  if [[ "$arch" = amd64 ]]; then
     grep -v '^# llama:' "$repo_root/packaging/linux/nfpm.yaml" > "$config"
   else
     sed '/^# llama:begin/,/^# llama:end/d' "$repo_root/packaging/linux/nfpm.yaml" > "$config"
@@ -572,7 +572,7 @@ package_linux() {
     built="$out_dir/ncrs-$triple.$format"
     rm -f "$built"
     "$nfpm" package --config "$config" --packager "$format" --target "$built"
-    [ -f "$built" ] || { echo "error: nfpm wrote no $built" >&2; exit 1; }
+    [[ -f "$built" ]] || { echo "error: nfpm wrote no $built" >&2; exit 1; }
   done
 
   local expected=(
@@ -619,7 +619,7 @@ check_listing() {
   return "$missing"
 }
 
-[ "$#" -ge 1 ] || usage
+[[ "$#" -ge 1 ]] || usage
 command="$1"
 shift
 case "$command" in

@@ -207,7 +207,7 @@ fn append<W: std::io::Write>(
     }
     header.set_entry_type(kind);
     header.set_size(data.len() as u64);
-    header.set_mode(0o644);
+    header.set_mode(0o644); // NOSONAR a test archive
     header.set_mtime(1_700_000_000);
     header.set_cksum();
     builder.append(&header, data).unwrap();

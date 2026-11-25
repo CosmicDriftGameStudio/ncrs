@@ -6,7 +6,7 @@
 # Usage: scripts/aur-package.sh <version> <sha256-x86_64> <sha256-aarch64> <out-dir>
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
+if [[ "$#" -ne 4 ]]; then
   echo "usage: $0 <version> <sha256-x86_64> <sha256-aarch64> <out-dir>" >&2
   exit 2
 fi

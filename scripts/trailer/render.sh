@@ -11,7 +11,7 @@ export NCRS_PDFIUM_DIR="${NCRS_PDFIUM_DIR:-$PWD/target/pdfium/lib}"
 cargo test -p ncrs --features media-tools trailer_frames -- --ignored
 
 cd scripts/trailer
-[ -d node_modules ] || bun install
+[[ -d node_modules ]] || bun install --frozen-lockfile --ignore-scripts
 bun stage.ts
 
 for video in ncrs-trailer.mp4 web/en.mp4 social.mp4; do

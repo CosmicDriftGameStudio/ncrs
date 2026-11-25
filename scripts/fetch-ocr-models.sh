@@ -17,7 +17,7 @@ text-detection.onnx 2499479 a917b23dbd9524b465df7e922641b3ff2981623df4ded5a02340
 text-recognition.onnx 9713177 86c145c2edb96c8caed5b1ebb8f44d706408922211451c309c625157dd6061c5
 "
 
-if [ "$#" -ne 1 ]; then
+if [[ "$#" -ne 1 ]]; then
   echo "usage: $0 <dest-dir>" >&2
   exit 2
 fi
@@ -35,17 +35,17 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$dest"
 echo "$MODELS" | while read -r name size expected; do
-  [ -n "$name" ] || continue
-  curl --fail --silent --show-error --location \
+  [[ -n "$name" ]] || continue
+  curl --proto '=https' --fail --silent --show-error --location \
     --max-filesize "$size" \
     --output "$work/$name" \
     "$BASE_URL/$name"
-  if [ "$(size_of "$work/$name")" != "$size" ]; then
+  if [[ "$(size_of "$work/$name")" != "$size" ]]; then
     echo "size mismatch for $name: expected $size, got $(size_of "$work/$name")" >&2
     exit 1
   fi
   actual="$(sha256 "$work/$name")"
-  if [ "$actual" != "$expected" ]; then
+  if [[ "$actual" != "$expected" ]]; then
     echo "checksum mismatch for $name: expected $expected, got $actual" >&2
     exit 1
   fi

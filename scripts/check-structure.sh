@@ -35,7 +35,7 @@ done
 
 while IFS= read -r file; do
   lines=$(wc -l < "$file")
-  if [ "$lines" -gt 1000 ] && ! printf '%s\n' "$oversized_allowance" | grep -qxF "$file"; then
+  if [[ "$lines" -gt 1000 ]] && ! printf '%s\n' "$oversized_allowance" | grep -qxF "$file"; then
     echo "::error file=$file::$file has $lines lines; split it (limit about 1000)"
     status=1
   fi

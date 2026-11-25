@@ -185,7 +185,7 @@ function writeCaptions(items: Item[], target: string) {
   for (const item of items) {
     if (spoken(item)) {
       let done = 0;
-      for (const sentence of (item.say.match(/[^.!?]+(?:[.!?]+|$)/g) ?? []).filter((part) => part.trim() !== "")) {
+      for (const sentence of (item.say.match(/[^.!?]+[.!?]*/g) ?? []).filter((part) => part.trim() !== "")) {
         const from = at + VOICE_DELAY + (done / item.say.length) * item.voice;
         done += sentence.length;
         cues.push(`${stamp(from)} --> ${stamp(at + VOICE_DELAY + (done / item.say.length) * item.voice)}\n${sentence.trim()}`);
