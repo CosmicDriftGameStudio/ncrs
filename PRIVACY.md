@@ -20,12 +20,12 @@ ncrs connects to the network only for the purposes below. The update check runs 
   - incoming documents, the text of every document Hermes reads to sort it, including the text recognised in scans and photos, also of all documents in sources, again after updates that change what Hermes reads;
   - filed documents, everything you write to Hermes in the chat, the last question Hermes asked with its answer options (including file and folder names in them), and your previous request and message that the new one refers to;
   - folders and file names, in four cases:
-    - when Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags);
-    - when you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, kind, date);
-    - when you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind) and the folders and file names of up to 12 sample documents of the target;
+    - when Hermes works out how a folder is organised: the folders and file names of sample documents and what Hermes found in them (sender, recipient, kind, date, number, tags);
+    - when you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, recipient, kind, date, number, tags);
+    - when you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind), the folders of up to 12 sample documents of the target and what Hermes found in them (sender, recipient, kind, date, number, tags);
     - when you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).
 
-  Learning or suggesting a filing rule sends both filed documents and folders and file names, so it needs both agreements. A settings file from before this split, with its single agreement for a server, no longer counts: you are asked again for each kind. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
+  Working out how a folder is organised and suggesting a rule send both filed documents and folders and file names, so they need both agreements. A settings file from before this split, with its single agreement for a server, no longer counts: you are asked again for each kind. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day, without a click. It is on by default for a download from the project's releases page. See below.
 
