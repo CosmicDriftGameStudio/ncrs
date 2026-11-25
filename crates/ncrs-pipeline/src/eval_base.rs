@@ -654,7 +654,7 @@ fn the_documents_are_in_the_state_a_fresh_reading_leaves_them_in() {
         assert!(index.has_document_text_row(document.id).unwrap());
     }
     let index = run.index.0.lock().unwrap();
-    assert_eq!(index.statistics().unwrap().open_reviews, 0);
+    assert!(index.open_reviews().unwrap().is_empty());
     assert_eq!(
         index.fields_read_version(scan.id).unwrap(),
         FIELDS_READ_VERSION

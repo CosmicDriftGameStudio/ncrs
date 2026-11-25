@@ -26,15 +26,6 @@ pub struct PlanFileRow<M> {
     pub on_press: M,
 }
 
-/// A row of `line_width` pixels: the name, what happens and the chip.
-pub fn plan_file_row<'a, M: Clone + 'a>(
-    file: PlanFileRow<M>,
-    line_width: f32,
-    palette: &Palette,
-) -> Element<'a, M> {
-    plan_line(file, None, line_width, palette)
-}
-
 /// The titles of the two columns, over the rows.
 pub fn plan_header<'a, M: 'a>(name: &str, what: &str, palette: &Palette) -> Element<'a, M> {
     let title = |label: &str| {
@@ -81,7 +72,8 @@ pub struct PlanActionRow<M> {
     pub marked_link: Option<usize>,
 }
 
-/// Like [`plan_file_row`]; the links stand at the right end of the row.
+/// A row of `line_width` pixels: the name, what happens, the chip and the links
+/// at the right end.
 pub fn plan_action_row<'a, M: Clone + 'a>(
     action: PlanActionRow<M>,
     line_width: f32,

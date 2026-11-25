@@ -586,7 +586,7 @@ mod filing_blocks_ui_tests {
     use iced::widget::column;
     use crate::hermes_kit::TargetCheck;
     use crate::kit::PatternField;
-    use crate::plan_rows::{plan_action_row, plan_file_row, PlanActionRow, PlanFileRow, PlanLink};
+    use crate::plan_rows::{plan_action_row, PlanActionRow, PlanFileRow, PlanLink};
     use crate::setting_rows::RowButton;
 
     fn chips<'a>(p: &Palette) -> Cell<'a> {
@@ -671,7 +671,15 @@ mod filing_blocks_ui_tests {
             ]
         };
         column![
-            plan_file_row(file(false), line_width, p),
+            plan_action_row(
+                PlanActionRow {
+                    file: file(false),
+                    links: Vec::new(),
+                    marked_link: None,
+                },
+                line_width,
+                p,
+            ),
             plan_action_row(
                 PlanActionRow {
                     file: file(false),

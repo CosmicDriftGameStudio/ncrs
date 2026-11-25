@@ -79,11 +79,10 @@ fn filing_of<'a>(view: &SettingsView<'a>) -> &'a Filing {
 /// What a folder of the index is for filing; such a folder is changed on the
 /// filing page only.
 fn sorting_role(location: &FilingLocation, filing: &Filing) -> Option<Msg> {
-    let is_target = location.is_target
-        || filing
-            .targets
-            .iter()
-            .any(|setting| same_folder(&setting.target.path, &location.path));
+    let is_target = filing
+        .targets
+        .iter()
+        .any(|setting| same_folder(&setting.target.path, &location.path));
     if is_target {
         Some(Msg::SortingRuleTarget)
     } else if location.mode == LocationMode::Inbox {

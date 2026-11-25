@@ -22,7 +22,6 @@ fn the_release_1_7_0_index_keeps_its_rules_in_order_under_main_and_switches_off_
     let confirmed: Vec<_> = rules.iter().map(|rule| rule.spec.confirmed).collect();
     assert_eq!(confirmed, [false, true, true, false, true]);
     assert!(index.open_reviews().unwrap().is_empty());
-    assert_eq!(index.statistics().unwrap().open_reviews, 0);
 }
 
 #[test]

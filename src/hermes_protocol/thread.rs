@@ -110,10 +110,14 @@ pub fn is_ready(app: &App) -> bool {
 }
 
 pub fn documents_indexed(app: &App) -> Option<u64> {
-    let figures = app
+    let counts = app
         .filing_module_for_test()?
-        .index_figures_reader()?
+        .hermes_counts_reader()?
         .read()
         .ok()?;
-    Some(figures.statistics.document_count)
+    let documents = [counts.inbox, counts.archive]
+        .iter()
+        .map(|of| of.new + of.planned + of.in_review + of.filed)
+        .sum();
+    Some(documents)
 }

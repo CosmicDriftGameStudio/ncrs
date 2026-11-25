@@ -2,11 +2,12 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use chrono::{TimeZone as _, Utc};
+use rusqlite::OptionalExtension as _;
 use tempfile::TempDir;
 
 use crate::{
     Condition, ConditionKind, ContentHash, DocumentSource, InMemoryKeyStore, Index, NewDocument,
-    RuleConditions, RuleSpec,
+    RuleConditions, RuleEvidence, RuleId, RuleSpec,
 };
 
 /// An encrypted index in a temporary directory that lives as long as the guard.
@@ -49,6 +50,27 @@ pub fn rule_spec() -> RuleSpec {
         confirmed: false,
         enabled: true,
     }
+}
+
+/// The evidence a rule was suggested with; `None` for rules made by hand.
+pub fn rule_evidence(index: &Index, id: RuleId) -> Option<RuleEvidence> {
+    index
+        .connection()
+        .query_row(
+            "SELECT matching_in_folder, folder_documents, matching_elsewhere, subtree
+             FROM rule_evidence WHERE rule_id = ?1",
+            [id.get()],
+            |row| {
+                Ok(RuleEvidence {
+                    matching_in_folder: row.get(0)?,
+                    folder_documents: row.get(1)?,
+                    matching_elsewhere: row.get(2)?,
+                    subtree: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .unwrap()
 }
 
 /// Test paths are written with `/`; the subtree range uses the platform separator.

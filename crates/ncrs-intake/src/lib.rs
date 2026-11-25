@@ -92,7 +92,7 @@ pub use take_in::{
     prepare_take_in, take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
-    ChainReading, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PreviewPage,
-    TextChain, TextError, TextSource,
+    ChainReading, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, TextChain,
+    TextError, TextSource,
 };
 pub use watcher::{LocationWatcher, WatchEvent};

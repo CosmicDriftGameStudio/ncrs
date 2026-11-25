@@ -82,14 +82,6 @@ impl Index {
         tx.commit()?;
         Ok(())
     }
-
-    pub fn forget_backlog_path(&self, source: &Path, path: &Path) -> Result<(), IndexError> {
-        self.connection().execute(
-            "DELETE FROM source_backlog WHERE source = ?1 AND path = ?2",
-            [utf8(source)?, utf8(path)?],
-        )?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -124,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn setting_replaces_and_forgetting_removes_per_source_or_path() {
+    fn setting_replaces_and_forgetting_removes_per_source() {
         let (_dir, mut index) = encrypted_index();
         let (inbox, other) = (Path::new("inbox"), Path::new("other"));
         let (a, b) = (PathBuf::from("inbox/a.pdf"), PathBuf::from("inbox/b.pdf"));
@@ -135,11 +127,9 @@ mod tests {
             .set_source_backlog(other, &[(a.clone(), stamp(1, 1))])
             .unwrap();
 
-        index.forget_backlog_path(inbox, &a).unwrap();
-        assert!(!index.is_backlog(inbox, &a, stamp(1, 1)).unwrap());
-        assert!(index.is_backlog(inbox, &b, stamp(2, 2)).unwrap());
-
-        index.set_source_backlog(inbox, &[(a.clone(), stamp(1, 1))]).unwrap();
+        index
+            .set_source_backlog(inbox, &[(a.clone(), stamp(1, 1))])
+            .unwrap();
         assert!(!index.is_backlog(inbox, &b, stamp(2, 2)).unwrap());
         assert!(index.is_backlog(inbox, &a, stamp(1, 1)).unwrap());
 

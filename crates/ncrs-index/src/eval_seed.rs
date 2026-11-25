@@ -495,7 +495,7 @@ fn only_the_listed_documents_are_extracted_with_one_look_at_the_key() {
     assert_eq!(origins.of(Field::Kind), FieldOrigin::Rule(None));
     assert_eq!(origins.of(Field::Number), FieldOrigin::Manual);
     assert!(raw.rules().unwrap().is_empty());
-    assert_eq!(raw.statistics().unwrap().open_reviews, 0);
+    assert!(raw.open_reviews().unwrap().is_empty());
 }
 
 #[test]

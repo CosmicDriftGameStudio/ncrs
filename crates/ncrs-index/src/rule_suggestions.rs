@@ -4,24 +4,10 @@ use rusqlite::{params, OptionalExtension as _};
 use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{
-    Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
-    TargetId,
+    Condition, ConditionKind, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion, TargetId,
 };
 
 impl Index {
-    /// Stores a rule that was suggested from the archive. It is always stored
-    /// unconfirmed, whatever `spec.confirmed` says. A rule with the same
-    /// condition, kind and filing pattern is not duplicated: an unconfirmed
-    /// one gets the new evidence, a confirmed one is left untouched. A
-    /// condition and target the user discarded is not stored again.
-    pub fn suggest_rule(
-        &mut self,
-        spec: &RuleSpec,
-        evidence: RuleEvidence,
-    ) -> Result<RuleSuggestion, IndexError> {
-        self.suggest_rule_in(spec, evidence, &TargetId::main())
-    }
-
     /// Whether `suggest_rule_in` would store it: no confirmed rule says the
     /// same, and it was not discarded for this target.
     pub fn is_new_suggestion(
@@ -38,8 +24,11 @@ impl Index {
         }
     }
 
-    /// `suggest_rule` for one target: only its rules count as the same, and
-    /// only what was discarded for it is not proposed again.
+    /// Stores a rule that was suggested from the archive. It is always stored
+    /// unconfirmed, whatever `spec.confirmed` says. A rule of the target with
+    /// the same condition, kind and filing pattern is not duplicated: an
+    /// unconfirmed one gets the new evidence, a confirmed one is left
+    /// untouched. What the user discarded for the target is not stored again.
     pub fn suggest_rule_in(
         &mut self,
         spec: &RuleSpec,
@@ -74,42 +63,6 @@ impl Index {
                 Ok(RuleSuggestion::Created(id))
             }
         }
-    }
-
-    /// The evidence a rule was suggested with; `None` for rules made by hand.
-    pub fn rule_evidence(&self, id: RuleId) -> Result<Option<RuleEvidence>, IndexError> {
-        let found = self
-            .connection()
-            .query_row(
-                "SELECT matching_in_folder, folder_documents, matching_elsewhere, subtree
-                 FROM rule_evidence WHERE rule_id = ?1",
-                [id.get()],
-                |row| {
-                    Ok(RuleEvidence {
-                        matching_in_folder: row.get(0)?,
-                        folder_documents: row.get(1)?,
-                        matching_elsewhere: row.get(2)?,
-                        subtree: row.get(3)?,
-                    })
-                },
-            )
-            .optional()?;
-        Ok(found)
-    }
-
-    /// The suggested rules the user has not decided on, with the evidence
-    /// they were suggested with, ordered by id.
-    pub fn suggested_rules(&self) -> Result<Vec<(Rule, RuleEvidence)>, IndexError> {
-        let mut suggested = Vec::new();
-        for rule in self.rules()? {
-            if rule.spec.confirmed {
-                continue;
-            }
-            if let Some(evidence) = self.rule_evidence(rule.id)? {
-                suggested.push((rule, evidence));
-            }
-        }
-        Ok(suggested)
     }
 
     /// Confirms a suggested rule, with the values of `edited` for condition,
@@ -151,7 +104,7 @@ impl Index {
     }
 
     /// Removes a suggested rule and remembers its condition and target, so
-    /// `suggest_rule` does not propose them again. `false` when there is no
+    /// `suggest_rule_in` does not propose them again. `false` when there is no
     /// unconfirmed rule with a single condition under this id.
     pub fn discard_rule_suggestion(&mut self, id: RuleId) -> Result<bool, IndexError> {
         let Some(rule) = self.rule(id)? else {
@@ -283,7 +236,7 @@ fn discard_class(kind: ConditionKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::model::{ConditionKind, RuleConditions};
-    use crate::test_support::{encrypted_index, rule_spec};
+    use crate::test_support::{encrypted_index, rule_evidence, rule_spec};
 
     fn text_condition(text: &str) -> RuleConditions {
         RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, text)])
@@ -306,33 +259,37 @@ mod tests {
         }
     }
 
+    fn suggest(index: &mut Index, spec: &RuleSpec, evidence: RuleEvidence) -> RuleSuggestion {
+        index
+            .suggest_rule_in(spec, evidence, &TargetId::main())
+            .unwrap()
+    }
+
     #[test]
     fn a_suggested_rule_is_stored_unconfirmed_with_its_evidence() {
         let (_dir, mut index) = encrypted_index();
 
-        let stored = index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        let stored = suggest(&mut index, &suggestion(), evidence(5, 0));
 
         let RuleSuggestion::Created(id) = stored else {
             panic!("{stored:?}");
         };
         assert!(!index.rule(id).unwrap().unwrap().spec.confirmed);
-        assert_eq!(index.rule_evidence(id).unwrap(), Some(evidence(5, 0)));
+        assert_eq!(rule_evidence(&index, id), Some(evidence(5, 0)));
     }
 
     #[test]
     fn suggesting_again_updates_the_evidence_instead_of_adding_a_rule() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) =
-            index.suggest_rule(&suggestion(), evidence(4, 1)).unwrap()
-        else {
+        let RuleSuggestion::Created(id) = suggest(&mut index, &suggestion(), evidence(4, 1)) else {
             panic!("not created");
         };
 
-        let again = index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        let again = suggest(&mut index, &suggestion(), evidence(5, 0));
 
         assert_eq!(again, RuleSuggestion::Refreshed(id));
         assert_eq!(index.rules().unwrap().len(), 1);
-        assert_eq!(index.rule_evidence(id).unwrap(), Some(evidence(5, 0)));
+        assert_eq!(rule_evidence(&index, id), Some(evidence(5, 0)));
     }
 
     #[test]
@@ -342,35 +299,33 @@ mod tests {
         let id = index.create_rule(&confirmed).unwrap();
         let before = index.rule(id).unwrap();
 
-        let result = index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        let result = suggest(&mut index, &suggestion(), evidence(5, 0));
 
         assert_eq!(result, RuleSuggestion::AlreadyConfirmed(id));
         assert_eq!(index.rule(id).unwrap(), before);
         assert_eq!(index.rules().unwrap().len(), 1);
-        assert_eq!(index.rule_evidence(id).unwrap(), None);
+        assert_eq!(rule_evidence(&index, id), None);
     }
 
     #[test]
     fn a_discarded_suggestion_is_gone_and_not_proposed_again() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) =
-            index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap()
-        else {
+        let RuleSuggestion::Created(id) = suggest(&mut index, &suggestion(), evidence(5, 0)) else {
             panic!("not created");
         };
 
         assert!(index.discard_rule_suggestion(id).unwrap());
-        let again = index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        let again = suggest(&mut index, &suggestion(), evidence(5, 0));
 
         assert_eq!(again, RuleSuggestion::Discarded);
         assert!(index.rules().unwrap().is_empty());
-        assert_eq!(index.rule_evidence(id).unwrap(), None);
+        assert_eq!(rule_evidence(&index, id), None);
         let shouting = RuleSpec {
             conditions: text_condition("COMPANY A LTD"),
             ..suggestion()
         };
         assert_eq!(
-            index.suggest_rule(&shouting, evidence(5, 0)).unwrap(),
+            suggest(&mut index, &shouting, evidence(5, 0)),
             RuleSuggestion::Discarded,
             "the condition is compared without case"
         );
@@ -379,9 +334,7 @@ mod tests {
     #[test]
     fn a_discarded_condition_is_only_discarded_for_its_target() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) =
-            index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap()
-        else {
+        let RuleSuggestion::Created(id) = suggest(&mut index, &suggestion(), evidence(5, 0)) else {
             panic!("not created");
         };
         index.discard_rule_suggestion(id).unwrap();
@@ -390,7 +343,7 @@ mod tests {
             ..suggestion()
         };
 
-        let stored = index.suggest_rule(&other_target, evidence(5, 0)).unwrap();
+        let stored = suggest(&mut index, &other_target, evidence(5, 0));
 
         assert!(matches!(stored, RuleSuggestion::Created(_)));
     }
@@ -407,39 +360,9 @@ mod tests {
     }
 
     #[test]
-    fn the_list_has_the_unconfirmed_suggestions_with_their_evidence() {
-        let (_dir, mut index) = encrypted_index();
-        index.create_rule(&suggestion()).unwrap();
-        let by_hand = RuleSpec {
-            confirmed: false,
-            conditions: text_condition("agency b"),
-            ..suggestion()
-        };
-        index.create_rule(&by_hand).unwrap();
-        let other = RuleSpec {
-            conditions: text_condition("company c"),
-            ..suggestion()
-        };
-        let RuleSuggestion::Created(id) = index.suggest_rule(&other, evidence(4, 1)).unwrap()
-        else {
-            panic!("not created");
-        };
-
-        let listed = index.suggested_rules().unwrap();
-
-        let [(rule, shown)] = listed.as_slice() else {
-            panic!("{listed:?}");
-        };
-        assert_eq!(rule.id, id);
-        assert_eq!(*shown, evidence(4, 1));
-    }
-
-    #[test]
     fn confirming_sets_the_rule_confirmed_and_keeps_its_values() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) =
-            index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap()
-        else {
+        let RuleSuggestion::Created(id) = suggest(&mut index, &suggestion(), evidence(5, 0)) else {
             panic!("not created");
         };
 
@@ -448,16 +371,13 @@ mod tests {
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
         assert_eq!(rule.spec.conditions, suggestion().conditions);
-        assert!(index.suggested_rules().unwrap().is_empty());
         assert!(!index.confirm_suggested_rule(id, &suggestion()).unwrap());
     }
 
     #[test]
     fn confirming_an_edited_suggestion_stores_the_edit_and_does_not_bring_the_original_back() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) =
-            index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap()
-        else {
+        let RuleSuggestion::Created(id) = suggest(&mut index, &suggestion(), evidence(5, 0)) else {
             panic!("not created");
         };
         let edited = RuleSpec {
@@ -468,7 +388,7 @@ mod tests {
         };
 
         assert!(index.confirm_suggested_rule(id, &edited).unwrap());
-        let again = index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        let again = suggest(&mut index, &suggestion(), evidence(5, 0));
 
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
@@ -482,13 +402,13 @@ mod tests {
     #[test]
     fn another_target_is_another_rule() {
         let (_dir, mut index) = encrypted_index();
-        index.suggest_rule(&suggestion(), evidence(5, 0)).unwrap();
+        suggest(&mut index, &suggestion(), evidence(5, 0));
         let other_target = RuleSpec {
             filing_pattern: "{year}/Other".to_owned(),
             ..suggestion()
         };
 
-        let stored = index.suggest_rule(&other_target, evidence(5, 0)).unwrap();
+        let stored = suggest(&mut index, &other_target, evidence(5, 0));
 
         assert!(matches!(stored, RuleSuggestion::Created(_)));
         assert_eq!(index.rules().unwrap().len(), 2);
@@ -508,16 +428,12 @@ mod tests {
     #[test]
     fn a_sender_suggestion_is_not_duplicated_by_the_next_analysis() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) = index
-            .suggest_rule(&sender_suggestion(), evidence(5, 0))
-            .unwrap()
+        let RuleSuggestion::Created(id) = suggest(&mut index, &sender_suggestion(), evidence(5, 0))
         else {
             panic!("not created");
         };
 
-        let again = index
-            .suggest_rule(&sender_suggestion(), evidence(4, 1))
-            .unwrap();
+        let again = suggest(&mut index, &sender_suggestion(), evidence(4, 1));
 
         assert_eq!(again, RuleSuggestion::Refreshed(id));
         assert_eq!(index.rules().unwrap().len(), 1);
@@ -526,9 +442,7 @@ mod tests {
     #[test]
     fn a_discarded_sender_suggestion_is_not_proposed_again() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) = index
-            .suggest_rule(&sender_suggestion(), evidence(5, 0))
-            .unwrap()
+        let RuleSuggestion::Created(id) = suggest(&mut index, &sender_suggestion(), evidence(5, 0))
         else {
             panic!("not created");
         };
@@ -539,10 +453,7 @@ mod tests {
             ..sender_suggestion()
         };
 
-        assert_eq!(
-            index.suggest_rule(&shouting, evidence(5, 0)).unwrap(),
-            RuleSuggestion::Discarded
-        );
+        assert_eq!(suggest(&mut index, &shouting, evidence(5, 0)), RuleSuggestion::Discarded);
     }
 
     #[test]
@@ -555,28 +466,21 @@ mod tests {
             )]),
             ..suggestion()
         };
-        let RuleSuggestion::Created(word_id) = index.suggest_rule(&word, evidence(5, 0)).unwrap()
-        else {
+        let RuleSuggestion::Created(word_id) = suggest(&mut index, &word, evidence(5, 0)) else {
             panic!("not created");
         };
         index.discard_rule_suggestion(word_id).unwrap();
 
-        let RuleSuggestion::Created(sender_id) = index
-            .suggest_rule(&sender_suggestion(), evidence(5, 0))
-            .unwrap()
+        let RuleSuggestion::Created(sender_id) =
+            suggest(&mut index, &sender_suggestion(), evidence(5, 0))
         else {
             panic!("the sender suggestion was blocked");
         };
         index.discard_rule_suggestion(sender_id).unwrap();
 
+        assert_eq!(suggest(&mut index, &word, evidence(5, 0)), RuleSuggestion::Discarded);
         assert_eq!(
-            index.suggest_rule(&word, evidence(5, 0)).unwrap(),
-            RuleSuggestion::Discarded
-        );
-        assert_eq!(
-            index
-                .suggest_rule(&sender_suggestion(), evidence(5, 0))
-                .unwrap(),
+            suggest(&mut index, &sender_suggestion(), evidence(5, 0)),
             RuleSuggestion::Discarded
         );
     }
@@ -584,9 +488,7 @@ mod tests {
     #[test]
     fn editing_the_value_of_a_sender_suggestion_does_not_bring_the_original_back() {
         let (_dir, mut index) = encrypted_index();
-        let RuleSuggestion::Created(id) = index
-            .suggest_rule(&sender_suggestion(), evidence(5, 0))
-            .unwrap()
+        let RuleSuggestion::Created(id) = suggest(&mut index, &sender_suggestion(), evidence(5, 0))
         else {
             panic!("not created");
         };
@@ -598,9 +500,7 @@ mod tests {
         assert!(index.confirm_suggested_rule(id, &edited).unwrap());
 
         assert_eq!(
-            index
-                .suggest_rule(&sender_suggestion(), evidence(5, 0))
-                .unwrap(),
+            suggest(&mut index, &sender_suggestion(), evidence(5, 0)),
             RuleSuggestion::Discarded
         );
     }

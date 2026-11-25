@@ -1,4 +1,4 @@
-use ncrs_index::{Field, SenderAliasKind};
+use ncrs_index::Field;
 use ncrs_intake::TextError;
 
 use super::*;
@@ -292,10 +292,14 @@ fn a_confirmed_alias_counts_as_the_sender() {
 
     setup.index(|index| {
         index
-            .offer_sender_alias("Acme", SenderAliasKind::Name, "Roadrunner Traps")
+            .connection()
+            .execute_batch(
+                "INSERT OR IGNORE INTO sender (name, name_key) VALUES ('Acme', 'acme');
+                 INSERT INTO sender_alias (sender_id, kind, value, state)
+                 SELECT id, 'name', 'roadrunner traps', 'confirmed'
+                 FROM sender WHERE name_key = 'acme';",
+            )
             .unwrap();
-        let offered = index.sender_aliases().unwrap();
-        index.confirm_sender_alias(offered[0].id).unwrap();
     });
     place_of(&setup.plan(&source), "a.txt");
 }

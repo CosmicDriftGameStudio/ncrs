@@ -87,7 +87,7 @@ impl Index {
     }
 
     /// Counts for the display of the automatic filing. Documents that are
-    /// missing are left out. Cheaper than `statistics`: no page statistics.
+    /// missing are left out.
     pub fn hermes_counts(&self) -> Result<HermesCounts, IndexError> {
         let excluded = is_excluded_sql("d.path");
         let open_reviews_without_text = self.count(

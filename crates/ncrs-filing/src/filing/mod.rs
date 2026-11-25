@@ -29,7 +29,7 @@ use std::thread;
 
 use ncrs_core::{NoteLink, INDEX_NOT_OPEN};
 use ncrs_index::{
-    ContentHash, Document, HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog,
+    ContentHash, Document, HermesCounts, Index, IndexError, KeyStore, KindCatalog,
     KindLanguage, RecoveryKey,
 };
 #[cfg(target_os = "macos")]
@@ -77,7 +77,7 @@ pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{
     ActivityBatch, ActivityReader, ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader,
-    IndexFigures, IndexFiguresReader, NoteLinkFinder, TextSource,
+    NoteLinkFinder, TextSource,
 };
 use recovery_marker::{clear_unconfirmed, is_unconfirmed, mark_unconfirmed};
 pub use secrets::{SecretText, ShownRecoveryKey};

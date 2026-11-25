@@ -10,7 +10,9 @@ use ncrs_config::config::{Filing, FilingLocation};
 use ncrs_filing::filing::{
     resolve_locations, FilingMessage, FilingModule, LocationStatus, Phase, ResolvedLocation, Work,
 };
+use ncrs_filing::sorting::forget_backlog;
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_intake::SortSource;
 
 use super::filing_job::{run_filing_work, run_filing_work_after};
 use crate::action::{Action, ProtectionStep};
@@ -105,7 +107,10 @@ pub fn apply_saved_filing(
     filing: Filing,
     ctx: &Ctx<'_>,
 ) -> (SavedFilingApplies, Task<Message>) {
-    let forget = forget_removed_locations(hermes, &filing);
+    let forget = Task::batch([
+        forget_removed_locations(hermes, &filing),
+        switch_watching(hermes, &filing, ctx),
+    ]);
     let replaceable = hermes.key_store.is_some()
         && hermes
             .filing
@@ -124,8 +129,7 @@ pub fn apply_saved_filing(
     )
 }
 
-/// The sources and targets and copy or move of the folders the module has
-/// take effect with the next job, and a new folder is watched and scanned at
+/// The sources and targets take effect with the next job, and a new folder is watched and scanned at
 /// once. A removed one or a changed mode waits for the next start.
 /// The new folders are looked up on disk in the background: a dead mount can
 /// hang that, and the answer comes as `LocationsResolved`.
@@ -178,6 +182,28 @@ fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<Path
                 .any(|kept| kept.path.starts_with(path) || path.starts_with(&kept.path))
         })
         .collect()
+}
+
+/// A source that is no longer watched loses its backlog at once, so it is taken
+/// stock of anew even when it is switched on again outside this session.
+fn switch_watching(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
+    let sources = |filing: &Filing| -> Vec<SortSource> {
+        filing.sources.iter().map(|entry| entry.source.clone()).collect()
+    };
+    let switched_off = hermes
+        .watching
+        .switch(&sources(&hermes.filing_config), &sources(filing));
+    let access = hermes
+        .filing
+        .as_ref()
+        .and_then(|module| module.sorting_access(Arc::clone(&ctx.trash.0)));
+    let (false, Some(access)) = (switched_off.is_empty(), access) else {
+        return Task::none();
+    };
+    Task::future(tokio::task::spawn_blocking(move || {
+        forget_backlog(&access, &switched_off)
+    }))
+    .discard()
 }
 
 /// Runs at save time: a module that keeps the old list until the next start

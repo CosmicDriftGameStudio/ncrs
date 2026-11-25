@@ -166,6 +166,16 @@ pub(super) fn watch_with<P: Progress>(
     }
 }
 
+/// The sources are taken stock of anew the next time they are watched: what
+/// came while nobody watched is not new.
+pub fn forget_backlog(access: &SortingAccess, sources: &[PathBuf]) -> Result<(), String> {
+    access.with_index(|index| {
+        sources
+            .iter()
+            .try_for_each(|source| index.forget_backlog(source).map_err(text))
+    })
+}
+
 fn is_paused(access: &SortingAccess, source: &SortSource) -> bool {
     access
         .sources

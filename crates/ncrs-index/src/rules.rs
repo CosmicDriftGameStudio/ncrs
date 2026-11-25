@@ -109,15 +109,6 @@ impl Index {
         self.create_rule_in(spec, RuleOrigin::Hand, &TargetId::main())
     }
 
-    /// A rule of the main target.
-    pub fn create_rule_from(
-        &mut self,
-        spec: &RuleSpec,
-        origin: RuleOrigin,
-    ) -> Result<RuleId, IndexError> {
-        self.create_rule_in(spec, origin, &TargetId::main())
-    }
-
     /// Appended to the order of all rules, so last among those of `target`.
     pub fn create_rule_in(
         &mut self,
@@ -304,21 +295,6 @@ impl Index {
             .connection()
             .execute("DELETE FROM rule WHERE id = ?1", [id.get()])?;
         Ok(changed > 0)
-    }
-
-    /// Hands the rules of `from` to `to`, keeping their order; how many moved.
-    pub fn move_rules_to_target(
-        &mut self,
-        from: &TargetId,
-        to: &TargetId,
-    ) -> Result<usize, IndexError> {
-        let tx = self.conn_mut().transaction()?;
-        let moved = tx.execute(
-            "UPDATE rule SET target = ?2 WHERE target = ?1",
-            [from.as_str(), to.as_str()],
-        )?;
-        tx.commit()?;
-        Ok(moved)
     }
 
     /// Hands one rule to `target` as its last; the rules left behind keep
@@ -715,13 +691,13 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let by_hand = index.create_rule(&rule_spec()).unwrap();
         let from_filing = index
-            .create_rule_from(&rule_spec(), RuleOrigin::Filing)
+            .create_rule_in(&rule_spec(), RuleOrigin::Filing, &TargetId::main())
             .unwrap();
         let from_chat = index
-            .create_rule_from(&rule_spec(), RuleOrigin::Chat)
+            .create_rule_in(&rule_spec(), RuleOrigin::Chat, &TargetId::main())
             .unwrap();
         let outcome = index
-            .suggest_rule(
+            .suggest_rule_in(
                 &RuleSpec {
                     conditions: RuleConditions::all_of(vec![Condition::new(
                         ConditionKind::Word,
@@ -735,6 +711,7 @@ mod tests {
                     matching_elsewhere: 0,
                     subtree: None,
                 },
+                &TargetId::main(),
             )
             .unwrap();
         let crate::model::RuleSuggestion::Created(suggested) = outcome else {

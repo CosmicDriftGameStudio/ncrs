@@ -64,7 +64,6 @@ impl DocumentId {
     }
 }
 id_newtype!(SavedQueryId);
-id_newtype!(SenderAliasId);
 
 /// SHA-256 of the file content. The index stores it; hashing is not its job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -655,7 +654,7 @@ pub struct Rule {
     pub position: i64,
     /// Fixed when the rule is created; `Index::update_rule` keeps it.
     pub origin: RuleOrigin,
-    /// The target the rule files into; `Index::move_rules_to_target` changes it.
+    /// The target the rule files into; `Index::set_rule_target` changes it.
     pub target: TargetId,
     pub spec: RuleSpec,
 }
@@ -672,14 +671,6 @@ impl RuleId {
                 .map_or(1, |highest| highest.saturating_add(1)),
         )
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IndexStatistics {
-    pub schema_version: u32,
-    pub document_count: u64,
-    pub open_reviews: u64,
-    pub full_text_bytes: u64,
 }
 
 /// What the automatic filing has done so far. `open_reviews_without_text`

@@ -206,7 +206,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
     let sender_rule = index.rule(RuleId::new(8)).unwrap().unwrap();
     assert_eq!(sender_rule.spec.tags.len(), 1);
     assert!(sender_rule.spec.tags.contains("services"));
-    assert!(index.rule_evidence(RuleId::new(8)).unwrap().is_some());
+    assert!(crate::test_support::rule_evidence(&index, RuleId::new(8)).is_some());
     let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(crate::model::Field::Kind),
@@ -224,7 +224,7 @@ fn a_version_10_database_turns_its_rule_columns_into_conditions() {
 
 #[test]
 fn a_version_11_database_gains_sender_aliases() {
-    use crate::model::{Condition, ConditionKind, RuleConditions, RuleId, SenderAliasKind};
+    use crate::model::{Condition, ConditionKind, RuleConditions, RuleId};
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -255,9 +255,6 @@ fn a_version_11_database_gains_sender_aliases() {
         RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")])
     );
     assert!(index.sender_aliases().unwrap().is_empty());
-    assert!(index
-        .offer_sender_alias("Company A", SenderAliasKind::Domain, "company-a.example")
-        .unwrap());
     let violations = index
         .conn
         .prepare("PRAGMA foreign_key_check")
@@ -324,7 +321,7 @@ fn a_version_12_database_keeps_its_rule_order_and_enables_every_confirmed_rule()
 #[test]
 fn a_version_13_database_keeps_its_discarded_suggestions_as_word_suggestions() {
     use crate::model::{
-        Condition, ConditionKind, RuleConditions, RuleId, RuleSpec, RuleSuggestion,
+        Condition, ConditionKind, RuleConditions, RuleId, RuleSpec, RuleSuggestion, TargetId,
     };
 
     let dir = TempDir::new().unwrap();
@@ -351,7 +348,7 @@ fn a_version_13_database_keeps_its_discarded_suggestions_as_word_suggestions() {
     let mut index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
     assert_eq!(user_version(&index), latest_version());
-    let evidence = index.rule_evidence(RuleId::new(3)).unwrap().unwrap();
+    let evidence = crate::test_support::rule_evidence(&index, RuleId::new(3)).unwrap();
     assert_eq!(evidence.matching_in_folder, 5);
     assert_eq!(evidence.subtree, None);
     let suggestion = |kind| RuleSpec {
@@ -368,21 +365,29 @@ fn a_version_13_database_keeps_its_discarded_suggestions_as_word_suggestions() {
     };
     assert_eq!(
         index
-            .suggest_rule(&suggestion(ConditionKind::Word), evidence.clone())
+            .suggest_rule_in(
+                &suggestion(ConditionKind::Word),
+                evidence.clone(),
+                &TargetId::main()
+            )
             .unwrap(),
         RuleSuggestion::Discarded
     );
     assert!(matches!(
         index
-            .suggest_rule(&suggestion(ConditionKind::Sender), evidence)
+            .suggest_rule_in(
+                &suggestion(ConditionKind::Sender),
+                evidence,
+                &TargetId::main()
+            )
             .unwrap(),
         RuleSuggestion::Created(_)
     ));
 }
 
 #[test]
-fn a_version_14_database_keeps_its_sender_aliases_and_offers_a_discarded_value_to_another_sender() {
-    use crate::model::{SenderAliasKind, SenderAliasState};
+fn a_version_14_database_keeps_its_sender_aliases() {
+    use crate::model::SenderAliasState;
 
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
@@ -406,24 +411,15 @@ fn a_version_14_database_keeps_its_sender_aliases_and_offers_a_discarded_value_t
     let aliases = index.sender_aliases().unwrap();
     let kept: Vec<_> = aliases
         .iter()
-        .map(|alias| (alias.id.get(), alias.sender.as_str(), alias.state))
+        .map(|alias| (alias.sender.as_str(), alias.value.as_str(), alias.state))
         .collect();
     assert_eq!(
         kept,
         [
-            (7, "A GmbH", SenderAliasState::Offered),
-            (9, "A GmbH", SenderAliasState::Discarded)
+            ("A GmbH", "a.example", SenderAliasState::Offered),
+            ("A GmbH", "shared.example", SenderAliasState::Discarded)
         ]
     );
-    assert!(!index
-        .offer_sender_alias("A GmbH", SenderAliasKind::Domain, "shared.example")
-        .unwrap());
-    assert!(index
-        .offer_sender_alias("B GmbH", SenderAliasKind::Domain, "shared.example")
-        .unwrap());
-    assert!(!index
-        .offer_sender_alias("B GmbH", SenderAliasKind::Domain, "a.example")
-        .unwrap());
 }
 
 #[test]

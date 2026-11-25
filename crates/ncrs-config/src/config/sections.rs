@@ -522,9 +522,10 @@ pub struct FilingLocation {
     pub path: PathBuf,
     pub mode: LocationMode,
     pub images: bool,
+    /// This and the next two only carry what a file from before sources and
+    /// targets says until it is written in the new form.
     pub is_target: bool,
     pub transfer: LocationTransfer,
-    /// Hermes files the new files of a read folder by itself, with `transfer`.
     pub continuous: bool,
 }
 
