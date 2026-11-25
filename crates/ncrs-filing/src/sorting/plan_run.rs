@@ -172,7 +172,7 @@ pub fn plan(
 }
 
 /// The plan of a watched source, which nobody looks at before it is run.
-pub(super) fn plan_watched(
+pub fn plan_watched(
     access: &SortingAccess,
     request: &PlanRequest,
 ) -> Result<SortPlan, PlanError> {
@@ -208,11 +208,11 @@ pub fn plan_with_rules(
 }
 
 /// The folder of a source as its files are spelled.
-pub(super) fn source_root(source: &SortSource) -> Result<PathBuf, ReadError> {
+pub fn source_root(source: &SortSource) -> Result<PathBuf, ReadError> {
     canonical_path(&source.path).map_err(|err| read_error(&source.path, &err))
 }
 
-pub(super) fn filter_of(source: &SortSource, root: &Path) -> Result<PathFilter, String> {
+pub fn filter_of(source: &SortSource, root: &Path) -> Result<PathFilter, String> {
     PathFilter::new(root.to_path_buf(), &source.include, &source.exclude, false).map_err(text)
 }
 
@@ -252,7 +252,7 @@ fn plan_over(
 
 /// The files of the source with nothing filtered out but hidden ones, links
 /// and what lies in a target below it.
-pub(super) fn files_of(
+pub fn files_of(
     access: &SortingAccess,
     root: &Path,
     files: &PlanFiles,

@@ -218,7 +218,7 @@ fn kept_section<'a>(dialog: &CleanupDialog, ctx: ViewCtx<'a>) -> Option<Element<
     Some(section.into())
 }
 
-pub(super) fn cleanup_dialog<'a>(
+pub fn cleanup_dialog<'a>(
     dialog: &'a CleanupDialog,
     name: &str,
     ctx: ViewCtx<'a>,

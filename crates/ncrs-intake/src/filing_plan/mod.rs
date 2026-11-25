@@ -172,7 +172,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, search: &SearchText) -> bool 
     conditions_hold(&spec.conditions, input, search)
 }
 
-pub(crate) fn conditions_hold(
+pub fn conditions_hold(
     conditions: &RuleConditions,
     input: &PlanInput<'_>,
     search: &SearchText,
@@ -241,7 +241,7 @@ fn condition_outcome(
 /// The known fields, completed from the rule and from the text. Kind and tags
 /// are the rule's; number, date and amount are read from the text where the
 /// rule says how.
-pub(crate) fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
+pub fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     let mut fields = input.fields.clone();
     if fields.sender.is_none() {
         fields.sender = spec.conditions.required_sender().map(str::to_owned);
@@ -711,7 +711,7 @@ pub fn has_lost_ending(segment: &str) -> bool {
 }
 
 mod strict;
-pub(crate) use strict::{render_strict, Unrenderable};
+pub use strict::{render_strict, Unrenderable};
 
 #[cfg(test)]
 mod tests;

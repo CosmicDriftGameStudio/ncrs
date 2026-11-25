@@ -367,7 +367,7 @@ fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {
 
 /// Reads the rules again, if the page is up: what the targets page shows of
 /// them changed behind the rules' own back.
-pub(super) fn reload(hermes: &mut Hermes) -> Task<Message> {
+pub fn reload(hermes: &mut Hermes) -> Task<Message> {
     if hermes.rules.is_none() {
         return Task::none();
     }

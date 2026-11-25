@@ -898,7 +898,7 @@ fn after_success(state: &mut State, job: &Job) {
     }
 }
 
-pub(crate) fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
+pub fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
     match &error {
         ActionError::GitNotFound => return switch_off(state, Unavailable::GitMissing),
         ActionError::DisabledInSandbox => return switch_off(state, Unavailable::Sandbox),

@@ -75,7 +75,7 @@ pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     .into()
 }
 
-pub(super) fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
+pub fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
     let (msg, count) = match scope {
         Scope::Marked(count) => (Msg::ReposSelected, count),
         Scope::Favourites(count) => (Msg::ReposScopeFavourites, count),

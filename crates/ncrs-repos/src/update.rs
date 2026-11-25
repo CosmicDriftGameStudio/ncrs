@@ -88,13 +88,13 @@ fn is_stale(state: &State, ctx: &Ctx) -> bool {
         .is_none_or(|age| age >= REFRESH_EVERY)
 }
 
-pub(crate) fn enqueue_read(state: &mut State, path: PathBuf) {
+pub fn enqueue_read(state: &mut State, path: PathBuf) {
     if !state.read_queue.contains(&path) {
         state.read_queue.push_back(path);
     }
 }
 
-pub(crate) fn pump_reads(state: &mut State, ctx: &Ctx) -> Task<Message> {
+pub fn pump_reads(state: &mut State, ctx: &Ctx) -> Task<Message> {
     let limit = usize::from(ctx.settings.concurrency).max(1);
     let mut started = Vec::new();
     while state.reads_running < limit {

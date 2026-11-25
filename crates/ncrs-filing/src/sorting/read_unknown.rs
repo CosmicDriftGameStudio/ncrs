@@ -36,7 +36,7 @@ pub enum ReadProblem {
     Failed(String),
 }
 
-pub(super) struct KnownFile {
+pub struct KnownFile {
     pub document: Document,
     pub hash: ContentHash,
     pub text: String,
@@ -49,13 +49,13 @@ pub(super) struct KnownFile {
     pub copied_from_here: bool,
 }
 
-pub(super) struct NotRead {
+pub struct NotRead {
     pub hash: Option<ContentHash>,
     pub document: Option<DocumentId>,
     pub problem: ReadProblem,
 }
 
-pub(super) enum Found {
+pub enum Found {
     /// The user excluded the file from filing, or it is gone.
     Nothing,
     NotRead(NotRead),
@@ -72,7 +72,7 @@ impl Found {
     }
 }
 
-pub(super) fn find(
+pub fn find(
     access: &SortingAccess,
     location: &Location,
     path: &Path,
@@ -306,7 +306,7 @@ fn load(
     ))
 }
 
-pub(super) fn stamp_at(path: &Path) -> Option<FileStamp> {
+pub fn stamp_at(path: &Path) -> Option<FileStamp> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if !metadata.is_file() {
         return None;

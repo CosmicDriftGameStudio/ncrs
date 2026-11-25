@@ -71,7 +71,7 @@ fn questions_of(
 /// The questions that wait for the user: the plan of the source that has them,
 /// the page of the sources when there are several, the activity when nothing
 /// waits any more.
-pub(super) fn open_waiting(hermes: &Hermes, actions: &mut Vec<Action>) {
+pub fn open_waiting(hermes: &Hermes, actions: &mut Vec<Action>) {
     let asking: Vec<&SourceSetting> = hermes
         .filing_config
         .sources

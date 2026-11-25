@@ -62,7 +62,7 @@ fn open(hermes: &mut Hermes, dialog: Suggest, ctx: &Ctx<'_>) -> Outcome {
 
 /// The index may be open now, which a dialog over a target just added waits
 /// for.
-pub(super) fn resume(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+pub fn resume(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     let waits = hermes
         .suggest
         .as_ref()
@@ -152,7 +152,7 @@ fn start(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     )
 }
 
-pub(super) fn update(hermes: &mut Hermes, message: SuggestMessage, ctx: &Ctx<'_>) -> Outcome {
+pub fn update(hermes: &mut Hermes, message: SuggestMessage, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = handle(hermes, message, ctx, &mut actions);
     (task, actions)

@@ -21,7 +21,7 @@ const PROMPT_SHOWN: usize = 120;
 
 /// The text git printed comes from a server or a helper: no control
 /// characters (an escape sequence must not reach the screen), cut short.
-pub(crate) fn shown_prompt(prompt: &str) -> String {
+pub fn shown_prompt(prompt: &str) -> String {
     let plain: String = prompt.chars().filter(|c| !c.is_control()).collect();
     ellipsize_end(plain.trim(), PROMPT_SHOWN)
 }

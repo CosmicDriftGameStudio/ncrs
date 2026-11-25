@@ -13,7 +13,7 @@ use super::{
 /// The same file under another spelling of its name, in the same folder: on a
 /// case-insensitive file system `Rechnung.pdf` and `rechnung.pdf` are one entry.
 /// Two names of one file (links) are two entries and do not count.
-pub(crate) fn is_respelling(from: &Path, to: &Path) -> bool {
+pub fn is_respelling(from: &Path, to: &Path) -> bool {
     let (Some(from_parent), Some(to_parent), Some(name)) =
         (from.parent(), to.parent(), to.file_name())
     else {

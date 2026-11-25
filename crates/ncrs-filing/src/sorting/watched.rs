@@ -81,12 +81,12 @@ pub fn run_watched<P: Progress>(
 }
 
 /// What the system says of the volume a source is on.
-pub(super) struct Volume<M, O> {
+pub struct Volume<M, O> {
     pub is_mounted: M,
     pub is_own: O,
 }
 
-pub(super) fn watch_with<P: Progress>(
+pub fn watch_with<P: Progress>(
     access: &SortingAccess,
     source: &SortSource,
     files: &WatchedFiles,

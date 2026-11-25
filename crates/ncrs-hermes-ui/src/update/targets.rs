@@ -43,7 +43,7 @@ pub fn open_dialog_then_suggest(
     check_folder(hermes, ctx)
 }
 
-pub(super) fn update(
+pub fn update(
     hermes: &mut Hermes,
     message: TargetsMessage,
     ctx: &Ctx<'_>,
@@ -155,7 +155,7 @@ fn check_folder(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
 }
 
 /// Reads the states of all targets, off the UI thread.
-pub(super) fn load_states(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+pub fn load_states(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     let ids: Vec<_> = hermes
         .filing_config
         .targets

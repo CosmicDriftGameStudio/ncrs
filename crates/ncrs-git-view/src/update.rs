@@ -31,7 +31,7 @@ use crate::view::{DIFF_ID, FILTER_ID};
 use crate::wip;
 
 /// Lines an arrow key scrolls the diff by.
-pub(crate) const SCROLL_LINES: f32 = 3.0;
+pub const SCROLL_LINES: f32 = 3.0;
 
 pub type Outcome = (Task<Message>, Option<Action>);
 
@@ -670,7 +670,7 @@ fn close_wip_diff(state: &mut State) {
     }
 }
 
-pub(crate) fn step(cursor: usize, delta: isize, len: usize) -> usize {
+pub fn step(cursor: usize, delta: isize, len: usize) -> usize {
     cursor
         .saturating_add_signed(delta)
         .min(len.saturating_sub(1))
@@ -746,7 +746,7 @@ fn open_diff(state: &mut State, index: usize) -> Task<Message> {
     reload_diff(state)
 }
 
-pub(crate) fn reload_diff(state: &mut State) -> Task<Message> {
+pub fn reload_diff(state: &mut State) -> Task<Message> {
     let Some(shown) = &state.diff else {
         return Task::none();
     };
@@ -797,7 +797,7 @@ fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
     scroll_to_hunk(state)
 }
 
-pub(crate) fn scroll_to_hunk(state: &State) -> Task<Message> {
+pub fn scroll_to_hunk(state: &State) -> Task<Message> {
     let Some(shown) = &state.diff else {
         return Task::none();
     };

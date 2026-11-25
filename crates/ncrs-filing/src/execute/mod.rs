@@ -25,9 +25,9 @@ use ncrs_fs::transfer::{sweep_partials, transfer_to, Counting, Move, OnConflict,
 mod respell;
 mod run_steps;
 mod trash;
-pub(crate) use respell::is_respelling;
+pub use respell::is_respelling;
 use respell::{is_same_entry, respell, respell_back, restore_respelled};
-pub(crate) use run_steps::{open_run_batch, run_one};
+pub use run_steps::{open_run_batch, run_one};
 pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
 
 /// One move. Paths are absolute.
@@ -717,6 +717,6 @@ fn within_recorded_roots(index: &Index, batch: BatchId, item: &JournalItem) -> b
 #[cfg(test)]
 mod run_safety_tests;
 #[cfg(test)]
-pub(crate) mod test_runs;
+pub mod test_runs;
 #[cfg(test)]
 mod tests;

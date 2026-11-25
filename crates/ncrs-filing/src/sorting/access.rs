@@ -17,15 +17,15 @@ use crate::index_work::IndexWork;
 /// What sorting works with; one copy per job.
 #[derive(Clone)]
 pub struct SortingAccess {
-    pub(crate) slot: Arc<Mutex<Option<Index>>>,
-    pub(crate) sources: Vec<SourceSetting>,
-    pub(crate) targets: Vec<TargetSetting>,
-    pub(crate) text_chain: Arc<TextChain>,
-    pub(crate) own: OwnDetails,
-    pub(crate) load: Load,
-    pub(crate) trash: Arc<dyn ncrs_fs::Trash>,
-    pub(crate) snapshots: Snapshots,
-    pub(crate) index_work: IndexWork,
+    pub slot: Arc<Mutex<Option<Index>>>,
+    pub sources: Vec<SourceSetting>,
+    pub targets: Vec<TargetSetting>,
+    pub text_chain: Arc<TextChain>,
+    pub own: OwnDetails,
+    pub load: Load,
+    pub trash: Arc<dyn ncrs_fs::Trash>,
+    pub snapshots: Snapshots,
+    pub index_work: IndexWork,
 }
 
 impl fmt::Debug for SortingAccess {
@@ -201,6 +201,6 @@ fn resolved(target: &SortTarget) -> SortTarget {
 }
 
 /// For `map_err`.
-pub(super) fn text<E: fmt::Display>(err: E) -> String {
+pub fn text<E: fmt::Display>(err: E) -> String {
     err.to_string()
 }

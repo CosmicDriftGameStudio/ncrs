@@ -49,12 +49,12 @@ pub enum ReadError {
     Io(String),
 }
 
-pub(crate) struct Walked {
-    pub(crate) relative: PathBuf,
-    pub(crate) stamp: FileStamp,
+pub struct Walked {
+    pub relative: PathBuf,
+    pub stamp: FileStamp,
 }
 
-pub(crate) fn read_error(folder: &Path, err: &io::Error) -> ReadError {
+pub fn read_error(folder: &Path, err: &io::Error) -> ReadError {
     if err.kind() == io::ErrorKind::NotFound {
         ReadError::Gone
     } else {
@@ -72,7 +72,7 @@ fn walk_error(folder: &Path, relative: &Path, err: &io::Error) -> Result<(), Rea
     }
 }
 
-pub(crate) fn walk(
+pub fn walk(
     base: &Path,
     relative: &Path,
     omitted: &[PathBuf],
@@ -132,7 +132,7 @@ pub(crate) fn walk(
 
 /// The files below `folder` by relative path; the folders in `omitted` are not
 /// entered.
-pub(crate) fn walk_sorted(
+pub fn walk_sorted(
     folder: &Path,
     omitted: &[PathBuf],
     progress: &ReadProgress,
@@ -148,13 +148,13 @@ pub(crate) fn walk_sorted(
     Ok(walked)
 }
 
-pub(crate) fn is_stopped(stop: Option<&AtomicBool>) -> bool {
+pub fn is_stopped(stop: Option<&AtomicBool>) -> bool {
     stop.is_some_and(|flag| flag.load(Ordering::Relaxed))
 }
 
 /// `work` on every item, spread over the threads the load allows, each at the
 /// load's priority; the results keep the order.
-pub(crate) fn in_parallel<T: Sync, R: Send>(
+pub fn in_parallel<T: Sync, R: Send>(
     items: &[T],
     load: Load,
     work: impl Fn(&T) -> R + Sync,

@@ -54,7 +54,7 @@ fn key_line<'a, M: 'a>(keys: &[(&str, &str)], palette: &Palette) -> Element<'a, 
 }
 
 /// The field at the left end of a bar that names the page.
-pub(crate) fn mode_field<'a, M: 'a>(mode: &str, palette: &Palette) -> Element<'a, M> {
+pub fn mode_field<'a, M: 'a>(mode: &str, palette: &Palette) -> Element<'a, M> {
     container(
         text(mode.to_owned())
             .size(font_size::SMALL)

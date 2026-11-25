@@ -23,19 +23,19 @@ use crate::reading_support::is_stopped;
 /// A word must be this long to tell documents apart.
 const MIN_WORD_CHARS: usize = 5;
 /// The share of its group a condition has to take in.
-pub(super) const MIN_SHARE_IN_GROUP_PERCENT: usize = 80;
+pub const MIN_SHARE_IN_GROUP_PERCENT: usize = 80;
 /// A group with fewer documents proves nothing.
-pub(super) const MIN_GROUP_DOCUMENTS: usize = 3;
+pub const MIN_GROUP_DOCUMENTS: usize = 3;
 /// How many words are tried per group.
 const WORDS_TRIED: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Home {
+pub enum Home {
     Target,
     Source,
 }
 
-pub(super) struct Doc {
+pub struct Doc {
     pub path: PathBuf,
     /// Below the root of the target or source it lies in.
     pub relative: PathBuf,
@@ -46,7 +46,7 @@ pub(super) struct Doc {
     pub home: Home,
 }
 
-pub(super) struct Material {
+pub struct Material {
     pub docs: Vec<Doc>,
     /// The sources of the target that were read.
     pub sources: usize,
@@ -60,7 +60,7 @@ pub(super) struct Material {
 /// The documents with text below the target and below each source that files
 /// into it; a content known in both counts once, as the target's. `None` when
 /// stopped. Reads the index only.
-pub(super) fn load(
+pub fn load(
     access: &SortingAccess,
     target: &TargetId,
     stop: Option<&AtomicBool>,
@@ -195,7 +195,7 @@ impl Material {
 }
 
 /// A rule that only exists to be tried.
-pub(super) fn candidate(
+pub fn candidate(
     target: &TargetId,
     name: &str,
     conditions: RuleConditions,
@@ -221,7 +221,7 @@ pub(super) fn candidate(
     }
 }
 
-pub(super) fn word_condition(word: &str) -> RuleConditions {
+pub fn word_condition(word: &str) -> RuleConditions {
     RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, word)])
 }
 
@@ -236,7 +236,7 @@ fn words_of(content: &str) -> HashSet<String> {
 }
 
 /// Per document the words it has; computed once for all groups.
-pub(super) struct WordIndex {
+pub struct WordIndex {
     per_doc: Vec<HashSet<String>>,
 }
 
@@ -290,7 +290,7 @@ impl WordIndex {
 }
 
 /// What a candidate rule does to all documents.
-pub(super) struct Tried {
+pub struct Tried {
     /// Documents the rule files, by index into the material.
     pub filed: Vec<usize>,
     /// The first place a document of the group got.
@@ -301,7 +301,7 @@ pub(super) struct Tried {
 
 /// Decides with the candidate over the documents that have `word`, as a run
 /// would; `group` is the group the rule is for.
-pub(super) fn try_word(
+pub fn try_word(
     material: &Material,
     words: &WordIndex,
     word: &str,
@@ -336,12 +336,12 @@ pub(super) fn try_word(
 }
 
 /// The path as the user reads it, whatever the system.
-pub(super) fn slashed(path: &Path) -> String {
+pub fn slashed(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
 /// Whether a sender was not read by a model, so a condition may rest on it.
-pub(super) fn sender_is_firm(doc: &Doc) -> bool {
+pub fn sender_is_firm(doc: &Doc) -> bool {
     doc.fields.sender.is_some()
         && !matches!(
             doc.origins.of(ncrs_index::Field::Sender),

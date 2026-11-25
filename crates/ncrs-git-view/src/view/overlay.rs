@@ -30,7 +30,7 @@ use crate::shortcuts::Shortcut;
 use crate::state::State;
 use crate::update::menu_target_of;
 
-pub(super) const MENU_WIDTH: f32 = 300.0;
+pub const MENU_WIDTH: f32 = 300.0;
 pub const NAME_ID: &str = "git-new-branch-name";
 pub const RENAME_ID: &str = "git-rename-branch-name";
 
@@ -339,7 +339,7 @@ fn new_branch_dialog<'a>(draft: &'a NewBranch, ctx: ViewCtx<'a>) -> Element<'a, 
 }
 
 /// The dialog with a cancel button and a confirm button that Enter presses.
-pub(super) fn dialog_frame<'a>(
+pub fn dialog_frame<'a>(
     title: &str,
     content: Element<'a, Message>,
     confirm: &str,

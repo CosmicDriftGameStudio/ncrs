@@ -5,10 +5,10 @@ use ncrs_index::{BatchKind, Transfer};
 use super::*;
 
 #[derive(Debug)]
-pub(crate) struct ExecutionReport {
-    pub(crate) batch: BatchId,
+pub struct ExecutionReport {
+    pub batch: BatchId,
     /// In the order of the input.
-    pub(crate) outcomes: Vec<ItemOutcome>,
+    pub outcomes: Vec<ItemOutcome>,
 }
 
 impl ExecutionReport {
@@ -24,7 +24,7 @@ impl ExecutionReport {
     }
 }
 
-pub(crate) fn execute_run(
+pub fn execute_run(
     index: &Index,
     kind: BatchKind,
     name: &str,

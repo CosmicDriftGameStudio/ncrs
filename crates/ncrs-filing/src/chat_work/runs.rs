@@ -75,7 +75,7 @@ fn items_stay_below(source: &Path, target: &Path, done: &[JournalItem]) -> bool 
 
 /// The folders below `root` a run emptied by moving files out of them; `root`
 /// and every folder that still holds anything stay.
-pub(crate) fn remove_emptied_folders<'a>(root: &Path, moved_from: impl Iterator<Item = &'a Path>) {
+pub fn remove_emptied_folders<'a>(root: &Path, moved_from: impl Iterator<Item = &'a Path>) {
     let mut folders: Vec<&Path> = moved_from
         .filter_map(Path::parent)
         .flat_map(|parent| parent.ancestors().take_while(|folder| *folder != root))
@@ -148,7 +148,7 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
 }
 
 /// The runs that can still be put back, newest first.
-pub(crate) fn runs_of_index(index: &Index, limit: usize) -> Result<Vec<RecentRun>, String> {
+pub fn runs_of_index(index: &Index, limit: usize) -> Result<Vec<RecentRun>, String> {
     let mut runs = Vec::new();
     for batch in undoable(index, limit)? {
         runs.extend(recent_run(index, batch)?);
@@ -263,7 +263,7 @@ pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {
 
 /// Takes back all batches of the run, the last one first. A batch that cannot
 /// be taken back at all leaves its files where they are; the others still go.
-pub(crate) fn undo_run(
+pub fn undo_run(
     index: &Index,
     trash: &dyn ncrs_fs::Trash,
     batch: BatchId,

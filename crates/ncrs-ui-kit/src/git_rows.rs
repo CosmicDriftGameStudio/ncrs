@@ -476,7 +476,7 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
     })
 }
 
-pub(crate) fn number_text<'a, M: 'a>(number: Option<u32>, ink: Color) -> Element<'a, M> {
+pub fn number_text<'a, M: 'a>(number: Option<u32>, ink: Color) -> Element<'a, M> {
     container(
         text(number.map(|count| count.to_string()).unwrap_or_default())
             .size(font_size::SMALL)
@@ -522,7 +522,7 @@ fn fit_code(content: &str, width_px: f32) -> String {
 }
 
 /// The line of a diff: it takes the room that is left and ends in `…` where it is cut.
-pub(crate) fn code_text<'a, M: 'a>(content: String, ink: Color) -> Element<'a, M> {
+pub fn code_text<'a, M: 'a>(content: String, ink: Color) -> Element<'a, M> {
     responsive(move |bounds| {
         text(fit_code(&content, bounds.width))
             .font(crate::APP_FONT)

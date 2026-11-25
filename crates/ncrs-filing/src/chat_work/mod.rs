@@ -29,7 +29,7 @@ pub use crate::execute::UndoReport;
 pub use crate::reading_support::{ReadError, ReadProgress, FILE_LIMIT};
 pub use branches::{branch_example, segments};
 pub use reading::{AiCoverage, FolderReading};
-pub(crate) use runs::{remove_emptied_folders, runs_of_index, undo_run};
+pub use runs::{remove_emptied_folders, runs_of_index, undo_run};
 pub use runs::{RecentRun, RunSummary};
 pub use snapshots::Snapshots;
 pub use words::same_word;

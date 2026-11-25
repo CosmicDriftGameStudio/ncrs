@@ -2,9 +2,9 @@
 
 use super::*;
 
-pub(super) const CTX: Ctx = Ctx::new(Language::German);
-pub(super) const WINDOW: Size = Size::new(1740.0, 1130.0);
-pub(super) const SUMMARIES: [&str; 10] = [
+pub const CTX: Ctx = Ctx::new(Language::German);
+pub const WINDOW: Size = Size::new(1740.0, 1130.0);
+pub const SUMMARIES: [&str; 10] = [
     "Rechnungen als PDF exportieren",
     "Rundung der Mehrwertsteuer auf Cent korrigiert",
     "Kassenbuch: Monatsabschluss ergänzt",
@@ -16,9 +16,9 @@ pub(super) const SUMMARIES: [&str; 10] = [
     "Dokumentation der Schnittstelle zum Steuerberater",
     "Abhängigkeiten aktualisiert",
 ];
-pub(super) const AUTHORS: [&str; 3] = ["Lena Hartmann", "Tobias Engel", "Mira Sommer"];
+pub const AUTHORS: [&str; 3] = ["Lena Hartmann", "Tobias Engel", "Mira Sommer"];
 
-pub(super) fn commit(number: usize) -> LogCommit {
+pub fn commit(number: usize) -> LogCommit {
     let spread = (number as u128 + 1).wrapping_mul(0x9e37_79b9_7f4a_7c15_f39c_c060_5ced_c835);
     let id = format!("{spread:032x}{number:08x}");
     LogCommit {
@@ -37,7 +37,7 @@ pub(super) fn commit(number: usize) -> LogCommit {
     }
 }
 
-pub(super) fn branch(name: &str, is_current: bool, ahead: u32, behind: u32) -> BranchInfo {
+pub fn branch(name: &str, is_current: bool, ahead: u32, behind: u32) -> BranchInfo {
     BranchInfo {
         name: name.to_owned(),
         is_current,
@@ -50,14 +50,14 @@ pub(super) fn branch(name: &str, is_current: bool, ahead: u32, behind: u32) -> B
     }
 }
 
-pub(super) fn label(name: &str, kind: RefKind) -> RefLabel {
+pub fn label(name: &str, kind: RefKind) -> RefLabel {
     RefLabel {
         name: name.to_owned(),
         kind,
     }
 }
 
-pub(super) fn file(path: &str, kind: ChangeKind, added: u32, removed: u32) -> ChangedFile {
+pub fn file(path: &str, kind: ChangeKind, added: u32, removed: u32) -> ChangedFile {
     ChangedFile {
         path: path.to_owned(),
         old_path: None,
@@ -70,7 +70,7 @@ pub(super) fn file(path: &str, kind: ChangeKind, added: u32, removed: u32) -> Ch
 }
 
 /// A repository of 40 commits with 7 changed files in the working copy.
-pub(super) fn repository() -> State {
+pub fn repository() -> State {
     let mut state = State {
         root: Some(PathBuf::from("/repo")),
         name: "kassenbuch".to_owned(),
@@ -187,7 +187,7 @@ pub(super) fn repository() -> State {
 }
 
 /// The second row of the list chosen, with its commit on the right.
-pub(super) fn on_commit(state: &mut State) {
+pub fn on_commit(state: &mut State) {
     state.commit_cursor = 0;
     let first = commit(0);
     state.detail = Some(Detail {
@@ -212,7 +212,7 @@ pub(super) fn on_commit(state: &mut State) {
     });
 }
 
-pub(super) fn row(kind: RowKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffRow {
+pub fn row(kind: RowKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffRow {
     DiffRow {
         kind,
         old_line: old,
@@ -221,7 +221,7 @@ pub(super) fn row(kind: RowKind, old: Option<u32>, new: Option<u32>, text: &str)
     }
 }
 
-pub(super) fn local_changes() -> LocalChanges {
+pub fn local_changes() -> LocalChanges {
     use RowKind::{Added, Context, Removed};
     let diff = FileDiff {
         path: "src/steuer/mwst.rs".to_owned(),
@@ -303,7 +303,7 @@ pub(super) fn local_changes() -> LocalChanges {
     }
 }
 
-pub(super) fn merge() -> MergeInProgress {
+pub fn merge() -> MergeInProgress {
     use ConflictLine::{Mine, Shared, Theirs};
     MergeInProgress {
         kind: ncrs_git::Integration::Merge,
@@ -367,14 +367,14 @@ pub(super) fn merge() -> MergeInProgress {
 }
 
 /// Over the first icon of the toolbar.
-pub(super) const TOOLBAR_FETCH_X: f32 = 222.0;
+pub const TOOLBAR_FETCH_X: f32 = 222.0;
 
-pub(super) fn picture(state: &State, reference: &str) {
+pub fn picture(state: &State, reference: &str) {
     picture_at(state, reference, None);
 }
 
 /// With the pointer over `hover`, so a tooltip shows.
-pub(super) fn picture_at(state: &State, reference: &str, hover: Option<Point>) {
+pub fn picture_at(state: &State, reference: &str, hover: Option<Point>) {
     picture_in(
         state,
         reference,
@@ -384,7 +384,7 @@ pub(super) fn picture_at(state: &State, reference: &str, hover: Option<Point>) {
     );
 }
 
-pub(super) fn picture_in(
+pub fn picture_in(
     state: &State,
     reference: &str,
     hover: Option<Point>,
@@ -425,7 +425,7 @@ pub(super) fn picture_in(
     assert!(matches, "{reference} differs from its image");
 }
 
-pub(super) fn sync() -> SyncBar {
+pub fn sync() -> SyncBar {
     SyncBar {
         ahead: 1,
         behind: 2,

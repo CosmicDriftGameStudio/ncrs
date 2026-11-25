@@ -24,7 +24,7 @@ fn unconfirmed(suggested: &Suggested) -> RuleSpec {
 
 /// Whether the suggestion may still be shown: not discarded before and not a
 /// rule already.
-pub(super) fn is_new(
+pub fn is_new(
     index: &Index,
     target: &TargetId,
     suggested: &Suggested,

@@ -239,7 +239,7 @@ pub enum Prompts {
     Unattended,
 }
 
-pub(crate) fn repository_runs_commands() -> ActionError {
+pub fn repository_runs_commands() -> ActionError {
     ActionError::Other {
         git_output: "the repository config runs commands".to_string(),
     }

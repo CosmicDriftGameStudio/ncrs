@@ -30,7 +30,7 @@ pub enum WaitReason {
     Paused,
 }
 
-pub(super) fn state_of(access: &SortingAccess, target: &SortTarget) -> TargetState {
+pub fn state_of(access: &SortingAccess, target: &SortTarget) -> TargetState {
     let system = system_folders();
     state_with(target, device_of, &system, || {
         holds_known_file(access, &target.path)
@@ -71,7 +71,7 @@ const MOUNT_FOLDERS: [&str; 4] = ["/Volumes", "/media", "/run/media", "/mnt"];
 
 /// Whether the drive of a source is there; without it an empty folder may be
 /// left where it was mounted. `root` is the folder as its files are spelled.
-pub(super) fn source_is_mounted(source: &SortSource, root: &Path) -> bool {
+pub fn source_is_mounted(source: &SortSource, root: &Path) -> bool {
     source_is_mounted_with(source, root, device_of, &system_folders())
 }
 
@@ -118,7 +118,7 @@ fn holds_known_file(access: &SortingAccess, folder: &Path) -> bool {
 
 /// How many documents the index knows below `folder` while none of them is
 /// there; 0 when one is. An empty mount point looks like that. Asks the disk.
-pub(super) fn all_gone_below(access: &SortingAccess, folder: &Path) -> Result<usize, String> {
+pub fn all_gone_below(access: &SortingAccess, folder: &Path) -> Result<usize, String> {
     let folder = ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
     let known = access.with_index(|index| index.known_paths_under(&folder).map_err(text))?;
     let one_is_there = known.iter().any(|path| path.is_file());

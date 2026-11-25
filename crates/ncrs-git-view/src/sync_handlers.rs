@@ -121,7 +121,7 @@ pub fn credential_typed(state: &mut State, id: u64, typed: Secret) -> Outcome {
 }
 
 /// A login question that came while another dialog was open.
-pub(crate) fn show_next_credential(state: &mut State) {
+pub fn show_next_credential(state: &mut State) {
     if !state.actions.waiting_credentials.is_empty() {
         let next = state.actions.waiting_credentials.remove(0);
         state.actions.dialog = Some(Dialog::Credential(CredentialAsk::of(&next)));

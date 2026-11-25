@@ -4,8 +4,8 @@ use std::path::{Component, Path};
 use crate::image_text;
 use crate::location::Location;
 
-pub(crate) const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
-pub(crate) const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
+pub const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
+pub const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
 const TEMPORARY_SUFFIXES: [&str; 3] = [".part", ".crdownload", ".tmp"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

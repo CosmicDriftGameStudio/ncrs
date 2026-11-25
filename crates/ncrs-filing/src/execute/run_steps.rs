@@ -10,7 +10,7 @@ use super::{
 };
 
 /// Opens a batch that records the folders it works between.
-pub(crate) fn open_run_batch(
+pub fn open_run_batch(
     index: &Index,
     kind: BatchKind,
     name: &str,
@@ -29,7 +29,7 @@ pub(crate) fn open_run_batch(
 }
 
 /// Carries out one item of an open batch; the caller finishes the batch.
-pub(crate) fn run_one(
+pub fn run_one(
     index: &Index,
     batch: BatchId,
     transfer: Transfer,
@@ -47,13 +47,13 @@ pub(crate) fn run_one(
 }
 
 /// Only the runs of sorting are grouped.
-pub(super) fn is_sorting(info: Option<&BatchInfo>) -> bool {
+pub fn is_sorting(info: Option<&BatchInfo>) -> bool {
     info.is_some_and(|found| found.run.is_some())
 }
 
 /// The copy is a known place of the document, and the original is not taken in
 /// or decided again.
-pub(super) fn note_copy(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
+pub fn note_copy(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
     let Some(id) = item.document_id else {
         return Ok(());
     };
@@ -66,7 +66,7 @@ pub(super) fn note_copy(index: &Index, item: &JournalItem) -> Result<(), Execute
 }
 
 /// The reverse of [`note_copy`] for a copy that was taken out again.
-pub(super) fn forget_copy(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
+pub fn forget_copy(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
     index.remove_duplicate_path(&item.to)?;
     if !item.duplicate {
         index.remove_filed_inbox_path(&item.from)?;

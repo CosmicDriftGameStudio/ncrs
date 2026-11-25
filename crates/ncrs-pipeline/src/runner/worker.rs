@@ -283,7 +283,7 @@ impl Shared {
     }
 }
 
-pub(super) fn run_start(shared: &Arc<Shared>) {
+pub fn run_start(shared: &Arc<Shared>) {
     let locations = shared.all_locations();
     let (watcher, failed) =
         LocationWatcher::start_forwarding(&locations, forward_watch_events(shared));
@@ -310,7 +310,7 @@ pub(super) fn run_start(shared: &Arc<Shared>) {
     shared.work_ready.notify_all();
 }
 
-pub(super) fn worker_main(shared: &Arc<Shared>, id: usize, epoch: u64) {
+pub fn worker_main(shared: &Arc<Shared>, id: usize, epoch: u64) {
     let _exit = ExitGuard { shared, id, epoch };
     let mut applied = shared.lock().priority;
     set_current_thread_priority(applied);

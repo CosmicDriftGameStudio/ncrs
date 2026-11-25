@@ -127,7 +127,7 @@ pub fn run<P: Progress>(
 }
 
 /// `run`, shown in the history as `kind`.
-pub(super) fn run_as<P: Progress>(
+pub fn run_as<P: Progress>(
     access: &SortingAccess,
     request: &RunRequest,
     kind: BatchKind,
@@ -418,7 +418,7 @@ fn refused(entry: &RunEntry, outcome: &PlaceOutcome) -> EntryReport {
     }
 }
 
-pub(super) fn close_question(index: &Index, document: DocumentId) -> Result<(), String> {
+pub fn close_question(index: &Index, document: DocumentId) -> Result<(), String> {
     if let Some(question) = index.open_review_of(document).map_err(text)? {
         index.resolve_review(question.id).map_err(text)?;
     }

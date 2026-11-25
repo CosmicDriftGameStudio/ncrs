@@ -31,7 +31,7 @@ fn sorting(message: SortingMessage) -> Message {
     Message::Sorting(message)
 }
 
-pub(super) fn open(
+pub fn open(
     hermes: &mut Hermes,
     ctx: &Ctx<'_>,
     _actions: &mut Vec<Action>,
@@ -41,7 +41,7 @@ pub(super) fn open(
 }
 
 /// Reads the state of the sources and the history in the background.
-pub(super) fn load(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+pub fn load(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     let settings = hermes.filing_config.sources.clone();
     let access = hermes
         .filing
@@ -127,7 +127,7 @@ fn check_typed_folder(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
 
 /// A target that the dialog of a target just wrote is ticked in the source
 /// dialog under it.
-pub(super) fn tick_new_targets(hermes: &mut Hermes, message: &TargetsMessage) {
+pub fn tick_new_targets(hermes: &mut Hermes, message: &TargetsMessage) {
     let Some(dialog) = hermes.source_dialog.as_mut() else {
         return;
     };
@@ -142,7 +142,7 @@ pub(super) fn tick_new_targets(hermes: &mut Hermes, message: &TargetsMessage) {
     }
 }
 
-pub(super) fn update(
+pub fn update(
     hermes: &mut Hermes,
     message: SortingMessage,
     ctx: &Ctx<'_>,

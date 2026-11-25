@@ -6,7 +6,7 @@ use super::*;
 use crate::sorting::file_name_with_extension;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Unrenderable {
+pub enum Unrenderable {
     /// A placeholder has no value, or only one a folder may not take.
     MissingValue(Field),
     /// The pattern does not parse, or a filled-in segment is not a name every
@@ -16,7 +16,7 @@ pub(crate) enum Unrenderable {
 
 /// The relative path `source` gives, ending in the extension of the file.
 /// No folder takes a value of `refused_in_folders`.
-pub(crate) fn render_strict(
+pub fn render_strict(
     source: &str,
     fields: &DocumentFields,
     refused_in_folders: &[Field],

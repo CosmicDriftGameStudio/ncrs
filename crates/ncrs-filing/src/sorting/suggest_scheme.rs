@@ -295,7 +295,7 @@ fn accepted_for(
 
 /// The `again`-th of the accepted ones, or the next after it, that the user
 /// did not turn down before.
-pub(super) fn first_new(
+pub fn first_new(
     access: &SortingAccess,
     target: &TargetId,
     accepted: Vec<(Suggested, Vec<usize>)>,

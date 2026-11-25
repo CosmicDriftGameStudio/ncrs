@@ -20,7 +20,7 @@ pub fn read_working_text(root: &Path, relative: &str) -> Option<String> {
 
 /// The whole file, for an action that writes back what it read: a file that
 /// would be cut is refused.
-pub(crate) fn read_whole_working_file(root: &Path, relative: &str) -> Result<Vec<u8>, ActionError> {
+pub fn read_whole_working_file(root: &Path, relative: &str) -> Result<Vec<u8>, ActionError> {
     let bytes = read_working_file(root, relative).ok_or_else(|| ActionError::Other {
         git_output: format!("{relative} cannot be read"),
     })?;
@@ -28,7 +28,7 @@ pub(crate) fn read_whole_working_file(root: &Path, relative: &str) -> Result<Vec
     Ok(bytes)
 }
 
-pub(crate) fn refuse_cut(relative: &str, bytes: &[u8]) -> Result<(), ActionError> {
+pub fn refuse_cut(relative: &str, bytes: &[u8]) -> Result<(), ActionError> {
     if is_cut(bytes) {
         return Err(ActionError::Other {
             git_output: format!("{relative} is too large for this: use the editor"),
@@ -39,7 +39,7 @@ pub(crate) fn refuse_cut(relative: &str, bytes: &[u8]) -> Result<(), ActionError
 
 /// Whether a text file that is too large to be read whole still has an opening
 /// conflict marker.
-pub(crate) fn large_text_has_conflict_marker(root: &Path, relative: &str) -> bool {
+pub fn large_text_has_conflict_marker(root: &Path, relative: &str) -> bool {
     let is_large_text = read_working_file(root, relative)
         .is_some_and(|bytes| is_cut(&bytes) && !bytes.contains(&0));
     if !is_large_text {
@@ -72,7 +72,7 @@ pub fn is_text_without_markers(root: &Path, relative: &str) -> bool {
 /// read, and a path that leaves the working copy has no content. At most one
 /// byte more than the diff accepts is read, so a larger file shows as too large
 /// without being loaded, and a pipe cannot hang the read.
-pub(crate) fn read_working_file(root: &Path, relative: &str) -> Option<Vec<u8>> {
+pub fn read_working_file(root: &Path, relative: &str) -> Option<Vec<u8>> {
     let path = Path::new(relative);
     if !path
         .components()
