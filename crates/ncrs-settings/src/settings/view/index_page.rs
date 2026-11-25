@@ -8,9 +8,9 @@ use super::*;
 use crate::facts::ModelKind;
 use crate::folders::AddAs;
 use crate::message::{SettingChange, SettingsMessage};
-use ncrs_config::config::{FilingLocation, OwnDetail};
+use ncrs_config::config::{same_folder, Filing, FilingLocation, OwnDetail};
+use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
-use ncrs_ui_kit::layout::SETTINGS_WIDE_CONTROL_WIDTH;
 use ncrs_ui_kit::list_kit::segmented_some_unavailable;
 
 pub fn index_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
@@ -61,7 +61,7 @@ fn titled<'a>(
 
 /// A row of these pages whose texts are worded already. They show state and
 /// the user's own data, so the command list does not take them.
-pub fn text_row<'a>(
+fn text_row<'a>(
     label: String,
     description: Option<String>,
     control: Element<'a, Message>,
@@ -69,13 +69,28 @@ pub fn text_row<'a>(
     SettingRow::text(label, description, control)
 }
 
-/// The locations as the file says them, else as the module runs them.
-pub fn listed_locations<'a>(view: &SettingsView<'a>) -> &'a [FilingLocation] {
+/// The filing settings as the file says them, else as the module runs them.
+fn filing_of<'a>(view: &SettingsView<'a>) -> &'a Filing {
     view.state
         .config()
-        .map_or(view.filing.locations.as_slice(), |config| {
-            config.filing.locations.as_slice()
-        })
+        .map_or(view.filing, |config| &config.filing)
+}
+
+/// What a folder of the index is for filing; such a folder is changed on the
+/// filing page only.
+fn sorting_role(location: &FilingLocation, filing: &Filing) -> Option<Msg> {
+    let is_target = location.is_target
+        || filing
+            .targets
+            .iter()
+            .any(|setting| same_folder(&setting.target.path, &location.path));
+    if is_target {
+        Some(Msg::SortingRuleTarget)
+    } else if location.mode == LocationMode::Inbox {
+        Some(Msg::SortingSourceTitle)
+    } else {
+        None
+    }
 }
 
 fn folder_name(location: &FilingLocation) -> String {
@@ -94,7 +109,7 @@ fn folder_is_disconnected(location: &FilingLocation, view: &SettingsView<'_>) ->
 /// The line of a folder: its name, where it is with how many documents the
 /// index holds from it when `files` says so, and a warning when its drive is
 /// not connected. `buttons` act on it.
-pub fn folder_row<'a>(
+fn folder_row<'a>(
     location: &FilingLocation,
     status: Option<String>,
     files: Option<usize>,
@@ -127,7 +142,7 @@ pub fn folder_row<'a>(
     }
 }
 
-pub fn remove_folder_button(
+fn remove_folder_button(
     location: &FilingLocation,
     view: &SettingsView<'_>,
 ) -> RowButton<Message> {
@@ -143,19 +158,17 @@ pub fn remove_folder_button(
 pub fn add_folder_row<'a>(
     kind: AddAs,
     empty: Option<Msg>,
-    mut buttons: Vec<RowButton<Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     let lang = view.lang;
-    buttons.push(RowButton::new(
-        lang.text(Msg::SettingsFolderAdd),
-        Some(SettingsMessage::AddFolder(kind)),
-        Tone::Secondary,
-    ));
     SettingRow::adding_buttons(
         empty.map(|msg| lang.text(msg).to_owned()),
         view.state.folder_note.clone(),
-        buttons,
+        vec![RowButton::new(
+            lang.text(Msg::SettingsFolderAdd),
+            Some(SettingsMessage::AddFolder(kind)),
+            Tone::Secondary,
+        )],
         view.palette,
     )
 }
@@ -173,7 +186,8 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         1,
         view.palette,
     );
-    let locations = listed_locations(view);
+    let filing = filing_of(view);
+    let locations = &filing.locations;
     let mut rows = vec![text_row(
         lang.text(Msg::SettingsIndexRowScope).to_owned(),
         Some(lang.text(Msg::SettingsIndexScopeOnlyHint).to_owned()),
@@ -182,7 +196,32 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     .keyed(RowKey::Press(SettingsMessage::Select(
         SettingsFeature::Index,
     )))];
-    rows.extend(locations.iter().map(|location| {
+    let (used_for_sorting, only_read): (Vec<_>, Vec<_>) = locations
+        .iter()
+        .map(|location| (location, sorting_role(location, filing)))
+        .partition(|(_, role)| role.is_some());
+    rows.extend(used_for_sorting.iter().map(|(location, role)| {
+        folder_row(
+            location,
+            role.map(|msg| lang.text(msg).to_owned()),
+            view.facts.folder_files.get(&location.path).copied(),
+            Vec::new(),
+            view,
+        )
+    }));
+    if !used_for_sorting.is_empty() {
+        rows.push(SettingRow::adding_buttons(
+            Some(lang.text(Msg::SettingsIndexSortingNote).to_owned()),
+            None,
+            vec![RowButton::new(
+                lang.text(Msg::SettingsIndexSortingOpen),
+                Some(SettingsMessage::Select(SettingsFeature::Hermes)),
+                Tone::Secondary,
+            )],
+            view.palette,
+        ));
+    }
+    rows.extend(only_read.iter().map(|(location, _)| {
         folder_row(
             location,
             None,
@@ -196,7 +235,6 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         locations
             .is_empty()
             .then_some(Msg::SettingsIndexFoldersEmpty),
-        Vec::new(),
         view,
     ));
     rows
@@ -343,20 +381,13 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
     };
     SettingRow {
         key: Some(RowKey::Text(id)),
-        label: lang.text(label).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: matches!(detail, OwnDetail::Names)
-            .then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
         problem: field_problem(field, view),
-        warning: None,
-        control,
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
-        list_indent: None,
-        marked_controls: Vec::new(),
-        label_action: None,
-        leading: None,
+        ..SettingRow::text(
+            lang.text(label).to_owned(),
+            matches!(detail, OwnDetail::Names).then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
+            control,
+        )
     }
 }
 

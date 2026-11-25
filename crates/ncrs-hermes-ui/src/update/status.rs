@@ -1,21 +1,26 @@
 //! The reads that feed the status page and the title and status bar.
 
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use iced::Task;
+use ncrs_config::config::SourceSetting;
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
+use ncrs_filing::sorting::{question_count, SortingAccess};
 use ncrs_pipeline::{Load, Runner, RunnerState, Snapshot};
 
 use super::column::{refresh_hermes_column, settle_reading_again};
 use super::{watching, Outcome};
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::filing_status::SourceQuestions;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
 use crate::state::Hermes;
 
-/// Reads the counts of Hermes on the blocking pool: the intake may hold the
-/// index for as long as it hashes a large file.
-pub fn request_hermes_counts(hermes: &mut Hermes) -> Task<Message> {
+/// Reads the counts of Hermes and the questions of the sources on the blocking
+/// pool: the intake may hold the index for as long as it hashes a large file.
+pub fn request_hermes_counts(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     let Some(reader) = hermes
         .filing
         .as_ref()
@@ -23,15 +28,67 @@ pub fn request_hermes_counts(hermes: &mut Hermes) -> Task<Message> {
     else {
         return Task::none();
     };
+    let access = hermes
+        .filing
+        .as_ref()
+        .and_then(|module| module.sorting_access(Arc::clone(&ctx.trash.0)));
+    let sources = hermes.filing_config.sources.clone();
     hermes.filing_status.counts_requested();
     Task::perform(
-        tokio::task::spawn_blocking(move || reader.read()),
+        tokio::task::spawn_blocking(move || {
+            let questions = access
+                .ok_or_else(|| INDEX_NOT_OPEN.to_owned())
+                .and_then(|access| questions_of(&sources, &access));
+            (reader.read(), questions)
+        }),
         |joined| {
-            Message::FilingStatus(FilingStatusMessage::HermesCounts(
-                joined.unwrap_or_else(|err| Err(err.to_string())),
-            ))
+            let (counts, questions) = joined.unwrap_or_else(|err| {
+                let reason = err.to_string();
+                (Err(reason.clone()), Err(reason))
+            });
+            Message::FilingStatus(FilingStatusMessage::HermesCounts { counts, questions })
         },
     )
+}
+
+/// The open questions of the sources that are not paused.
+fn questions_of(
+    sources: &[SourceSetting],
+    access: &SortingAccess,
+) -> Result<Vec<SourceQuestions>, String> {
+    sources
+        .iter()
+        .filter(|setting| setting.paused.is_none())
+        .map(|setting| {
+            Ok(SourceQuestions {
+                source: setting.source.path.clone(),
+                count: question_count(access, &setting.source)?,
+            })
+        })
+        .collect()
+}
+
+/// The questions that wait for the user: the plan of the source that has them,
+/// the page of the sources when there are several, the activity when nothing
+/// waits any more.
+pub(super) fn open_waiting(hermes: &Hermes, actions: &mut Vec<Action>) {
+    let asking: Vec<&SourceSetting> = hermes
+        .filing_config
+        .sources
+        .iter()
+        .filter(|setting| {
+            let questions = hermes.filing_status.questions();
+            questions.iter().any(|asked| asked.source == setting.source.path)
+        })
+        .collect();
+    actions.push(match asking.as_slice() {
+        [] => Action::ShowPage(HermesPage::Activity),
+        [only] => Action::OpenPlan {
+            source: only.source.clone(),
+            once: false,
+        },
+        _ => Action::ShowPage(HermesPage::Sorting),
+    });
 }
 
 impl Hermes {
@@ -131,6 +188,10 @@ fn filing_status_step(
             actions.push(Action::ShowPage(HermesPage::Activity));
             Task::none()
         }
+        FilingStatusMessage::OpenWaiting => {
+            open_waiting(hermes, actions);
+            Task::none()
+        }
         FilingStatusMessage::Restarted(generation) => {
             actions.push(Action::FilingRestarted(generation));
             Task::none()
@@ -141,8 +202,9 @@ fn filing_status_step(
             hermes.refresh_filing_snapshot(ctx.now);
             Task::none()
         }
-        FilingStatusMessage::HermesCounts(counts) => {
+        FilingStatusMessage::HermesCounts { counts, questions } => {
             hermes.filing_status.counts_arrived(counts);
+            hermes.filing_status.questions_arrived(questions);
             Task::none()
         }
         FilingStatusMessage::ErrorActivated(path) => {
@@ -184,19 +246,9 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     refresh_hermes_column(hermes, ctx);
     let settled = settle_reading_again(hermes, ctx, actions);
     actions.push(Action::EnsureChatModel);
-    if ctx.chat_open {
-        actions.push(Action::CheckChatWaiting);
-    }
-    let idle_pipeline = hermes
-        .live_pipeline()
-        .map(|runner| runner.snapshot())
-        .filter(|snapshot| snapshot.state == RunnerState::Idle);
-    if let Some(snapshot) = idle_pipeline {
-        actions.push(Action::ReadingSettled(snapshot.left_pipeline));
-    }
     watching::run_watching(hermes, ctx, actions);
     let counts = if hermes.live_pipeline().is_some() && hermes.filing_status.tick_wants_counts() {
-        request_hermes_counts(hermes)
+        request_hermes_counts(hermes, ctx)
     } else {
         Task::none()
     };
@@ -206,9 +258,10 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroUsize;
-    use std::sync::Arc;
+    use std::path::PathBuf;
 
     use ncrs_config::config::Filing;
+    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
     use ncrs_pipeline::{Settings, SystemClock};
 
     use super::*;
@@ -227,6 +280,77 @@ mod tests {
                 Arc::new(SystemClock),
             )),
             ..Hermes::default()
+        }
+    }
+
+    fn source(path: &str) -> SourceSetting {
+        SourceSetting {
+            source: SortSource {
+                path: PathBuf::from(path),
+                include: String::new(),
+                exclude: String::new(),
+                targets: Vec::new(),
+                watch: true,
+                transfer: LocationTransfer::Move,
+                no_text: OnNoText::default(),
+                several: OnSeveralTargets::default(),
+                own_volume: None,
+            },
+            paused: None,
+        }
+    }
+
+    /// What a press on the counter asks for, with the sources `/a` and `/b`
+    /// set up and `questions` last read.
+    fn asked_by_the_counter(questions: &[(&str, usize)]) -> Vec<Action> {
+        let mut hermes = Hermes {
+            filing_config: Filing {
+                sources: vec![source("/a"), source("/b")],
+                ..Filing::default()
+            },
+            ..Hermes::default()
+        };
+        hermes.filing_status.questions_arrived(Ok(questions
+            .iter()
+            .map(|&(path, count)| SourceQuestions {
+                source: PathBuf::from(path),
+                count,
+            })
+            .collect()));
+        let mut actions = Vec::new();
+        open_waiting(&hermes, &mut actions);
+        actions
+    }
+
+    #[test]
+    fn the_counter_opens_the_plan_of_the_only_source_that_asks() {
+        let actions = asked_by_the_counter(&[("/a", 0), ("/b", 3)]);
+
+        assert!(matches!(
+            actions.as_slice(),
+            [Action::OpenPlan { source, once: false }] if source.path.ends_with("b")
+        ));
+    }
+
+    #[test]
+    fn the_counter_opens_the_sources_when_several_ask() {
+        let actions = asked_by_the_counter(&[("/a", 1), ("/b", 3)]);
+
+        assert!(matches!(
+            actions.as_slice(),
+            [Action::ShowPage(HermesPage::Sorting)]
+        ));
+    }
+
+    #[test]
+    fn the_counter_opens_the_activity_when_no_set_up_source_asks() {
+        for questions in [&[][..], &[("/removed", 2)][..]] {
+            let actions = asked_by_the_counter(questions);
+
+            assert!(matches!(
+                actions.as_slice(),
+                [Action::ShowPage(HermesPage::Activity)]
+            ));
         }
     }
 

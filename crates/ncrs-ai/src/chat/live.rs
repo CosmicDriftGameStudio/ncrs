@@ -137,8 +137,6 @@ fn with_model_the_model_unloads_after_idle_and_wakes_again() {
         message: "mach das rückgängig".to_owned(),
         question: None,
         previous_search: None,
-        previous_request: None,
-        previous_message: None,
     };
     let is_loaded = || matches!(model.status(), LocalModelStatus::Loaded { .. });
     let wait_for = |wanted: bool| {
@@ -187,8 +185,6 @@ fn with_model_the_protocol_sentences_print_their_intent() {
             message: sentence.to_owned(),
             question: None,
             previous_search: None,
-            previous_request: None,
-            previous_message: None,
         };
         let intent = model.understand(&turn);
         println!("intent {sentence:?} => {intent:?}");
@@ -218,8 +214,6 @@ fn folder_sentences_print_their_intent_with_the_model() {
             message: sentence.to_owned(),
             question: None,
             previous_search: None,
-            previous_request: None,
-            previous_message: None,
         };
         println!("intent {sentence:?} => {:?}", model.understand(&turn));
     }

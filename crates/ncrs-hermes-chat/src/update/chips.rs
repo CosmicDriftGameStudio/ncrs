@@ -81,83 +81,33 @@ pub fn well_known(ctx: &Ctx) -> [PathBuf; 4] {
     ]
 }
 
-pub fn is_target_folder(state: &State, ctx: &Ctx, path: &Path) -> bool {
-    ctx.targets
-        .iter()
-        .chain(&state.session.learned)
-        .any(|target| path.starts_with(target))
-}
-
-pub fn is_known(state: &State, ctx: &Ctx, path: &Path) -> bool {
+pub fn is_known(ctx: &Ctx, path: &Path) -> bool {
     ctx.targets
         .iter()
         .chain(&ctx.sources)
-        .chain(&state.session.learned)
         .chain(&well_known(ctx))
         .any(|known| known == path)
 }
 
-/// Targets and sources first, then Documents and Downloads when they exist.
-pub fn candidate_folders(ctx: &Ctx, with_targets: bool) -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = Vec::new();
-    let own = if with_targets {
-        ctx.targets.iter().chain(&ctx.sources)
-    } else {
-        [].iter().chain(&ctx.sources)
-    };
-    let usual = [ctx.home.join("Documents"), ctx.home.join("Downloads")]
-        .into_iter()
-        .filter(|path| path.is_dir());
-    for path in own.cloned().chain(usual) {
-        if !found.contains(&path) {
-            found.push(path);
-        }
-    }
-    found
-}
-
-pub fn folder_chips(ctx: &Ctx, folders: Vec<PathBuf>) -> Vec<Chip> {
-    folders
-        .into_iter()
-        .map(|path| chip_labelled(folder_name(ctx, &path), ChipReply::Folder(path), false))
-        .collect()
-}
-
-/// Where structure is read: the filing locations only, and the picker.
-pub fn target_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
-    let mut targets: Vec<PathBuf> = ctx.targets.clone();
-    for learned in &state.session.learned {
-        if !targets.contains(learned) {
-            targets.push(learned.clone());
-        }
-    }
-    if targets.is_empty() {
-        targets.extend(Some(ctx.home.join("Documents")).filter(|path| path.is_dir()));
-    }
-    let mut chips = folder_chips(ctx, targets);
+/// Whose order to look at: every target, and the picker.
+pub fn folder_chips(ctx: &Ctx) -> Vec<Chip> {
+    let mut chips: Vec<Chip> = ctx
+        .targets
+        .iter()
+        .map(|target| {
+            chip_labelled(
+                folder_name(ctx, target),
+                ChipReply::Folder(target.clone()),
+                false,
+            )
+        })
+        .collect();
+    let only_way = chips.is_empty();
     chips.push(chip(
         ctx,
-        Msg::HermesChatOtherFolder,
+        Msg::HermesChatChooseFolder,
         ChipReply::PickFolder,
-        false,
+        only_way,
     ));
-    chips
-}
-
-/// The folders to offer when a folder is asked for, and the picker.
-pub fn ask_chips(ctx: &Ctx) -> Vec<Chip> {
-    let mut chips = folder_chips(ctx, candidate_folders(ctx, true));
-    chips.push(chip(
-        ctx,
-        Msg::HermesChatOtherFolder,
-        ChipReply::PickFolder,
-        false,
-    ));
-    chips
-}
-
-pub fn source_chips(ctx: &Ctx) -> Vec<Chip> {
-    let mut chips = folder_chips(ctx, candidate_folders(ctx, false));
-    chips.push(chip(ctx, Msg::HermesChatLater, ChipReply::Later, false));
     chips
 }

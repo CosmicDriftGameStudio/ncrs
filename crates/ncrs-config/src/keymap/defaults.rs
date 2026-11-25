@@ -273,11 +273,6 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::Rules,
             Binding::with_modifiers(Character("b".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
-        // The quick fixes of an inquiry, as in VS Code and Xcode; Cmd+. (Ctrl+. elsewhere).
-        (
-            A::HermesQuickFix,
-            Binding::with_modifiers(Character(".".into()), Modifiers::COMMAND),
-        ),
         // Process the file under the cursor again, H for Hermes; Cmd+Shift+H,
         // Ctrl+Shift+H elsewhere.
         (

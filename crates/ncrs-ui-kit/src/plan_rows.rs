@@ -3,12 +3,12 @@
 //! pane they stand in.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, mouse_area, row, scrollable, text};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Row};
 use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::format;
 use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
-use crate::kit::{self, list_row, Columns};
+use crate::kit::{list_row, SCROLL_LANE};
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use crate::tree_list::{tree_row, TreeRow, LABEL_LEAD, TREE_INDENT};
@@ -26,15 +26,43 @@ pub struct PlanFileRow<M> {
     pub on_press: M,
 }
 
-/// The cells of `columns` are the name and what happens; the chip follows the
-/// second one.
+/// A row of `line_width` pixels: the name, what happens and the chip.
 pub fn plan_file_row<'a, M: Clone + 'a>(
     file: PlanFileRow<M>,
-    columns: &Columns<'_>,
+    line_width: f32,
     palette: &Palette,
 ) -> Element<'a, M> {
-    plan_line(file, None, columns, palette)
+    plan_line(file, None, line_width, palette)
 }
+
+/// The titles of the two columns, over the rows.
+pub fn plan_header<'a, M: 'a>(name: &str, what: &str, palette: &Palette) -> Element<'a, M> {
+    let title = |label: &str| {
+        text(label.to_owned())
+            .size(font_size::BODY)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None)
+    };
+    container(row![
+        container(title(name)).width(size::PLAN_NAME),
+        title(what)
+    ])
+    .padding([0.0, spacing::CELL_PADDING_X])
+    .height(size::COLUMN_HEADER)
+    .width(Length::Fill)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// A line over or under the rows, set in like them.
+pub fn plan_side_line<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
+    container(content)
+        .padding([PLAN_LINE_PADDING_Y, spacing::CELL_PADDING_X])
+        .width(Length::Fill)
+        .into()
+}
+
+const PLAN_LINE_PADDING_Y: f32 = 2.0;
 
 /// A link behind what happens to a file, like "Make a rule…".
 #[derive(Debug)]
@@ -56,45 +84,61 @@ pub struct PlanActionRow<M> {
 /// Like [`plan_file_row`]; the links stand at the right end of the row.
 pub fn plan_action_row<'a, M: Clone + 'a>(
     action: PlanActionRow<M>,
-    columns: &Columns<'_>,
+    line_width: f32,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let marked = action.marked_link;
+    if action.links.is_empty() {
+        return plan_line(action.file, None, line_width, palette);
+    }
     let chosen = action.file.chosen;
-    let on_cursor = Palette {
-        accent: palette.cursor_text,
-        ..*palette
-    };
-    let links = action.links.into_iter().enumerate().map(|(at, link)| {
+    let mut width = 0.0;
+    let mut strip = Row::new().align_y(alignment::Vertical::Center);
+    for (at, link) in action.links.into_iter().enumerate() {
+        let is_marked = action.marked_link == Some(at);
+        let padding = if is_marked { spacing::XS } else { 0.0 };
+        width += spacing::M
+            + 2.0 * padding
+            + format::estimated_width(&link.label, font_size::SMALL);
+        let ink = if is_marked {
+            palette.accent
+        } else if chosen {
+            palette.cursor_text
+        } else {
+            palette.dim_text
+        };
+        let label = text(link.label)
+            .size(font_size::SMALL)
+            .color(ink)
+            .wrapping(Wrapping::None);
+        let shown = button(label)
+            .padding([0.0, padding])
+            .on_press(link.on_press)
+            .style(theme::named_link_button(palette));
         // A marked link takes the ground of the window, or the mark would be
         // lost on the cursor fill of its row.
-        let is_marked = marked == Some(at);
-        let ink = if chosen && !is_marked { &on_cursor } else { palette };
-        let shown = kit::text_link(link.label, link.on_press, ink);
-        if is_marked {
-            let ground = palette.background;
-            container(shown)
-                .padding([0.0, spacing::XS])
-                .style(move |_| container::background(ground))
-                .into()
+        let ground = if is_marked {
+            palette.background
         } else {
-            shown
-        }
-    });
-    let strip = row(links)
-        .spacing(spacing::M)
-        .align_y(alignment::Vertical::Center);
-    let after_what = container(strip).padding(Padding {
-        left: spacing::M,
-        ..Padding::ZERO
-    });
-    plan_line(action.file, Some(after_what.into()), columns, palette)
+            Color::TRANSPARENT
+        };
+        strip = strip.push(
+            container(
+                container(shown).style(move |_| container::background(ground)),
+            )
+            .padding(Padding {
+                left: spacing::M,
+                ..Padding::ZERO
+            }),
+        );
+    }
+    plan_line(action.file, Some((strip.into(), width)), line_width, palette)
 }
 
+/// `links` come with the pixels they take.
 fn plan_line<'a, M: Clone + 'a>(
     file: PlanFileRow<M>,
-    links: Option<Element<'a, M>>,
-    columns: &Columns<'_>,
+    links: Option<(Element<'a, M>, f32)>,
+    line_width: f32,
     palette: &Palette,
 ) -> Element<'a, M> {
     let (name_color, what_color) = if file.chosen {
@@ -102,14 +146,38 @@ fn plan_line<'a, M: Clone + 'a>(
     } else {
         (palette.text, file.what_color)
     };
+    let one_line = |content: String, color: Color| {
+        text(content)
+            .size(font_size::BODY)
+            .color(color)
+            .wrapping(Wrapping::None)
+    };
+    let name = container(one_line(
+        format::fit_middle(&file.name, size::PLAN_NAME - spacing::M, font_size::BODY),
+        name_color,
+    ))
+    .width(size::PLAN_NAME)
+    .clip(true);
     let chip_width = file.chip.as_ref().map_or(0.0, |chip| {
         format::estimated_width(chip, font_size::SMALL) + 4.0 * spacing::XS
     });
-    let what_width = (columns.text_width(1) - chip_width).max(0.0);
-    let what = text(format::fit_end(&file.what, what_width, font_size::BODY))
-        .size(font_size::BODY)
-        .color(what_color)
-        .wrapping(Wrapping::None);
+    let links_width = links.as_ref().map_or(0.0, |(_, width)| *width);
+    let what_width = line_width
+        - 2.0 * spacing::CELL_PADDING_X
+        - SCROLL_LANE
+        - size::PLAN_NAME
+        - chip_width
+        - links_width;
+    // A path keeps its end, a sentence its beginning.
+    let cut = if file.what.contains(['/', '\\']) {
+        format::fit_middle
+    } else {
+        format::fit_end
+    };
+    let what = one_line(
+        cut(&file.what, what_width.max(0.0), font_size::BODY),
+        what_color,
+    );
     let chip = file.chip.map(|label| {
         container(text(label).size(font_size::SMALL).wrapping(Wrapping::None))
             .padding([1.0, spacing::XS])
@@ -121,14 +189,12 @@ fn plan_line<'a, M: Clone + 'a>(
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center),
     )
-    .width(Length::FillPortion(
-        columns.portions.get(1).copied().unwrap_or(1),
-    ))
+    .width(Length::Fill)
     .clip(true);
-    let mut line = row![columns.cell(0, &file.name, name_color), what_cell]
+    let mut line = row![name, what_cell]
         .height(size::ROW)
         .align_y(alignment::Vertical::Center);
-    if let Some(after) = links {
+    if let Some((after, _)) = links {
         line = line.push(after);
     }
     list_row(line.into(), file.on_press, file.chosen, true, palette)

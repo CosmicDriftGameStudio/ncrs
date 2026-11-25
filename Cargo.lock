@@ -4485,12 +4485,10 @@ dependencies = [
  "iced",
  "iced_runtime",
  "iced_test",
- "ncrs-config",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-git",
  "ncrs-i18n",
- "ncrs-intake",
  "ncrs-ui-kit",
  "tempfile",
  "tokio",
@@ -4524,11 +4522,14 @@ version = "0.0.0"
 dependencies = [
  "iced",
  "iced_test",
- "ncrs-ai",
+ "ncrs-config",
  "ncrs-filing",
+ "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
+ "ncrs-intake",
  "ncrs-ui-kit",
+ "tempfile",
  "tokio",
 ]
 
@@ -4628,6 +4629,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "iced",
+ "iced_test",
  "ncrs-ai",
  "ncrs-config",
  "ncrs-core",

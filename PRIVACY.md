@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated: 2026-11-19
+Last updated: 2026-11-25
 
 ncrs is a file manager that runs on your computer. It collects no data about you.
 
@@ -19,11 +19,13 @@ ncrs connects to the network only for the purposes below. The update check runs 
 - **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, you agree to three kinds of data one by one in Settings, for that server. Of a kind you have not agreed to, nothing is sent. Over https, the three kinds are:
   - incoming documents, the text of every document Hermes reads to sort it, including the text recognised in scans and photos, also of all documents in Read folders, again after updates that change what Hermes reads;
   - filed documents, everything you write to Hermes in the chat, the last question Hermes asked with its answer options (including file and folder names in them), and your previous request and message that the new one refers to;
-  - folders and file names, in two cases:
+  - folders and file names, in four cases:
     - when Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags);
+    - when you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, kind, date);
+    - when you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind) and the folders and file names of up to 12 sample documents of the target;
     - when you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).
 
-  Learning a filing rule sends both filed documents and folders and file names, so it needs both agreements. A settings file from before this split, with its single agreement for a server, no longer counts: you are asked again for each kind. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
+  Learning or suggesting a filing rule sends both filed documents and folders and file names, so it needs both agreements. A settings file from before this split, with its single agreement for a server, no longer counts: you are asked again for each kind. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day, without a click. It is on by default for a download from the project's releases page. See below.
 
@@ -46,7 +48,7 @@ ncrs can tell you when a newer version exists. If the check is on, ncrs sends on
 - The paths of the last 1000 files ncrs moved to the trash are kept in `journal.toml` next to the index, so that they can be put back.
 - While ncrs reads a file for its text, the full path of that file is written to `reading-now` next to the index and removed when the reading is done. If ncrs is killed meanwhile, the file stays and is used at the next start to skip a file that crashes the reader.
 - The host keys of SFTP servers you trusted are kept in `known_hosts` next to the index; your own `~/.ssh/known_hosts` is only read.
-- The index behind Quick Open, the content search and Hermes is a database on your computer. It is encrypted unless you chose otherwise; the Hermes overview says which.
+- The index behind Quick Open, the content search and Hermes is a database on your computer. It is encrypted unless you chose otherwise; the Index page of the settings tab says which.
 - When a file is gone from a folder ncrs reads, its entry in the index (the recognised text and the fields Hermes found) stays for 30 days, in case the file only moved or comes back. After that the entry is removed from the index. The check runs when ncrs reads that folder again.
 - What Hermes used on your own AI server (requests, tokens, the price when the server reports one, no document text) is counted in a small log file on your computer, shown on the Usage page of the settings tab. It is never sent anywhere.
 - SFTP passwords, the API key of an AI server and the key of that index are stored in the system's credential store (Keychain on macOS). The passphrase of a key file is stored there too, when you tick "remember". With `--data-dir`, which is meant for throwaway test data, the index key is a file `index.key` (readable by you only) next to the index instead, so the encryption does not protect a copy of that folder.

@@ -56,15 +56,15 @@
     },
     {
       "key": "hermes_column.state_filed",
-      "context": "Hover text and status bar word for a file Hermes has filed: it is in the filing location and in the index.",
+      "context": "Hover text and status bar word for a file Hermes has put into its place in a target folder; it is in the index.",
       "en": "Filed",
-      "de": "Abgelegt"
+      "de": "Eingeordnet"
     },
     {
       "key": "hermes_column.state_inquiry",
-      "context": "Hover text and status bar words for a file Hermes cannot file alone and asks the user about; the reason follows after a colon. Short.",
-      "en": "Please review",
-      "de": "Bitte prüfen"
+      "context": "Hover text and status bar words for a file Hermes has an open question about; why follows after a colon. Short.",
+      "en": "Waiting for you",
+      "de": "Wartet auf dich"
     },
     {
       "key": "hermes_column.state_error",
@@ -80,15 +80,15 @@
     },
     {
       "key": "hermes_column.role_inbox",
-      "context": "Small tag after the name of a folder Hermes takes new files from. One word.",
-      "en": "Read folder",
-      "de": "Lesen-Ordner"
+      "context": "Small tag after the name of a folder that is a source: Hermes takes files from it. One word.",
+      "en": "Source",
+      "de": "Quelle"
     },
     {
       "key": "hermes_column.role_filing_location",
-      "context": "Small tag after the name of a folder Hermes files documents into: the target folder. Short.",
-      "en": "Target folder",
-      "de": "Zielordner"
+      "context": "Small tag after the name of a folder that is a target: Hermes files documents into it. One word.",
+      "en": "Target",
+      "de": "Ziel"
     },
     {
       "key": "hermes_column.role_archive",
@@ -113,12 +113,6 @@
       "context": "Hover text of the dots shown in the Hermes column of a folder whose files have not been counted yet.",
       "en": "not counted yet",
       "de": "noch nicht gezählt"
-    },
-    {
-      "key": "hermes_column.suggestion",
-      "context": "Part of the status bar line for a file Hermes asks about: the place Hermes would file it in. Takes the target path.",
-      "en": "Suggestion: {target}",
-      "de": "Vorschlag: {target}"
     },
     {
       "key": "marker.dir",
@@ -2047,10 +2041,16 @@
       "de": "{count} offen"
     },
     {
-      "key": "hermes.status.to_review",
-      "context": "Part of the Hermes line in the status bar: documents waiting for the user in the review list. Takes the number.",
-      "en": "{count} to review",
-      "de": "{count} Rückfragen"
+      "key": "hermes.status.waiting_one",
+      "context": "Part of the Hermes line in the status bar, and the button on the activity page that shows the question: one file of a source waits for an answer of the user. Pairs with hermes.status.waiting_other.",
+      "en": "1 waits for you",
+      "de": "1 wartet auf dich"
+    },
+    {
+      "key": "hermes.status.waiting_other",
+      "context": "Part of the Hermes line in the status bar, and the button on the activity page that shows the questions: files of the sources that wait for an answer of the user. {count} is the number, more than one. Pairs with hermes.status.waiting_one.",
+      "en": "{count} wait for you",
+      "de": "{count} warten auf dich"
     },
     {
       "key": "hermes.status.failed",
@@ -3127,30 +3127,6 @@
       "de": "Die Sprache der Oberfläche."
     },
     {
-      "key": "settings.feature_hermes",
-      "context": "Entry of the feature list on the settings tab and title of its page: Hermes, the name of the module that sorts documents.",
-      "en": "Hermes",
-      "de": "Hermes"
-    },
-    {
-      "key": "settings.feature_hermes_intro",
-      "context": "Line under the heading of the Hermes page on the settings tab. Hermes is the name of the module that sorts documents; the chat is where he asks.",
-      "en": "Hermes sorts documents from your read folders. He asks in the chat before he moves anything.",
-      "de": "Hermes sortiert Dokumente aus deinen Lesen-Ordnern. Er fragt im Chat, bevor er etwas verschiebt."
-    },
-    {
-      "key": "settings.feature_rules",
-      "context": "Entry of the feature list on the settings tab and title of its page: the rules that tell Hermes where a kind of document goes.",
-      "en": "Rules",
-      "de": "Regeln"
-    },
-    {
-      "key": "settings.feature_rules_intro",
-      "context": "Line under the heading of the rules page on the settings tab. A rule makes Hermes sort documents of one kind the same way every time.",
-      "en": "Only for forcing it: when Hermes should sort something differently from what he learned. Checked from top to bottom; the first that matches decides.",
-      "de": "Nur zum Erzwingen: wenn Hermes etwas anders sortieren soll, als er gelernt hat. Von oben nach unten geprüft, die erste passende entscheidet."
-    },
-    {
       "key": "settings.feature_tags",
       "context": "Entry of the feature list on the settings tab and title of its page: the tags (keywords) Hermes puts on documents.",
       "en": "Tags",
@@ -3185,18 +3161,6 @@
       "context": "Line under the heading of the read errors page on the settings tab. The page lists files the index could not read and lets the user try them again.",
       "en": "Files ncrs could not read, and why. Process again tries a file once more.",
       "de": "Dateien, die ncrs nicht lesen konnte, und warum. Erneut verarbeiten versucht es noch einmal."
-    },
-    {
-      "key": "settings.feature_reviews",
-      "context": "Entry of the feature list on the settings tab and title of its page: the documents that wait for the user's decision, because Hermes could not file them by itself.",
-      "en": "Reviews",
-      "de": "Rückfragen"
-    },
-    {
-      "key": "settings.feature_reviews_intro",
-      "context": "Line under the heading of the reviews page on the settings tab. The page groups the documents that wait for a decision by the question Hermes asks.",
-      "en": "The questions Hermes asks before it files a document. Answer a group at once, or open it to see its files.",
-      "de": "Die Fragen, die Hermes stellt, bevor es ein Dokument ablegt. Beantworte eine Gruppe auf einmal oder öffne sie, um die Dateien zu sehen."
     },
     {
       "key": "settings.feature_activity",
@@ -3563,12 +3527,6 @@
       "context": "Line on the activity page when Hermes is not running.",
       "en": "Hermes is not running.",
       "de": "Hermes läuft nicht."
-    },
-    {
-      "key": "activity_page.link_reviews",
-      "context": "Button on the activity page that opens the reviews page. {count} is the number of documents that wait for a decision.",
-      "en": "Reviews ({count})",
-      "de": "Rückfragen ({count})"
     },
     {
       "key": "activity_page.link_errors",
@@ -4369,6 +4327,18 @@
       "de": "Alles, was du im Chat an Hermes schreibst, die letzte Frage von Hermes mit ihren Antwortmöglichkeiten (samt darin genannter Datei- und Ordnernamen) und deine vorige Anfrage und Nachricht, auf die sich die neue bezieht."
     },
     {
+      "key": "settings.ai_consent_item_suggest",
+      "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when you ask it to suggest rules for a target. A target is a folder where files are filed into.",
+      "en": "When you ask Hermes to suggest rules for a target: the folders and file names of up to 12 sample documents per folder of the target and what Hermes found in them (sender, kind, date).",
+      "de": "Wenn du Hermes bittest, Regeln für ein Ziel vorzuschlagen: die Ordner und Dateinamen von bis zu 12 Beispieldokumenten je Ordner des Ziels und was Hermes darin gefunden hat (Absender, Art, Datum)."
+    },
+    {
+      "key": "settings.ai_consent_item_suggest_file",
+      "context": "One point of the list of what goes to the AI model on another computer: what Hermes shows the model when you ask it for a rule for one file that no rule takes. A target is a folder where files are filed into.",
+      "en": "When you ask Hermes for a rule for one file: what Hermes found in that file (sender, kind) and the folders and file names of up to 12 sample documents of the target.",
+      "de": "Wenn du Hermes um eine Regel für eine Datei bittest: was Hermes in der Datei gefunden hat (Absender, Art) und die Ordner und Dateinamen von bis zu 12 Beispieldokumenten des Ziels."
+    },
+    {
       "key": "settings.ai_consent_item_rules",
       "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it learns a filing rule or works out how a folder is organised. The archive is the folder where filed documents are kept.",
       "en": "When Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags).",
@@ -4705,12 +4675,6 @@
       "de": "Esc anhalten"
     },
     {
-      "key": "action.hermes_quick_fix",
-      "context": "Entry of the command list and the menu that runs the key action hermes_quick_fix: the menu of fixes for the inquiry under the cursor or among the marked files.",
-      "en": "Quick fix for a review item",
-      "de": "Schnellkorrektur für eine Rückfrage"
-    },
-    {
       "key": "quick_fix.header",
       "context": "First line of the quick-fix menu for one file. {reason} is why Hermes asks, already worded, for example the field that is missing.",
       "en": "Review · {reason}",
@@ -4849,24 +4813,6 @@
       "de": "Von Hermes ausgeschlossen: {count}"
     },
     {
-      "key": "hermes_menu.show_suggestion",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the quick-fix menu with Hermes' suggestion for an inquiry.",
-      "en": "Show suggestion",
-      "de": "Vorschlag zeigen"
-    },
-    {
-      "key": "hermes_menu.hand_to_inbox",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the read folder as target.",
-      "en": "Hand to Hermes",
-      "de": "An Hermes geben"
-    },
-    {
-      "key": "hermes_menu.note_inbox",
-      "context": "Dimmed note after 'Hand to Hermes' in the Hermes submenu: where the file goes.",
-      "en": "into the read folder",
-      "de": "in den Lesen-Ordner"
-    },
-    {
       "key": "hermes_menu.process_again",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Runs the file through the pipeline steps again.",
       "en": "Process again",
@@ -4874,39 +4820,33 @@
     },
     {
       "key": "hermes_menu.file_once",
-      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the Ablegen tab, which files the folder's files into the write folder once. The ellipsis says a tab with a plan follows.",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the plan that files the folder's files into the targets, for one time. The ellipsis says a plan or a dialog follows.",
       "en": "File…",
       "de": "Einsortieren…"
     },
     {
-      "key": "hermes_menu.file_continuously",
-      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the Ablegen tab; once the run is filed, Hermes files new files of the folder by itself when it is sure. The ellipsis says a tab with a plan follows.",
-      "en": "File continuously…",
-      "de": "Laufend einsortieren…"
+      "key": "hermes_menu.watch_source",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the dialog that makes the folder a source: Hermes watches it and files new files. The ellipsis says a dialog follows.",
+      "en": "Watch as source…",
+      "de": "Als Quelle überwachen…"
     },
     {
-      "key": "hermes_menu.stop_continuous",
-      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor that Hermes files continuously. Stops that; the folder stays a read folder.",
-      "en": "Stop filing continuously",
-      "de": "Laufend einsortieren beenden"
+      "key": "hermes_menu.change_source",
+      "context": "Entry of the Hermes submenu of the context menu, instead of hermes_menu.watch_source for a folder that is a source. Opens the dialog of that source. The ellipsis says a dialog follows.",
+      "en": "Change source…",
+      "de": "Quelle ändern…"
     },
     {
-      "key": "hermes_menu.set_filing_location",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder the target folder, the folder that documents are filed into.",
-      "en": "Set as target folder",
-      "de": "Als Zielordner festlegen"
+      "key": "hermes_menu.add_target",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Opens the dialog that makes the folder a target, a folder documents are filed into. The ellipsis says a dialog follows.",
+      "en": "Set up as target…",
+      "de": "Als Ziel anlegen…"
     },
     {
-      "key": "hermes_menu.set_archive",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder a read-only folder.",
-      "en": "Set as read-only folder",
-      "de": "Als Nur-lesen-Ordner festlegen"
-    },
-    {
-      "key": "hermes_menu.note_read_only",
-      "context": "Dimmed note after 'Set as read-only folder' in the Hermes submenu: Hermes does not change what is in it.",
-      "en": "read-only",
-      "de": "nur lesen"
+      "key": "hermes_menu.change_target",
+      "context": "Entry of the Hermes submenu of the context menu, instead of hermes_menu.add_target for a folder that is a target. Opens the dialog of that target. The ellipsis says a dialog follows.",
+      "en": "Change target…",
+      "de": "Ziel ändern…"
     },
     {
       "key": "hermes_menu.exclude",
@@ -5047,18 +4987,6 @@
       "de": "Rolle des Ordners nicht gespeichert: {reason}"
     },
     {
-      "key": "status.hermes_no_inbox",
-      "context": "Status bar message when a file should go to the read folder but none is configured.",
-      "en": "No read folder is set up",
-      "de": "Es ist kein Lesen-Ordner eingerichtet"
-    },
-    {
-      "key": "action.hermes_hand_to_inbox",
-      "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the read folder as target.",
-      "en": "Hand to Hermes (into the read folder)",
-      "de": "An Hermes geben (in den Lesen-Ordner)"
-    },
-    {
       "key": "action.hermes_process_again",
       "context": "Entry of the command list and the menu that runs the key action hermes_process_again: runs the file under the cursor through the Hermes steps again.",
       "en": "Process again",
@@ -5066,39 +4994,21 @@
     },
     {
       "key": "action.hermes_file_once",
-      "context": "Entry of the command list that runs the key action hermes_file_once: opens the Ablegen tab for the folder under the cursor, which files its files into the write folder once.",
+      "context": "Entry of the command list and the menu that runs the key action hermes_file_once: opens the plan that files the files of the folder under the cursor into the targets, for one time.",
       "en": "File folder…",
-      "de": "Ordner einsortieren…"
+      "de": "Einsortieren…"
     },
     {
-      "key": "action.hermes_file_continuously",
-      "context": "Entry of the command list that runs the key action hermes_file_continuously: opens the Ablegen tab for the folder under the cursor; once the run is filed, Hermes files new files of the folder by itself when it is sure.",
-      "en": "File folder continuously…",
-      "de": "Ordner laufend einsortieren…"
+      "key": "action.watch_source",
+      "context": "Entry of the command list and the menu that runs the key action watch_source: opens the dialog that makes the folder under the cursor a source Hermes watches, or the dialog of the source it is.",
+      "en": "Watch as source…",
+      "de": "Als Quelle überwachen…"
     },
     {
-      "key": "action.hermes_stop_continuous",
-      "context": "Entry of the command list that runs the key action hermes_stop_continuous: the folder under the cursor is no longer filed continuously.",
-      "en": "Stop filing continuously",
-      "de": "Laufend einsortieren beenden"
-    },
-    {
-      "key": "action.hermes_set_inbox",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_inbox: makes the folder under the cursor a read folder.",
-      "en": "Set as read folder",
-      "de": "Als Lesen-Ordner festlegen"
-    },
-    {
-      "key": "action.hermes_set_filing_location",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_filing_location: makes the folder under the cursor the target folder.",
-      "en": "Set as target folder",
-      "de": "Als Zielordner festlegen"
-    },
-    {
-      "key": "action.hermes_set_archive",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_archive: makes the folder under the cursor a read-only folder.",
-      "en": "Set as read-only folder",
-      "de": "Als Nur-lesen-Ordner festlegen"
+      "key": "action.add_target",
+      "context": "Entry of the command list and the menu that runs the key action add_target: opens the dialog that makes the folder under the cursor a target documents are filed into, or the dialog of the target it is.",
+      "en": "Set up as target…",
+      "de": "Als Ziel anlegen…"
     },
     {
       "key": "action.hermes_exclude",
@@ -6746,7 +6656,7 @@
     },
     {
       "key": "action.rules",
-      "context": "Entry of the command list and the menu that runs the key action rules, which opens the page that lists all filing rules as readable sentences. Also the title of that Hermes page and its sidebar entry. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "context": "Entry of the command list and the menu that runs the key action rules, which opens the settings on the page of the sorting: targets, rules and sources. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Rules",
       "de": "Regeln"
     },
@@ -7683,8 +7593,8 @@
     {
       "key": "hermes_chat.subtitle",
       "context": "Hermes chat (F2): Line under the heading of the Hermes chat window. Beta says the feature is new and may change.",
-      "en": "sorts your documents · Beta",
-      "de": "sortiert deine Dokumente · Beta"
+      "en": "recognises the order of your folders · Beta",
+      "de": "erkennt die Ordnung deiner Ordner · Beta"
     },
     {
       "key": "hermes_chat.esc_hint",
@@ -7839,8 +7749,8 @@
     {
       "key": "hermes_chat.placeholder",
       "context": "Hermes chat (F2): Grey hint inside the empty message field of the chat. The quoted example is a sentence the user can type.",
-      "en": "Write to Hermes, e.g. “tidy up my Downloads”",
-      "de": "Schreib Hermes, z. B. „räum meine Downloads auf“"
+      "en": "Write to Hermes, e.g. “look at my folder Bank”",
+      "de": "Schreib Hermes, z. B. „sieh dir meinen Ordner Bank an“"
     },
     {
       "key": "hermes_chat.placeholder_reply",
@@ -7958,9 +7868,51 @@
     },
     {
       "key": "hermes_chat.greeting",
-      "context": "Hermes chat (F2): Hermes' first message when the chat opens. Folder buttons follow.",
-      "en": "Hi! I'm Hermes and I tidy up your documents. Where are they now?",
-      "de": "Hallo! Ich bin Hermes und räume deine Dokumente auf. Wo liegen sie bisher?"
+      "context": "Hermes chat (F2): Hermes' first message when the chat opens. Buttons with the targets and one to choose a folder follow.",
+      "en": "Hi! I'm Hermes: I look at a folder with you, recognise the order in it and suggest rules for it.",
+      "de": "Hallo! Ich bin Hermes: Ich sehe mir mit dir einen Ordner an, erkenne seine Ordnung und schlage Regeln dafür vor."
+    },
+    {
+      "key": "hermes_chat.choose_folder",
+      "context": "Hermes chat (F2): Button under the greeting that opens the system folder picker; Hermes looks at the chosen folder. The ellipsis says a dialog follows.",
+      "en": "Choose folder…",
+      "de": "Ordner wählen…"
+    },
+    {
+      "key": "hermes_chat.levels_confirmed",
+      "context": "Hermes chat (F2): Hermes' sentence after the user accepted the order of a folder. One button that opens the rule suggestions follows. {folder} is the name of the folder.",
+      "en": "Good. I can suggest rules for {folder} now.",
+      "de": "Gut. Für {folder} kann ich dir jetzt Regeln vorschlagen."
+    },
+    {
+      "key": "hermes_chat.suggest_rules",
+      "context": "Hermes chat (F2): Button that opens the dialog with rule suggestions for the folder. The ellipsis says a dialog follows.",
+      "en": "Suggest rules…",
+      "de": "Regeln vorschlagen…"
+    },
+    {
+      "key": "hermes_chat.suggestions_open",
+      "context": "Hermes chat (F2): Hermes' sentence after the dialog with rule suggestions was opened. 'Apply' is the button of that dialog.",
+      "en": "The suggestions are in the dialog; nothing is saved until you press Apply.",
+      "de": "Die Vorschläge stehen im Dialog; gespeichert wird erst mit Übernehmen."
+    },
+    {
+      "key": "hermes_chat.sort_hint",
+      "context": "Hermes chat (F2): Hermes' answer to a sentence that asks it to file, tidy up or move files, or to make a rule. 'File…' is the entry of the context menu of a folder. Two buttons that open the dialogs follow.",
+      "en": "You start filing at the folder: right-click › File…",
+      "de": "Einsortieren startest du am Ordner: Rechtsklick › Einsortieren…"
+    },
+    {
+      "key": "hermes_chat.open_sort",
+      "context": "Hermes chat (F2): Button that opens the dialog that files a folder. The ellipsis says a dialog follows.",
+      "en": "File…",
+      "de": "Einsortieren…"
+    },
+    {
+      "key": "hermes_chat.open_rule_form",
+      "context": "Hermes chat (F2): Button that opens the form for a new rule. The ellipsis says a dialog follows.",
+      "en": "Make a rule…",
+      "de": "Regel anlegen…"
     },
     {
       "key": "hermes_chat.other_folder",
@@ -8351,18 +8303,6 @@
       "context": "Hermes chat (F2): Added to the filing report when some files were skipped. {skipped} is a number.",
       "en": "I skipped {skipped} because they changed in the meantime.",
       "de": "{skipped} habe ich übersprungen, weil sie sich inzwischen geändert haben."
-    },
-    {
-      "key": "hermes_chat.handover",
-      "context": "Hermes chat (F2): Hermes says it hands the tidy-up over to the \"Filing\" tab (German: \"Ablegen\") once the source and the target folder are known. The tab name must match the tab title.",
-      "en": "I'm planning this in the \"Filing\" tab. There you see live what goes where, and you file it with one click.",
-      "de": "Ich plane das im Tab „Ablegen“. Dort siehst du live, was wohin kommt, und legst mit einem Klick ab."
-    },
-    {
-      "key": "hermes_chat.filed_in_tab_copy",
-      "context": "Hermes chat (F2): Hermes reports a run that was done in the \"Filing\" tab and copied the files. **Double asterisks** mark bold text and must stay around the same words. {filed} is the number of files copied, {left} the number that are left, {folder} the source folder name.",
-      "en": "Done: **{filed} files** copied. {left} are still in {folder}.",
-      "de": "Fertig: **{filed} Dateien** kopiert. {left} liegen noch in {folder}."
     },
     {
       "key": "hermes_chat.filed_in_tab_move",
@@ -8863,12 +8803,6 @@
       "de": "Alles in einen Ordner"
     },
     {
-      "key": "hermes_chat.change_area_ask",
-      "context": "Hermes chat (F2): Hermes found no folder for the word the user used in a change of order and asks which area of the filing is meant. A button for every area follows.",
-      "en": "Which area do you mean?",
-      "de": "Welchen Bereich meinst du?"
-    },
-    {
       "key": "hermes_chat.always_set",
       "context": "Hermes chat (F2): Hermes says what the answer Always does: it files the folder once in the Filing tab now, and after that files new files by itself when it is sure and shows the rest in that tab. Nothing is switched on before the run in the tab is filed. {folder} is the folder.",
       "en": "Understood: I'll file {folder} once in the Filing tab now. After that I file new files myself when I'm sure, and show you the rest there.",
@@ -8883,8 +8817,8 @@
     {
       "key": "hermes_chat.small_talk",
       "context": "Hermes chat (F2): Hermes answers a greeting, thanks or the question what it can do, with one line on what it does. Buttons with things it can do follow.",
-      "en": "I'm Hermes: I tidy up your documents, find them and change how your documents are ordered. What would you like to do?",
-      "de": "Ich bin Hermes: Ich räume deine Dokumente auf, finde sie und ändere, wie deine Dokumente geordnet sind. Was möchtest du tun?"
+      "en": "I'm Hermes: I look at your folders, recognise their order and suggest rules for it. What would you like to do?",
+      "de": "Ich bin Hermes: Ich sehe mir deine Ordner an, erkenne ihre Ordnung und schlage Regeln dafür vor. Was möchtest du tun?"
     },
     {
       "key": "hermes_chat.leave_as_is",
@@ -9014,9 +8948,9 @@
     },
     {
       "key": "settings.feature_hermes_sorting",
-      "context": "Dim word beside the entry Hermes in the feature list of the settings tab and beside the title of its page: what Hermes does. Verb as noun, one word.",
+      "context": "Entry of the feature list on the settings tab and title of its page: the page where Hermes files documents from sources into targets by rules. Verb as noun, one word.",
       "en": "Sorting",
-      "de": "Sortieren"
+      "de": "Einsortieren"
     },
     {
       "key": "settings.index_section_read",
@@ -9119,6 +9053,18 @@
       "context": "Line on the Index page when no folder is listed.",
       "en": "No folder yet. The index only reads folders you add.",
       "de": "Noch kein Ordner. Der Index liest nur Ordner, die du hinzufügst."
+    },
+    {
+      "key": "settings.index_sorting_note",
+      "context": "Index page of the settings: line under the folders that are sources or targets of filing. They are listed there only to be seen and are changed on the Filing page, see the button beside it.",
+      "en": "Sources and targets are read too. They are changed on the Sorting page.",
+      "de": "Quellen und Ziele werden mitgelesen. Geändert werden sie unter Einsortieren."
+    },
+    {
+      "key": "settings.index_sorting_open",
+      "context": "Index page of the settings: button beside the line about sources and targets; it shows the Filing page of the settings.",
+      "en": "Open Sorting",
+      "de": "Einsortieren öffnen"
     },
     {
       "key": "settings.index_row_ocr_system",
@@ -9319,178 +9265,10 @@
       "de": "Aus"
     },
     {
-      "key": "settings.hermes_section_folders",
-      "context": "Heading of the section of the Hermes page that lists the folders Hermes picks up new documents from. Compound noun: read folders.",
-      "en": "Read folders",
-      "de": "Lesen-Ordner"
-    },
-    {
-      "key": "settings.hermes_section_folders_intro",
-      "context": "Sentence under the heading Read folders on the Hermes page.",
-      "en": "Where new documents arrive. Each line says what Hermes does with them.",
-      "de": "Wo neue Dokumente ankommen. Jede Zeile sagt, was Hermes damit macht."
-    },
-    {
-      "key": "settings.hermes_status_always",
-      "context": "Part of the status text of a read folder on the Hermes page: Hermes reads the folder all the time. Lower case, one or two words.",
-      "en": "always",
-      "de": "immer"
-    },
-    {
-      "key": "settings.hermes_status_on_request",
-      "context": "Part of the status text of a read folder on the Hermes page: Hermes reads the folder only when the user asks in the chat. Lower case.",
-      "en": "on request only",
-      "de": "nur auf Wunsch"
-    },
-    {
-      "key": "settings.hermes_status_move",
-      "context": "Part of the status text of a read folder on the Hermes page: files are moved out of the folder when filed. Lower case verb.",
-      "en": "move",
-      "de": "verschieben"
-    },
-    {
-      "key": "settings.hermes_status_copy",
-      "context": "Part of the status text of a read folder on the Hermes page: files are copied and the originals stay in the folder. Lower case verb.",
-      "en": "copy",
-      "de": "kopieren"
-    },
-    {
-      "key": "settings.hermes_status_continuous",
-      "context": "Part of the status text of a read folder on the Hermes page: Hermes files new files of the folder by itself when it is sure. Lower case, one word.",
-      "en": "continuous",
-      "de": "laufend"
-    },
-    {
-      "key": "settings.hermes_stop_continuous",
-      "context": "Button in the row of a read folder on the Hermes page that Hermes files continuously: Hermes stops filing its new files by itself; the folder stays a read folder.",
-      "en": "Stop filing continuously",
-      "de": "Laufend einsortieren beenden"
-    },
-    {
-      "key": "settings.hermes_status_images",
-      "context": "Part of the status text of a read folder on the Hermes page: images are read as well. Lower case.",
-      "en": "also images",
-      "de": "auch Bilder"
-    },
-    {
-      "key": "settings.hermes_folder_change",
-      "context": "Button on a read folder line of the Hermes page: opens the small dialog that changes what Hermes does with the folder. Verb.",
-      "en": "Change",
-      "de": "Ändern"
-    },
-    {
-      "key": "settings.hermes_setup_in_chat",
-      "context": "Button under the read folder list of the Hermes page: opens the Hermes chat (F2), which sets the folders up in conversation.",
-      "en": "Set up in chat",
-      "de": "Im Chat einrichten"
-    },
-    {
-      "key": "settings.hermes_folders_empty",
-      "context": "Line on the Hermes page when no read folder is listed.",
-      "en": "No read folder yet.",
-      "de": "Noch kein Lesen-Ordner."
-    },
-    {
-      "key": "settings.folder_dialog_title",
-      "context": "Title of the small dialog opened with Change on a read folder of the Hermes page. Compound noun: read folder.",
-      "en": "Read folder",
-      "de": "Lesen-Ordner"
-    },
-    {
-      "key": "settings.folder_dialog_when",
-      "context": "Question in the read folder dialog: whether Hermes reads the folder all the time or only when asked.",
-      "en": "When does Hermes read this folder?",
-      "de": "Wann liest Hermes diesen Ordner?"
-    },
-    {
-      "key": "settings.folder_dialog_always",
-      "context": "Option in the read folder dialog: Hermes reads the folder all the time.",
-      "en": "Always",
-      "de": "Immer"
-    },
-    {
-      "key": "settings.folder_dialog_on_request",
-      "context": "Option in the read folder dialog: Hermes reads the folder only when the user asks in the chat.",
-      "en": "Only on request",
-      "de": "Nur auf Wunsch"
-    },
-    {
-      "key": "settings.folder_dialog_images",
-      "context": "Checkbox in the read folder dialog: images are read as well.",
-      "en": "Also read images",
-      "de": "Auch Bilder lesen"
-    },
-    {
-      "key": "settings.hermes_section_order",
-      "context": "Heading of the section of the Hermes page that shows the order Hermes learned from the user's files. Noun.",
-      "en": "Order",
-      "de": "Ordnung"
-    },
-    {
-      "key": "settings.hermes_section_order_intro",
-      "context": "Sentence under the heading Order on the Hermes page. Nothing can be entered there; changes go through the chat.",
-      "en": "What Hermes has learned from your files. It files new documents the same way. Nothing to enter here; change it in the chat.",
-      "de": "Was Hermes aus deinen Dateien gelernt hat. Neue Dokumente legt er genauso ab. Nichts einzutragen; ändern geht im Chat."
-    },
-    {
-      "key": "settings.hermes_order_empty",
-      "context": "Line under the Order heading on the Hermes page when Hermes has learned nothing yet.",
-      "en": "Nothing learned yet. Let Hermes read a folder in the chat.",
-      "de": "Noch nichts gelernt. Lass Hermes im Chat einen Ordner lesen."
-    },
-    {
-      "key": "settings.hermes_order_reading",
-      "context": "Line under the Order heading on the Hermes page while the folders are being looked at.",
-      "en": "Looking at your folders …",
-      "de": "Schaue in deine Ordner …"
-    },
-    {
-      "key": "settings.hermes_area_files",
-      "context": "Name line of an area in the Order section of the Hermes page. An area is a part of the filing structure, for example Bank. {name} is its name, {count} the number of files; at least 2.",
-      "en": "{name} · {count} files",
-      "de": "{name} · {count} Dateien"
-    },
-    {
-      "key": "settings.hermes_area_one_file",
-      "context": "Name line of an area in the Order section of the Hermes page when it holds exactly one file. {name} is the name of the area.",
-      "en": "{name} · 1 file",
-      "de": "{name} · 1 Datei"
-    },
-    {
-      "key": "settings.hermes_area_change",
-      "context": "Button on an area line of the Hermes page: opens the Hermes chat (F2) at the change of this area.",
-      "en": "Change in chat",
-      "de": "Ändern im Chat"
-    },
-    {
-      "key": "settings.hermes_areas_more",
-      "context": "Line under the first three areas of the Order section. {count} is the number of areas not shown; at least 2.",
-      "en": "{count} more areas",
-      "de": "{count} weitere Bereiche"
-    },
-    {
-      "key": "settings.hermes_areas_more_one",
-      "context": "Line under the first three areas of the Order section when one more area is not shown.",
-      "en": "1 more area",
-      "de": "1 weiterer Bereich"
-    },
-    {
-      "key": "settings.hermes_areas_show_all",
-      "context": "Button in the Order section of the Hermes page: shows all areas.",
-      "en": "Show all",
-      "de": "Alle zeigen"
-    },
-    {
       "key": "settings.hermes_areas_show_fewer",
       "context": "Button in the Order section of the Hermes page after all areas are shown: shows only the first three again.",
       "en": "Show fewer",
       "de": "Weniger zeigen"
-    },
-    {
-      "key": "settings.hermes_section_history",
-      "context": "Heading of the section of the Hermes page that lists what Hermes filed recently. Noun.",
-      "en": "History",
-      "de": "Verlauf"
     },
     {
       "key": "settings.hermes_section_chats",
@@ -9559,12 +9337,6 @@
       "de": "Der letzte Lauf konnte nicht rückgängig gemacht werden: {reason}"
     },
     {
-      "key": "settings.hermes_history_undo_unexpected",
-      "context": "Reason inside the notice that the last run could not be undone, when the index answered something other than the undo result. Short clause, no full stop.",
-      "en": "the index gave an unexpected answer",
-      "de": "der Index hat unerwartet geantwortet"
-    },
-    {
       "key": "settings.hermes_history_undo_left",
       "context": "Notice after a run was put back but some files stayed where Hermes had put them, because they changed or their old place is taken. {left} is a number.",
       "en": "Run undone, but {left} files stayed where they are: they changed or their old place is taken.",
@@ -9625,24 +9397,6 @@
       "de": "Verschlüsselung"
     },
     {
-      "key": "settings.folder_dialog_transfer",
-      "context": "Question in the read folder dialog: whether the files are copied out of the folder or moved when filed.",
-      "en": "What happens to the files?",
-      "de": "Was geschieht mit den Dateien?"
-    },
-    {
-      "key": "settings.folder_dialog_copy",
-      "context": "Option in the read folder dialog: files are copied and the originals stay in the folder. Verb.",
-      "en": "Copy",
-      "de": "Kopieren"
-    },
-    {
-      "key": "settings.folder_dialog_move",
-      "context": "Option in the read folder dialog: files are moved out of the folder when filed. Verb.",
-      "en": "Move",
-      "de": "Verschieben"
-    },
-    {
       "key": "settings.hermes_history_today",
       "context": "Day word in a run line of the History section on the Hermes page, followed by the time: Today 14:02.",
       "en": "Today",
@@ -9656,9 +9410,9 @@
     },
     {
       "key": "settings.hermes_history_to",
-      "context": "Run line of the History section when the folder the files went to is known. {line} is the line up to the source folder, for example: Today 14:02 · 12 files from Downloads. {to} is the target folder.",
-      "en": "{line} to {to}",
-      "de": "{line} nach {to}"
+      "context": "Run line of the history on the sorting page when the folder the files went to is known. {line} is the line up to the source folder, for example: Today 14:02 · 12 files from Downloads. {to} is the target folder.",
+      "en": "{line} → {to}",
+      "de": "{line} → {to}"
     },
     {
       "key": "settings.hermes_history_examples",
@@ -10316,9 +10070,9 @@
     },
     {
       "key": "hermes_chat.folder_empty",
-      "context": "Chat reply when an opened filing folder holds no files. {folder} is its name. Followed by a suggested order and buttons.",
-      "en": "{folder} is empty. Should something go in?",
-      "de": "{folder} ist leer. Soll da was rein?"
+      "context": "Chat reply when an opened folder holds no files. {folder} is its name. Followed by a suggested order and buttons.",
+      "en": "{folder} is empty. This order would be possible:",
+      "de": "{folder} ist leer. Möglich wäre diese Ordnung:"
     },
     {
       "key": "hermes_chat.levels_found",
@@ -10346,9 +10100,9 @@
     },
     {
       "key": "hermes_chat.levels_poor",
-      "context": "Chat text under the levels card when the order the model recognised fits too few of the files. {fitting} of {total} files follow it. The only button left is the one that changes the levels.",
-      "en": "This order fits only {fitting} of {total} files, so I will not create a rule from it as it is. Change the levels.",
-      "de": "Diese Reihenfolge passt nur auf {fitting} von {total} Dateien, deshalb lege ich daraus nicht einfach eine Regel an. Ändere die Ebenen."
+      "context": "Chat text under the levels card when the order the model recognised fits too few of the files. {fitting} of {total} files follow it. One button changes the levels, one suggests rules without this order.",
+      "en": "This order fits only {fitting} of {total} files. Change the levels, or let me suggest rules without this order.",
+      "de": "Diese Reihenfolge passt nur auf {fitting} von {total} Dateien. Ändere die Ebenen, oder lass dir Regeln ohne diese Reihenfolge vorschlagen."
     },
     {
       "key": "hermes_chat.levels_misfit",
@@ -10364,15 +10118,15 @@
     },
     {
       "key": "hermes_chat.levels_keep",
-      "context": "Button under the levels Hermes found: the levels are right, make the rule from them.",
+      "context": "Button under the levels Hermes found: the levels are right.",
       "en": "Looks right",
       "de": "Passt so"
     },
     {
       "key": "hermes_chat.levels_create",
-      "context": "Button: set up the levels shown for an empty folder.",
-      "en": "Set it up like this",
-      "de": "So anlegen"
+      "context": "Button: take the levels shown for an empty folder.",
+      "en": "Take it like this",
+      "de": "So nehmen"
     },
     {
       "key": "hermes_chat.levels_change",
@@ -10388,7 +10142,7 @@
     },
     {
       "key": "hermes_chat.levels_apply",
-      "context": "Button under the levels card after the user changed a level in words: take the levels as they now stand and go on to the trial of the rule.",
+      "context": "Button under the levels card after the user changed a level in words: take the levels as they now stand and go on to the rule suggestions.",
       "en": "Apply",
       "de": "Übernehmen"
     },
@@ -10406,7 +10160,7 @@
     },
     {
       "key": "hermes_chat.levels_done",
-      "context": "Button while the user changes the levels: nothing more to change, take the levels as they stand and go on to the trial of the rule. Always there, also before the first change.",
+      "context": "Button while the user changes the levels: nothing more to change, take the levels as they stand and go on to the rule suggestions. Always there, also before the first change.",
       "en": "Done",
       "de": "Fertig"
     },
@@ -10418,9 +10172,9 @@
     },
     {
       "key": "hermes_chat.levels_preview_none",
-      "context": "Line under the levels card after a change when no existing file would be renamed or moved by the changed levels.",
-      "en": "On applying, no existing file changes.",
-      "de": "Beim Übernehmen ändert sich keine vorhandene Datei."
+      "context": "Line under the levels card after a change when every existing file already fits the changed levels.",
+      "en": "Every existing file already fits these levels.",
+      "de": "Alle vorhandenen Dateien passen schon zu diesen Ebenen."
     },
     {
       "key": "hermes_chat.levels_ask_level",
@@ -10568,9 +10322,9 @@
     },
     {
       "key": "hermes_chat.levels_renames",
-      "context": "Header of the list in the changed-levels card of the files the changed levels would rename or move when applied. {count} is how many.",
-      "en": "Will be renamed ({count})",
-      "de": "Wird umbenannt ({count})"
+      "context": "Header of the list in the changed-levels card of the files that would have another path under the changed levels. Nothing is renamed. {count} is how many.",
+      "en": "Would be named differently ({count})",
+      "de": "Hießen dann anders ({count})"
     },
     {
       "key": "hermes_chat.rule_examples_more",
@@ -12433,118 +12187,16 @@
       "de": "Abbrechen"
     },
     {
-      "key": "filing_view.title",
-      "context": "Filing tab: title of the bar under the two lists. Noun, the work of putting the files of a read folder into the write folder.",
-      "en": "Filing",
-      "de": "Ablegen"
-    },
-    {
-      "key": "filing_view.tab_running",
-      "context": "Filing tab: title of the tab while Hermes still reads the files. {folder} is the name of the read folder, {done} the files looked at so far, {total} all files of the read folder.",
-      "en": "Filing · {folder} {done}/{total}",
-      "de": "Ablegen · {folder} {done}/{total}"
-    },
-    {
-      "key": "filing_view.tab_ready",
-      "context": "Filing tab: title of the tab when every file is looked at and the plan can be carried out. {folder} is the name of the read folder.",
-      "en": "Filing · {folder} ✓ ready",
-      "de": "Ablegen · {folder} ✓ bereit"
-    },
-    {
-      "key": "filing_view.tab_failed",
-      "context": "Filing tab: title of the tab when the plan could not be made. {folder} is the name of the read folder.",
-      "en": "Filing · {folder} ✕",
-      "de": "Ablegen · {folder} ✕"
-    },
-    {
-      "key": "filing_view.read_folder",
-      "context": "Filing tab: heading over the left list, the folder the files are taken from (read folder). {path} is its path.",
-      "en": "Read folder · {path}",
-      "de": "Lesen-Ordner · {path}"
-    },
-    {
-      "key": "filing_view.write_folder",
-      "context": "Filing tab: heading over the right tree, the folder the files go into (write folder). {path} is its path.",
-      "en": "Write folder · {path}",
-      "de": "Schreib-Ordner · {path}"
-    },
-    {
-      "key": "filing_view.column_what",
-      "context": "Filing tab: column header over what happens to each file of the read folder. Short phrase.",
-      "en": "What happens",
-      "de": "Was passiert"
-    },
-    {
-      "key": "filing_view.state_waiting",
-      "context": "Filing tab: a file of the read folder that Hermes has not looked at yet. Starts with a dot as the mark of the state.",
-      "en": "· waiting",
-      "de": "· wartet"
-    },
-    {
       "key": "filing_view.state_looking",
       "context": "Filing tab: a file Hermes is looking at right now. Starts with a half circle as the mark of the state.",
       "en": "◐ reading …",
       "de": "◐ liest …"
     },
     {
-      "key": "filing_view.state_needs_model",
-      "context": "Filing tab: a file that stays without a folder because the AI in use cannot choose folders; the plan is finished for it. Starts with a hollow circle as the mark of the state.",
-      "en": "○ needs the built-in language model",
-      "de": "○ braucht das eingebaute Sprachmodell"
-    },
-    {
-      "key": "filing_view.state_filed",
-      "context": "Filing tab: where a file will be filed. {path} is the folder and the file name below the write folder. Starts with an arrow.",
-      "en": "→ {path}",
-      "de": "→ {path}"
-    },
-    {
-      "key": "filing_view.state_already",
-      "context": "Filing tab: a file whose content is already in the write folder. {at} is where, below the write folder.",
-      "en": "= already there: {at}",
-      "de": "= schon da: {at}"
-    },
-    {
-      "key": "filing_view.state_no_folder",
-      "context": "Filing tab: a file for which no folder fits; it stays in the read folder.",
-      "en": "? no matching folder · stays",
-      "de": "? kein passender Ordner · bleibt liegen"
-    },
-    {
-      "key": "filing_view.state_unreadable",
-      "context": "Filing tab: a file Hermes could not read any text from; it stays in the read folder.",
-      "en": "✕ unreadable · stays",
-      "de": "✕ nicht lesbar · bleibt liegen"
-    },
-    {
       "key": "filing_view.by_user",
       "context": "Filing tab: appended to the state of a file the user changed by hand. Starts with a space.",
       "en": " (by you)",
       "de": " (von dir)"
-    },
-    {
-      "key": "filing_view.tag_unreadable",
-      "context": "Filing tab: the tag put on a file that could not be read; also shown as a chip in its row. Keep the prefix.",
-      "en": "Hermes: unreadable",
-      "de": "Hermes: nicht lesbar"
-    },
-    {
-      "key": "filing_view.tag_unsure",
-      "context": "Filing tab: chip after a planned file whose folder is only the model's guess and should be checked. Keep the leading question mark.",
-      "en": "? unsure",
-      "de": "? unsicher"
-    },
-    {
-      "key": "filing_view.move_sure",
-      "context": "Filing tab: button that moves only the planned files whose place is sure and leaves the unsure ones in the read folder. {count} is how many.",
-      "en": "Move only {count} sure",
-      "de": "Nur {count} sichere verschieben"
-    },
-    {
-      "key": "filing_view.tag_no_folder",
-      "context": "Filing tab: the tag put on a file for which no folder fits; also shown as a chip in its row. Keep the prefix.",
-      "en": "Hermes: no folder",
-      "de": "Hermes: kein Ordner"
     },
     {
       "key": "filing_view.only_new",
@@ -12587,6 +12239,72 @@
       "context": "Filing page of the settings: short note after the heading Targets and their rules. The rules of a target are checked in the order of the list.",
       "en": "top to bottom, the first match applies",
       "de": "von oben nach unten, die erste passende gilt"
+    },
+    {
+      "key": "sorting.target_dialog_new",
+      "context": "Title of the dialog in which a new target folder is made.",
+      "en": "New target",
+      "de": "Neues Ziel"
+    },
+    {
+      "key": "sorting.target_dialog_edit",
+      "context": "Title of the dialog in which the name and folder of a target are changed.",
+      "en": "Change target",
+      "de": "Ziel ändern"
+    },
+    {
+      "key": "sorting.field_target_name",
+      "context": "Label of the name field in the target dialog. The name is optional: the folder's name is shown without one.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "sorting.problem_target_overlap",
+      "context": "Error under the folder field of the target dialog: the folder lies in another target, or another target lies in it. {name} is the name of that other target.",
+      "en": "The folder overlaps the target {name}.",
+      "de": "Der Ordner überschneidet sich mit dem Ziel {name}."
+    },
+    {
+      "key": "sorting.remove_target_title",
+      "context": "Title of the question before a target is removed.",
+      "en": "Remove target",
+      "de": "Ziel entfernen"
+    },
+    {
+      "key": "sorting.remove_target_question",
+      "context": "Question before a target with rules is removed. {name} is the target, {count} the number of its rules, which are deleted with it. The files in the folder stay.",
+      "en": "Remove the target {name} with its {count} rules? The rules are deleted, the files in the folder stay. Sources lose this target; a source left without a target pauses.",
+      "de": "Ziel {name} mit seinen {count} Regeln entfernen? Die Regeln werden gelöscht, die Dateien im Ordner bleiben. Quellen verlieren dieses Ziel; eine Quelle ohne Ziel pausiert."
+    },
+    {
+      "key": "sorting.remove_target_question_plain",
+      "context": "Question before a target without rules is removed. {name} is the target. The files in the folder stay.",
+      "en": "Remove the target {name}? The files in the folder stay. Sources lose this target; a source left without a target pauses.",
+      "de": "Ziel {name} entfernen? Die Dateien im Ordner bleiben. Quellen verlieren dieses Ziel; eine Quelle ohne Ziel pausiert."
+    },
+    {
+      "key": "sorting.pattern_unknown_block",
+      "context": "Error under the pattern field of the rule dialog: {block} is a word in braces the pattern does not know. The blocks to use are the chips under the field.",
+      "en": "{block} is not a block of the pattern. Use the blocks below the field.",
+      "de": "{block} ist kein Baustein des Musters. Nimm die Bausteine unter dem Feld."
+    },
+    {
+      "key": "sorting.try_name_taken",
+      "context": "Line of the trial run in the rule dialog: the rule fits a file but another file would already have the place. {path} is the place.",
+      "en": "{path} · name already taken · stays where it is",
+      "de": "{path} · Name schon belegt · bleibt liegen"
+    },
+    {
+      "key": "sorting.try_bad_name",
+      "context": "Line of the trial run in the rule dialog: the rule fits a file but the pattern gives a name that not every system keeps.",
+      "en": "not a valid file name · stays where it is",
+      "de": "kein gültiger Dateiname · bleibt liegen"
+    },
+    {
+      "key": "sorting.try_no_text",
+      "context": "Line of the trial run in the rule dialog: {count} files of the sources have no text, so no rule can decide about them; they are asked about.",
+      "en": "{count} files without text · ask",
+      "de": "{count} Dateien ohne Text · fragen"
     },
     {
       "key": "sorting.add_target",
@@ -12661,12 +12379,6 @@
       "de": "überspringen"
     },
     {
-      "key": "sorting.rule_hits",
-      "context": "Filing page of the settings: on the line of a rule, how many documents of the index the rule matches. {count} is the number.",
-      "en": "{count} matches",
-      "de": "{count} Treffer"
-    },
-    {
       "key": "sorting.change",
       "context": "Filing page of the settings: button on the line of a source, a target or a rule that opens its dialog. Verb.",
       "en": "Change",
@@ -12674,9 +12386,15 @@
     },
     {
       "key": "sorting.remove",
-      "context": "Filing page of the settings: button on the line of a source, a target or a rule that removes it. Files already filed stay where they are. Verb.",
+      "context": "Filing page of the settings: button on the line of a source or a target, and in the dialog of a rule, that removes it. Files already filed stay where they are. Verb.",
       "en": "Remove",
       "de": "Entfernen"
+    },
+    {
+      "key": "sorting.repick_folder",
+      "context": "Button on a source of the sorting page whose folder cannot be read (moved, drive missing, no permission): the user chooses the folder again, everything else of the source stays.",
+      "en": "Choose folder again…",
+      "de": "Ordner neu wählen…"
     },
     {
       "key": "sorting.sources_empty",
@@ -12818,15 +12536,105 @@
     },
     {
       "key": "sorting.glob_problem",
-      "context": "Source dialog: error under the Include or Exclude field. {pattern} is the file pattern that cannot be used, {reason} the explanation of the parser.",
-      "en": "The pattern “{pattern}” cannot be used: {reason}",
-      "de": "Das Muster „{pattern}“ ist nicht gültig: {reason}"
+      "context": "Source dialog: error under the Include or Exclude field. {pattern} is the file pattern that cannot be used, as the user typed it.",
+      "en": "The pattern “{pattern}” is not valid.",
+      "de": "Das Muster „{pattern}“ ist nicht gültig."
+    },
+    {
+      "key": "sorting.problem_folder_missing",
+      "context": "Source dialog: error under the Folder field when the folder does not exist.",
+      "en": "This folder does not exist.",
+      "de": "Diesen Ordner gibt es nicht."
+    },
+    {
+      "key": "sorting.problem_no_target",
+      "context": "Source dialog: error under the list of targets when none is ticked. A source without a target is paused.",
+      "en": "Tick at least one target.",
+      "de": "Mindestens ein Ziel ankreuzen."
+    },
+    {
+      "key": "sorting.problem_inside_target",
+      "context": "Source dialog: error under the Folder field when a watched folder lies in a target folder (or is one): filed files would be filed again.",
+      "en": "A watched folder cannot be inside a target.",
+      "de": "Ein überwachter Ordner darf nicht in einem Ziel liegen."
+    },
+    {
+      "key": "sorting.hint_existing_stay",
+      "context": "Source dialog: hint under the choice Watch. Files that are in the folder already are not filed by themselves; they show up in the plan.",
+      "en": "Files that are in the folder already stay; they appear in the plan.",
+      "de": "Was schon im Ordner liegt, bleibt liegen und erscheint im Plan."
+    },
+    {
+      "key": "sorting.state_paused",
+      "context": "Filing page of the settings: state on the line of a source that has no target and so does nothing.",
+      "en": "paused: no target",
+      "de": "pausiert: kein Ziel"
+    },
+    {
+      "key": "sorting.state_drive_missing",
+      "context": "Filing page of the settings: state on the line of a source whose drive is not plugged in. The source waits.",
+      "en": "waiting: drive missing",
+      "de": "wartet: Laufwerk fehlt"
+    },
+    {
+      "key": "sorting.state_folder_missing",
+      "context": "Filing page of the settings: state on the line of a source whose folder does not exist. The source waits.",
+      "en": "waiting: folder missing",
+      "de": "wartet: Ordner fehlt"
+    },
+    {
+      "key": "sorting.state_unreadable",
+      "context": "Filing page of the settings: state on the line of a source whose folder cannot be read, for example without the permission of the system.",
+      "en": "waiting: cannot be read",
+      "de": "wartet: nicht lesbar"
+    },
+    {
+      "key": "sorting.state_target_waiting",
+      "context": "Filing page of the settings: state on the line of a source when a target it files into is not ready, for example its drive is missing.",
+      "en": "waiting: target not ready",
+      "de": "wartet: Ziel nicht bereit"
+    },
+    {
+      "key": "sorting.state_glob_error",
+      "context": "Filing page of the settings: state on the line of a source whose include or exclude pattern cannot be used.",
+      "en": "pattern not valid",
+      "de": "Muster ungültig"
+    },
+    {
+      "key": "sorting.state_questions_one",
+      "context": "Filing page of the settings: state on the line of a source with exactly one open question about a file.",
+      "en": "1 question open",
+      "de": "1 offene Frage"
+    },
+    {
+      "key": "sorting.state_questions_other",
+      "context": "Filing page of the settings: state on the line of a source with open questions about files, for none or more than one. {count} is the number.",
+      "en": "{count} questions open",
+      "de": "{count} offene Fragen"
+    },
+    {
+      "key": "sorting.history_title",
+      "context": "Filing page of the settings: title of the group that lists the last runs with the button to take one back. Noun.",
+      "en": "History",
+      "de": "Verlauf"
     },
     {
       "key": "sorting.rule_target",
       "context": "Rule dialog: label of the dropdown that chooses the target folder the files of this rule are filed into.",
       "en": "Target",
       "de": "Ziel"
+    },
+    {
+      "key": "sorting.state_unconfirmed",
+      "context": "Filing page: state on the line of a target taken over from an older version, whose folder was never confirmed as the right one. The button Confirm sits next to it.",
+      "en": "waiting: folder not confirmed",
+      "de": "wartet: Ordner nicht bestätigt"
+    },
+    {
+      "key": "sorting.confirm_target",
+      "context": "Filing page: button on the line of a target whose folder was never confirmed; confirms that the folder is the right one.",
+      "en": "Confirm",
+      "de": "Bestätigen"
     },
     {
       "key": "sorting.rule_then",
@@ -13027,6 +12835,12 @@
       "de": "Anders vorschlagen"
     },
     {
+      "key": "sorting.take_rule",
+      "context": "Main button of the dialogs in which Hermes proposes rules when one rule is ticked: saves it. Pairs with sorting.take_rules.",
+      "en": "Take 1 rule",
+      "de": "1 Regel übernehmen"
+    },
+    {
       "key": "sorting.take_rules",
       "context": "Main button of the dialogs in which Hermes proposes rules: saves the ticked rules. {count} is the number of rules.",
       "en": "Take {count} rules",
@@ -13105,88 +12919,58 @@
       "de": "Hermes hat keine weitere Regel gefunden."
     },
     {
+      "key": "sorting.suggest_working",
+      "context": "Dialogs in which Hermes proposes rules: line shown while Hermes reads the files and the model works. It can take a while.",
+      "en": "Hermes is reading the files and writing proposals…",
+      "de": "Hermes liest die Dateien und schreibt Vorschläge …"
+    },
+    {
+      "key": "sorting.suggest_failed",
+      "context": "Dialogs in which Hermes proposes rules: error line when no proposal could be made. {detail} is the technical reason.",
+      "en": "Hermes could not make a proposal: {detail}",
+      "de": "Hermes konnte keinen Vorschlag machen: {detail}"
+    },
+    {
+      "key": "sorting.suggest_no_model",
+      "context": "Dialogs in which Hermes proposes rules: grey note when Hermes is switched off or has no model. The proposals then come from the folders and files alone.",
+      "en": "No model is available, so the proposals come from the folders and files alone.",
+      "de": "Kein Modell verfügbar, die Vorschläge kommen allein aus Ordnern und Dateien."
+    },
+    {
+      "key": "sorting.suggest_model_failed",
+      "context": "Dialogs in which Hermes proposes rules: grey note when the model did not answer. {detail} is the technical reason. The proposals then come from the folders and files alone.",
+      "en": "The model did not answer ({detail}), so the proposals come from the folders and files alone.",
+      "de": "Das Modell hat nicht geantwortet ({detail}), die Vorschläge kommen allein aus Ordnern und Dateien."
+    },
+    {
+      "key": "sorting.suggest_none_for_file",
+      "context": "Rule proposal dialog for one file: line shown when no rule could be found that fits the file.",
+      "en": "Hermes found no rule that fits this file.",
+      "de": "Hermes hat keine Regel gefunden, die zu dieser Datei passt."
+    },
+    {
+      "key": "sorting.suggest_reject",
+      "context": "Dialogs in which Hermes proposes rules: button on one proposed rule. It turns the proposal down for good, so Hermes does not propose it again for this target.",
+      "en": "Discard",
+      "de": "Verwerfen"
+    },
+    {
       "key": "filing_view.more_there",
       "context": "Filing tab: line under the existing files of a folder of the write folder, grey. {count} is how many more files are there that are not listed.",
       "en": "… {count} more already there",
       "de": "… {count} weitere schon da"
     },
     {
-      "key": "filing_view.tally_read",
-      "context": "Filing tab: figure in the bar. {done} files looked at of {total} files in the read folder.",
-      "en": "{done} of {total} read",
-      "de": "{done} von {total} gelesen"
-    },
-    {
-      "key": "filing_view.tally_goes",
-      "context": "Filing tab: figure in the bar. {count} files will be filed into {folders} folders of the write folder.",
-      "en": "{count} go into {folders} folders",
-      "de": "{count} kommen in {folders} Ordner"
-    },
-    {
-      "key": "filing_view.tally_already",
-      "context": "Filing tab: figure in the bar. {count} files are already in the write folder.",
-      "en": "{count} already there",
-      "de": "{count} schon da"
-    },
-    {
-      "key": "filing_view.tally_no_folder",
-      "context": "Filing tab: figure in the bar. {count} files have no matching folder.",
-      "en": "{count} without a folder",
-      "de": "{count} ohne Ordner"
-    },
-    {
-      "key": "filing_view.tally_unreadable",
-      "context": "Filing tab: figure in the bar. {count} files could not be read.",
-      "en": "{count} unreadable",
-      "de": "{count} nicht lesbar"
-    },
-    {
       "key": "filing_view.trash_dupes",
-      "context": "Filing tab: checkbox label in the bar. When on, the files of the read folder that are already in the write folder are moved to the trash.",
-      "en": "Delete duplicates in the read folder",
-      "de": "Doppelte im Lesen-Ordner löschen"
-    },
-    {
-      "key": "filing_view.copy",
-      "context": "Filing tab: button that copies the planned files into the write folder. {count} is how many.",
-      "en": "Copy {count}",
-      "de": "{count} kopieren"
-    },
-    {
-      "key": "filing_view.move",
-      "context": "Filing tab: button that moves the planned files into the write folder. {count} is how many.",
-      "en": "Move {count}",
-      "de": "{count} verschieben"
+      "context": "Filing tab: checkbox label in the bar. When on, the files of the source that are already in a target are moved to the trash.",
+      "en": "Move duplicates in the source to the trash",
+      "de": "Duplikate aus der Quelle in den Papierkorb"
     },
     {
       "key": "filing_view.error_outside",
-      "context": "Filing tab: error line when the user picked a folder that is not inside the write folder. {target} is the write folder.",
-      "en": "The folder is not inside the write folder {target}.",
-      "de": "Der Ordner liegt nicht im Schreib-Ordner {target}."
-    },
-    {
-      "key": "filing_view.error_not_ready",
-      "context": "Filing tab: error line when the plan cannot start because Hermes or its language model is not ready.",
-      "en": "Hermes or its language model is not ready, so the files cannot be planned.",
-      "de": "Hermes oder sein Sprachmodell ist nicht bereit, darum lassen sich die Dateien nicht planen."
-    },
-    {
-      "key": "filing_view.error_folder_choice_unsupported",
-      "context": "Filing tab: error line when the AI is set up as a server of the user's own, which cannot choose the folder for a file yet. The files that need that choice stay unplanned.",
-      "en": "Choosing the folder needs the built-in language model. With your own AI server, only the files the rules can place are planned.",
-      "de": "Die Ordnerwahl braucht das eingebaute Sprachmodell. Mit einem eigenen KI-Server werden nur die Dateien geplant, die sich per Regel einordnen lassen."
-    },
-    {
-      "key": "filing_view.error_folder_consent_missing",
-      "context": "Filing tab: error line when the AI is set up as a server on another computer and the user has not agreed to send folder names and file names to it. Nothing was sent; the files that need the folder choice stay unplanned. The AI settings are where the agreement is given.",
-      "en": "Nothing was sent: choosing the folder needs your agreement to send folder names and file names to this AI server. You can give it in the AI settings.",
-      "de": "Es wurde nichts gesendet: Für die Ordnerwahl musst du dem Senden von Ordner- und Dateinamen an diesen KI-Server zustimmen. Das geht in den KI-Einstellungen."
-    },
-    {
-      "key": "filing_view.error_model_failed",
-      "context": "Filing tab: error line when the language model failed while choosing folders. The files it did not answer for stay unplanned and are not marked.",
-      "en": "The language model could not choose the folders. The files it did not answer for stay unplanned; try again later.",
-      "de": "Das Sprachmodell konnte die Ordner nicht wählen. Die Dateien, für die es keine Antwort gab, bleiben ungeplant; versuche es später noch einmal."
+      "context": "Filing tab: error line when the user picked a folder that is not inside a target of the source.",
+      "en": "The folder is not inside a target of this source.",
+      "de": "Der Ordner liegt in keinem Ziel dieser Quelle."
     },
     {
       "key": "filing_view.error_name",
@@ -13201,28 +12985,244 @@
       "de": "Neuer Dateiname"
     },
     {
-      "key": "filing_view.error_filing_failed",
-      "context": "Filing tab: error line when carrying out the plan gave no usable result, for example because the write folder could not be used. Nothing is known about what was moved; the user can try again.",
-      "en": "The files could not be filed. Check the folders and try again.",
-      "de": "Die Dateien konnten nicht einsortiert werden. Prüfe die Ordner und versuche es noch einmal."
-    },
-    {
       "key": "filing_view.empty",
       "context": "Filing tab: line in the left list when the read folder has no files to file.",
       "en": "No files to file in this folder.",
       "de": "In diesem Ordner gibt es keine Dateien zum Einsortieren."
     },
     {
-      "key": "filing_view.filing",
-      "context": "Filing tab: figure in the bar while the files are being carried out. {count} is the number of files that go to the write folder.",
-      "en": "Filing {count} files …",
-      "de": "{count} Dateien werden einsortiert …"
+      "key": "filing_view.tab_title",
+      "context": "Filing tab: title of the tab. {folder} is the name of the source folder.",
+      "en": "Sorting · {folder}",
+      "de": "Einsortieren · {folder}"
     },
     {
-      "key": "filing_view.tab_filing",
-      "context": "Filing tab: title of the tab while the files are being carried out. {folder} is the name of the read folder.",
-      "en": "Filing · {folder} … filing",
-      "de": "Ablegen · {folder} … wird einsortiert"
+      "key": "filing_view.state_name_taken",
+      "context": "Filing tab: what happens to a file whose new name is taken by another file, in the target or in the plan. {target} is the short name of the target (T1), {path} the path that is taken.",
+      "en": "name taken: {target} {path} · stays where it is",
+      "de": "Name vergeben: {target} {path} · bleibt liegen"
+    },
+    {
+      "key": "filing_view.state_missing_value",
+      "context": "Filing tab: the pattern of the rule needs a value that was not found in the file, so it is not filed. {field} is the name of the value (Sender, Number), {block} the part of the pattern it belongs to, like {number}.",
+      "en": "{field} not found, {block} stays empty · stays where it is",
+      "de": "{field} nicht erkannt, {block} bleibt leer · bleibt liegen"
+    },
+    {
+      "key": "filing_view.state_bad_name",
+      "context": "Filing tab: the pattern of a rule gives no usable file name for the file, so it is not filed. {rule} is the name of the rule.",
+      "en": "rule {rule} gives no usable name · stays where it is",
+      "de": "Regel {rule} ergibt keinen brauchbaren Namen · bleibt liegen"
+    },
+    {
+      "key": "filing_view.state_not_read",
+      "context": "Filing tab: the file could not be read, so no rule can match. {reason} says why, see the reasons that follow.",
+      "en": "not read: {reason} · stays where it is",
+      "de": "nicht gelesen: {reason} · bleibt liegen"
+    },
+    {
+      "key": "filing_view.reason_unknown",
+      "context": "Filing tab: reason a file was not read. Follows 'not read:'. Short, no full stop.",
+      "en": "not read yet",
+      "de": "noch nicht gelesen"
+    },
+    {
+      "key": "filing_view.reason_still_writing",
+      "context": "Filing tab: reason a file was not read. Follows 'not read:'. Another program is still writing the file. Short, no full stop.",
+      "en": "still being written",
+      "de": "wird noch geschrieben"
+    },
+    {
+      "key": "filing_view.reason_unsupported",
+      "context": "Filing tab: reason a file was not read. Follows 'not read:'. Short, no full stop.",
+      "en": "no text can be read from this kind of file",
+      "de": "aus dieser Dateiart lässt sich kein Text lesen"
+    },
+    {
+      "key": "filing_view.reason_library_missing",
+      "context": "Filing tab: reason a file was not read. Follows 'not read:'. The library that reads PDF files is missing. Short, no full stop.",
+      "en": "the PDF library is missing",
+      "de": "die PDF-Bibliothek fehlt"
+    },
+    {
+      "key": "filing_view.state_set_aside",
+      "context": "Filing tab: a file of a watched source that the user left or whose filing was taken back; it is not decided for again.",
+      "en": "set aside · stays where it is",
+      "de": "beiseitegelegt · bleibt liegen"
+    },
+    {
+      "key": "filing_view.mode",
+      "context": "Colored field at the left end of the bar of the filing tab. Upper case, a single short word.",
+      "en": "SORTING",
+      "de": "EINSORTIEREN"
+    },
+    {
+      "key": "filing_view.state_no_rule_short",
+      "context": "Filing tab of a watched source: no rule matches the file. Three links follow in the same row, so as short as possible.",
+      "en": "no rule",
+      "de": "keine Regel"
+    },
+    {
+      "key": "filing_view.state_stay",
+      "context": "Filing tab: the user chose to leave this file where it is.",
+      "en": "stays where it is",
+      "de": "bleibt liegen"
+    },
+    {
+      "key": "filing_view.link_assign",
+      "context": "Filing tab: link behind a file that has no place yet. Opens the choice of a target folder for this one file. The ellipsis means a choice follows.",
+      "en": "Assign file…",
+      "de": "Datei zuordnen…"
+    },
+    {
+      "key": "filing_view.link_leave",
+      "context": "Filing tab: link behind a file that waits for a decision. The file stays where it is. Lower case verb phrase.",
+      "en": "leave it",
+      "de": "liegen lassen"
+    },
+    {
+      "key": "filing_view.wait_missing",
+      "context": "Filing tab: why a target cannot be filed into. Follows the name of the target. Short, no full stop.",
+      "en": "folder not found",
+      "de": "Ordner nicht gefunden"
+    },
+    {
+      "key": "filing_view.wait_not_mounted",
+      "context": "Filing tab: why a target cannot be filed into. Follows the name of the target. The drive of the target is not connected. Short, no full stop.",
+      "en": "drive not connected",
+      "de": "Laufwerk nicht angeschlossen"
+    },
+    {
+      "key": "filing_view.wait_not_accessible",
+      "context": "Filing tab: why a target cannot be filed into. Follows the name of the target. Short, no full stop.",
+      "en": "no access to the folder",
+      "de": "kein Zugriff auf den Ordner"
+    },
+    {
+      "key": "filing_view.wait_unconfirmed",
+      "context": "Filing tab: why a target cannot be filed into. Follows the name of the target. The folder was taken over from an older version and none of its files is there. Short, no full stop.",
+      "en": "folder not confirmed yet",
+      "de": "Ordner noch nicht bestätigt"
+    },
+    {
+      "key": "filing_view.wait_paused",
+      "context": "Filing tab: why a target cannot be filed into. Follows the name of the target. The user paused it. Short, no full stop.",
+      "en": "paused",
+      "de": "pausiert"
+    },
+    {
+      "key": "filing_view.target_waiting",
+      "context": "Filing tab: line above the bar while a target cannot be filed into; nothing is filed until it can. {target} is the short name of the target (T1), {reason} why it cannot.",
+      "en": "{target} is waiting: {reason}. Nothing is filed until then.",
+      "de": "{target} wartet: {reason}. Bis dahin wird nichts einsortiert."
+    },
+    {
+      "key": "filing_view.recheck",
+      "context": "Filing tab: button that looks at the source and the targets again after the user fixed something, for example connected a drive.",
+      "en": "Check again",
+      "de": "Neu prüfen"
+    },
+    {
+      "key": "filing_view.figure_problems",
+      "context": "Filing tab, status bar: how many files have a problem the user has to look at (name taken, no usable name, no value for the pattern, not read). {count} is the number.",
+      "en": "{count} to check",
+      "de": "{count} zu prüfen"
+    },
+    {
+      "key": "filing_view.figure_reading",
+      "context": "Filing tab, status bar: how many files of the source were read while the plan is made. {done} is the number read so far, {total} all files.",
+      "en": "{done} of {total} read",
+      "de": "{done} von {total} gelesen"
+    },
+    {
+      "key": "filing_view.run_filing",
+      "context": "Filing tab, status bar: figure while the files are being carried out. {done} is the number finished so far, {total} all files.",
+      "en": "Filing {done} of {total} …",
+      "de": "{done} von {total} werden einsortiert …"
+    },
+    {
+      "key": "filing_view.run_filed",
+      "context": "Filing tab, status bar: result of a run. {count} is the number of files that reached their place.",
+      "en": "{count} filed",
+      "de": "{count} einsortiert"
+    },
+    {
+      "key": "filing_view.run_left",
+      "context": "Filing tab, status bar: result of a run. {count} is the number of files that are still in the source.",
+      "en": "{count} files stay here",
+      "de": "{count} Dateien liegen weiter hier"
+    },
+    {
+      "key": "filing_view.run_trashed",
+      "context": "Filing tab, status bar: result of a run. {count} is the number of duplicates in the source that went to the trash.",
+      "en": "{count} duplicates in the trash",
+      "de": "{count} Duplikate im Papierkorb"
+    },
+    {
+      "key": "filing_view.problem_waiting",
+      "context": "Filing tab: error line for one file that was not filed because its target cannot be filed into. {file} is the file name, {reason} why the target cannot.",
+      "en": "{file}: the target is waiting, {reason}.",
+      "de": "{file}: das Ziel wartet, {reason}."
+    },
+    {
+      "key": "filing_view.problem_bad_place",
+      "context": "Filing tab: error line for one file that was not filed because its place is not usable (not a target of the source, or a name that does not work on every system). {file} is the file name.",
+      "en": "{file}: the place is not usable.",
+      "de": "{file}: der Ablageort ist nicht brauchbar."
+    },
+    {
+      "key": "filing_view.problem_changed",
+      "context": "Filing tab: error line for one file that was not filed because it changed or went away after the plan was made. {file} is the file name.",
+      "en": "{file}: changed or gone since the plan was made.",
+      "de": "{file}: seit dem Plan geändert oder nicht mehr da."
+    },
+    {
+      "key": "filing_view.problem_name_taken",
+      "context": "Filing tab: error line for one file that was not filed because another file has its name in the target. {file} is the file name.",
+      "en": "{file}: the name is taken in the target.",
+      "de": "{file}: der Name ist im Ziel vergeben."
+    },
+    {
+      "key": "filing_view.problem_stopped",
+      "context": "Filing tab: error line for one file that was not filed because the run was stopped before. {file} is the file name.",
+      "en": "{file}: stopped before it was filed.",
+      "de": "{file}: vor dem Einsortieren angehalten."
+    },
+    {
+      "key": "filing_view.problem_failed",
+      "context": "Filing tab: error line for one file that could not be filed. {file} is the file name, {reason} what the system said.",
+      "en": "{file} was not filed: {reason}",
+      "de": "{file} nicht einsortiert: {reason}"
+    },
+    {
+      "key": "filing_view.problems_more",
+      "context": "Filing tab: error line after the first files that were not filed. {count} is how many more there are.",
+      "en": "… and {count} more files.",
+      "de": "… und {count} weitere Dateien."
+    },
+    {
+      "key": "filing_view.error_source",
+      "context": "Filing tab: error line when the folder of the source cannot be read, for example because its drive is not connected.",
+      "en": "The source folder cannot be read. Check the folder and try again.",
+      "de": "Der Quellordner kann nicht gelesen werden. Prüfe den Ordner und versuche es noch einmal."
+    },
+    {
+      "key": "filing_view.question_matches_many",
+      "context": "Filing tab, subtitle of the question about one file that matches more than two targets. {count} is the number of targets.",
+      "en": "matches {count} targets",
+      "de": "passt in {count} Ziele"
+    },
+    {
+      "key": "filing_view.question_all",
+      "context": "Filing tab, button of the question about one file that matches more than two targets: copy it into every target.",
+      "en": "Copy to all",
+      "de": "In alle kopieren"
+    },
+    {
+      "key": "filing_view.question_file",
+      "context": "Filing tab, button of the question about one file that matches more than two targets: file it into the ticked targets.",
+      "en": "File",
+      "de": "Ablegen"
     },
     {
       "key": "io_reason.not_found",

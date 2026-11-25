@@ -8,7 +8,6 @@ use rusqlite::{Connection, ErrorCode};
 use zeroize::Zeroizing;
 
 use crate::error::IndexError;
-use crate::folder_pick::create_folder_pick_table;
 use crate::key::{IndexKey, RecoveryKey};
 use crate::key_store::KeyStore;
 use crate::kinds::KindCatalog;
@@ -287,7 +286,6 @@ impl Index {
         }
         run_migrations(&mut conn, migrations)?;
         crate::names::fold_name_keys(&mut conn)?;
-        create_folder_pick_table(&conn)?;
         Ok(Self {
             conn,
             instance: next_instance(),
@@ -541,8 +539,7 @@ fn unlock(conn: &Connection, key: &IndexKey) -> Result<(), IndexError> {
 /// migration has to.
 fn write_header_and_migrate(conn: &mut Connection, migrations: &[&str]) -> Result<(), IndexError> {
     conn.pragma_update(None, "user_version", 0)?;
-    run_migrations(conn, migrations)?;
-    create_folder_pick_table(conn)
+    run_migrations(conn, migrations)
 }
 
 #[cfg(test)]

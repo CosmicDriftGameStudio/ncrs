@@ -7,7 +7,7 @@ mod common;
 mod tests {
 
     use crate::common::{letter, say, Talk};
-    use ncrs_filing::chat_work::ChatResult;
+    use ncrs_ai::Levels;
     use ncrs_hermes_chat::{Action, Availability, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
 
@@ -50,16 +50,38 @@ mod tests {
         talk
     }
 
-    const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
+    /// The next recognition answers with these levels, asked again or not.
+    fn recognize(talk: &Talk, pattern: &str) {
+        for _ in 0..2 {
+            talk.model
+                .push_levels(Ok(Levels::from_pattern(pattern).unwrap()));
+        }
+    }
 
-    fn tidy_until_once(talk: &mut Talk) {
-        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
+    fn shows_levels(talk: &Talk) -> bool {
+        talk.last_parts()
+            .iter()
+            .any(|part| matches!(part, Part::Levels(_)))
+    }
+
+    fn areas_cards(talk: &Talk) -> Vec<ncrs_hermes_chat::AreasCard> {
+        talk.state
+            .thread()
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Hermes { parts, .. } => Some(parts),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                Part::Areas(card) => Some(card.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
-    fn show_all_lists_every_area_and_asks_again() {
+    fn show_all_lists_every_area_and_the_levels_again() {
         let mut talk = small_talk();
         for area in ["Gamma", "Delta", "Epsilon"] {
             talk.write(
@@ -80,74 +102,21 @@ mod tests {
             &letter("Zeta AG", "10.01.2020", "Rechnung", 3),
         );
         talk.open();
-        let elsewhere = talk.path("elsewhere");
-        talk.send(Message::ChangeArea {
-            folder: elsewhere,
-            area: "Alfa".to_owned(),
-        });
-        let Part::Areas(first) = talk.last_parts()[1].clone() else {
-            panic!("{:?}", talk.last_parts())
-        };
+        recognize(&talk, "{sender}/{year}/");
+        talk.send(Message::FolderPicked(Some(talk.path("elsewhere"))));
         talk.press(&ChipReply::ShowAll);
-        let Part::Areas(all) = talk.last_parts()[0].clone() else {
-            panic!()
-        };
-        assert!(first.rows.len() < all.rows.len());
-        assert!(first.more.is_some());
-        assert!(all.more.is_none());
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAskKeep, &[])]);
+
+        let cards = areas_cards(&talk);
+        assert_eq!(cards.len(), 2, "{cards:?}");
+        assert!(cards[0].rows.len() < cards[1].rows.len());
+        assert!(cards[0].more.is_some());
+        assert!(cards[1].more.is_none());
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
         assert!(!talk
             .state
             .chips()
             .iter()
             .any(|chip| chip.reply == ChipReply::ShowAll));
-    }
-
-    #[test]
-    fn always_on_a_source_the_app_already_watches_hands_over_with_the_continuous_mark() {
-        let mut talk = small_talk();
-        tidy_until_once(&mut talk);
-        talk.press(&ChipReply::Always);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
-        assert!(
-            matches!(
-                talk.actions.as_slice(),
-                [Action::OpenFiling {
-                    watch_source: true,
-                    ..
-                }]
-            ),
-            "{:?}",
-            talk.actions
-        );
-    }
-
-    #[test]
-    fn always_makes_a_source_that_is_not_watched_yet_a_watched_one() {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &[]);
-        talk.write(
-            "archive/Alfa/2020/2020-01-10 Alfa Rechnung.pdf",
-            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
-        );
-        talk.write(
-            "downloads/neu_alfa.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
-        let downloads = talk.path("downloads");
-        talk.open();
-        talk.send(Message::FolderPicked(Some(downloads.clone())));
-        talk.press(&ChipReply::RoleSource);
-        talk.actions.clear();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::Always);
-        assert!(
-            matches!(
-                talk.actions.as_slice(),
-                [Action::OpenFiling { source, watch_source: true, .. }] if *source == downloads
-            ),
-            "{:?}",
-            talk.actions
-        );
     }
 
     #[test]
@@ -213,6 +182,7 @@ mod tests {
         let mut talk = small_talk();
         talk.ctx.availability = Availability::Starting;
         talk.open();
+        recognize(&talk, "{year}/");
         let archive = ChipReply::Folder(talk.path("archive"));
         talk.press(&archive);
         assert_eq!(
@@ -221,8 +191,7 @@ mod tests {
         );
         assert!(talk.state.pending_work().is_none());
         ready(&mut talk);
-        let alfa = ChipReply::Folder(talk.path("archive/Alfa"));
-        assert!(talk.state.chips().iter().any(|chip| chip.reply == alfa));
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
         assert!(!talk.state.waits_for_hermes());
     }
 
@@ -433,35 +402,6 @@ mod tests {
     }
 
     #[test]
-    fn a_source_inside_a_target_is_opened_not_tidied_into_itself() {
-        let mut talk = small_talk();
-        let archive = talk.path("archive");
-        let tidy = |path: &std::path::Path| {
-            format!(
-                r#"{{"intent":"tidy_folder","source":"{}"}}"#,
-                path.display().to_string().replace('\\', "\\\\")
-            )
-        };
-        talk.type_text_understood(&format!("Räum {} auf", archive.display()), &tidy(&archive));
-        let alfa = ChipReply::Folder(archive.join("Alfa"));
-        assert!(talk.state.chips().iter().any(|chip| chip.reply == alfa));
-        assert!(!talk
-            .state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::ConfirmTidy));
-
-        let inside = archive.join("Alfa");
-        talk.type_text_understood(&format!("Räum {} auf", inside.display()), &tidy(&inside));
-        assert!(!talk
-            .state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::ConfirmTidy));
-        assert!(talk.state.pending_work().is_none());
-    }
-
-    #[test]
     fn a_typed_folder_nobody_knows_is_confirmed_before_it_is_read() {
         let mut talk = small_talk();
         talk.write("elsewhere/x.txt", "x");
@@ -487,9 +427,9 @@ mod tests {
             .into_owned()
     }
 
-    /// A talk that waits for the source folder, with `b` an existing folder
+    /// A talk that waits for a folder, with `b` an existing folder
     /// and the typed path `a/../b` pointing at it.
-    fn asking_for_the_source() -> (Talk, String) {
+    fn asking_for_a_folder() -> (Talk, String) {
         let mut talk = small_talk();
         std::fs::create_dir_all(talk.path("a")).unwrap();
         std::fs::create_dir_all(talk.path("b")).unwrap();
@@ -499,8 +439,8 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_source_is_resolved_and_asked_before_anything_is_set() {
-        let (mut talk, typed) = asking_for_the_source();
+    fn a_typed_folder_is_resolved_and_asked_about_before_it_is_read() {
+        let (mut talk, typed) = asking_for_a_folder();
         talk.type_text(&typed);
         assert_eq!(
             talk.last_texts(),
@@ -518,8 +458,8 @@ mod tests {
     }
 
     #[test]
-    fn cancelling_the_typed_source_sets_nothing() {
-        let (mut talk, typed) = asking_for_the_source();
+    fn cancelling_the_typed_folder_reads_nothing() {
+        let (mut talk, typed) = asking_for_a_folder();
         talk.type_text(&typed);
         talk.press(&ChipReply::Cancel);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
@@ -529,8 +469,8 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_missing_folder_is_not_a_folder_and_sets_nothing() {
-        let (mut talk, _) = asking_for_the_source();
+    fn a_typed_missing_folder_is_not_a_folder_and_is_not_read() {
+        let (mut talk, _) = asking_for_a_folder();
         let missing = talk.path("nowhere").to_string_lossy().into_owned();
         talk.type_text(&missing);
         assert_eq!(
@@ -543,27 +483,24 @@ mod tests {
 
     #[test]
     fn retrying_a_typed_folder_that_was_missing_resolves_and_confirms_it_again() {
-        for asking in [ChipReply::IntentTidy, ChipReply::IntentStructure] {
-            let (mut talk, _) = asking_for_the_source();
-            talk.type_text_understood("hmmmm", r#"{"intent":"other"}"#);
-            talk.press(&asking);
-            let typed = talk.path("a").join("..").join("later");
-            talk.type_text(&typed.to_string_lossy());
-            assert_eq!(
-                talk.last_texts(),
-                vec![say(Msg::HermesChatNotAFolder, &[("name", "later")])]
-            );
+        let (mut talk, _) = asking_for_a_folder();
+        talk.type_text_understood("hmmmm", r#"{"intent":"other"}"#);
+        talk.press(&ChipReply::IntentStructure);
+        let typed = talk.path("a").join("..").join("later");
+        talk.type_text(&typed.to_string_lossy());
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatNotAFolder, &[("name", "later")])]
+        );
 
-            std::fs::create_dir_all(talk.path("later")).unwrap();
-            talk.press(&ChipReply::Retry);
+        std::fs::create_dir_all(talk.path("later")).unwrap();
+        talk.press(&ChipReply::Retry);
 
-            assert_eq!(
-                talk.last_texts(),
-                vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "later")])],
-                "{asking:?}"
-            );
-            assert!(talk.state.pending_work().is_none());
-        }
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "later")])]
+        );
+        assert!(talk.state.pending_work().is_none());
     }
 
     #[test]
@@ -590,13 +527,10 @@ mod tests {
             "gone/Alfa/x.pdf",
             &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
         );
+        recognize(&talk, "Alfa/");
         talk.press(&ChipReply::Retry);
 
-        assert!(talk
-            .state
-            .session
-            .readings
-            .contains_key(&canonical_path(&gone)));
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
         assert!(talk
             .state
             .chips()
@@ -604,79 +538,17 @@ mod tests {
             .all(|chip| chip.reply != ChipReply::Retry));
     }
 
-    fn canonical_path(path: &std::path::Path) -> std::path::PathBuf {
-        ncrs_intake::canonical_path(path).unwrap()
-    }
-
     #[test]
-    fn a_typed_other_target_is_asked_before_the_proposal_changes() {
+    fn an_unknown_name_to_open_is_not_found() {
         let mut talk = small_talk();
-        std::fs::create_dir_all(talk.path("b")).unwrap();
-        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
-        talk.press(&ChipReply::OtherTarget);
-        let typed = talk.path("b").to_string_lossy().into_owned();
-        talk.type_text(&typed);
-        let real = canonical(&talk.path("b"));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "b")])]
-        );
-        let target = |asked: &Talk| {
-            asked
-                .state
-                .session
-                .proposal
-                .as_ref()
-                .unwrap()
-                .target
-                .clone()
-        };
-        assert_eq!(target(&talk), None, "not set before the yes");
-        talk.press(&ChipReply::ReadAnyway);
-        assert_eq!(target(&talk), Some(std::path::PathBuf::from(real)));
-    }
-
-    fn tidy_sentence(talk: &mut Talk, name: &str) {
         talk.type_text_understood(
-            &format!("Räum {name} auf"),
-            &format!(r#"{{"intent":"tidy_folder","source":"{name}"}}"#),
+            "öffne Nirgendwo",
+            r#"{"intent":"open_folder","folder":"Nirgendwo"}"#,
         );
-    }
-
-    #[test]
-    fn a_short_name_for_one_folder_is_asked_with_its_full_path_before_it_is_read() {
-        let mut talk = small_talk();
-        talk.write("home/Downloads/x.txt", "x");
-        tidy_sentence(&mut talk, "Downloads");
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatConfirmTidy,
-                &[("source", "Downloads"), ("mode", "")]
-            )]
-        );
-        assert!(talk.actions.is_empty());
-        assert!(talk.state.pending_work().is_none());
-
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        assert!(
-            talk.last_texts().iter().all(|sentence| *sentence
-                != say(Msg::HermesChatUnknownPathConfirm, &[("name", "Downloads")])),
-            "nothing asks a second time"
-        );
-        assert!(talk.state.pending_naming().is_none());
-    }
-
-    #[test]
-    fn an_unknown_name_is_not_found_and_leaves_no_proposal() {
-        let mut talk = small_talk();
-        tidy_sentence(&mut talk, "Nirgendwo");
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatNotAFolder, &[("name", "Nirgendwo")])]
         );
-        assert!(talk.state.session.proposal.is_none());
         assert!(talk.actions.is_empty());
     }
 
@@ -686,7 +558,10 @@ mod tests {
         talk.write("home/Belege/a.txt", "a");
         talk.write("elsewhere/Belege/b.txt", "b");
         talk.ctx.favourites = vec![talk.path("elsewhere/Belege")];
-        tidy_sentence(&mut talk, "Belege");
+        talk.type_text_understood(
+            "öffne Belege",
+            r#"{"intent":"open_folder","folder":"Belege"}"#,
+        );
         let own = canonical(&talk.path("home/Belege"));
         let favourite = canonical(&talk.path("elsewhere/Belege"));
         assert_eq!(
@@ -698,72 +573,14 @@ mod tests {
             labels.contains(&own) && labels.contains(&favourite),
             "{labels:?}"
         );
-        assert!(talk.state.session.proposal.is_none());
+        assert!(talk.works.is_empty(), "nothing is read before the choice");
 
+        recognize(&talk, "{year}/");
         talk.press(&ChipReply::NamedFolder(std::path::PathBuf::from(
             &favourite,
         )));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatConfirmTidy,
-                &[("source", "Belege"), ("mode", "")]
-            )]
-        );
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
         assert!(talk.actions.is_empty());
-    }
-
-    fn plan_the_model_failed_on(failure: ncrs_ai::AiError) -> ncrs_filing::chat_work::TrialPlan {
-        ncrs_filing::chat_work::TrialPlan {
-            source_root: "/inbox".into(),
-            target_root: "/archive".into(),
-            entries: Vec::new(),
-            filed: 0,
-            unsure: 0,
-            already_there: 0,
-            stays: 0,
-            taken: std::collections::BTreeSet::new(),
-            groups: ncrs_filing::chat_work::StayGroups::default(),
-            model_left: std::collections::BTreeSet::new(),
-            model_failure: Some(failure),
-        }
-    }
-
-    fn times_said(talk: &Talk, sentence: &str) -> usize {
-        talk.state
-            .thread
-            .iter()
-            .filter(|entry| {
-                matches!(entry, Entry::Hermes { parts, .. }
-                    if parts.iter().any(|part| matches!(part, Part::Text(text) if text == sentence)))
-            })
-            .count()
-    }
-
-    #[test]
-    fn a_model_that_cannot_choose_folders_is_said_once_and_the_trial_goes_on() {
-        let mut talk = small_talk();
-
-        talk.send(Message::Done(Box::new(ChatResult::Trial(Ok(Box::new(
-            plan_the_model_failed_on(ncrs_ai::AiError::Unsupported),
-        ))))));
-
-        let hint = say(Msg::HermesChatModelUnsupported, &[]);
-        assert_eq!(times_said(&talk, &hint), 1);
-        assert!(talk.state.session.trial.is_some());
-    }
-
-    #[test]
-    fn a_model_that_fails_otherwise_ends_the_trial_in_the_fallback() {
-        let mut talk = small_talk();
-
-        talk.send(Message::Done(Box::new(ChatResult::Trial(Ok(Box::new(
-            plan_the_model_failed_on(ncrs_ai::AiError::Model("closed")),
-        ))))));
-
-        assert!(talk.state.session.trial.is_none());
-        let hint = say(Msg::HermesChatModelUnsupported, &[]);
-        assert_eq!(times_said(&talk, &hint), 0);
     }
 
     #[test]

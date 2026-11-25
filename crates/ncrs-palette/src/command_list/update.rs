@@ -54,7 +54,7 @@ fn open(command_palette: &mut Option<CommandPalette>, ctx: &CommandPaletteCtx<'_
     let mut palette = CommandPalette::new(ctx.scope, ctx.lang, ctx.keymap, ctx.recent);
     palette = match ctx.hermes {
         HermesCommands::None => palette.without_hermes_file_commands(),
-        HermesCommands::RolesOnly => palette.without_hermes_location_commands(),
+        HermesCommands::SetupOnly => palette.without_hermes_location_commands(),
         HermesCommands::WithoutProcessAgain => {
             palette.without_command(KeyAction::HermesProcessAgain)
         }

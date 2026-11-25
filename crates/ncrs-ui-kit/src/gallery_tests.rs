@@ -498,7 +498,7 @@ mod filing_blocks_ui_tests {
     use super::*;
     use iced::widget::column;
     use crate::hermes_kit::TargetCheck;
-    use crate::kit::{Columns, PatternField};
+    use crate::kit::PatternField;
     use crate::plan_rows::{plan_action_row, plan_file_row, PlanActionRow, PlanFileRow, PlanLink};
     use crate::setting_rows::RowButton;
 
@@ -562,10 +562,7 @@ mod filing_blocks_ui_tests {
     }
 
     fn plan_rows<'a>(p: &Palette) -> Cell<'a> {
-        let columns = Columns {
-            portions: &[4, 6],
-            line_chars: 110,
-        };
+        let line_width = 850.0;
         let file = |chosen: bool| PlanFileRow {
             name: "scan-006.pdf".to_owned(),
             what: "no rule matches · stays where it is".to_owned(),
@@ -587,14 +584,14 @@ mod filing_blocks_ui_tests {
             ]
         };
         column![
-            plan_file_row(file(false), &columns, p),
+            plan_file_row(file(false), line_width, p),
             plan_action_row(
                 PlanActionRow {
                     file: file(false),
                     links: links(),
                     marked_link: None,
                 },
-                &columns,
+                line_width,
                 p,
             ),
             plan_action_row(
@@ -603,7 +600,7 @@ mod filing_blocks_ui_tests {
                     links: links(),
                     marked_link: Some(1),
                 },
-                &columns,
+                line_width,
                 p,
             ),
         ]

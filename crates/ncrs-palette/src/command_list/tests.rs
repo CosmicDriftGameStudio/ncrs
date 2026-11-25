@@ -574,15 +574,32 @@ fn the_hermes_file_commands_are_listed_only_while_the_column_is_up() {
 }
 
 #[test]
-fn without_locations_only_the_role_commands_stay_among_the_hermes_file_commands() {
+fn the_commands_of_the_sorting_are_listed_among_those_of_hermes() {
+    let palette = palette(KeyScope::Panel, Language::German);
+    for (action, label) in [
+        (KeyAction::HermesFileOnce, "Einsortieren\u{2026}"),
+        (KeyAction::WatchSource, "Als Quelle \u{fc}berwachen\u{2026}"),
+        (KeyAction::AddTarget, "Als Ziel anlegen\u{2026}"),
+    ] {
+        let entry = palette
+            .hits()
+            .map(|hit| palette.entry(hit).unwrap())
+            .find(|entry| entry.command() == Some(action))
+            .unwrap();
+        assert_eq!(entry.label, label);
+    }
+}
+
+#[test]
+fn without_folders_only_the_commands_that_set_one_up_stay_among_the_hermes_file_commands() {
     let palette = palette(KeyScope::Panel, Language::English).without_hermes_location_commands();
     let actions: Vec<KeyAction> = palette
         .hits()
         .map(|hit| palette.entry(hit).unwrap().command().unwrap())
         .collect();
-    assert!(actions.contains(&KeyAction::HermesSetInbox));
-    assert!(actions.contains(&KeyAction::HermesSetFilingLocation));
-    assert!(actions.contains(&KeyAction::HermesSetArchive));
+    assert!(actions.contains(&KeyAction::WatchSource));
+    assert!(actions.contains(&KeyAction::AddTarget));
+    assert!(!actions.contains(&KeyAction::HermesFileOnce));
     assert!(!actions.contains(&KeyAction::HermesProcessAgain));
     assert!(!actions.contains(&KeyAction::HermesExclude));
 }

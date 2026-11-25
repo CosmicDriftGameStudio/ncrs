@@ -161,6 +161,8 @@ pub struct OverviewFacts {
     pub failure: Option<String>,
     pub has_locations: bool,
     pub counts: Option<HermesCounts>,
+    /// Files of the sources that wait for an answer of the user.
+    pub waiting: usize,
     pub ai_on: bool,
     pub ai_status: AiStatus,
     /// Bytes on disk and in all, while the model downloads.
@@ -176,10 +178,6 @@ pub struct OverviewFacts {
 }
 
 impl OverviewFacts {
-    pub fn open_reviews(&self) -> u64 {
-        self.counts.map_or(0, |counts| counts.open_reviews)
-    }
-
     pub fn pill(&self) -> Pill {
         match self.module {
             ModuleState::Off => Pill::Off,
@@ -190,7 +188,7 @@ impl OverviewFacts {
             | ModuleState::KeyMissing
             | ModuleState::Failed
             | ModuleState::Dismissed => Pill::NeedsYou,
-            ModuleState::Ready if !self.has_locations || self.open_reviews() > 0 => Pill::NeedsYou,
+            ModuleState::Ready if !self.has_locations || self.waiting > 0 => Pill::NeedsYou,
             ModuleState::Ready => Pill::Running,
         }
     }
@@ -229,8 +227,6 @@ impl OverviewFacts {
 
 #[cfg(test)]
 mod tests {
-    use ncrs_index::StatusCounts;
-
     use super::*;
 
     fn facts(module: ModuleState) -> OverviewFacts {
@@ -239,6 +235,7 @@ mod tests {
             failure: None,
             has_locations: true,
             counts: Some(HermesCounts::default()),
+            waiting: 0,
             ai_on: true,
             ai_status: AiStatus::NotDownloaded,
             ai_download: None,
@@ -251,22 +248,12 @@ mod tests {
         }
     }
 
-    fn with_open_reviews(mut facts: OverviewFacts, open: u64) -> OverviewFacts {
-        facts.counts = Some(HermesCounts {
-            open_reviews: open,
-            inbox: StatusCounts::default(),
-            ..HermesCounts::default()
-        });
-        facts
-    }
-
     #[test]
     fn the_pill_is_green_only_for_a_module_that_works_and_has_nothing_open() {
         assert_eq!(facts(ModuleState::Ready).pill(), Pill::Running);
-        assert_eq!(
-            with_open_reviews(facts(ModuleState::Ready), 5).pill(),
-            Pill::NeedsYou
-        );
+        let mut with_questions = facts(ModuleState::Ready);
+        with_questions.waiting = 5;
+        assert_eq!(with_questions.pill(), Pill::NeedsYou);
         let mut without_folders = facts(ModuleState::Ready);
         without_folders.has_locations = false;
         assert_eq!(without_folders.pill(), Pill::NeedsYou);

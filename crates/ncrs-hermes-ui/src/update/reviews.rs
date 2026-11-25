@@ -16,7 +16,7 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_index::DocumentId;
 
 use super::quick_fix::{accept_notice, exclude_from_hermes, settle_column};
-use super::rules::open_rule_form;
+use super::rules::open_form_page;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{Message, ReviewsMessage};
@@ -251,9 +251,9 @@ fn answer_question(
                 hermes.filing_config.default_pattern.as_deref(),
                 ctx.kinds,
             );
-            open_rule_form(
+            open_form_page(
                 hermes,
-                RuleForm::from_document(prefill, ctx.kinds),
+                RuleForm::from_document(prefill, ctx.kinds, None),
                 ctx,
                 actions,
             )

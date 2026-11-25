@@ -9,10 +9,8 @@
 mod archive;
 mod drive;
 mod flow_activity;
-mod flow_answers_duplicates;
-mod flow_answers_values;
 mod flow_continuous;
-mod flow_hand;
+mod flow_plan;
 mod flow_status;
 mod probe;
 
@@ -22,7 +20,7 @@ use std::time::{Duration, Instant};
 use ncrs_ai::LocalModelStatus;
 use ncrs_ai::ScriptedChatModel;
 
-use probe::{describe, files_in, wait_quiet_and, World};
+use probe::{describe, wait_quiet_and, World};
 
 /// The window of a laptop; the acceptance pictures of the pages use the
 /// larger one of the other releases.
@@ -43,9 +41,8 @@ fn acceptance_v170() {
     let scripted_model = || Arc::new(ScriptedChatModel::new(LocalModelStatus::NotDownloaded, []));
 
     // Phase A: the archive is read to the end first, so that every inbox file
-    // meets an indexed archive. Then the pipeline reads the inbox; what it
-    // cannot place gets a review, and an exact copy of an archive file is only
-    // recorded as a copy.
+    // meets an indexed archive. Then the pipeline reads the inbox and the
+    // watched source takes what lies there as its backlog: nothing is moved.
     let mut archive_session = world.boot(WINDOW);
     archive_session
         .app
@@ -55,42 +52,33 @@ fn acceptance_v170() {
     });
     assert!(archive_read, "the archive was not read");
     drop(archive_session);
-    world.add_inbox_to_config();
+    world.add_source_to_config();
     let mut session = world.boot(WINDOW);
     session.app.set_chat_model_for_test(scripted_model());
-    let reviewed = |_: &mut crate::e2e_tests::Session<_>| {
-        files_in(&world.inbox_dir)
-            == world.index().open_reviews().unwrap().len() + world.inbox.duplicates.len()
-            && probe::copies_recorded(&world) == world.inbox.duplicates.len()
-    };
-    let settled = wait_quiet_and(&mut session, limit, reviewed);
+    let settled = wait_quiet_and(&mut session, limit, |_| {
+        probe::inbox_read(&world) && probe::backlog_recorded(&world)
+    });
     if !settled {
         describe(&world);
     }
     assert!(settled, "the pipeline did not settle");
     step("phase A settled");
     describe(&world);
-    probe::mark_unsure_senders(&world);
     probe::check_phase_a(&world);
 
     let arrivals = flow_continuous::run(&world, &mut session);
     flow_continuous::check(&world, &arrivals);
-    step("flow 1 continuous filing");
+    step("flow 1 watched source");
 
     flow_status::run(&world, &mut session);
-    step("flow 2 status click to reviews");
+    step("flow 2 status click");
 
-    flow_answers_duplicates::run(&world, &mut session);
-    step("flow 3a duplicates and clashes");
-    flow_answers_values::run(&world, &mut session);
-    step("flow 3b dates, amounts, rules, senders, folders");
-
-    flow_hand::run(&world, &mut session);
-    step("flow 4 hand filing");
-
-    flow_activity::run(&world, &mut session);
-    step("flow 5 activity");
+    flow_activity::run(&mut session, &arrivals);
+    step("flow 3 activity");
 
     flow_continuous::undo_and_check(&world, &mut session, &arrivals);
-    step("flow 6 undo of the continuous filing");
+    step("flow 4 undo of the background filing");
+
+    flow_plan::run(&world, &mut session, &arrivals);
+    step("flow 5 plan of the source");
 }

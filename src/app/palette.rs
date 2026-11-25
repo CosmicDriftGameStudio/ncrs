@@ -61,14 +61,8 @@ impl App {
     fn commands_without_a_folder_to_file(&self) -> Vec<KeyAction> {
         [
             (KeyAction::HermesFileOnce, HermesAction::FileOnce),
-            (
-                KeyAction::HermesFileContinuously,
-                HermesAction::FileContinuously,
-            ),
-            (
-                KeyAction::HermesStopContinuous,
-                HermesAction::StopContinuous,
-            ),
+            (KeyAction::WatchSource, HermesAction::WatchSource),
+            (KeyAction::AddTarget, HermesAction::AddTarget),
         ]
         .into_iter()
         .filter(|(_, action)| !self.hermes_action_enabled(*action))

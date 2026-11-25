@@ -117,19 +117,12 @@ fn submenu<'a>(
             SubEntry::Separator => menu_separator(palette),
             SubEntry::Item { action, enabled } => {
                 let is_selected = index == menu.sub_selected();
-                let (label_color, note_color) = menu_entry_colors(palette, *enabled, is_selected);
+                let (label_color, _) = menu_entry_colors(palette, *enabled, is_selected);
                 let shortcut = (keys.hermes)(*action);
                 let content = row![text(lang.text(action.label()))
                     .size(font_size::ROW)
                     .color(label_color)
                     .wrapping(Wrapping::None)]
-                .extend(action.note().map(|note| {
-                    text(lang.text(note))
-                        .size(font_size::STATUS)
-                        .color(note_color)
-                        .wrapping(Wrapping::None)
-                        .into()
-                }))
                 .push(Space::new().width(Length::Fill))
                 .extend(
                     shortcut

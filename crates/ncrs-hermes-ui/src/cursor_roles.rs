@@ -3,65 +3,37 @@
 
 use std::path::Path;
 
-use ncrs_intake::LocationMode;
+use ncrs_config::config::same_folder;
 
-use crate::hermes_column::{role_of, FolderRole, HermesFileState};
+use crate::hermes_column::HermesFileState;
 use crate::state::Hermes;
 
-/// How a path relates to the folders Hermes reads and files.
+/// How a path relates to the folders Hermes takes files from and files into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorRoles {
-    /// The path lies outside the inbox, so it can be handed to it.
-    pub can_be_handed_to_inbox: bool,
-    pub lies_in_a_filing_location: bool,
-    /// The path is the folder the files are filed into.
-    pub is_write_folder: bool,
-    /// The path lies below the write folder.
-    pub lies_in_write_folder: bool,
-    /// The path is a read folder that files its new files by itself.
-    pub is_continuous: bool,
-    pub filing_location_role_is_free: bool,
-    pub archive_role_is_free: bool,
+    pub is_source: bool,
+    pub is_target: bool,
+    /// The path lies in a folder Hermes reads, so it can be read again.
+    pub lies_in_an_indexed_folder: bool,
 }
 
 impl Hermes {
     pub fn cursor_roles(&self, path: &Path) -> CursorRoles {
-        let locations = &self.filing_config.locations;
-        let role_free = |role| role_of(path, locations) != Some(role);
-        let inbox = self.inbox_location();
-        let write_folder = self.write_folder();
+        let filing = &self.filing_config;
         CursorRoles {
-            can_be_handed_to_inbox: inbox.is_some_and(|inbox_path| !path.starts_with(inbox_path)),
-            lies_in_a_filing_location: locations
+            is_source: filing
+                .sources
+                .iter()
+                .any(|setting| same_folder(&setting.source.path, path)),
+            is_target: filing
+                .targets
+                .iter()
+                .any(|setting| same_folder(&setting.target.path, path)),
+            lies_in_an_indexed_folder: filing
+                .locations
                 .iter()
                 .any(|location| path.starts_with(&location.path)),
-            is_write_folder: write_folder == Some(path),
-            lies_in_write_folder: write_folder
-                .is_some_and(|folder| path != folder && path.starts_with(folder)),
-            is_continuous: locations
-                .iter()
-                .any(|location| location.path == path && location.continuous),
-            filing_location_role_is_free: role_free(FolderRole::FilingLocation),
-            archive_role_is_free: role_free(FolderRole::Archive),
         }
-    }
-
-    /// The inbox the configured folders name, if any.
-    pub fn inbox_location(&self) -> Option<&Path> {
-        self.filing_config
-            .locations
-            .iter()
-            .find(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.as_path())
-    }
-
-    /// The folder the files are filed into, if one is configured.
-    pub fn write_folder(&self) -> Option<&Path> {
-        self.filing_config
-            .locations
-            .iter()
-            .find(|location| location.is_target)
-            .map(|location| location.path.as_path())
     }
 
     /// Hermes no longer looks at the file, or at the whole folder.

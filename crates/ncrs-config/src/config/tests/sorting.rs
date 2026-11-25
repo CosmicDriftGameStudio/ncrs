@@ -577,3 +577,52 @@ fn removing_a_target_leaves_its_sources_paused_not_rewritten() {
         Some(PauseReason::UnknownTarget("t2".to_owned()))
     );
 }
+
+#[test]
+fn a_removed_target_is_no_read_folder_after_the_read_folders_were_written() {
+    let base = tempfile::tempdir().unwrap();
+    let (_, archive, other) = paths(&base);
+    let path = config_in(&base, &new_form(&base));
+    let read_only = base.path().join("read");
+    let mut folders = load_filing_settings(&path).unwrap().locations;
+    assert!(folders.iter().any(|found| found.path == other));
+    folders.push(FilingLocation {
+        path: read_only.clone(),
+        mode: LocationMode::Archive,
+        images: false,
+        is_target: false,
+        transfer: LocationTransfer::default(),
+        continuous: false,
+    });
+
+    let written = write_read_folders_with_home(&path, &folders, None).unwrap();
+    assert_eq!(written.filing.targets.len(), 2);
+    let config = remove_sort_target_with_home(&path, &id("t2"), None).unwrap();
+
+    let kept: Vec<_> = config
+        .filing
+        .locations
+        .iter()
+        .filter(|found| found.mode == LocationMode::Archive)
+        .map(|found| found.path.clone())
+        .collect();
+    assert_eq!(kept, [read_only, archive]);
+}
+
+#[test]
+fn a_folder_the_file_lists_stays_a_read_folder_when_its_target_is_removed() {
+    let base = tempfile::tempdir().unwrap();
+    let (_, _, other) = paths(&base);
+    let text = format!(
+        "{}\n{}",
+        new_form(&base),
+        location(&quoted(&other), "mode = \"archive\"\nimages = true"),
+    );
+    let path = config_in(&base, &text);
+    let folders = load_filing_settings(&path).unwrap().locations;
+
+    write_read_folders_with_home(&path, &folders, None).unwrap();
+    let config = remove_sort_target_with_home(&path, &id("t2"), None).unwrap();
+
+    assert!(config.filing.locations.iter().any(|found| found.path == other));
+}

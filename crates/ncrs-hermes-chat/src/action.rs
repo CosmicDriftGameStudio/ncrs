@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use ncrs_ui_kit::hermes_state::FolderRole;
-
 /// What the chat asks the app for, because it reaches outside the chat.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -9,10 +7,19 @@ pub enum Action {
     /// Opens the folder picker; the answer comes back as `Message::FolderPicked`.
     PickFolder,
     OpenSearch,
-    SetFolderRole {
+    /// Opens the dialog with rule suggestions for a folder. `pattern` is the
+    /// order the user confirmed, relative to the folder; `None` when the files
+    /// show no order.
+    SuggestRules {
         folder: PathBuf,
-        role: FolderRole,
+        pattern: Option<String>,
     },
+    /// Opens the dialog that files a folder; `None` takes the active folder.
+    OpenSortDialog {
+        folder: Option<PathBuf>,
+    },
+    /// Opens an empty rule form.
+    OpenRuleForm,
     /// Switches Hermes on, or starts it again when it stopped.
     TurnOnHermes,
     /// Opens the download of the language model; `Message::ModelReady`
@@ -21,16 +28,6 @@ pub enum Action {
     /// Switches the AI setting on; `Message::AiTurnedOn` follows once it is
     /// applied.
     TurnOnAi,
-    /// The source and the target are chosen: the plan goes on in the "Filing"
-    /// tab. `watch_source` also marks the source as a folder where new files
-    /// arrive.
-    OpenFiling {
-        source: PathBuf,
-        target: PathBuf,
-        watch_source: bool,
-    },
-    /// Opens the card that downloads the text recognition models.
-    OpenOcrModels,
     /// The work would have changed files while the trial does not allow it;
     /// it did not run.
     ChangesLocked,

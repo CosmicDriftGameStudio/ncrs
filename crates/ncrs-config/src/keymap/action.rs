@@ -106,15 +106,10 @@ key_actions! {
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     Rules => "rules",
-    HermesQuickFix => "hermes_quick_fix",
-    HermesHandToInbox => "hermes_hand_to_inbox",
     HermesProcessAgain => "hermes_process_again",
     HermesFileOnce => "hermes_file_once",
-    HermesFileContinuously => "hermes_file_continuously",
-    HermesStopContinuous => "hermes_stop_continuous",
-    HermesSetInbox => "hermes_set_inbox",
-    HermesSetFilingLocation => "hermes_set_filing_location",
-    HermesSetArchive => "hermes_set_archive",
+    WatchSource => "watch_source",
+    AddTarget => "add_target",
     HermesExclude => "hermes_exclude",
     HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
@@ -234,15 +229,10 @@ impl KeyAction {
             | Self::HermesChat
             | Self::FilingStatus
             | Self::Rules
-            | Self::HermesQuickFix
-            | Self::HermesHandToInbox
             | Self::HermesProcessAgain
             | Self::HermesFileOnce
-            | Self::HermesFileContinuously
-            | Self::HermesStopContinuous
-            | Self::HermesSetInbox
-            | Self::HermesSetFilingLocation
-            | Self::HermesSetArchive
+            | Self::WatchSource
+            | Self::AddTarget
             | Self::HermesExclude
             | Self::HermesInspect
             | Self::SavedQueries
@@ -336,27 +326,19 @@ impl KeyAction {
     pub fn acts_on_hermes_file(self) -> bool {
         matches!(
             self,
-            Self::HermesQuickFix
-                | Self::HermesHandToInbox
-                | Self::HermesProcessAgain
+            Self::HermesProcessAgain
                 | Self::HermesFileOnce
-                | Self::HermesFileContinuously
-                | Self::HermesStopContinuous
-                | Self::HermesSetInbox
-                | Self::HermesSetFilingLocation
-                | Self::HermesSetArchive
+                | Self::WatchSource
+                | Self::AddTarget
                 | Self::HermesExclude
                 | Self::HermesInspect
         )
     }
 
-    /// The action sets the role of a folder, which works before any location
-    /// is configured.
-    pub fn sets_hermes_role(self) -> bool {
-        matches!(
-            self,
-            Self::HermesSetInbox | Self::HermesSetFilingLocation | Self::HermesSetArchive
-        )
+    /// The action sets up where files come from or go to, which works before
+    /// any folder is configured.
+    pub fn sets_up_sorting(self) -> bool {
+        matches!(self, Self::WatchSource | Self::AddTarget)
     }
 
     /// Whether this build offers the action. A build that can open every
@@ -485,15 +467,10 @@ impl KeyAction {
             | Self::Search
             | Self::SearchDocuments
             | Self::QuickOpen
-            | Self::HermesQuickFix
-            | Self::HermesHandToInbox
             | Self::HermesProcessAgain
             | Self::HermesFileOnce
-            | Self::HermesFileContinuously
-            | Self::HermesStopContinuous
-            | Self::HermesSetInbox
-            | Self::HermesSetFilingLocation
-            | Self::HermesSetArchive
+            | Self::WatchSource
+            | Self::AddTarget
             | Self::HermesExclude
             | Self::HermesInspect => false,
         }
@@ -604,15 +581,10 @@ impl KeyAction {
             | Self::Search
             | Self::SearchDocuments
             | Self::QuickOpen
-            | Self::HermesQuickFix
-            | Self::HermesHandToInbox
             | Self::HermesProcessAgain
             | Self::HermesFileOnce
-            | Self::HermesFileContinuously
-            | Self::HermesStopContinuous
-            | Self::HermesSetInbox
-            | Self::HermesSetFilingLocation
-            | Self::HermesSetArchive
+            | Self::WatchSource
+            | Self::AddTarget
             | Self::HermesExclude
             | Self::HermesInspect => false,
         }

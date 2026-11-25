@@ -20,7 +20,7 @@ use crate::archive_profile::{
 };
 use crate::field_detection::OwnNames;
 use crate::filing_plan::missing_field;
-use crate::reorganisation::PlanFile;
+use crate::duplicate_copies::PlanFile;
 use crate::sender_detection::found_ibans;
 use crate::structure::LocationStructure;
 use sender_key::SenderKey;

@@ -2,38 +2,40 @@
 //! in the order Hermes tries them in, and the small dialog in which one rule
 //! is made or changed. Pure view over [`RulesPage`].
 
+use chrono::NaiveDate;
 use iced::widget::{Column, Row};
 use iced::{alignment, Element, Length, Size};
+use ncrs_config::config::{Filing, TargetSetting};
 use ncrs_config::palette::Palette;
-use ncrs_filing::review_work::TextState;
-use ncrs_filing::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
+use ncrs_filing::rules_work::{ListedRule, SortTryRow, SortTryState};
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_index::{DocumentFields, Kinds};
+use ncrs_intake::{render_pattern_in, FILING_PLACEHOLDERS};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, RowTwo, GAP_S, GAP_XS};
-use ncrs_ui_kit::kit::{self, Check, Tone};
+use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, MenuItem, RowTwo, GAP_S, GAP_XS};
+use ncrs_ui_kit::kit::{self, Check, PatternField, Tone};
 use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
 };
-use super::filing_pieces::{target_view, ExampleLine, TargetHost};
-use super::review_reason::reason_text;
 use crate::message::{Message, RuleFormMessage, RulesMessage};
-use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
+use crate::rule_form::{chip_text, RuleForm, RuleFormTarget, TryStatus};
 use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage};
 
-/// Characters of a document of the try and of each side of its change, so
-/// that the target stays readable in the wide dialog.
+/// Characters of a path of the try, so that it stays readable in the wide
+/// dialog.
 const TRY_PATH_CHARS: usize = 64;
-const TRY_CHANGE_SIDE_CHARS: usize = 36;
 
-/// Documents of the try listed at once.
+/// Files of the try listed at once.
 const TRY_VISIBLE_ROWS: usize = 8;
+
+const TARGET_DROPDOWN_WIDTH: f32 = 320.0;
 
 pub const NAME_FIELD_ID: &str = "rule-form-name";
 pub const TAG_FIELD_ID: &str = "rule-form-tag";
-const TARGET_NAME_FIELD_ID: &str = "rule-form-folder-name";
+const PATTERN_FIELD_ID: &str = "rule-form-pattern";
 
 fn send(message: RulesMessage) -> Message {
     Message::Rules(message)
@@ -151,6 +153,7 @@ fn problem_text(raw_detail: &str, lang: Language) -> String {
 /// form of a rule.
 pub fn dialog<'a>(
     state: &'a RulesPage,
+    filing: &Filing,
     window: Size,
     lang: Language,
     palette: &Palette,
@@ -160,7 +163,14 @@ pub fn dialog<'a>(
     }
     state
         .form()
-        .map(|form| form_dialog(form, state.problem(), window, lang, palette))
+        .map(|form| form_dialog(state, form, filing, window, lang, palette))
+}
+
+/// The question whether the rule in the form is removed; `None` while that
+/// cannot be asked.
+fn remove_message(state: &RulesPage, form: &RuleForm) -> Option<RulesMessage> {
+    let index = state.edited_index()?;
+    (!state.is_busy() && !form.saving).then_some(RulesMessage::AskDelete(index))
 }
 
 fn delete_dialog<'a>(
@@ -210,8 +220,9 @@ fn delete_dialog<'a>(
 }
 
 fn form_dialog<'a>(
-    form: &RuleForm,
-    problem: Option<&str>,
+    state: &'a RulesPage,
+    form: &'a RuleForm,
+    filing: &Filing,
     window: Size,
     lang: Language,
     palette: &Palette,
@@ -228,14 +239,22 @@ fn form_dialog<'a>(
         }
     };
     let mut body = Column::new().spacing(GAP_S);
-    if let Some(detail) = problem {
+    if let Some(detail) = state.problem() {
         body = body.push(page_kit::error_line(problem_text(detail, lang), palette));
     }
-    for element in form_rows(form, lang, palette) {
+    for element in form_rows(form, filing, lang, palette) {
         body = body.push(element);
     }
-    for element in try_rows(form, lang, palette) {
+    for element in try_rows(form, filing, lang, palette) {
         body = body.push(element);
+    }
+    if state.edited_index().is_some() {
+        body = body.push(kit::button(
+            lang.text(Msg::SortingRemove),
+            remove_message(state, form).map(send),
+            Tone::Danger,
+            palette,
+        ));
     }
     Frame::new(
         lang.text(title),
@@ -267,7 +286,12 @@ fn form_dialog<'a>(
     .into_element()
 }
 
-fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
+fn form_rows<'a>(
+    form: &'a RuleForm,
+    filing: &Filing,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
     let problems = form.problems();
     let save = send_form(RuleFormMessage::Save);
     let host = ConditionHost {
@@ -327,18 +351,9 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
         Some(page_kit::hint(lang.text(Msg::ConditionEditorHelp), palette)),
     ));
 
-    rows.push(page_kit::section(lang.text(Msg::RulesFormThen), palette));
-    rows.push(target_view(
-        &form.filing,
-        &TargetHost {
-            wrap: |edit| send_form(RuleFormMessage::Target(edit)),
-            name_field_id: TARGET_NAME_FIELD_ID,
-            folder_hint: None,
-            example: ExampleLine::UnderFileName,
-            lang,
-            palette,
-        },
-    ));
+    rows.push(page_kit::section(lang.text(Msg::SortingRuleThen), palette));
+    rows.push(destination_row(form, filing, lang, palette));
+    rows.push(pattern_row(form, lang, palette));
     rows.push(tags_row(form, lang, palette));
     rows
 }
@@ -406,8 +421,19 @@ fn tags_row<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Element<'
     )
 }
 
-/// The documents the rule as it stands in the form would match.
-fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
+/// The files the rule as it stands in the form would sort, in the target it is
+/// set to.
+fn try_rows<'a>(
+    form: &RuleForm,
+    filing: &Filing,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let chip = filing
+        .targets
+        .iter()
+        .position(|setting| setting.target.id == form.destination)
+        .map(|index| format!("T{}", index + 1));
     let mut rows: Vec<Element<'a, Message>> = vec![
         page_kit::section(lang.text(Msg::RulesTryHeading), palette),
         page_kit::hint(lang.text(Msg::RulesTryExplain), palette),
@@ -424,19 +450,20 @@ fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Eleme
             ),
             palette,
         )),
-        TryStatus::Ready(result) if result.documents.is_empty() => {
-            rows.push(page_kit::hint(lang.text(Msg::RulesTryEmpty), palette));
-        }
-        TryStatus::Ready(result) => {
-            rows.push(page_kit::value(try_summary(result, lang), palette));
-            for tried in result.documents.iter().take(TRY_VISIBLE_ROWS) {
-                rows.push(try_row(tried, result, lang, palette));
+        TryStatus::Ready(tried) if tried.rows.is_empty() && tried.no_text == 0 => {
+            if form.is_valid() {
+                rows.push(page_kit::hint(lang.text(Msg::RulesTryEmpty), palette));
             }
-            let hidden = result
-                .documents
+        }
+        TryStatus::Ready(tried) => {
+            for row in tried.rows.iter().take(TRY_VISIBLE_ROWS) {
+                rows.push(try_row(row, chip.clone(), lang, palette));
+            }
+            let hidden = tried
+                .rows
                 .len()
                 .saturating_sub(TRY_VISIBLE_ROWS)
-                .saturating_add(result.more);
+                .saturating_add(tried.more);
             if hidden > 0 {
                 rows.push(page_kit::hint(
                     fill_template(
@@ -446,68 +473,31 @@ fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Eleme
                     palette,
                 ));
             }
+            if tried.no_text > 0 {
+                rows.push(page_kit::hint(
+                    fill_template(
+                        lang.text(Msg::SortingTryNoText),
+                        &[("{count}", &tried.no_text.to_string())],
+                    ),
+                    palette,
+                ));
+            }
         }
     }
     rows
 }
 
-/// "Read folders 2 · Review 1 · Read only 11".
-fn try_summary(result: &TryResult, lang: Language) -> String {
-    let count = |section: TrySection| {
-        result
-            .documents
-            .iter()
-            .filter(|tried| tried.section == section)
-            .count()
-    };
-    format!(
-        "{} {} · {} {} · {} {}",
-        lang.text(Msg::RulesTrySectionInbox),
-        count(TrySection::Inbox),
-        lang.text(Msg::RulesTrySectionReview),
-        count(TrySection::Review),
-        lang.text(Msg::RulesTrySectionArchive),
-        count(TrySection::Archive),
-    )
-}
-
 fn try_row<'a>(
-    tried: &TriedDocument,
-    result: &TryResult,
+    row: &SortTryRow,
+    chip: Option<String>,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let after = outcome_text(&tried.after, lang);
-    // Where a document lies is its path, which is the first line of the row.
-    let change = if matches!(tried.now, TryOutcome::Lies(_)) {
-        format!(
-            "→ {}",
-            format::ellipsize_middle(&after, TRY_CHANGE_SIDE_CHARS.saturating_mul(2))
-        )
-    } else {
-        format!(
-            "{} → {}",
-            format::ellipsize_middle(&outcome_text(&tried.now, lang), TRY_CHANGE_SIDE_CHARS),
-            format::ellipsize_middle(&after, TRY_CHANGE_SIDE_CHARS)
-        )
-    };
-    let places: Vec<String> = tried
-        .conflicts
-        .iter()
-        .filter_map(|id| result.conflict_names.get(id))
-        .map(ToString::to_string)
-        .collect();
-    let conflicts = (!places.is_empty()).then(|| {
-        fill_template(
-            lang.text(Msg::RulesTryAlso),
-            &[("{rules}", &places.join(", "))],
-        )
-    });
     page_kit::list_row_two(
         RowTwo {
-            primary: format::ellipsize_middle(&tried.path.display().to_string(), TRY_PATH_CHARS),
-            secondary: change,
-            right: conflicts,
+            primary: format::ellipsize_middle(&row.relative.display().to_string(), TRY_PATH_CHARS),
+            secondary: try_state_text(&row.state, lang),
+            right: chip,
             lead: None,
             muted: false,
         },
@@ -517,15 +507,142 @@ fn try_row<'a>(
     )
 }
 
-fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {
-    match outcome {
-        TryOutcome::Filed(path) => path.display().to_string(),
-        TryOutcome::Review(reason) => reason_text(*reason, TextState::Read, lang),
-        TryOutcome::Lies(path) => fill_template(
-            lang.text(Msg::RulesTryLiesAt),
+fn try_state_text(state: &SortTryState, lang: Language) -> String {
+    match state {
+        SortTryState::Filed(path) => format!(
+            "→ {}",
+            format::ellipsize_middle(&path.display().to_string(), TRY_PATH_CHARS)
+        ),
+        SortTryState::MissingValue(field) => fill_template(
+            lang.text(Msg::SortingStateNoDate),
+            &[("{block}", &chip_text(field.as_str()))],
+        ),
+        SortTryState::BadName => lang.text(Msg::SortingTryBadName).to_owned(),
+        SortTryState::NameTaken(path) => fill_template(
+            lang.text(Msg::SortingTryNameTaken),
             &[("{path}", &path.display().to_string())],
         ),
     }
+}
+
+/// The path the pattern makes of the first file the trial really sorted, or of
+/// an example document when there is none.
+fn pattern_result(form: &RuleForm, lang: Language) -> Option<String> {
+    let from_trial = match &form.live_try.status {
+        TryStatus::Ready(tried) => tried.rows.iter().find_map(|row| match &row.state {
+            SortTryState::Filed(path) => Some(path.display().to_string()),
+            _ => None,
+        }),
+        _ => None,
+    };
+    from_trial.or_else(|| example_path(&form.pattern, lang))
+}
+
+fn example_path(pattern: &str, lang: Language) -> Option<String> {
+    let fields = DocumentFields {
+        sender: Some("Telekom".to_owned()),
+        recipient: Some(lang.text(Msg::FilingPiecesExampleRecipient).to_owned()),
+        kind: Some(lang.text(Msg::FilingPiecesExampleKind).to_owned()),
+        date: NaiveDate::from_ymd_opt(2026, 3, 9),
+        number: Some("RE-42".to_owned()),
+        ..DocumentFields::default()
+    };
+    let path = render_pattern_in(pattern, &fields, &Kinds::built_in(lang.kind_language()))?;
+    let parts: Vec<_> = path
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect();
+    Some(format!("{}.pdf", parts.join("/")))
+}
+
+/// "T2 · Company": the chip's number and what the target is called.
+fn target_label(index: usize, setting: &TargetSetting) -> String {
+    let target = &setting.target;
+    let name = if target.name.is_empty() {
+        target
+            .path
+            .file_name()
+            .map_or_else(String::new, |last| last.to_string_lossy().into_owned())
+    } else {
+        target.name.clone()
+    };
+    format!("T{} · {name}", index + 1)
+}
+
+fn destination_row<'a>(
+    form: &RuleForm,
+    filing: &Filing,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let items: Vec<MenuItem<Message>> = filing
+        .targets
+        .iter()
+        .enumerate()
+        .map(|(index, setting)| {
+            MenuItem::new(
+                target_label(index, setting),
+                send_form(RuleFormMessage::Destination(setting.target.id.clone())),
+            )
+        })
+        .collect();
+    let selected = filing
+        .targets
+        .iter()
+        .position(|setting| setting.target.id == form.destination)
+        .unwrap_or(0);
+    page_kit::form_row(
+        lang.text(Msg::SortingRuleTarget),
+        page_kit::field_dropdown(TARGET_DROPDOWN_WIDTH, &items, selected, palette),
+        None,
+        palette,
+    )
+}
+
+fn pattern_row<'a>(form: &'a RuleForm, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let tokens: Vec<(String, Message)> = FILING_PLACEHOLDERS
+        .iter()
+        .map(|&name| {
+            (
+                chip_text(name),
+                send_form(RuleFormMessage::PatternChip(name)),
+            )
+        })
+        .collect();
+    let labelled: Vec<(&str, Message)> = tokens
+        .iter()
+        .map(|(label, message)| (label.as_str(), message.clone()))
+        .collect();
+    let problem = form.problems().unknown_placeholder.map(|name| {
+        fill_template(
+            lang.text(Msg::SortingPatternUnknownBlock),
+            &[("{block}", &chip_text(&name))],
+        )
+    });
+    let preview = if problem.is_none() {
+        pattern_result(form, lang).map(|path| {
+            fill_template(lang.text(Msg::SortingPatternResult), &[("{path}", &path)])
+        })
+    } else {
+        None
+    };
+    page_kit::form_row(
+        lang.text(Msg::SortingRulePattern),
+        kit::pattern_field(
+            PatternField {
+                value: &form.pattern,
+                id: PATTERN_FIELD_ID,
+                on_input: Box::new(|typed| send_form(RuleFormMessage::Pattern(typed))),
+                on_submit: send_form(RuleFormMessage::Save),
+                tokens: &labelled,
+                preview,
+                problem,
+            },
+            palette,
+        ),
+        None,
+        palette,
+    )
 }
 
 #[cfg(test)]
@@ -571,5 +688,30 @@ mod tests {
             })),
             "the first rule cannot move up"
         );
+    }
+
+    #[test]
+    fn the_dialog_of_a_listed_rule_asks_before_it_removes_that_rule() {
+        let mut rules = page();
+        rules.begin_edit(1);
+        let form = rules.form().unwrap();
+
+        assert_eq!(
+            remove_message(&rules, form),
+            Some(RulesMessage::AskDelete(1))
+        );
+
+        rules.form_mut().unwrap().saving = true;
+        let saving = rules.form().unwrap();
+        assert_eq!(remove_message(&rules, saving), None);
+    }
+
+    #[test]
+    fn the_dialog_of_a_new_rule_removes_nothing() {
+        let mut rules = page();
+        rules.begin_new();
+        let form = rules.form().unwrap();
+
+        assert_eq!(remove_message(&rules, form), None);
     }
 }

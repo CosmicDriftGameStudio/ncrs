@@ -17,7 +17,7 @@ use crate::execute::{
     trash_can_restore, trash_replaced, trash_run, FilingBatches, ReplacedItem, TrashItem,
 };
 use crate::filing::lies_within;
-use crate::filing_work::target_of;
+use crate::target_path::target_of;
 
 pub const TRASH_CANNOT_RESTORE: &str = "the trash cannot give files back";
 pub const IN_COPIED_FOLDER: &str = "the file lies in a folder whose files are copied, not changed";

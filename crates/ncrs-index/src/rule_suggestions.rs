@@ -22,6 +22,22 @@ impl Index {
         self.suggest_rule_in(spec, evidence, &TargetId::main())
     }
 
+    /// Whether `suggest_rule_in` would store it: no confirmed rule says the
+    /// same, and it was not discarded for this target.
+    pub fn is_new_suggestion(
+        &self,
+        spec: &RuleSpec,
+        target: &TargetId,
+    ) -> Result<bool, IndexError> {
+        let Some(condition) = spec.conditions.single_condition() else {
+            return Ok(true);
+        };
+        match self.same_condition_and_target(spec, condition, target)? {
+            Some((_, confirmed)) => Ok(!confirmed),
+            None => Ok(!self.was_discarded(condition, spec, target)?),
+        }
+    }
+
     /// `suggest_rule` for one target: only its rules count as the same, and
     /// only what was discarded for it is not proposed again.
     pub fn suggest_rule_in(
@@ -156,7 +172,7 @@ impl Index {
         self.connection().execute(
             "INSERT OR IGNORE INTO discarded_rule_suggestion
                  (match_text, condition_kind, kind, filing_pattern, discarded_at, target)
-             VALUES (lower(?1), ?2, lower(?3), ?4, ?5, ?6)",
+             VALUES (lower(?1), ?2, coalesce(lower(?3), ''), ?4, ?5, ?6)",
             params![
                 condition.value,
                 discard_class(condition.kind),
@@ -178,7 +194,7 @@ impl Index {
         let found = self.connection().query_row(
             "SELECT EXISTS (SELECT 1 FROM discarded_rule_suggestion
                  WHERE match_text = lower(?1) AND condition_kind = ?2
-                     AND kind = lower(?3) AND filing_pattern = ?4 AND target = ?5)",
+                     AND kind = coalesce(lower(?3), '') AND filing_pattern = ?4 AND target = ?5)",
             params![
                 condition.value,
                 discard_class(condition.kind),

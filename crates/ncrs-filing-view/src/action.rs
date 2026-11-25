@@ -2,7 +2,8 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{BatchId, Transfer};
+use ncrs_index::{BatchId, DocumentId, TargetId};
+use ncrs_intake::LocationTransfer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -11,16 +12,26 @@ pub enum Action {
     /// Ask the user for a folder, starting in `start`, and answer with
     /// `Message::FolderPicked`.
     PickFolder { start: PathBuf },
-    /// The run is done and the tab is to go. `left` are the files, relative to
-    /// `source`, that stay there.
-    Finished {
+    /// Open the rule form for the file, and send `Message::RulesChanged` once a
+    /// rule was saved.
+    OpenRuleForm {
+        /// The target the file has to do with; the first of the source where
+        /// no rule takes it.
+        target: Option<TargetId>,
+        document: Option<DocumentId>,
+        path: PathBuf,
+    },
+    /// Ask Hermes for a rule that fits the file. `source` is the folder of the
+    /// source.
+    SuggestRule { source: PathBuf, path: PathBuf },
+    /// Files were filed or trashed; the tab stays.
+    Filed {
         source: PathBuf,
-        transfer: Transfer,
+        transfer: LocationTransfer,
         filed: usize,
-        left: Vec<PathBuf>,
-        batch: BatchId,
-        /// The source is to file continuously from now on: the user asked for
-        /// that before the tab opened.
-        then_continuous: bool,
+        /// How many files still lie in the source without a place.
+        left: usize,
+        /// For the undo; `None` when nothing was begun.
+        batch: Option<BatchId>,
     },
 }

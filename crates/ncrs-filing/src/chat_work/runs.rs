@@ -1,48 +1,14 @@
-//! The runs of the chat: filing, trashing duplicates, and undoing the last one.
+//! The runs that can be put back, and putting them back.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ncrs_fs::transfer::Counting;
-use ncrs_index::{BatchId, BatchKind, ContentHash, Index, JournalState, Transfer};
+use ncrs_index::{BatchId, BatchKind, Index, JournalItem, JournalState, Transfer};
 use ncrs_intake::stays_below;
 
-use super::{ChatAccess, TrashItem, TrashReport, UndoReport};
-use crate::execute::{self, ExecutionItem};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunItem {
-    /// Absolute, below the source root.
-    pub from: PathBuf,
-    /// Below the target root.
-    pub to: PathBuf,
-    pub hash: ContentHash,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunPlan {
-    pub name: String,
-    /// `Move` or `Copy`.
-    pub transfer: Transfer,
-    pub source_root: PathBuf,
-    pub target_root: PathBuf,
-    pub items: Vec<RunItem>,
-    /// Files that already lie below the target and are renamed or moved
-    /// within it in the same run: `from` is absolute below the target.
-    pub inside: Vec<RunItem>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RunReport {
-    /// The batch the run wrote its journal under, for putting it back.
-    pub batch: BatchId,
-    /// The files carried out of the source folder.
-    pub done: usize,
-    pub skipped: usize,
-    /// The files renamed or moved within the target.
-    pub inside_done: usize,
-}
+use super::ChatAccess;
+use crate::execute::{self, UndoReport};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunSummary {
@@ -85,135 +51,25 @@ fn real(path: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-pub(in crate::chat_work) fn lies_in_copy_root(copy_roots: &[PathBuf], folder: &Path) -> bool {
-    let real_folder = real(folder);
-    copy_roots
-        .iter()
-        .any(|root| real_folder.starts_with(real(root)))
+/// A run of its own keeps its source and target apart; only a run that moved
+/// files within its target has one folder for both.
+fn places_lie_apart(source: &Path, target: &Path, done: &[JournalItem]) -> bool {
+    let real_source = real(source);
+    let real_target = real(target);
+    let only_inside = done.iter().all(|item| item.from.starts_with(target));
+    (only_inside && real_source == real_target)
+        || !(real_source.starts_with(&real_target) || real_target.starts_with(&real_source))
 }
 
-fn refusal(access: &ChatAccess, run: &RunPlan) -> Option<String> {
-    if run.transfer == Transfer::Move
-        && !run.items.is_empty()
-        && access.copies_from(&run.source_root)
-    {
-        return Some(format!(
-            "{} is a folder whose files are copied, not moved",
-            run.source_root.display()
-        ));
-    }
-    plan_refusal(run)
-}
-
-fn plan_refusal(run: &RunPlan) -> Option<String> {
-    if run.transfer == Transfer::Trash {
-        return Some("a filing run moves or copies".to_owned());
-    }
-    let source = real(&run.source_root);
-    let target = real(&run.target_root);
-    let archive_only = run.items.is_empty() && source == target;
-    if !archive_only && (source.starts_with(&target) || target.starts_with(&source)) {
-        return Some(format!(
-            "{} and {} lie inside each other",
-            run.source_root.display(),
-            run.target_root.display()
-        ));
-    }
-    outside_refusal(run)
-}
-
-fn outside_refusal(run: &RunPlan) -> Option<String> {
-    for item in &run.items {
-        let below_source = item
-            .from
-            .strip_prefix(&run.source_root)
-            .is_ok_and(stays_below);
-        if !below_source {
-            return Some(format!(
-                "{} is not below {}",
-                item.from.display(),
-                run.source_root.display()
-            ));
-        }
-        if !stays_below(&item.to) {
-            return Some(format!("{} leaves the target", item.to.display()));
-        }
-    }
-    for item in &run.inside {
-        let below_target = item
-            .from
-            .strip_prefix(&run.target_root)
-            .is_ok_and(stays_below);
-        if !below_target {
-            return Some(format!(
-                "{} is not below {}",
-                item.from.display(),
-                run.target_root.display()
-            ));
-        }
-        if !stays_below(&item.to) {
-            return Some(format!("{} leaves the target", item.to.display()));
-        }
-    }
-    None
-}
-
-pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
-    if let Some(reason) = refusal(access, run) {
-        return Err(reason);
-    }
-    access.with_index(|index| {
-        let items: Vec<ExecutionItem> = run
-            .items
-            .iter()
-            .chain(&run.inside)
-            .map(|item| {
-                let document_id = index
-                    .document_by_hash(&item.hash)
-                    .map_err(|err| err.to_string())?
-                    .filter(|document| document.path == item.from)
-                    .map(|document| document.id);
-                Ok(ExecutionItem {
-                    from: item.from.clone(),
-                    to: run.target_root.join(&item.to),
-                    expected_hash: item.hash,
-                    document_id,
-                    duplicate: false,
-                })
-            })
-            .collect::<Result<_, String>>()?;
-        let carried = run.items.len();
-        let report = execute::execute_run(
-            index,
-            BatchKind::Hermes,
-            &run.name,
-            run.transfer,
-            execute::RunPlaces {
-                source: &run.source_root,
-                target: &run.target_root,
-                inside_target: !run.inside.is_empty(),
-            },
-            &items,
-            &mut Counting,
-        )
-        .map_err(|err| err.to_string())?;
-        let moved = |reports: &[execute::ItemReport]| {
-            reports.iter().filter(|item| item.was_moved()).count()
+fn items_stay_below(source: &Path, target: &Path, done: &[JournalItem]) -> bool {
+    done.iter().all(|item| {
+        let root = if item.from.starts_with(target) {
+            target
+        } else {
+            source
         };
-        let (carried_items, inside_items) = report.items.split_at(carried);
-        remove_emptied_folders(
-            &run.target_root,
-            inside_items
-                .iter()
-                .filter(|item| item.was_moved())
-                .map(|item| item.from.as_path()),
-        );
-        Ok(RunReport {
-            batch: report.batch,
-            done: moved(carried_items),
-            skipped: report.skipped(),
-            inside_done: moved(inside_items),
-        })
+        item.from.strip_prefix(root).is_ok_and(stays_below)
+            && stays_below(item.to.strip_prefix(target).unwrap_or(&item.to))
     })
 }
 
@@ -233,26 +89,6 @@ pub(crate) fn remove_emptied_folders<'a>(
         // Fails on a folder that holds anything, hidden files included.
         let _ = fs::remove_dir(folder);
     }
-}
-
-pub fn trash_duplicates(
-    access: &ChatAccess,
-    name: &str,
-    root: &Path,
-    items: &[TrashItem],
-) -> Result<TrashReport, String> {
-    if !access.trash_can_restore() {
-        return Err("the trash cannot give files back".to_owned());
-    }
-    if access.copies_from(root) {
-        return Err(format!(
-            "{} is a folder whose files are copied, not changed",
-            root.display()
-        ));
-    }
-    access.with_index(|index| {
-        execute::trash_run(index, name, root, items, &*access.trash).map_err(|err| err.to_string())
-    })
 }
 
 fn common_parent<'a>(paths: impl Iterator<Item = &'a Path>) -> Option<PathBuf> {
@@ -315,10 +151,6 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
 }
 
 /// The runs that can still be put back, newest first.
-pub fn recent_runs(access: &ChatAccess, limit: usize) -> Result<Vec<RecentRun>, String> {
-    access.with_index(|index| runs_of_index(index, limit))
-}
-
 pub(crate) fn runs_of_index(index: &Index, limit: usize) -> Result<Vec<RecentRun>, String> {
     let mut runs = Vec::new();
     for batch in undoable(index, limit)? {
@@ -327,7 +159,7 @@ pub(crate) fn runs_of_index(index: &Index, limit: usize) -> Result<Vec<RecentRun
     Ok(runs)
 }
 
-fn done_items(index: &Index, batch: BatchId) -> Result<Vec<ncrs_index::JournalItem>, String> {
+fn done_items(index: &Index, batch: BatchId) -> Result<Vec<JournalItem>, String> {
     Ok(index
         .journal_items(batch)
         .map_err(|err| err.to_string())?
@@ -387,31 +219,11 @@ fn batch_as_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, Stri
         .unwrap_or_default();
     let undoable = match (&info.source_root, &target_folder) {
         (Some(source), Some(target)) => {
-            let run_item = |item: &ncrs_index::JournalItem| RunItem {
-                from: item.from.clone(),
-                to: item
-                    .to
-                    .strip_prefix(target)
-                    .unwrap_or(&item.to)
-                    .to_path_buf(),
-                hash: item.hash,
-            };
-            let (inside, items): (Vec<_>, Vec<_>) =
-                done.iter().partition(|item| item.from.starts_with(target));
-            let plan = RunPlan {
-                name: String::new(),
-                transfer: info.transfer,
-                source_root: source.given.clone(),
-                target_root: target.clone(),
-                items: items.into_iter().map(run_item).collect(),
-                inside: inside.into_iter().map(run_item).collect(),
-            };
             // A sorting run may file into a target below its source.
-            if info.run.is_some() {
-                outside_refusal(&plan).is_none()
-            } else {
-                plan_refusal(&plan).is_none()
-            }
+            items_stay_below(&source.given, target, &done)
+                && (info.run.is_some()
+                    || (info.transfer != Transfer::Trash
+                        && places_lie_apart(&source.given, target, &done)))
         }
         _ => info.transfer != Transfer::Trash,
     };
@@ -431,7 +243,7 @@ fn batch_as_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, Stri
     }))
 }
 
-fn example_folders(target: &Path, done: &[ncrs_index::JournalItem]) -> Vec<PathBuf> {
+fn example_folders(target: &Path, done: &[JournalItem]) -> Vec<PathBuf> {
     let mut folders: Vec<PathBuf> = Vec::new();
     for folder in done
         .iter()
@@ -446,16 +258,6 @@ fn example_folders(target: &Path, done: &[ncrs_index::JournalItem]) -> Vec<PathB
         }
     }
     folders
-}
-
-pub fn undo_all(access: &ChatAccess, batches: &[BatchId]) -> Result<UndoReport, String> {
-    let mut total = UndoReport::default();
-    for batch in batches {
-        let report = undo(access, *batch)?;
-        total.undone += report.undone;
-        total.left += report.left;
-    }
-    Ok(total)
 }
 
 pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {

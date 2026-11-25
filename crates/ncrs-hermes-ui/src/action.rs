@@ -53,8 +53,6 @@ pub enum Action {
     ReloadPanels,
     /// Clears the error and the notice in the status bar.
     ClearStatus,
-    /// Opens the move dialog for what the panel acts on, aimed at this inbox.
-    MoveToInbox(PathBuf),
     ShowNotice(String),
     ShowError(String),
     RequestHermesCounts,
@@ -62,11 +60,6 @@ pub enum Action {
     RefreshDocumentsFacts,
     /// The chat has the model of the current AI setting.
     EnsureChatModel,
-    /// The open chat looks for something that waits for the user.
-    CheckChatWaiting,
-    /// The pipeline has read everything in its queue; this is the number of
-    /// its left pipeline sequence.
-    ReadingSettled(usize),
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
     /// Takes in the latest snapshot of the pipeline and of the module.
@@ -105,4 +98,16 @@ pub enum Action {
     FinishJob,
     SetJobProgress(ncrs_fs::transfer::Tick),
     ClearJobProgress,
+    /// Opens the plan of this source in the filing tab; `once` for a folder
+    /// that is filed one time.
+    OpenPlan {
+        source: ncrs_intake::SortSource,
+        once: bool,
+    },
+    /// Asks for the folder of a source, starting at the path if there is one.
+    PickSourceFolder(Option<PathBuf>),
+    /// Asks for the folder of a target, starting at the path if there is one.
+    PickTargetFolder(Option<PathBuf>),
+    /// Rules, targets or sources changed: the plans decide again.
+    RulesChanged,
 }

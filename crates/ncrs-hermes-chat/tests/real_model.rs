@@ -1,5 +1,5 @@
-//! The rule flow against the real local model on the test archive. Needs the
-//! model: `NCRS_AI_MODELS_DIR` names the folder with it.
+//! Recognising the order of a folder with the real local model on the test
+//! archive. Needs the model: `NCRS_AI_MODELS_DIR` names the folder with it.
 
 #![cfg(feature = "llama")]
 
@@ -7,7 +7,6 @@ mod common;
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use common::Talk;
@@ -39,8 +38,7 @@ fn archive_talk(model: &Arc<LazyLocalModel>) -> Talk {
     let archive = ncrs_intake::test_archive::test_archive();
     archive.write_to(dir.path()).unwrap();
     let talk = Talk::in_dir(dir, &["archive"], &["inbox"])
-        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>)
-        .with_rules();
+        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>);
     for file in &archive.archive {
         if let Some(text) = file.text() {
             let relative = format!("archive/{}", file.relative_path.display());
@@ -107,38 +105,11 @@ fn with_model_a_nested_folder_is_opened_by_its_name_alone() {
 
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_an_empty_folder_gets_the_default_levels_and_one_rule() {
-    let model = real_model();
-    let mut talk = archive_talk(&model);
-    std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
-    talk.send(Message::Open);
-    talk.send(Message::ChangeArea {
-        folder: talk.path("archive"),
-        area: "Telefon".to_owned(),
-    });
-    talk.press(&ChipReply::LevelsKeep);
-    talk.type_text("Alle Kontoauszüge der Sparkasse Chemnitz");
-    talk.press(&ChipReply::RuleCreate);
-    let rules = talk.rules();
-    assert_eq!(rules.len(), 1, "{rules:?}");
-    assert_eq!(
-        rules[0].spec.filing_pattern,
-        "Telefon/{year}/{date}_{sender}_{kind}"
-    );
-    drop(talk);
-    model.shutdown();
-}
-
-#[test]
-#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
 fn with_model_a_sentence_puts_the_date_in_front_of_the_file_name_level() {
     let model = real_model();
     let mut talk = archive_talk(&model);
     talk.send(Message::Open);
-    talk.send(Message::ChangeArea {
-        folder: talk.path("archive"),
-        area: "Arbeit/Gehalt".to_owned(),
-    });
+    talk.send(Message::FolderPicked(Some(talk.path("archive/Arbeit/Gehalt"))));
     let shown = levels_card(&talk);
     println!("recognized: {:?}", shown.rows);
     talk.press(&ChipReply::LevelsChange);
@@ -211,79 +182,51 @@ fn with_model_router_latency_per_sentence() {
 
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_hermes_rule_flow() {
+fn with_model_hermes_suggests_rules_for_the_order_of_a_folder() {
     let model = real_model();
     let mut talk = archive_talk(&model);
 
-    let area_folder = talk.path("archive/Bank/Sparkasse Chemnitz/Kontoauszüge");
+    let area_folder = talk.path(&format!("archive/{AREA}"));
     talk.send(Message::Open);
-    talk.send(Message::ChangeArea {
-        folder: talk.path("archive"),
-        area: "Bank/Sparkasse Chemnitz/Kontoauszüge".to_owned(),
-    });
-    let deviations_shown = talk
-        .last_parts()
-        .iter()
-        .any(|part| matches!(part, ncrs_hermes_chat::Part::Levels(card) if card.footer.is_some()));
-    let recognized = talk
-        .state
-        .chips()
-        .iter()
-        .any(|chip| chip.reply == ChipReply::LevelsKeep);
-    println!("levels recognized and kept: {recognized}");
-    talk.press(&if recognized {
-        ChipReply::LevelsKeep
-    } else {
-        ChipReply::LevelsDefault
-    });
-    talk.type_text("Alle Kontoauszüge der Sparkasse Chemnitz");
-    talk.press(&ChipReply::RuleCreate);
+    talk.send(Message::FolderPicked(Some(area_folder.clone())));
+    let deviations_shown = levels_card(&talk).footer.is_some();
+    println!("recognized: {:?}", levels_card(&talk).rows);
+    talk.press(&ChipReply::LevelsKeep);
+    talk.press(&ChipReply::SuggestRules);
 
-    let rules = talk.rules();
-    assert_eq!(rules.len(), 1, "{rules:?}");
-    let rule = &rules[0];
-    assert!(!rule.spec.conditions.list.is_empty(), "{rule:?}");
-    assert!(
-        rule.spec
-            .filing_pattern
-            .starts_with("Bank/Sparkasse Chemnitz/Kontoauszüge/"),
-        "{rule:?}"
-    );
+    let suggested = talk.suggestions();
+    let [(folder, Some(pattern))] = suggested.as_slice() else {
+        panic!("one suggestion with a pattern: {suggested:?}");
+    };
+    assert_eq!(folder, &area_folder);
 
-    let progress = Arc::new(ReadProgress::default());
     let ChatResult::Read(Ok(reading)) = talk.access.run(ChatWork::Read {
         folder: area_folder,
-        progress: Arc::clone(&progress),
+        progress: Arc::new(ReadProgress::default()),
     }) else {
         panic!("the folder could not be read");
     };
-    assert!(progress.done.load(Ordering::Relaxed) > 0);
     let files: Vec<_> = reading
         .files
         .iter()
         .map(|file| {
-            let relative = file.relative_path.to_string_lossy();
             (
-                format!("Bank/Sparkasse Chemnitz/Kontoauszüge/{relative}"),
+                file.relative_path.to_string_lossy().replace('\\', "/"),
                 file.fields.clone(),
             )
         })
         .collect();
     let kinds = Kinds::new(Arc::new(KindCatalog::built_in()), KindLanguage::German);
-    let mismatches = pattern_mismatches(&rule.spec.filing_pattern, &files, &kinds);
+    let mismatches = pattern_mismatches(pattern, &files, &kinds);
     // What the model recognized may not fit every file; then the card said
     // so before the click, and when it fits, nothing deviates.
     assert_eq!(
         deviations_shown,
         !mismatches.is_empty(),
-        "{}: {mismatches:?}",
-        rule.spec.filing_pattern
+        "{pattern}: {mismatches:?}"
     );
-    assert!(
-        mismatches.is_empty(),
-        "{}: {mismatches:?}",
-        rule.spec.filing_pattern
-    );
+    assert!(mismatches.is_empty(), "{pattern}: {mismatches:?}");
+    talk.assert_saves_no_rule();
     drop(talk);
     model.shutdown();
 }

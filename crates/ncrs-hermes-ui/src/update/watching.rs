@@ -346,13 +346,17 @@ mod tests {
         after_the_first_run(&mut hermes);
 
         let generation = hermes.rules_generation;
-        drop(super::super::rules::update(
-            &mut hermes,
-            crate::message::RulesMessage::Changed {
-                generation,
-                result: Ok(()),
-            },
-        ));
+        with_ctx(false, None, |ctx| {
+            drop(super::super::rules::update(
+                &mut hermes,
+                crate::message::RulesMessage::Changed {
+                    generation,
+                    result: Ok(()),
+                },
+                ctx,
+                &mut Vec::new(),
+            ));
+        });
 
         assert!(starts_a_job(&mut hermes, false, None));
     }

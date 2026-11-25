@@ -114,6 +114,9 @@ impl App {
                 iced::widget::operation::focus_next()
             }
         };
+        if self.hermes_dialog_keys() == HermesDialogKeys::Target {
+            return next_target_field();
+        }
         if self.shown_tab != ShownTab::Settings || field_focused {
             return in_widgets();
         }
@@ -135,6 +138,19 @@ impl App {
         }
         Task::none()
     }
+}
+
+/// The dialog of a target has two fields. Named, so Tab never walks to a field
+/// behind the dialog.
+fn next_target_field() -> Task<Message> {
+    use ncrs_hermes_ui::ui::target_dialog::{FOLDER_FIELD_ID, NAME_FIELD_ID};
+    operation::is_focused(NAME_FIELD_ID).then(|on_name| {
+        operation::focus(if on_name {
+            FOLDER_FIELD_ID
+        } else {
+            NAME_FIELD_ID
+        })
+    })
 }
 
 #[cfg(test)]

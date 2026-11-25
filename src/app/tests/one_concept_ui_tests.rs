@@ -123,7 +123,7 @@ fn process_all_again_comes_with_two_errors_and_reads_every_shown_file_again() {
     )));
 
     let mut reading = read_errors_app(2);
-    let (_, actions) = reading.with_hermes(Vec::new(), |hermes, ctx| {
+    let (_, actions) = reading.with_hermes(|hermes, ctx| {
         ncrs_hermes_ui::update_filing_status(hermes, FilingStatusMessage::ProcessAllAgain, ctx)
     });
     let mut files: Vec<PathBuf> = actions

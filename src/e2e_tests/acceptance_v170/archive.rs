@@ -163,7 +163,7 @@ pub const CATEGORIES: [Category; 11] = [
         number_base: 19,
         heading: "Rechnung",
     },
-    // No rule: the neighbours in the archive are all it has.
+    // In the archive, but no rule names the sender.
     Category {
         key: "miete",
         sender: "Hausverwaltung Birkenhof GmbH",
@@ -336,25 +336,20 @@ pub fn write_archive(root: &Path) -> Vec<ArchiveFile> {
     written
 }
 
-/// What the inbox holds, by what Hermes is to make of it.
+/// What the inbox holds, by what the rules make of it.
 #[derive(Default)]
 pub struct Inbox {
-    /// A confirmed rule files these by itself.
+    /// A confirmed rule names the place of these.
     pub sure: Vec<(PathBuf, PathBuf)>,
-    /// The same bytes as an archive file, which lies in the place they would take.
+    /// The same bytes as an archive file.
     pub duplicates: Vec<(PathBuf, PathBuf)>,
     /// The place of an archive file with other content.
     pub clashes: Vec<(PathBuf, PathBuf)>,
     pub no_date: Vec<PathBuf>,
-    pub no_amount: Vec<PathBuf>,
-    /// A sender the rules and the neighbours know, which the test marks as
-    /// "not sure who sent it".
-    pub unsure_sender: Vec<PathBuf>,
+    /// A sender the archive holds letters of, but no rule names.
+    pub known_sender: Vec<PathBuf>,
     pub no_rule: Vec<PathBuf>,
     pub unconfirmed: Vec<PathBuf>,
-    /// Like the unconfirmed ones; the test marks them as "not sure who sent
-    /// it", which no scripted model can find out by itself.
-    pub unsure_sender_marked: Vec<PathBuf>,
 }
 
 fn inbox_name(counter: &mut usize, label: &str) -> String {
@@ -362,7 +357,7 @@ fn inbox_name(counter: &mut usize, label: &str) -> String {
     format!("Scan {:04} {label}.txt", *counter)
 }
 
-/// Writes `total`-ish documents into `inbox`, in the mix the questions need.
+/// Writes `total`-ish documents into `inbox`, in the mix the plan has to tell apart.
 pub fn write_inbox(inbox: &Path, archive_root: &Path, archive: &[ArchiveFile]) -> Inbox {
     let mut counter = 0;
     let mut found = Inbox::default();
@@ -425,16 +420,6 @@ pub fn write_inbox(inbox: &Path, archive_root: &Path, archive: &[ArchiveFile]) -
         put(&inbox.join(&name), &category.letter(None, serial, None));
         found.no_date.push(inbox.join(name));
     }
-    for serial in 0..scaled(25, 4) {
-        let category = category("versicherung");
-        let name = inbox_name(&mut counter, "ohne Betrag");
-        let date = day(7000 + serial);
-        put(
-            &inbox.join(&name),
-            &category.letter(Some(date), 7000 + serial, None),
-        );
-        found.no_amount.push(inbox.join(name));
-    }
     for serial in 0..scaled(15, 4) {
         let category = category("miete");
         let name = inbox_name(&mut counter, "Hausverwaltung");
@@ -443,7 +428,7 @@ pub fn write_inbox(inbox: &Path, archive_root: &Path, archive: &[ArchiveFile]) -
             &inbox.join(&name),
             &category.letter(Some(date), 8000 + serial, None),
         );
-        found.unsure_sender.push(inbox.join(name));
+        found.known_sender.push(inbox.join(name));
     }
     for serial in 0..scaled(20, 4) {
         let name = inbox_name(&mut counter, "Gartenbau");
@@ -471,28 +456,14 @@ pub fn write_inbox(inbox: &Path, archive_root: &Path, archive: &[ArchiveFile]) -
         put(&inbox.join(&name), &text);
         found.unconfirmed.push(inbox.join(name));
     }
-    for serial in 0..scaled(10, 4) {
-        let name = inbox_name(&mut counter, "Zeitung Absender");
-        let text = letter_of(
-            (UNCONFIRMED_SENDER, "Druckerstraße 2", "99084 Rosenthal"),
-            "Rechnung",
-            &format!("7{serial:04}"),
-            Some(day(9700 + serial)),
-            None,
-            serial + 100,
-        );
-        put(&inbox.join(&name), &text);
-        found.unsure_sender_marked.push(inbox.join(name));
-    }
     found
 }
 
-/// What the test adds while the continuous filing runs.
+/// What the test adds while the source is watched.
 #[derive(Default)]
 pub struct Arrivals {
-    /// The sender has no rule but many neighbours in one folder: the place is
-    /// sure. The path below the archive each should land in.
-    pub neighbours: Vec<(PathBuf, PathBuf)>,
+    /// The archive holds letters of the sender, but no rule names it.
+    pub known_sender: Vec<PathBuf>,
     /// A rule files these.
     pub by_rule: Vec<(PathBuf, PathBuf)>,
     /// Nobody knows the sender.
@@ -509,9 +480,7 @@ pub fn write_arrivals(inbox: &Path, archive_root: &Path) -> Arrivals {
         let date = day(number);
         let path = inbox.join(format!("Neu {number} Hausverwaltung.txt"));
         put(&path, &miete.letter(Some(date), number, None));
-        arrivals
-            .neighbours
-            .push((path, archive_root.join(miete.target(date, number))));
+        arrivals.known_sender.push(path);
     }
     let strom = category("strom");
     for serial in 0..scaled(6, 3) {
@@ -537,14 +506,4 @@ pub fn write_arrivals(inbox: &Path, archive_root: &Path) -> Arrivals {
         arrivals.strangers.push(path);
     }
     arrivals
-}
-
-/// One more letter that a confirmed rule files: where it comes from and where
-/// it lands.
-pub fn write_rule_arrival(inbox: &Path, archive_root: &Path, number: usize) -> (PathBuf, PathBuf) {
-    let strom = category("strom");
-    let date = day(number);
-    let path = inbox.join(format!("Neu {number} Strom.txt"));
-    put(&path, &strom.letter(Some(date), number, None));
-    (path, archive_root.join(strom.target(date, number)))
 }

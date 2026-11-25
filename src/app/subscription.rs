@@ -147,14 +147,6 @@ impl App {
             } else {
                 Subscription::none()
             },
-            // The status bar names the folder and the files left of the picks
-            // job, which only the clock redraws.
-            if ncrs_hermes_chat::picks_running(&self.hermes_chat) {
-                iced::time::every(std::time::Duration::from_secs(1))
-                    .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))
-            } else {
-                Subscription::none()
-            },
             // The bar of a running model download reads a counter the download
             // thread fills; nothing else wakes the view.
             if self.settings.ai_model_download_runs() {

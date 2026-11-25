@@ -23,7 +23,7 @@ use ncrs_pipeline::OwnDetails;
 
 use crate::execute::{execute_copying_into, execute_into, FilingBatches, ItemOutcome, SkipReason};
 use crate::filing::lies_within;
-use crate::filing_work::target_of;
+use crate::target_path::target_of;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Counting, Move, Source};
 

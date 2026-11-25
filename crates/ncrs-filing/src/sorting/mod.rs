@@ -9,6 +9,11 @@ mod questions;
 mod read_unknown;
 mod ready;
 mod run;
+mod suggest;
+mod suggest_file;
+mod suggest_material;
+mod suggest_scheme;
+mod suggest_store;
 mod watched;
 
 pub use access::SortingAccess;
@@ -20,6 +25,10 @@ pub use questions::{answer, leave, open_questions, question_count, Question, Que
 pub use read_unknown::{ReadProblem, ReadUnknown};
 pub use ready::{is_on_own_volume, TargetState, WaitReason};
 pub use run::{run, EntryReport, PlaceOutcome, PlaceReport, RunEntry, RunError, RunRequest, SortReport};
+pub use suggest::{ModelNote, RuleForFile, SuggestError, Suggested, Suggestions};
+pub use suggest_file::suggest_rule_for;
+pub use suggest_scheme::suggest_scheme;
+pub use suggest_store::{adopt, dismiss};
 pub use watched::{run_watched, SourceWait, WatchedFiles, WatchedReport, WatchedSkip};
 
 #[cfg(test)]

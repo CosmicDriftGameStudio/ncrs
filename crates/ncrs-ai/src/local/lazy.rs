@@ -14,7 +14,7 @@ use ncrs_priority::ThreadPriority;
 
 use super::rule_session::RuleSession;
 use super::worker::{run, ChatJob, ExtractJob, Job, RuleJob, Shared, IDLE_UNLOAD};
-use crate::chat::{ChatIntent, ChatModel, ChatTurn, FolderChoiceLane};
+use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
@@ -304,31 +304,6 @@ impl ChatModel for LazyLocalModel {
             session.revise(&question)
         })
     }
-    fn choose_folders(
-        &self,
-        folders: &[(String, Vec<String>)],
-        documents: &[String],
-        lane: FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError> {
-        self.ensure_worker()?;
-        let (reply, answer) = channel();
-        let owned_folders = folders.to_vec();
-        let owned_documents = documents.to_vec();
-        let job = RuleJob {
-            task: Box::new(move |model| {
-                let outcome = model
-                    .and_then(|loaded| loaded.choose_folders(&owned_folders, &owned_documents));
-                drop(reply.send(outcome));
-            }),
-        };
-        self.shared.submit(match lane {
-            FolderChoiceLane::Waiting => Job::Rule(job),
-            FolderChoiceLane::Background => Job::Background(job),
-        });
-        answer
-            .recv()
-            .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
-    }
 
     /// Reads a snapshot only, never the disk and never the worker. While the
     /// model is being loaded, or asleep, it reports `NotLoadedYet`.
@@ -374,8 +349,6 @@ mod tests {
             message: "hello".to_owned(),
             question: None,
             previous_search: None,
-            previous_request: None,
-            previous_message: None,
         };
         assert!(model.understand(&turn).is_err());
         assert_eq!(workers_of(&shared), 1);

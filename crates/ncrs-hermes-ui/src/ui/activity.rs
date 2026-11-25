@@ -14,7 +14,7 @@ use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use super::reviews::{file_name, folder_of, MAX_FILES_SHOWN};
 use crate::activity_page::ActivityPage;
-use crate::hermes_status::HermesStatus;
+use crate::hermes_status::{waiting_text, HermesStatus};
 use crate::message::{ActivityMessage, Message};
 
 fn send(message: ActivityMessage) -> Message {
@@ -54,27 +54,21 @@ fn now_row<'a>(
             palette,
         );
     };
-    let link = |template: Msg, count: usize, message: ActivityMessage| {
-        (count > 0).then(|| {
-            RowButton::new(
-                fill_template(
-                    lang.text(template),
-                    &[("{count}", &format::grouped(count as u64))],
-                ),
-                Some(send(message)),
-                Tone::Secondary,
-            )
-        })
+    let link = |count: usize, text: String, message: ActivityMessage| {
+        (count > 0).then(|| RowButton::new(text, Some(send(message)), Tone::Secondary))
     };
     let links = [
         link(
-            Msg::ActivityPageLinkReviews,
-            known.to_review,
-            ActivityMessage::OpenReviews,
+            known.waiting,
+            waiting_text(known.waiting, lang),
+            ActivityMessage::OpenWaiting,
         ),
         link(
-            Msg::ActivityPageLinkErrors,
             known.failed,
+            fill_template(
+                lang.text(Msg::ActivityPageLinkErrors),
+                &[("{count}", &format::grouped(known.failed as u64))],
+            ),
             ActivityMessage::OpenReadErrors,
         ),
     ]
@@ -206,6 +200,8 @@ fn kind_text(kind: BatchKind) -> Msg {
 
 #[cfg(test)]
 mod tests {
+    use ncrs_ui_kit::setting_rows::RowKey;
+
     use super::*;
     use crate::hermes_status::StateWord;
 
@@ -214,7 +210,7 @@ mod tests {
             word: StateWord::Idle,
             working: 0,
             open: 0,
-            to_review: 0,
+            waiting: 0,
             failed: 0,
             pdf_library_missing: false,
             stuck: false,
@@ -236,6 +232,19 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].label, "ruht");
         assert!(rows[0].description.is_none());
+    }
+
+    #[test]
+    fn files_that_wait_are_a_link_to_their_questions() {
+        let rows = now_rows(Some(HermesStatus {
+            waiting: 2,
+            ..idle()
+        }));
+
+        assert!(rows[0]
+            .key
+            .as_ref()
+            .is_some_and(|key| *key == RowKey::Buttons(vec![send(ActivityMessage::OpenWaiting)])));
     }
 
     #[test]

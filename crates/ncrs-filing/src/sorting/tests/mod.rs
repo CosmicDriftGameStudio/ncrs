@@ -23,6 +23,7 @@ use crate::reading_support::ReadProgress;
 
 mod filing;
 mod planning;
+mod suggest;
 mod watching;
 
 struct Setup {

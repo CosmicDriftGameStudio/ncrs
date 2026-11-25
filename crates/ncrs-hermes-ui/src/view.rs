@@ -10,15 +10,21 @@ use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
 use ncrs_filing::filing::{FilingModule, Phase};
 use ncrs_i18n::{Language, Msg};
+use ncrs_index::KindCatalog;
+use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::setting_rows;
 
 use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
 use crate::hermes_status::HermesStatus;
-use crate::message::{HermesPage, Message};
+use crate::message::{FilingStatusMessage, HermesPage, Message};
+use crate::rules_page::RulesPage;
 use crate::state::Hermes;
 use crate::ui::{
     activity as activity_ui, confirm_again as confirm_again_ui, filing_status as filing_status_ui,
-    reviews as reviews_ui, rules as rules_ui, saved_queries as saved_queries_ui, tags as tags_ui,
+    rules as rules_ui, saved_queries as saved_queries_ui, sorting as sorting_ui,
+    source_dialog as source_dialog_ui, target_dialog as target_dialog_ui,
+    suggest as suggest_ui,
+    tags as tags_ui,
 };
 
 /// What drawing the Hermes pages reads from the app.
@@ -34,13 +40,17 @@ pub struct ViewCtx<'a> {
     pub ai_download: Option<(u64, u64)>,
     /// The system reads scans itself, without the OCR models.
     pub system_reads_scans: bool,
+    /// What a leading `~` in a typed path stands for.
+    pub home: &'a Path,
 }
 
-/// The text of the badge in the status bar, and whether it is red.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The text of the badge in the status bar, whether it is red, and what a
+/// click on it sends.
+#[derive(Debug, Clone, PartialEq)]
 pub struct FilingBadge {
     pub text: String,
     pub failing: bool,
+    pub on_press: FilingStatusMessage,
 }
 
 /// What the overview and the protection panel of the settings say about the
@@ -74,6 +84,7 @@ pub fn overview_facts(
         failure,
         has_locations: !hermes.filing_config.locations.is_empty(),
         counts: hermes.filing_status.hermes_counts().copied(),
+        waiting: hermes.filing_status.waiting(),
         ai_on: hermes.filing_config.hermes_on(),
         ai_status: module.map(FilingModule::ai_status).unwrap_or_default(),
         ai_download: ctx.ai_download,
@@ -90,7 +101,7 @@ pub fn overview_facts(
 }
 
 /// The rows of one of the pages the settings window fills from here: the
-/// rules, the reports, the tags or the read errors.
+/// sources and targets, the reports, the tags or the read errors.
 ///
 /// The page for the messages `wrap` makes of its own; a click on a row sends
 /// what `on_focus` makes of the row's number.
@@ -139,10 +150,19 @@ fn page_groups<'a>(
 ) -> Option<Vec<setting_rows::Group<'a, Message>>> {
     let (lang, palette) = (ctx.lang, ctx.palette);
     match page {
-        HermesPage::Rules => hermes
-            .rules
+        HermesPage::Sorting => hermes
+            .sorting
             .as_ref()
-            .map(|state| rules_ui::groups(state, lang, palette)),
+            .map(|state| {
+                sorting_ui::groups(
+                    state,
+                    hermes.rules.as_ref(),
+                    &hermes.filing_config,
+                    ctx.home,
+                    lang,
+                    palette,
+                )
+            }),
         HermesPage::SavedQueries => hermes
             .saved_queries
             .as_ref()
@@ -151,10 +171,6 @@ fn page_groups<'a>(
             .tags
             .as_ref()
             .map(|state| tags_ui::groups(state, ctx.file_list_tags, lang, palette)),
-        HermesPage::Reviews => hermes
-            .reviews
-            .as_ref()
-            .map(|state| reviews_ui::groups(state, lang, palette)),
         HermesPage::Activity => hermes
             .activity
             .as_ref()
@@ -167,15 +183,53 @@ fn page_groups<'a>(
     }
 }
 
-/// The dialogs of the pages above, to be stacked over the window; at most
-/// one of them is up.
+/// The dialogs of the pages above, to be stacked over the window; the target
+/// dialog lies over the source dialog that asked for it.
 pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Message>> {
     let (window, lang, palette) = (ctx.window_size, ctx.lang, ctx.palette);
     [
+        hermes.suggest.as_ref().map(|state| {
+            let targets = &hermes.filing_config.targets;
+            let target = state.target().and_then(|id| {
+                let at = targets.iter().position(|listed| listed.target.id == id)?;
+                let target = &targets.get(at)?.target;
+                Some(suggest_ui::TargetLabel {
+                    text: format!("T{} {}", at + 1, target.name),
+                    path: shown_path(&target.path, ctx.home),
+                })
+            });
+            let built_in = KindCatalog::default();
+            let kinds = hermes.rules.as_ref().map_or(&built_in, RulesPage::kinds);
+            suggest_ui::dialog(state, target.as_ref(), kinds, window, lang, palette)
+        }),
+        hermes.source_dialog.as_ref().map(|dialog| {
+            source_dialog_ui::view(
+                dialog,
+                &hermes.filing_config,
+                ctx.home,
+                window,
+                lang,
+                palette,
+            )
+        }),
+        hermes.target_dialog.as_ref().map(|dialog| {
+            target_dialog_ui::view(
+                dialog,
+                &hermes.filing_config,
+                ctx.home,
+                window,
+                lang,
+                palette,
+            )
+        }),
+        hermes
+            .target_removal
+            .as_ref()
+            .map(|asked| target_dialog_ui::removal(asked, window, lang, palette)),
         hermes
             .rules
             .as_ref()
-            .and_then(|state| rules_ui::dialog(state, window, lang, palette)),
+            .and_then(|state| rules_ui::dialog(state, &hermes.filing_config, window, lang, palette)),
         hermes
             .saved_queries
             .as_ref()
@@ -208,17 +262,19 @@ pub fn confirm_again_dialog<'a>(
 pub fn hermes_status(hermes: &Hermes) -> Option<HermesStatus> {
     HermesStatus::of(
         hermes.filing_status.snapshot(),
-        hermes.filing_status.hermes_counts(),
+        hermes.filing_status.waiting(),
         hermes.pdf_library_missing.is_some(),
     )
 }
 
-/// The badge of Hermes in the status bar. It opens the status page.
+/// The badge of Hermes in the status bar. It opens what waits for the user,
+/// and the activity page while nothing does.
 pub fn filing_badge(hermes: &Hermes, lang: Language) -> Option<FilingBadge> {
     if hermes.filing_restart.is_some() {
         return Some(FilingBadge {
             text: lang.text(Msg::StatusHermesRestarting).to_owned(),
             failing: false,
+            on_press: FilingStatusMessage::Open,
         });
     }
     let status = hermes_status(hermes)?;
@@ -228,6 +284,11 @@ pub fn filing_badge(hermes: &Hermes, lang: Language) -> Option<FilingBadge> {
             .line(lang)
             .unwrap_or_else(|| status.line(lang)),
         failing: status.is_failing(),
+        on_press: if status.waiting > 0 {
+            FilingStatusMessage::OpenWaiting
+        } else {
+            FilingStatusMessage::Open
+        },
     })
 }
 

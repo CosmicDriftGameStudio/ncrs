@@ -467,18 +467,23 @@ async fn the_chat_greets_while_hermes_starts_and_the_first_folder_becomes_a_loca
 
     let documents = dir.path().join("Documents");
     std::fs::create_dir(&documents).unwrap();
-    let task = app.run_hermes_chat_action(ncrs_hermes_chat::Action::SetFolderRole {
+    let task = app.run_hermes_chat_action(ncrs_hermes_chat::Action::SuggestRules {
         folder: documents,
-        role: FolderRole::FilingLocation,
+        pattern: None,
     });
     settle_task(&mut app, task).await;
-    let [location] = app.hermes.filing_config.locations.as_slice() else {
+    settle(
+        &mut app,
+        Message::Targets(ncrs_hermes_ui::TargetsMessage::Save),
+    )
+    .await;
+    let [setting] = app.hermes.filing_config.targets.as_slice() else {
         panic!(
-            "one location expected: {:?}",
-            app.hermes.filing_config.locations
+            "one target expected: {:?}",
+            app.hermes.filing_config.targets
         );
     };
-    assert!(location.is_target && location.path.ends_with("Documents"));
+    assert!(setting.target.path.ends_with("Documents"));
     assert!(config_in(&dir).contains("Documents"), "{}", config_in(&dir));
 }
 

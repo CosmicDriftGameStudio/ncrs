@@ -7,6 +7,7 @@ mod classify;
 mod conditions;
 mod date_detection;
 mod default_pattern;
+mod duplicate_copies;
 mod error;
 mod extract;
 mod field_detection;
@@ -14,6 +15,7 @@ pub mod filing_pieces;
 mod filing_plan;
 mod image_text;
 mod location;
+mod location_documents;
 mod ocr;
 mod office;
 mod page_budget;
@@ -25,10 +27,7 @@ mod reading_marker;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
-mod reorganisation;
-mod reorganisation_plan;
 mod rule_check;
-mod rule_suggestions;
 mod sanitise;
 mod scan;
 mod sender_detection;
@@ -53,6 +52,7 @@ pub use default_pattern::{
     choose_pattern, default_pattern_for, pattern_without_tax_context, upgraded_pattern,
     ChosenPattern, PatternSource, DEFAULT_PATTERNS, FALLBACK_PATTERN,
 };
+pub use duplicate_copies::{duplicate_copies, DuplicateCopy, PlanFile};
 pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
@@ -69,6 +69,7 @@ pub use location::{
     canonical_path, location_of, relative_to_location, without_verbatim_prefix, Location,
     LocationMode,
 };
+pub use location_documents::{location_documents, location_structure};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
@@ -78,10 +79,6 @@ pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUn
 pub use placement::{Candidate, NeighbourIndex, Placement, Signal};
 pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
-pub use reorganisation::{
-    duplicate_copies, plan_reorganisation, DuplicateCopy, PlanFile, ReorganisationInput,
-};
-pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{
     condition_problem, pattern_problem, rule_problem, ConditionProblem, PatternProblem,
     RuleProblem,

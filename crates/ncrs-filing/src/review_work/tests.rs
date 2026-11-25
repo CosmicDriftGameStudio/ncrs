@@ -7,7 +7,6 @@ use ncrs_intake::hash_path;
 use tempfile::TempDir;
 
 use super::*;
-use crate::filing_work::file_planned;
 
 struct Setup {
     _dir: TempDir,
@@ -228,55 +227,6 @@ fn confirming_with_changed_fields_files_the_document_where_the_pattern_says() {
         }
         assert_eq!(origins.of(ncrs_index::Field::Date), FieldOrigin::Unknown);
     });
-}
-
-#[test]
-fn a_rule_for_the_sender_files_the_next_document_without_a_review() {
-    let setup = Setup::new();
-    setup.with_index(|index| {
-        let spec = RuleSpec {
-            name: None,
-            conditions: RuleConditions::all_of(vec![Condition::new(
-                ConditionKind::Sender,
-                "Company A",
-            )]),
-            extract_number: None,
-            extract_date: None,
-            extract_amount: None,
-            kind: Some("invoice".to_owned()),
-            tags: BTreeSet::new(),
-            filing_pattern: "{sender}/{kind}".to_owned(),
-            confirmed: true,
-            enabled: true,
-        };
-        index
-            .create_rule_from(&spec, ncrs_index::RuleOrigin::Filing)
-            .unwrap();
-    });
-    let next = setup.document("next.pdf", DocumentStatus::Planned);
-    setup.with_index(|index| {
-        index
-            .set_document_fields(next, &Setup::fields("Company A"), |_| FieldOrigin::Unknown)
-            .unwrap();
-    });
-
-    let summary = setup.with_index(|index| {
-        file_planned(
-            index,
-            &setup.archive,
-            std::slice::from_ref(&setup.inbox),
-            &[],
-            &mut Counting,
-            &Move,
-            KindLanguage::English,
-        )
-        .unwrap()
-    });
-
-    assert_eq!(summary.filed, 1);
-    assert_eq!(summary.reviewed, 0);
-    assert!(setup.archive.join("Company A").join("Invoice.pdf").exists());
-    setup.with_index(|index| assert!(index.open_reviews().unwrap().is_empty()));
 }
 
 #[test]

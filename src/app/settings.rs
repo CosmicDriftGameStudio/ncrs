@@ -191,7 +191,6 @@ impl App {
                 Task::none()
             }
             Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
-            Ask::OpenChat { area } => self.open_chat_from_settings(area),
             Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
             Ask::NotesRecovery => self.update_notes(ncrs_notes::Message::RecoveryRequested),
             Ask::NotesRestore(text) => self.update_notes(ncrs_notes::Message::Restore(text)),
@@ -200,7 +199,6 @@ impl App {
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
-            Ask::UndoRun(batch) => self.undo_run(batch),
             Ask::ReadTextlessAgain => self.read_textless_again(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
@@ -336,10 +334,6 @@ impl App {
         self.run_settings_actions(task, actions)
     }
 
-    pub(in crate::app) fn ocr_models_present(&self) -> bool {
-        ncrs_settings::ocr_models_present(self.settings_ctx().ocr_models_dir.as_deref())
-    }
-
     /// Writes the values typed on the page and closes it.
     pub(in crate::app) fn leave_settings_page(&mut self) -> Task<Message> {
         self.update_settings(SettingsMessage::Close)
@@ -369,7 +363,7 @@ impl App {
     }
 
     /// The main status bar is not shown over the settings, so a job error
-    /// (an answer of the reviews page that failed) is read in theirs.
+    /// is read in theirs.
     pub(in crate::app) fn settings_status_failure(&self) -> Option<&str> {
         self.settings
             .failure

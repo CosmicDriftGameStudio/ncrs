@@ -1,15 +1,17 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_config::config::{SourceSetting, TargetSetting};
 use ncrs_core::INDEX_NOT_OPEN;
-use ncrs_index::{BatchId, Index, Kinds, TargetId};
-use ncrs_intake::{canonical_path, SortTarget, TextChain};
+use ncrs_index::{BatchId, Index, Kinds, RuleId, TargetId};
+use ncrs_intake::{canonical_path, PlainText, SortTarget, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
 use super::ready::{state_of, TargetState, WaitReason};
 use crate::chat_work::{runs_of_index, undo_run, RecentRun, Snapshots, UndoReport};
+use crate::execute::{trash_can_restore, trash_run, TrashItem, TrashReport};
 use crate::index_work::IndexWork;
 
 /// What sorting works with; one copy per job.
@@ -44,6 +46,66 @@ impl SortingAccess {
 
     pub fn recent_runs(&self, limit: usize) -> Result<Vec<RecentRun>, String> {
         self.with_index(|index| runs_of_index(index, limit))
+    }
+
+    /// The configured targets in their order (the first one is T1), their paths
+    /// spelled the way a plan spells them.
+    pub fn configured_targets(&self) -> Vec<SortTarget> {
+        self.targets
+            .iter()
+            .map(|entry| resolved(&entry.target))
+            .collect()
+    }
+
+    /// What a rule is called in a plan: its name, or its pattern without one.
+    pub fn rule_names(&self) -> Result<HashMap<RuleId, String>, String> {
+        let rules = self.with_index(|index| index.rules().map_err(text))?;
+        Ok(rules
+            .into_iter()
+            .map(|rule| {
+                let name = rule.spec.name.unwrap_or(rule.spec.filing_pattern);
+                (rule.id, name)
+            })
+            .collect())
+    }
+
+    /// Duplicates only go where they can be taken back from.
+    pub fn trash_can_restore(&self) -> bool {
+        trash_can_restore(self.trash.as_ref())
+    }
+
+    /// Moves duplicates below `root` to the trash as one run of the history.
+    pub fn trash_duplicates(
+        &self,
+        name: &str,
+        root: &Path,
+        items: &[TrashItem],
+    ) -> Result<TrashReport, String> {
+        let _work = self.index_work.begin();
+        self.with_index_mut(|index| {
+            trash_run(index, name, root, items, self.trash.as_ref()).map_err(text)
+        })
+    }
+
+    /// Reads text files only, so a test of another crate needs no engine.
+    #[doc(hidden)]
+    pub fn for_tests(
+        index: Index,
+        sources: Vec<SourceSetting>,
+        targets: Vec<TargetSetting>,
+        trash: Arc<dyn ncrs_fs::Trash>,
+    ) -> Self {
+        Self {
+            slot: Arc::new(Mutex::new(Some(index))),
+            sources,
+            targets,
+            text_chain: Arc::new(TextChain::new().with_source(PlainText)),
+            own: OwnDetails::default(),
+            load: Load::default(),
+            trash,
+            snapshots: Snapshots::default(),
+            index_work: IndexWork::default(),
+        }
     }
 
     /// Whether the target can be filed into right now; asked again before

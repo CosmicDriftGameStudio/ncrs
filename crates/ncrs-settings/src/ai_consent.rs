@@ -15,36 +15,39 @@ pub struct ModelCallSite {
     pub file: &'static str,
     /// The agreements the place needs; it sends nothing without all of them.
     pub needs: &'static [ConsentPurpose],
-    /// `None` while the call goes to no server (the own-server model cannot
-    /// choose folders yet), so the card must not announce it.
-    pub announced_as: Option<Msg>,
+    pub announced_as: Msg,
 }
 
 pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
     ModelCallSite {
         file: "crates/ncrs-pipeline/src/ai_step/mod.rs",
         needs: &[ConsentPurpose::Inbox],
-        announced_as: Some(Msg::SettingsAiConsentItemDocuments),
+        announced_as: Msg::SettingsAiConsentItemDocuments,
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/understand.rs",
         needs: &[ConsentPurpose::Archive],
-        announced_as: Some(Msg::SettingsAiConsentItemChat),
+        announced_as: Msg::SettingsAiConsentItemChat,
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/rule_flow/ask.rs",
         needs: &[ConsentPurpose::Archive, ConsentPurpose::Folders],
-        announced_as: Some(Msg::SettingsAiConsentItemRules),
+        announced_as: Msg::SettingsAiConsentItemRules,
     },
     ModelCallSite {
-        file: "crates/ncrs-filing/src/chat_work/trial.rs",
-        needs: &[ConsentPurpose::Folders],
-        announced_as: None,
+        file: "crates/ncrs-filing/src/sorting/suggest_file.rs",
+        needs: &[ConsentPurpose::Archive, ConsentPurpose::Folders],
+        announced_as: Msg::SettingsAiConsentItemSuggestFile,
+    },
+    ModelCallSite {
+        file: "crates/ncrs-filing/src/sorting/suggest_scheme.rs",
+        needs: &[ConsentPurpose::Archive, ConsentPurpose::Folders],
+        announced_as: Msg::SettingsAiConsentItemSuggest,
     },
     ModelCallSite {
         file: "crates/ncrs-ops/src/batch_rename/flow.rs",
         needs: &[ConsentPurpose::Folders],
-        announced_as: Some(Msg::SettingsAiConsentItemNames),
+        announced_as: Msg::SettingsAiConsentItemNames,
     },
 ];
 
@@ -87,7 +90,7 @@ pub fn announced_items(purpose: ConsentPurpose) -> impl Iterator<Item = Msg> {
     MODEL_CALL_SITES
         .iter()
         .filter(move |site| site.needs.contains(&purpose))
-        .filter_map(|site| site.announced_as)
+        .map(|site| site.announced_as)
 }
 
 /// The agreement a server still needs.
@@ -190,7 +193,6 @@ mod tests {
         ".recognize_levels(",
         ".recognize_levels_again(",
         ".revise_levels(",
-        ".choose_folders(",
         "propose_name_spec(",
     ];
 
@@ -312,7 +314,6 @@ mod tests {
             listed,
             MODEL_CALL_SITES
                 .iter()
-                .filter(|site| site.announced_as.is_some())
                 .map(|site| site.needs.len())
                 .sum::<usize>()
         );

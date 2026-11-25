@@ -2,7 +2,6 @@
 //! are in work, open, waiting for the user or failed. The status bar and the
 //! title chip both read it, so they never disagree.
 
-use ncrs_index::HermesCounts;
 use ncrs_pipeline::{RunnerState, Snapshot, Task};
 
 use ncrs_i18n::fill_template;
@@ -33,28 +32,38 @@ pub struct HermesStatus {
     pub working: usize,
     /// Files queued at a step.
     pub open: usize,
-    /// Open review entries.
-    pub to_review: usize,
+    /// Files of the sources that wait for an answer of the user.
+    pub waiting: usize,
     /// Files that failed a step.
     pub failed: usize,
     pub pdf_library_missing: bool,
     pub stuck: bool,
 }
 
-/// Hermes is stuck when it is paused with files waiting, or when documents
-/// wait for the user while it has not filed a single inbox document: it
-/// cannot get on without the user then.
-fn is_stuck(word: StateWord, open: usize, to_review: u64, inbox_filed: u64) -> bool {
-    (word == StateWord::Paused && open > 0) || (to_review > 0 && inbox_filed == 0)
+/// Hermes is stuck when it is paused with files queued or with questions open:
+/// it cannot get on without the user then.
+fn is_stuck(word: StateWord, open: usize, waiting: usize) -> bool {
+    word == StateWord::Paused && (open > 0 || waiting > 0)
+}
+
+/// The counter of the status bar and of the activity page.
+pub fn waiting_text(count: usize, lang: Language) -> String {
+    if count == 1 {
+        return lang.text(Msg::HermesStatusWaitingOne).to_owned();
+    }
+    counted(Msg::HermesStatusWaitingOther, count, lang)
+}
+
+fn counted(template: Msg, count: usize, lang: Language) -> String {
+    fill_template(
+        lang.text(template),
+        &[("{count}", &format::grouped(count as u64))],
+    )
 }
 
 impl HermesStatus {
     /// `None` while the pipeline is off.
-    pub fn of(
-        snapshot: &Snapshot,
-        counts: Option<&HermesCounts>,
-        pdf_library_missing: bool,
-    ) -> Option<Self> {
+    pub fn of(snapshot: &Snapshot, waiting: usize, pdf_library_missing: bool) -> Option<Self> {
         if snapshot.state == RunnerState::Off {
             return None;
         }
@@ -77,16 +86,14 @@ impl HermesStatus {
         } else {
             StateWord::Running
         };
-        let to_review = counts.map_or(0, |known| known.open_reviews);
-        let inbox_filed = counts.map_or(1, |known| known.inbox.filed);
         Some(Self {
             word,
             working,
             open,
-            to_review: usize::try_from(to_review).unwrap_or(usize::MAX),
+            waiting,
             failed,
             pdf_library_missing,
-            stuck: is_stuck(word, open, to_review, inbox_filed),
+            stuck: is_stuck(word, open, waiting),
         })
     }
 
@@ -124,24 +131,20 @@ impl HermesStatus {
             StateWord::Paused => Msg::HermesStatusPaused,
             StateWord::Idle => Msg::HermesStatusIdle,
         });
-        let parts = [
-            (self.working, Msg::HermesStatusWorking),
-            (self.open, Msg::HermesStatusOpen),
-            (self.to_review, Msg::HermesStatusToReview),
-            (self.failed, Msg::HermesStatusFailed),
+        let part = |count: usize, template: Msg| {
+            (count > 0).then(|| counted(template, count, lang))
+        };
+        [
+            Some(word.to_owned()),
+            part(self.working, Msg::HermesStatusWorking),
+            part(self.open, Msg::HermesStatusOpen),
+            (self.waiting > 0).then(|| waiting_text(self.waiting, lang)),
+            part(self.failed, Msg::HermesStatusFailed),
         ]
         .into_iter()
-        .filter(|(count, _)| *count > 0)
-        .map(|(count, template)| {
-            fill_template(
-                lang.text(template),
-                &[("{count}", &format::grouped(count as u64))],
-            )
-        });
-        std::iter::once(word.to_owned())
-            .chain(parts)
-            .collect::<Vec<_>>()
-            .join(" \u{b7} ")
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
     }
 }
 
@@ -150,7 +153,6 @@ mod tests {
     use std::path::PathBuf;
     use std::time::SystemTime;
 
-    use ncrs_index::StatusCounts;
     use ncrs_pipeline::{Busy, StepSnapshot, WorkerSnapshot};
 
     use super::*;
@@ -178,53 +180,34 @@ mod tests {
         snapshot
     }
 
-    fn counts(open_reviews: u64, inbox_filed: u64) -> HermesCounts {
-        HermesCounts {
-            inbox: StatusCounts {
-                filed: inbox_filed,
-                ..StatusCounts::default()
-            },
-            open_reviews,
-            ..HermesCounts::default()
-        }
-    }
-
     fn line(status: HermesStatus, lang: Language) -> String {
         status.line(lang)
     }
 
     #[test]
     fn nothing_is_said_while_the_pipeline_is_off() {
-        assert!(HermesStatus::of(&Snapshot::off(), None, false).is_none());
+        assert!(HermesStatus::of(&Snapshot::off(), 0, false).is_none());
     }
 
     #[test]
     fn a_running_pipeline_names_what_is_not_zero() {
-        let status = HermesStatus::of(
-            &snapshot(RunnerState::Running, 5, 0, 2),
-            Some(&counts(3, 9)),
-            false,
-        )
-        .unwrap();
+        let status =
+            HermesStatus::of(&snapshot(RunnerState::Running, 5, 0, 2), 3, false).unwrap();
         assert_eq!(
             line(status, Language::English),
-            "running \u{b7} 2 working \u{b7} 5 open \u{b7} 3 to review"
+            "running \u{b7} 2 working \u{b7} 5 open \u{b7} 3 wait for you"
         );
         assert_eq!(
             line(status, Language::German),
-            "l\u{e4}uft \u{b7} 2 in Arbeit \u{b7} 5 offen \u{b7} 3 R\u{fc}ckfragen"
+            "l\u{e4}uft \u{b7} 2 in Arbeit \u{b7} 5 offen \u{b7} 3 warten auf dich"
         );
         assert_eq!(status.tone(), Tone::Fine);
     }
 
     #[test]
     fn nothing_waiting_and_no_worker_busy_is_idle() {
-        let status = HermesStatus::of(
-            &snapshot(RunnerState::Running, 0, 0, 0),
-            Some(&counts(0, 1)),
-            false,
-        )
-        .unwrap();
+        let status =
+            HermesStatus::of(&snapshot(RunnerState::Running, 0, 0, 0), 0, false).unwrap();
         assert_eq!(status.word, StateWord::Idle);
         assert_eq!(line(status, Language::English), "idle");
         assert_eq!(line(status, Language::German), "ruht");
@@ -232,24 +215,15 @@ mod tests {
 
     #[test]
     fn errors_show_up_and_turn_the_chip_red() {
-        let status = HermesStatus::of(
-            &snapshot(RunnerState::Running, 0, 4, 0),
-            Some(&counts(0, 1)),
-            false,
-        )
-        .unwrap();
+        let status =
+            HermesStatus::of(&snapshot(RunnerState::Running, 0, 4, 0), 0, false).unwrap();
         assert_eq!(line(status, Language::English), "idle \u{b7} 4 failed");
         assert_eq!(status.tone(), Tone::Failing);
     }
 
     #[test]
     fn a_missing_pdf_library_is_one_notice_and_red() {
-        let status = HermesStatus::of(
-            &snapshot(RunnerState::Running, 5, 0, 2),
-            Some(&counts(3, 0)),
-            true,
-        )
-        .unwrap();
+        let status = HermesStatus::of(&snapshot(RunnerState::Running, 5, 0, 2), 3, true).unwrap();
         assert_eq!(
             line(status, Language::English),
             "PDF library missing, PDFs are not read"
@@ -263,41 +237,34 @@ mod tests {
 
     #[test]
     fn paused_with_files_waiting_is_stuck_and_paused_alone_is_not() {
-        let waiting = HermesStatus::of(
-            &snapshot(RunnerState::Paused, 3, 0, 0),
-            Some(&counts(0, 1)),
-            false,
-        )
-        .unwrap();
-        assert_eq!(line(waiting, Language::English), "paused \u{b7} 3 open");
-        assert_eq!(waiting.tone(), Tone::Stuck);
-        let empty = HermesStatus::of(
-            &snapshot(RunnerState::Paused, 0, 0, 0),
-            Some(&counts(0, 1)),
-            false,
-        )
-        .unwrap();
+        let queued = HermesStatus::of(&snapshot(RunnerState::Paused, 3, 0, 0), 0, false).unwrap();
+        assert_eq!(line(queued, Language::English), "paused \u{b7} 3 open");
+        assert_eq!(queued.tone(), Tone::Stuck);
+        let empty = HermesStatus::of(&snapshot(RunnerState::Paused, 0, 0, 0), 0, false).unwrap();
         assert_eq!(empty.tone(), Tone::Paused);
     }
 
     #[test]
-    fn reviews_without_a_single_filed_document_are_stuck() {
-        assert!(is_stuck(StateWord::Running, 0, 2, 0));
-        assert!(!is_stuck(StateWord::Running, 0, 2, 1));
-        assert!(!is_stuck(StateWord::Running, 0, 0, 0));
+    fn questions_are_stuck_only_while_hermes_is_paused() {
+        let paused = HermesStatus::of(&snapshot(RunnerState::Paused, 0, 0, 0), 2, false).unwrap();
+        assert_eq!(paused.tone(), Tone::Stuck);
+        let idle = HermesStatus::of(&snapshot(RunnerState::Running, 0, 0, 0), 2, false).unwrap();
+        assert_eq!(idle.tone(), Tone::Fine);
+    }
+
+    #[test]
+    fn one_question_is_told_in_the_singular() {
+        assert_eq!(waiting_text(1, Language::German), "1 wartet auf dich");
+        assert_eq!(waiting_text(1, Language::English), "1 waits for you");
     }
 
     #[test]
     fn big_numbers_are_grouped() {
-        let status = HermesStatus::of(
-            &snapshot(RunnerState::Running, 0, 0, 0),
-            Some(&counts(2421, 0)),
-            false,
-        )
-        .unwrap();
+        let status =
+            HermesStatus::of(&snapshot(RunnerState::Running, 0, 0, 0), 2421, false).unwrap();
         assert_eq!(
             line(status, Language::German),
-            "ruht \u{b7} 2\u{a0}421 R\u{fc}ckfragen"
+            "ruht \u{b7} 2\u{a0}421 warten auf dich"
         );
     }
 }

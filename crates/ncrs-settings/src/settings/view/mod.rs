@@ -4,7 +4,6 @@ mod favourites_page;
 mod font_rows;
 mod full_version_page;
 mod groups;
-mod hermes_page;
 mod index_page;
 mod notes_page;
 mod page;
@@ -18,7 +17,6 @@ use favourites_page::favourites_groups;
 use font_rows::font_rows;
 use full_version_page::full_version_groups;
 use groups::*;
-use hermes_page::hermes_groups;
 use index_page::index_groups;
 use notes_page::notes_groups;
 pub use page::focus_facts;
@@ -45,7 +43,7 @@ use ncrs_i18n::{FuturamaName, Language, Msg};
 use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::layout::SETTINGS_PAGE_MAX_WIDTH;
+use ncrs_ui_kit::layout::{SETTINGS_PAGE_MAX_WIDTH, SETTINGS_WIDE_PAGE_MAX_WIDTH};
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
@@ -81,7 +79,7 @@ pub struct SettingsView<'a> {
     pub servers: &'a [ServerEntry],
     /// How the index of filing is protected, while filing has a module.
     pub protection: Option<ProtectionPanel>,
-    /// What the Index and Hermes pages show that the config does not say.
+    /// What the Index and AI pages show that the config does not say.
     pub facts: DocumentsFacts,
     /// The folders of the Favourites page.
     pub favourites: FavouritesFacts,
@@ -179,12 +177,10 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersion,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Ai => Msg::SettingsFeatureAi,
-        SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
-        SettingsFeature::Rules => Msg::SettingsFeatureRules,
+        SettingsFeature::Hermes => Msg::SettingsFeatureHermesSorting,
         SettingsFeature::Tags => Msg::SettingsFeatureTags,
         SettingsFeature::Reports => Msg::SettingsFeatureReports,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrors,
-        SettingsFeature::Reviews => Msg::SettingsFeatureReviews,
         SettingsFeature::Activity => Msg::SettingsFeatureActivity,
         SettingsFeature::Usage => Msg::SettingsFeatureUsage,
     }
@@ -206,11 +202,9 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
         | SettingsFeature::Index
-        | SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Reviews
         | SettingsFeature::Activity
         | SettingsFeature::Usage => None,
     }
@@ -222,33 +216,6 @@ fn group_label(group: SettingsGroup) -> Msg {
         SettingsGroup::Files => Msg::SettingsGroupFiles,
         SettingsGroup::Documents => Msg::SettingsGroupDocuments,
         SettingsGroup::Hermes => Msg::SettingsGroupHermes,
-    }
-}
-
-/// The dim word beside the name of the page, in the list and in the heading.
-fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
-    match feature {
-        SettingsFeature::Hermes => Some(Msg::SettingsFeatureHermesSorting),
-        SettingsFeature::Ai
-        | SettingsFeature::Look
-        | SettingsFeature::Language
-        | SettingsFeature::Programs
-        | SettingsFeature::Keys
-        | SettingsFeature::Servers
-        | SettingsFeature::Columns
-        | SettingsFeature::Favourites
-        | SettingsFeature::Notes
-        | SettingsFeature::System
-        | SettingsFeature::Updates
-        | SettingsFeature::FullVersion
-        | SettingsFeature::Index
-        | SettingsFeature::Rules
-        | SettingsFeature::Tags
-        | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors
-        | SettingsFeature::Reviews
-        | SettingsFeature::Activity
-        | SettingsFeature::Usage => None,
     }
 }
 
@@ -268,11 +235,9 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
         | SettingsFeature::Index
-        | SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Reviews
         | SettingsFeature::Activity
         | SettingsFeature::Usage => None,
     }
@@ -293,12 +258,10 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersionIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Ai => Msg::SettingsFeatureAiIntro,
-        SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
-        SettingsFeature::Rules => Msg::SettingsFeatureRulesIntro,
+        SettingsFeature::Hermes => Msg::SortingIntro,
         SettingsFeature::Tags => Msg::SettingsFeatureTagsIntro,
         SettingsFeature::Reports => Msg::SettingsFeatureReportsIntro,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrorsIntro,
-        SettingsFeature::Reviews => Msg::SettingsFeatureReviewsIntro,
         SettingsFeature::Activity => Msg::SettingsFeatureActivityIntro,
         SettingsFeature::Usage => Msg::SettingsFeatureUsageIntro,
     }
@@ -320,11 +283,9 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Index => Some(FILING_SECTION),
         SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
         SettingsFeature::Hermes => Some(FILING_SECTION),
-        SettingsFeature::Rules
-        | SettingsFeature::Tags
+        SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Reviews
         | SettingsFeature::Activity
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -395,12 +356,10 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::FullVersion => full_version_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Ai => ai_groups(view),
-        SettingsFeature::Hermes => hermes_groups(view),
-        SettingsFeature::Rules
+        SettingsFeature::Hermes
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Reviews
         | SettingsFeature::Activity
         | SettingsFeature::Updates
         | SettingsFeature::Usage => Vec::new(),
@@ -535,9 +494,14 @@ pub fn view_with<'a, M: 'a>(
         }
         _ => page(shown, view).map(wrap),
     };
+    let max_width = if shown == Some(SettingsFeature::Hermes) {
+        SETTINGS_WIDE_PAGE_MAX_WIDTH
+    } else {
+        SETTINGS_PAGE_MAX_WIDTH
+    };
     let content = scrollable(
         container(body)
-            .max_width(SETTINGS_PAGE_MAX_WIDTH)
+            .max_width(max_width)
             .padding(spacing::XXL),
     )
     .direction(Direction::Vertical(

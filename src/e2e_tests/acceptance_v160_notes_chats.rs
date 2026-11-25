@@ -382,7 +382,7 @@ fn chats_older_than_the_chosen_days_are_removed_at_start() {
     let mut session = boot_ready(&world);
     session.send(Message::Settings(SettingsMessage::Toggle));
     session.send(Message::Settings(SettingsMessage::Select(
-        SettingsFeature::Hermes,
+        SettingsFeature::Ai,
     )));
     session.send(Message::Settings(SettingsMessage::Change(
         SettingChange::HermesChatKeepDays(Some(30)),

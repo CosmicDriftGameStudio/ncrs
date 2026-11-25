@@ -1,21 +1,8 @@
-//! What the Index and Hermes pages read in the background: the areas of the
-//! learned order, the runs of the journal and the figures of the read folders.
+//! What the pages read in the background: the runs of the journal and the
+//! figures of the folders of the index.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-
-/// One area of the order Hermes learned.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AreaFacts {
-    pub name: String,
-    pub files: usize,
-    /// The read folder the area lies in.
-    pub read_folder: PathBuf,
-    pub root: PathBuf,
-    /// How the area orders its documents below the root, worded; empty when
-    /// the folders hold no order.
-    pub order: String,
-}
 
 /// The day of a run, from the local date of today.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,11 +41,9 @@ pub struct ReadFolderCoverage {
     pub understood: u64,
 }
 
-/// What the app reads in the background for the Index and Hermes pages.
+/// What the app reads in the background for the Index page.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LoadedFacts {
-    pub areas: Vec<AreaFacts>,
-    pub runs: Vec<RunFacts>,
     pub folder_files: BTreeMap<PathBuf, usize>,
     /// What the read folders hold; `None` without an index.
     pub read_folders: Option<ReadFolderCoverage>,

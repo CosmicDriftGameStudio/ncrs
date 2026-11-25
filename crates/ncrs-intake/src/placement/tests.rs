@@ -5,7 +5,7 @@ use sha2::{Digest as _, Sha256};
 use super::*;
 use crate::field_detection::detect_fields;
 use crate::filing_plan::render_pattern_in;
-use crate::reorganisation_plan::location_structure;
+use crate::location_documents::location_structure;
 use crate::structure::UnorderedFolder;
 use crate::test_archive::{test_archive, TestFile, OWN_NAME};
 

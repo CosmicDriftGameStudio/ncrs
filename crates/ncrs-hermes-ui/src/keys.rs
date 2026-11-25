@@ -44,3 +44,57 @@ pub fn hermes_card_close_message(facts: &KeyFacts) -> Option<Message> {
         HermesOverviewMessage::CancelStartOver,
     ))
 }
+
+/// The source dialog: Escape closes it, Enter saves (on "+ Ziel…" it opens the
+/// dialog of a target), Tab and Shift+Tab walk the fields, the arrows change the choice that is focused and Space presses
+/// what is focused. Typing goes to the text field that has the focus and never reaches here.
+pub fn source_dialog_key(key: &Key, shift: bool) -> Option<Message> {
+    use crate::message::SortingMessage;
+    let sorting = |message| Some(Message::Sorting(message));
+    match key.as_ref() {
+        Key::Named(Named::Escape) => sorting(SortingMessage::Cancel),
+        Key::Named(Named::Enter) => sorting(SortingMessage::Enter),
+        Key::Named(Named::Tab) if shift => sorting(SortingMessage::FocusPrevious),
+        Key::Named(Named::Tab) => sorting(SortingMessage::FocusNext),
+        Key::Named(
+            Named::ArrowLeft | Named::ArrowRight | Named::ArrowUp | Named::ArrowDown,
+        ) => sorting(SortingMessage::StepChoice),
+        Key::Named(Named::Space) => sorting(SortingMessage::Press),
+        _ => None,
+    }
+}
+
+/// The dialog of a target over the source dialog.
+pub fn target_dialog_key(key: &Key) -> Option<Message> {
+    use crate::message::TargetsMessage;
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Targets(TargetsMessage::Cancel)),
+        Key::Named(Named::Enter) => Some(Message::Targets(TargetsMessage::Save)),
+        _ => None,
+    }
+}
+
+/// The question before a target is removed.
+pub fn target_removal_key(key: &Key) -> Option<Message> {
+    use crate::message::TargetsMessage;
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Targets(TargetsMessage::CancelRemove)),
+        Key::Named(Named::Enter) => Some(Message::Targets(TargetsMessage::ConfirmRemove)),
+        _ => None,
+    }
+}
+
+/// The rules Hermes proposes: the arrows move, Space ticks, Enter takes the
+/// ticked ones over.
+pub fn suggest_dialog_key(key: &Key) -> Option<Message> {
+    use crate::message::SuggestMessage;
+    let message = match key.as_ref() {
+        Key::Named(Named::ArrowUp) => SuggestMessage::CursorUp,
+        Key::Named(Named::ArrowDown) => SuggestMessage::CursorDown,
+        Key::Named(Named::Space) => SuggestMessage::ToggleCursor,
+        Key::Named(Named::Enter) => SuggestMessage::Adopt,
+        Key::Named(Named::Escape) => SuggestMessage::Close,
+        _ => return None,
+    };
+    Some(Message::Suggest(message))
+}

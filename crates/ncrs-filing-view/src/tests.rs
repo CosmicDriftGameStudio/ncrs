@@ -1,450 +1,810 @@
-//! Update and title of the filing tab on a hand-built plan, without a model.
+//! The filing tab on a real index in a temporary folder, without a model.
 
+use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveRun, LiveState, Override};
-use ncrs_i18n::Language;
-use ncrs_index::{ContentHash, Transfer};
+use iced::keyboard::key::Named;
+use iced::keyboard::{Key, Modifiers};
+use ncrs_config::config::TargetSetting;
+use ncrs_filing::chat_work::ReadProgress;
+use ncrs_filing::sorting::{
+    run_watched, RowState, RunRequest, SortingAccess, WaitReason, WatchedFiles, WatchedReport,
+};
+use ncrs_fs::transfer::Counting;
+use ncrs_fs::{FolderBackend, JournaledTrash};
+use ncrs_i18n::{Language, Msg};
+use ncrs_index::{
+    Condition, ConditionKind, Index, RuleConditions, RuleOrigin, RuleSpec, TargetId,
+};
+use ncrs_intake::{
+    canonical_path, LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget,
+};
+use ncrs_ui_kit::palette::ThemePreset;
+use tempfile::TempDir;
 
+use crate::decide::{decide_once, decide_questions, Decided};
 use crate::footer::figures;
-use crate::{tab_title, update, Action, Ctx, Message, Session, State};
+use crate::left::what_happens;
+use crate::run::{carry_answer, carry_out, Duplicates, RunProgress};
+use crate::tree::{tree_items, Item};
+use crate::{
+    busy_source, filing_key, is_running, key_facts, open, question_is_open, tab_title, update, Action, Change,
+    Ctx, Link, Message, Session, State,
+};
 
-const TARGET: &str = "/archive";
+const LANG: Language = Language::German;
 
-fn ctx() -> Ctx {
-    Ctx {
-        lang: Language::German,
-        access: None,
-        model: None,
+struct Setup {
+    root: PathBuf,
+    access: SortingAccess,
+    _dir: TempDir,
+}
+
+fn id(name: &str) -> TargetId {
+    TargetId::new(name).unwrap()
+}
+
+fn spec(name: &str, word: &str, pattern: &str) -> RuleSpec {
+    RuleSpec {
+        name: Some(name.to_owned()),
+        conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, word)]),
+        extract_number: Some(r"Ref (\w+)".to_owned()),
+        extract_date: None,
+        extract_amount: None,
+        kind: None,
+        tags: BTreeSet::new(),
+        filing_pattern: pattern.to_owned(),
+        confirmed: true,
+        enabled: true,
     }
 }
 
-fn file(from: &str, state: LiveState) -> LiveFile {
-    LiveFile {
-        from: PathBuf::from(from),
-        hash: Some(ContentHash([1; 32])),
-        state,
-        by_user: false,
-        placed_by: None,
+/// Invoices go to `t1`, letters to `t2`; a file can match both.
+fn setup() -> Setup {
+    let dir = tempfile::tempdir().unwrap();
+    let root = canonical_path(dir.path()).unwrap();
+    let mut index = Index::create_plain(&root.join("index.db")).unwrap();
+    index
+        .create_rule_in(
+            &spec("Invoices", "invoice", "Invoices/{number}"),
+            RuleOrigin::default(),
+            &id("t1"),
+        )
+        .unwrap();
+    index
+        .create_rule_in(
+            &spec("Letters", "letter", "Letters/{number}"),
+            RuleOrigin::default(),
+            &id("t2"),
+        )
+        .unwrap();
+    let targets = [("t1", "Documents"), ("t2", "Company")]
+        .into_iter()
+        .map(|(target, folder)| {
+            let path = root.join(folder);
+            fs::create_dir_all(&path).unwrap();
+            TargetSetting {
+                target: SortTarget {
+                    id: id(target),
+                    name: folder.to_owned(),
+                    path,
+                    own_volume: Some(false),
+                },
+                paused: None,
+            }
+        })
+        .collect();
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(root.join("Inbox")).unwrap();
+    let trash = JournaledTrash::new(root.join("trash.toml"), FolderBackend(bin));
+    Setup {
+        access: SortingAccess::for_tests(index, Vec::new(), targets, Arc::new(trash)),
+        root,
+        _dir: dir,
     }
 }
 
-fn filed(folder: &str, name: &str) -> LiveState {
-    LiveState::Filed {
-        folder: PathBuf::from(folder),
-        name: name.to_owned(),
-        unsure: false,
+impl Setup {
+    fn path(&self, relative: &str) -> PathBuf {
+        relative
+            .split('/')
+            .fold(self.root.clone(), |path, part| path.join(part))
     }
-}
 
-fn state_with(files: Vec<LiveFile>, done: bool) -> State {
-    let mut session = Session::new(
-        PathBuf::from("/inbox"),
-        PathBuf::from(TARGET),
-        Arc::new(LiveRun::default()),
-    );
-    session.plan = Some(LivePlan {
-        source_root: PathBuf::from("/inbox"),
-        target_root: PathBuf::from(TARGET),
-        files,
-        done,
-        folder_choice_unsupported: false,
-    });
-    session.selected = Some(PathBuf::from("a.pdf"));
-    State {
-        session: Some(session),
+    /// A file nobody has written to for a while.
+    fn write(&self, relative: &str, content: &str) -> PathBuf {
+        let path = self.path(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - Duration::from_secs(600))
+            .unwrap();
+        path
     }
-}
 
-#[test]
-fn only_a_tab_that_plans_or_files_is_working() {
-    assert!(session(&simple(false)).is_working());
-    assert!(!session(&simple(true)).is_working());
-    let mut filing = simple(true);
-    filing.session.as_mut().unwrap().filing = true;
-    assert!(session(&filing).is_working());
+    fn source(&self) -> SortSource {
+        SortSource {
+            path: self.path("Inbox"),
+            include: String::new(),
+            exclude: String::new(),
+            targets: vec![id("t1"), id("t2")],
+            watch: true,
+            transfer: LocationTransfer::Move,
+            no_text: OnNoText::Ask,
+            several: OnSeveralTargets::Ask,
+            own_volume: None,
+        }
+    }
+
+    fn ctx(&self) -> Ctx {
+        Ctx {
+            lang: LANG,
+            access: Some(self.access.clone()),
+        }
+    }
+
+    fn decided(&self, read: bool) -> Decided {
+        decide_once(
+            &self.access,
+            &self.source(),
+            read,
+            &ReadProgress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+    }
+
+    /// The tab once the plan of the whole folder has come back.
+    fn planned(&self) -> State {
+        let mut state = State {
+            session: Some(Session::new(self.source(), true)),
+        };
+        self.plan_again(&mut state);
+        state
+    }
+
+    fn plan_again(&self, state: &mut State) {
+        let message = Message::Planned {
+            session: session(state).id,
+            read: true,
+            result: Ok(Box::new(self.decided(true))),
+        };
+        send(state, message, &self.ctx());
+    }
+
+    /// The first look only notes what lies in the source already.
+    fn watch(&self) -> WatchedReport {
+        run_watched(
+            &self.access,
+            &self.source(),
+            &WatchedFiles::All,
+            None,
+            "watched",
+            &mut Counting,
+        )
+        .unwrap()
+    }
+
+    /// The open questions of the watched source, after its first filing.
+    fn questions(&self) -> State {
+        self.decided(true);
+        self.watch();
+        let mut state = State {
+            session: Some(Session::new(self.source(), false)),
+        };
+        let message = Message::Planned {
+            session: session(&state).id,
+            read: false,
+            result: decide_questions(&self.access, &self.source()).map(Box::new),
+        };
+        send(&mut state, message, &self.ctx());
+        state
+    }
+
+    /// What the buttons carry out, done at once.
+    fn carry(&self, state: &mut State, transfer: LocationTransfer) -> Option<Action> {
+        let shown = session(state);
+        let request = RunRequest {
+            name: "sorted".to_owned(),
+            source: shown.source.clone(),
+            entries: shown.entries(),
+            transfer,
+        };
+        let duplicates = Duplicates {
+            name: "duplicates".to_owned(),
+            items: Vec::new(),
+        };
+        let progress = Arc::new(RunProgress::new(request.entries.len()));
+        let id = shown.id;
+        let carried = carry_out(&self.access, &request, &duplicates, progress, LANG).unwrap();
+        send(
+            state,
+            Message::Carried(id, Ok(Box::new(carried))),
+            &self.ctx(),
+        )
+    }
 }
 
 fn session(state: &State) -> &Session {
     state.session.as_ref().unwrap()
 }
 
-fn simple(done: bool) -> State {
-    state_with(
-        vec![
-            file("a.pdf", filed("Rechnungen", "a.pdf")),
-            file("b.pdf", LiveState::NoFolder),
-            file(
-                "c.pdf",
-                LiveState::AlreadyThere {
-                    at: PathBuf::from("x/c.pdf"),
-                },
-            ),
-        ],
-        done,
-    )
+/// The tasks are dropped: what they would bring is sent by hand.
+fn send(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
+    let (_task, action) = update(state, message, ctx);
+    action
 }
 
-fn send(state: &mut State, message: Message) -> Option<Action> {
-    update(state, message, &ctx()).1
+fn texts(state: &State) -> Vec<String> {
+    let palette = ThemePreset::Cosmic.palette();
+    figures(session(state), LANG, &palette)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect()
 }
 
-fn shown_name(state: &State) -> String {
-    let plan = session(state).shown_plan().unwrap();
-    match &plan.files[0].state {
-        LiveState::Filed { name, .. } => name.clone(),
-        other => panic!("not filed: {other:?}"),
-    }
+fn what(state: &State, name: &str) -> String {
+    let palette = ThemePreset::Cosmic.palette();
+    let shown = session(state);
+    let row = shown.row(Path::new(name)).unwrap();
+    what_happens(shown, row, LANG, &palette).0
+}
+
+fn places(state: &State, name: &str) -> Vec<(TargetId, PathBuf)> {
+    let shown = session(state);
+    let row = shown.row(Path::new(name)).unwrap();
+    shown.places(row).into_owned()
+}
+
+fn links(state: &State, name: &str) -> Vec<Link> {
+    let shown = session(state);
+    shown.links(shown.row(Path::new(name)).unwrap())
+}
+
+fn select(state: &mut State, name: &str, ctx: &Ctx) {
+    send(state, Message::Select(PathBuf::from(name)), ctx);
+}
+
+fn in_target(target: &str, folder: &str, name: &str) -> (TargetId, PathBuf) {
+    (id(target), Path::new(folder).join(name))
+}
+
+/// One file per state: filed, in both targets, without a rule, without text.
+fn one_of_each(setup: &Setup) {
+    setup.write("Inbox/a.txt", "invoice Ref A1");
+    setup.write("Inbox/both.txt", "invoice and letter Ref B1");
+    setup.write("Inbox/none.txt", "something else");
+    setup.write("Inbox/blank.txt", " ");
 }
 
 #[test]
-fn a_typed_name_replaces_the_name_of_the_file() {
-    let mut state = simple(true);
-    send(&mut state, Message::StartRename);
-    assert_eq!(session(&state).renaming.as_deref(), Some("a.pdf"));
-    send(
-        &mut state,
-        Message::RenameInput("Rechnung Muster GmbH.pdf".into()),
+fn opening_plans_and_files_nothing() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = State::default();
+    let _plan = open(&mut state, setup.source(), true, &setup.ctx());
+    assert!(is_running(&state));
+    assert!(!session(&state).can_file());
+    assert_eq!(busy_source(&state), Some(setup.path("Inbox").as_path()));
+    assert_eq!(tab_title(&state, LANG).unwrap(), "Einsortieren · Inbox");
+
+    setup.plan_again(&mut state);
+    assert!(session(&state).can_file());
+    for name in ["a", "both", "none", "blank"] {
+        assert!(setup.path(&format!("Inbox/{name}.txt")).exists());
+    }
+    assert!(!setup.path("Documents/Invoices").exists());
+}
+
+#[test]
+fn without_the_index_the_tab_says_so() {
+    let setup = setup();
+    let mut state = State::default();
+    let ctx = Ctx {
+        lang: LANG,
+        access: None,
+    };
+    let _none = open(&mut state, setup.source(), true, &ctx);
+    assert_eq!(
+        session(&state).error.as_deref(),
+        Some(LANG.text(Msg::IndexNotOpen))
     );
-    send(&mut state, Message::RenameSubmit);
-    assert_eq!(session(&state).renaming, None);
-    assert_eq!(shown_name(&state), "Rechnung Muster GmbH.pdf");
+    assert!(!is_running(&state));
 }
 
 #[test]
-fn escape_while_renaming_keeps_the_name() {
-    let mut state = simple(true);
-    send(&mut state, Message::StartRename);
-    send(&mut state, Message::RenameInput("other.pdf".into()));
-    send(&mut state, Message::RenameCancel);
-    assert_eq!(session(&state).renaming, None);
-    assert!(session(&state).overrides.is_empty());
-    assert_eq!(shown_name(&state), "a.pdf");
+fn the_first_look_shows_rows_and_then_reads() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = State::default();
+    let _plan = open(&mut state, setup.source(), true, &setup.ctx());
+    let message = Message::Planned {
+        session: session(&state).id,
+        read: false,
+        result: Ok(Box::new(setup.decided(false))),
+    };
+    send(&mut state, message, &setup.ctx());
+    assert_eq!(session(&state).rows.len(), 4);
+    assert!(session(&state).planning && session(&state).reading);
+    assert_eq!(
+        what(&state, "a.txt"),
+        LANG.text(Msg::FilingViewStateLooking)
+    );
 }
 
 #[test]
-fn an_empty_name_or_one_with_a_separator_keeps_the_field_open() {
-    for bad in ["", "  ", "x/y.pdf", ".", ".."] {
-        let mut state = simple(true);
-        send(&mut state, Message::StartRename);
-        send(&mut state, Message::RenameInput(bad.into()));
-        send(&mut state, Message::RenameSubmit);
-        assert!(session(&state).renaming.is_some(), "{bad:?}");
-        assert!(session(&state).overrides.is_empty(), "{bad:?}");
-        assert!(session(&state).error.is_some(), "{bad:?}");
-    }
+fn the_plan_of_another_session_is_dropped() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = State {
+        session: Some(Session::new(setup.source(), true)),
+    };
+    let message = Message::Planned {
+        session: session(&state).id + 1,
+        read: true,
+        result: Ok(Box::new(setup.decided(true))),
+    };
+    send(&mut state, message, &setup.ctx());
+    assert!(session(&state).rows.is_empty() && !session(&state).planned);
 }
 
 #[test]
-fn the_end_of_an_older_planning_does_not_finish_the_new_session() {
-    let mut state = simple(false);
-    let older = session(&state).id;
-    state.session = Some(Session::new(
-        PathBuf::from("/inbox"),
-        PathBuf::from(TARGET),
-        Arc::new(LiveRun::default()),
-    ));
-    send(&mut state, Message::PlanFinished(older, Ok(())));
-    assert!(crate::is_running(&state));
-    let current = session(&state).id;
-    send(&mut state, Message::PlanFinished(current, Ok(())));
-    assert!(!crate::is_running(&state));
-}
-
-#[test]
-fn a_file_that_is_not_filed_cannot_be_renamed() {
-    let mut state = simple(true);
-    send(&mut state, Message::Select(PathBuf::from("b.pdf")));
-    send(&mut state, Message::StartRename);
-    assert_eq!(session(&state).renaming, None);
-}
-
-#[test]
-fn f8_leaves_the_file_where_it_is() {
-    let mut state = simple(true);
-    send(&mut state, Message::Stay);
-    let plan = session(&state).shown_plan().unwrap();
-    assert_eq!(plan.files[0].state, LiveState::NoFolder);
-    assert!(plan.files[0].by_user);
-}
-
-#[test]
-fn a_folder_inside_the_write_folder_becomes_the_folder_of_the_file() {
-    let mut state = simple(true);
-    send(
-        &mut state,
-        Message::FolderPicked(Some(Path::new(TARGET).join("Verträge/2026"))),
+fn every_row_says_what_happens_and_what_can_be_done() {
+    let setup = setup();
+    setup.write("Inbox/copied.txt", "invoice Ref OLD");
+    let mut state = setup.planned();
+    setup.carry(&mut state, LocationTransfer::Copy);
+    one_of_each(&setup);
+    setup.plan_again(&mut state);
+    state.session.as_mut().unwrap().outcome = None;
+    let place = Path::new("Invoices").join("A1.txt").display().to_string();
+    assert_eq!(what(&state, "a.txt"), format!("Invoices → T1 {place}"));
+    assert_eq!(what(&state, "both.txt"), "passt in T1 und T2");
+    assert_eq!(
+        what(&state, "none.txt"),
+        LANG.text(Msg::SortingStateNoRule)
     );
     assert_eq!(
-        session(&state).overrides.get(Path::new("a.pdf")),
-        Some(&Override::Folder(PathBuf::from("Verträge/2026")))
+        what(&state, "blank.txt"),
+        LANG.text(Msg::SortingStateNoTextAsk)
     );
-    assert_eq!(session(&state).error, None);
+    let there = Path::new("Invoices").join("OLD.txt").display().to_string();
+    assert_eq!(what(&state, "copied.txt"), format!("= schon da: T1 {there}"));
+
+    assert!(links(&state, "a.txt").is_empty());
+    assert_eq!(links(&state, "both.txt"), [Link::Ask]);
+    assert_eq!(
+        links(&state, "none.txt"),
+        [Link::MakeRule, Link::SuggestRule]
+    );
+    assert_eq!(links(&state, "blank.txt"), [Link::Assign, Link::Leave]);
+    assert_eq!(
+        texts(&state),
+        [
+            "5 gelesen",
+            "1 nach Regel",
+            "1 schon da",
+            "1 ohne passende Regel",
+            "1 ohne Text",
+            "1 in T1 und T2"
+        ]
+    );
 }
 
 #[test]
-fn a_folder_outside_the_write_folder_is_an_error_and_changes_nothing() {
-    let mut state = simple(true);
+fn a_run_files_what_has_a_place_and_tells_what_stays() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = setup.planned();
+    let action = setup.carry(&mut state, LocationTransfer::Move);
+    assert!(setup.path("Documents/Invoices/A1.txt").exists());
+    assert!(!setup.path("Inbox/a.txt").exists());
+    assert!(setup.path("Inbox/both.txt").exists());
+    assert_eq!(texts(&state), ["1 einsortiert", "3 Dateien liegen weiter hier"]);
+    let Some(Action::Filed {
+        source,
+        transfer,
+        filed,
+        left,
+        batch,
+    }) = action
+    else {
+        panic!("expected what was filed, got {action:?}");
+    };
+    assert_eq!(source, setup.path("Inbox"));
+    assert_eq!((transfer, filed, left), (LocationTransfer::Move, 1, 3));
+    assert!(batch.is_some());
+    assert!(session(&state).planning, "the rest is decided again");
+}
+
+#[test]
+fn the_button_hands_the_run_over_and_no_second_one_starts() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = setup.planned();
+    let key = Key::Named(Named::Enter);
+    let message = filing_key(&key, Modifiers::empty(), key_facts(&state)).unwrap();
+    assert!(matches!(message, Message::File(LocationTransfer::Move)));
+    let (_dropped_run, action) = update(&mut state, message, &setup.ctx());
+    assert_eq!(action, None);
+    assert_eq!(texts(&state), ["0 von 1 werden einsortiert …"]);
+    assert!(!session(&state).can_file());
+
+    select(&mut state, "a.txt", &setup.ctx());
+    send(&mut state, Message::Stay, &setup.ctx());
+    assert!(session(&state).changes.is_empty(), "the run goes on as shown");
+
+    let closed = send(&mut state, Message::Cancel, &setup.ctx());
+    assert_eq!(closed, None, "the tab stays to show what the run did");
+    assert!(session(&state).running.as_ref().unwrap().is_stopped());
+}
+
+#[test]
+fn a_copying_source_copies_on_enter_and_moves_when_asked() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = setup.planned();
+    state.session.as_mut().unwrap().source.transfer = LocationTransfer::Copy;
+    send(&mut state, Message::ToggleTrashDupes, &setup.ctx());
+    assert!(!session(&state).trash_dupes);
+    let key = Key::Named(Named::Enter);
+    let message = filing_key(&key, Modifiers::empty(), key_facts(&state)).unwrap();
+    assert!(matches!(message, Message::File(LocationTransfer::Copy)));
+    let message = filing_key(&key, Modifiers::SHIFT, key_facts(&state)).unwrap();
+    assert!(matches!(message, Message::File(LocationTransfer::Move)));
+    let (_dropped_run, _) = update(&mut state, message, &setup.ctx());
+    assert!(session(&state).running.is_some());
+}
+
+#[test]
+fn folders_that_only_lead_to_one_other_share_its_row() {
+    let setup = setup();
+    setup.write("Inbox/a.txt", "invoice Ref A1");
+    setup.write("Inbox/b.txt", "invoice Ref B1");
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    let place = |folder: &str| {
+        let folder = folder.split('/').collect::<PathBuf>();
+        Change::Places(vec![(id("t1"), folder.join("x.txt"))])
+    };
+    let rows = |state: &State| -> Vec<(String, usize)> {
+        tree_items(session(state), &id("t1"))
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::Folder { label, depth, .. } => Some((label.replace('\\', "/"), depth)),
+                _ => None,
+            })
+            .collect()
+    };
+    let row = |label: &str, depth: usize| (label.to_owned(), depth);
+    let shown = state.session.as_mut().unwrap();
+    shown.changes.insert(PathBuf::from("a.txt"), place("Bank/North/2026"));
+    shown.changes.insert(PathBuf::from("b.txt"), place("Bank/North/2026"));
+    assert_eq!(rows(&state), [row("", 0), row("Bank/North/2026", 1)]);
+
+    let shown = state.session.as_mut().unwrap();
+    shown.changes.insert(PathBuf::from("b.txt"), place("Bank/North/2025"));
+    assert_eq!(
+        rows(&state),
+        [row("", 0), row("Bank/North", 1), row("2025", 2), row("2026", 2)]
+    );
+    let folder = Path::new("Bank").join("North");
+    send(&mut state, Message::ToggleFolder(id("t1"), folder), &ctx);
+    assert_eq!(rows(&state), [row("", 0), row("Bank/North", 1)]);
+
+    let shown = state.session.as_mut().unwrap();
+    shown.closed_folders.clear();
+    shown.changes.insert(PathBuf::from("b.txt"), place("Bank"));
+    assert_eq!(
+        rows(&state),
+        [row("", 0), row("Bank", 1), row("North/2026", 2)]
+    );
+}
+
+#[test]
+fn a_problem_of_one_file_is_told_and_the_others_are_filed() {
+    let setup = setup();
+    setup.write("Inbox/a.txt", "invoice Ref A1");
+    setup.write("Inbox/b.txt", "invoice Ref B1");
+    let mut state = setup.planned();
+    setup.write("Documents/Invoices/B1.txt", "somebody else's");
+    setup.carry(&mut state, LocationTransfer::Move);
+    assert!(setup.path("Documents/Invoices/A1.txt").exists());
+    assert!(setup.path("Inbox/b.txt").exists());
+    let outcome = session(&state).outcome.as_ref().unwrap();
+    assert_eq!((outcome.filed, outcome.left), (1, 1));
+    assert_eq!(outcome.problems.len(), 1);
+    assert!(outcome.problems[0].starts_with("b.txt"));
+}
+
+#[test]
+fn a_waiting_target_stops_everything_until_it_is_there() {
+    let setup = setup();
+    one_of_each(&setup);
+    fs::remove_dir(setup.path("Company")).unwrap();
+    let mut state = setup.planned();
+    assert!(session(&state)
+        .waiting
+        .contains(&(id("t2"), WaitReason::Missing)));
+    assert!(!session(&state).can_file());
     send(
         &mut state,
-        Message::FolderPicked(Some(PathBuf::from("/elsewhere"))),
+        Message::File(LocationTransfer::Move),
+        &setup.ctx(),
     );
-    assert!(session(&state).overrides.is_empty());
-    assert!(session(&state).error.is_some());
+    assert!(session(&state).running.is_none());
+
+    fs::create_dir(setup.path("Company")).unwrap();
+    send(&mut state, Message::Recheck, &setup.ctx());
+    assert!(session(&state).reading);
+    setup.plan_again(&mut state);
+    assert!(session(&state).can_file());
 }
 
 #[test]
-fn picking_a_folder_asks_the_app_starting_in_the_write_folder() {
-    let mut state = simple(true);
-    let action = send(&mut state, Message::PickFolder);
+fn a_changed_rule_decides_again_without_reading() {
+    let setup = setup();
+    one_of_each(&setup);
+    let mut state = setup.planned();
+    send(&mut state, Message::RulesChanged, &setup.ctx());
+    assert!(session(&state).planning && !session(&state).reading);
+    send(&mut state, Message::RulesChanged, &setup.ctx());
+    assert!(session(&state).stale);
+    setup.plan_again(&mut state);
+    assert!(session(&state).planning && !session(&state).stale);
+    setup.plan_again(&mut state);
+    assert!(!session(&state).planning);
+}
+
+#[test]
+fn a_new_name_keeps_the_folder_and_is_checked() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    select(&mut state, "a.txt", &ctx);
+    send(&mut state, Message::StartRename, &ctx);
+    assert_eq!(session(&state).renaming.as_deref(), Some("A1.txt"));
+    assert!(filing_key(&Key::Named(Named::Enter), Modifiers::empty(), key_facts(&state)).is_none());
+    for bad in ["", "..", "x/y.txt"] {
+        send(&mut state, Message::RenameInput(bad.to_owned()), &ctx);
+        send(&mut state, Message::RenameSubmit, &ctx);
+        assert!(session(&state).renaming.is_some());
+        assert!(session(&state).error.is_some());
+    }
+    send(&mut state, Message::RenameInput("Heating.txt".to_owned()), &ctx);
+    send(&mut state, Message::RenameSubmit, &ctx);
+    assert_eq!(
+        places(&state, "a.txt"),
+        [in_target("t1", "Invoices", "Heating.txt")]
+    );
+    assert!(session(&state).error.is_none());
+
+    setup.plan_again(&mut state);
+    assert_eq!(
+        places(&state, "a.txt"),
+        [in_target("t1", "Invoices", "Heating.txt")],
+        "a new plan keeps what the user decided"
+    );
+}
+
+#[test]
+fn a_folder_is_only_taken_below_a_target_of_the_source() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    select(&mut state, "a.txt", &ctx);
+    let action = send(&mut state, Message::PickFolder, &ctx);
     assert_eq!(
         action,
         Some(Action::PickFolder {
-            start: PathBuf::from(TARGET)
+            start: setup.path("Documents")
+        }),
+        "its own folder is not there yet"
+    );
+    send(
+        &mut state,
+        Message::FolderPicked(Some(setup.path("Inbox"))),
+        &ctx,
+    );
+    assert_eq!(
+        session(&state).error.as_deref(),
+        Some(LANG.text(Msg::FilingViewErrorOutside))
+    );
+    let folder = setup.path("Company/Archive");
+    fs::create_dir_all(&folder).unwrap();
+    send(&mut state, Message::FolderPicked(Some(folder)), &ctx);
+    assert_eq!(
+        places(&state, "a.txt"),
+        [in_target("t2", "Archive", "A1.txt")]
+    );
+}
+
+#[test]
+fn staying_is_taken_back_by_pressing_it_again() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    select(&mut state, "a.txt", &ctx);
+    send(&mut state, Message::Stay, &ctx);
+    assert!(places(&state, "a.txt").is_empty());
+    assert!(!session(&state).can_file());
+    send(&mut state, Message::Stay, &ctx);
+    assert_eq!(places(&state, "a.txt").len(), 1);
+}
+
+#[test]
+fn the_question_about_two_targets_is_answered_by_keys() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    select(&mut state, "both.txt", &ctx);
+    for key in [Named::ArrowRight, Named::Enter] {
+        let message = filing_key(&Key::Named(key), Modifiers::empty(), key_facts(&state)).unwrap();
+        send(&mut state, message, &ctx);
+    }
+    assert!(question_is_open(&state));
+    assert!(setup.path("Inbox/both.txt").exists());
+    let message = filing_key(&Key::Named(Named::Enter), Modifiers::empty(), key_facts(&state)).unwrap();
+    send(&mut state, message, &ctx);
+    assert!(!question_is_open(&state));
+    assert_eq!(
+        places(&state, "both.txt"),
+        [in_target("t1", "Invoices", "B1.txt")]
+    );
+}
+
+#[test]
+fn both_targets_get_a_copy_and_the_file_stays() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    send(&mut state, Message::Ask(PathBuf::from("both.txt")), &ctx);
+    send(&mut state, Message::QuestionAnswer(vec![0, 1]), &ctx);
+    assert_eq!(places(&state, "both.txt").len(), 2);
+    setup.carry(&mut state, LocationTransfer::Move);
+    assert!(setup.path("Documents/Invoices/B1.txt").exists());
+    assert!(setup.path("Company/Letters/B1.txt").exists());
+    assert!(setup.path("Inbox/both.txt").exists());
+}
+
+#[test]
+fn the_links_reach_the_app() {
+    let setup = setup();
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    let path = setup.path("Inbox/none.txt");
+    select(&mut state, "none.txt", &ctx);
+    send(&mut state, Message::LinkNext, &ctx);
+    let action = send(&mut state, Message::PressMarkedLink, &ctx);
+    assert!(
+        matches!(
+            &action,
+            Some(Action::OpenRuleForm { target, path: asked, .. })
+                if *asked == path && target.as_ref() == session(&state).source.targets.first()
+        ),
+        "{action:?}"
+    );
+    send(&mut state, Message::LinkNext, &ctx);
+    let action = send(&mut state, Message::PressMarkedLink, &ctx);
+    assert_eq!(
+        action,
+        Some(Action::SuggestRule {
+            source: setup.path("Inbox"),
+            path
         })
     );
+    send(&mut state, Message::LinkPrevious, &ctx);
+    send(&mut state, Message::LinkPrevious, &ctx);
+    assert_eq!(session(&state).marked_link, None);
 }
 
 #[test]
-fn filing_waits_until_the_plan_is_done() {
-    let mut state = simple(false);
-    let (_, action) = update(&mut state, Message::File(Transfer::Copy), &ctx());
-    assert_eq!(action, None);
-    assert!(!session(&state).filing);
-    assert!(!crate::update::can_file(session(&state)));
-    assert!(crate::update::can_file(session(&simple(true))));
-}
-
-#[test]
-fn the_figures_add_up_to_the_files() {
-    let mut state = state_with(
-        vec![
-            file("a.pdf", filed("R", "a.pdf")),
-            file("b.pdf", LiveState::NoFolder),
-            file(
-                "c.pdf",
-                LiveState::AlreadyThere {
-                    at: PathBuf::from("c.pdf"),
-                },
-            ),
-            file("d.pdf", LiveState::Unreadable),
-            file("e.pdf", LiveState::Waiting),
-            file("f.pdf", LiveState::Looking),
-        ],
-        false,
-    );
-    let plan = session(&state).shown_plan().unwrap();
-    let counts = ncrs_filing::chat_work::tally(&plan);
+fn a_tree_per_target_shows_only_the_folders_that_get_something() {
+    let setup = setup();
+    one_of_each(&setup);
+    fs::create_dir_all(setup.path("Documents/Empty")).unwrap();
+    let ctx = setup.ctx();
+    let mut state = setup.planned();
+    let folders = |state: &State, target: &str| -> Vec<(PathBuf, usize)> {
+        tree_items(session(state), &id(target))
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::Folder {
+                    path, new_files, ..
+                } => Some((path, new_files)),
+                _ => None,
+            })
+            .collect()
+    };
     assert_eq!(
-        counts.filed
-            + counts.already_there
-            + counts.no_folder
-            + counts.unreadable
-            + counts.waiting
-            + counts.looking,
-        plan.files.len()
+        folders(&state, "t1"),
+        [(PathBuf::new(), 1), (PathBuf::from("Invoices"), 1)]
     );
-    let texts = figures(session(&state), &plan, Language::German);
-    assert_eq!(texts[0], "4 von 6 gelesen");
-    assert_eq!(texts[1], "1 kommen in 1 Ordner");
-    state.session = None;
+    assert_eq!(folders(&state, "t2"), [(PathBuf::new(), 0)]);
+
+    send(&mut state, Message::ToggleOnlyNew, &ctx);
+    let listed = BTreeSet::from([(id("t1"), PathBuf::from("Empty"))]);
+    let session_id = session(&state).id;
+    send(&mut state, Message::FoldersListed(session_id, listed), &ctx);
+    assert!(folders(&state, "t1").contains(&(PathBuf::from("Empty"), 0)));
 }
 
 #[test]
-fn the_title_counts_while_reading_and_says_ready_when_done() {
-    let running = state_with(
-        vec![
-            file("a.pdf", filed("R", "a.pdf")),
-            file("b.pdf", LiveState::Looking),
-            file("c.pdf", LiveState::Waiting),
-        ],
-        false,
-    );
+fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
+    let setup = setup();
     assert_eq!(
-        tab_title(&running, Language::German).as_deref(),
-        Some("Ablegen · inbox 1/3")
+        setup.watch(),
+        WatchedReport::BacklogRecorded { files: 0 }
     );
-    let done = simple(true);
+    one_of_each(&setup);
+    let ctx = setup.ctx();
+    let mut state = setup.questions();
+    assert!(setup.path("Documents/Invoices/A1.txt").exists());
+    assert!(!texts(&state).iter().any(|figure| figure.starts_with("0 ")));
+    let shown = session(&state);
+    let mut unmatched = shown.row(Path::new("both.txt")).unwrap().clone();
+    unmatched.state = RowState::NoRule;
     assert_eq!(
-        tab_title(&done, Language::German).as_deref(),
-        Some("Ablegen · inbox ✓ bereit")
+        shown.links(&unmatched),
+        [Link::MakeRule, Link::SuggestRule, Link::Leave]
     );
-    let mut failed = simple(false);
-    failed.session.as_mut().unwrap().finished = Some(Err("boom".into()));
-    assert_eq!(
-        tab_title(&failed, Language::German).as_deref(),
-        Some("Ablegen · inbox ✕")
+    assert!(shown.row(Path::new("a.txt")).is_none());
+    assert!(matches!(
+        shown.row(Path::new("both.txt")).unwrap().state,
+        RowState::Several(_)
+    ));
+    assert!(!shown.can_file());
+
+    send(&mut state, Message::Ask(PathBuf::from("both.txt")), &ctx);
+    let (_dropped_answer, _) = update(&mut state, Message::QuestionAnswer(vec![1]), &ctx);
+    let shown = session(&state);
+    assert!(shown.answering.contains(Path::new("both.txt")));
+    assert!(shown.changes.is_empty());
+
+    let document = shown.row(Path::new("both.txt")).unwrap().document.unwrap();
+    let chosen = Change::Places(vec![in_target("t2", "Letters", "B1.txt")]);
+    let answer = carry_answer(
+        &setup.access,
+        &setup.source(),
+        document,
+        chosen,
+        "answered",
+        LANG,
+    )
+    .unwrap();
+    let message = Message::Answered(
+        shown.id,
+        PathBuf::from("both.txt"),
+        Ok(Box::new(answer)),
     );
-    assert_eq!(tab_title(&State::default(), Language::German), None);
+    let action = send(&mut state, message, &ctx);
+    assert!(setup.path("Company/Letters/B1.txt").exists());
+    assert!(matches!(action, Some(Action::Filed { filed: 1, .. })));
+    assert!(session(&state).planning);
 }
 
 #[test]
-fn a_model_that_cannot_choose_folders_is_told_apart_from_one_that_failed() {
-    use ncrs_ai::AiError;
-    use ncrs_filing::chat_work::PlanFailure;
-
-    let unsupported =
-        crate::update::failure_text(Language::English, &PlanFailure::Model(AiError::Unsupported));
-    let failed = crate::update::failure_text(
-        Language::English,
-        &PlanFailure::Model(AiError::Transport("down")),
-    );
-    let other = crate::update::failure_text(
-        Language::English,
-        &PlanFailure::Other("disk full".to_owned()),
-    );
-
-    assert_ne!(unsupported, failed);
-    assert!(!failed.contains("down"));
-    assert_eq!(other, "disk full");
-}
-
-#[test]
-fn a_missing_agreement_to_send_folder_names_is_said_and_not_shown_as_no_folder() {
-    use ncrs_ai::{AiError, OutgoingPreview};
-    use ncrs_filing::chat_work::PlanFailure;
-
-    let refused = crate::update::failure_text(
-        Language::English,
-        &PlanFailure::Model(AiError::ConsentRequired(OutgoingPreview {
-            endpoint: "https://ai.example.com".to_owned(),
-            model: "m".to_owned(),
-            body: String::new(),
-        })),
-    );
-    let failed = crate::update::failure_text(
-        Language::English,
-        &PlanFailure::Model(AiError::Transport("down")),
-    );
-
-    assert!(refused.contains("agreement"), "{refused}");
-    assert_ne!(refused, failed);
-}
-
-#[test]
-fn cancel_waits_while_the_files_are_carried_out() {
-    let mut state = simple(true);
-    state.session.as_mut().unwrap().filing = true;
-
-    let action = send(&mut state, Message::Cancel);
-
-    assert_eq!(action, None);
-    assert!(state.session.is_some());
-}
-
-#[test]
-fn cancel_closes_the_tab_when_nothing_runs() {
-    let mut state = simple(true);
-
-    let action = send(&mut state, Message::Cancel);
-
+fn closing_stops_the_planning() {
+    let setup = setup();
+    let mut state = State::default();
+    let _plan = open(&mut state, setup.source(), true, &setup.ctx());
+    let stop = Arc::clone(&session(&state).stop);
+    let action = send(&mut state, Message::Cancel, &setup.ctx());
     assert_eq!(action, Some(Action::Close));
     assert!(state.session.is_none());
-}
-
-#[test]
-fn nothing_is_filed_when_no_file_goes_anywhere() {
-    let mut state = state_with(vec![file("a.pdf", LiveState::NoFolder)], true);
-
-    send(&mut state, Message::File(Transfer::Copy));
-
-    assert!(!session(&state).filing);
-}
-
-#[test]
-fn enter_copies_and_shift_enter_moves() {
-    use iced::keyboard::key::Named;
-    use iced::keyboard::{Key, Modifiers};
-
-    let enter = Key::Named(Named::Enter);
-    assert_eq!(
-        crate::filing_key(&enter, Modifiers::empty(), false),
-        Some(Message::File(Transfer::Copy))
-    );
-    assert_eq!(
-        crate::filing_key(&enter, Modifiers::SHIFT, false),
-        Some(Message::File(Transfer::Move))
-    );
-    assert_eq!(crate::filing_key(&enter, Modifiers::empty(), true), None);
-}
-
-#[test]
-fn the_tab_says_while_the_files_are_carried_out() {
-    let mut state = simple(true);
-    state.session.as_mut().unwrap().filing = true;
-
-    let title = tab_title(&state, Language::English).unwrap();
-
-    assert!(!title.contains('✓'));
-}
-
-fn unsure(folder: &str, name: &str) -> LiveState {
-    LiveState::Filed {
-        folder: PathBuf::from(folder),
-        name: name.to_owned(),
-        unsure: true,
-    }
-}
-
-#[test]
-fn an_unsure_place_gets_the_chip_and_not_the_success_color() {
-    let palette = ncrs_ui_kit::palette::Palette::default();
-
-    let (_, color, chip) = crate::left::what_happens(
-        Language::English,
-        &palette,
-        &file("a.pdf", unsure("R", "a.pdf")),
-    );
-    assert_eq!(color, palette.text);
-    assert_eq!(chip.as_deref(), Some("? unsure"));
-
-    let (_, sure_color, sure_chip) = crate::left::what_happens(
-        Language::English,
-        &palette,
-        &file("a.pdf", filed("R", "a.pdf")),
-    );
-    assert_eq!(sure_color, palette.success);
-    assert_eq!(sure_chip, None);
-}
-
-#[test]
-fn the_tally_counts_the_unsure_files_among_the_filed() {
-    let state = state_with(
-        vec![
-            file("a.pdf", filed("R", "a.pdf")),
-            file("b.pdf", filed("R", "b.pdf")),
-            file("c.pdf", unsure("S", "c.pdf")),
-        ],
-        true,
-    );
-    let counts = ncrs_filing::chat_work::tally(&session(&state).shown_plan().unwrap());
-    assert_eq!((counts.filed, counts.unsure), (3, 1));
-}
-
-#[test]
-fn only_the_sure_files_are_carried_out_on_request() {
-    let state = state_with(
-        vec![
-            file("a.pdf", filed("R", "a.pdf")),
-            file("c.pdf", unsure("S", "c.pdf")),
-            file("d.pdf", LiveState::NoFolder),
-        ],
-        true,
-    );
-    let plan = session(&state).shown_plan().unwrap();
-
-    let sure = crate::update::carried_plan(&plan, true);
-    let names: Vec<_> = sure.files.iter().map(|file| file.from.clone()).collect();
-    assert_eq!(names, [PathBuf::from("a.pdf"), PathBuf::from("d.pdf")]);
-    assert_eq!(crate::update::carried_plan(&plan, false), plan);
-}
-
-#[test]
-fn nothing_is_moved_as_sure_when_every_place_is_unsure() {
-    let mut state = state_with(vec![file("a.pdf", unsure("S", "a.pdf"))], true);
-
-    send(&mut state, Message::FileSure);
-
-    assert!(!session(&state).filing);
+    assert!(stop.load(std::sync::atomic::Ordering::Relaxed));
 }

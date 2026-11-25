@@ -80,15 +80,25 @@ impl App {
         self.ui_scale
     }
 
-    /// The folders with a symbol of their own are read again when the Hermes
-    /// folders changed; checked after every message, drawn from the result.
+    /// The folders with a symbol of their own are read again when the
+    /// sources or targets changed; checked after every message, drawn from the result.
     pub(in crate::app) fn refresh_special_folders(&mut self) {
-        let locations = &self.hermes.filing_config.locations;
-        if *locations == self.special_folders_source {
+        let filing = &self.hermes.filing_config;
+        let targets = filing.targets.iter().map(|known| known.target.path.as_path());
+        let sources = filing.sources.iter().map(|known| known.source.path.as_path());
+        let (last_targets, last_sources) = &self.special_folders_source;
+        if targets.clone().eq(last_targets.iter().map(PathBuf::as_path))
+            && sources.clone().eq(last_sources.iter().map(PathBuf::as_path))
+        {
             return;
         }
-        self.special_folders = special_folders_of(locations, &self.home);
-        self.special_folders_source.clone_from(locations);
+        let special_folders = special_folders_of(targets.clone(), sources.clone(), &self.home);
+        let source = (
+            targets.map(Path::to_path_buf).collect(),
+            sources.map(Path::to_path_buf).collect(),
+        );
+        self.special_folders = special_folders;
+        self.special_folders_source = source;
     }
 
     /// Writes `columns` to the config on a blocking thread, one write after

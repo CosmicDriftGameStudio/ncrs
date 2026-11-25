@@ -53,8 +53,6 @@ impl std::fmt::Debug for RuleJob {
 pub enum Job {
     Chat(ChatJob),
     Rule(RuleJob),
-    /// A rule-like task nobody waits for: queued with the document reading.
-    Background(RuleJob),
     Extract(ExtractJob),
 }
 
@@ -64,21 +62,18 @@ impl Job {
         // A caller that stopped waiting is no one to tell.
         match self {
             Self::Chat(job) => drop(job.reply.send(Err(error))),
-            Self::Rule(job) | Self::Background(job) => (job.task)(Err(error)),
+            Self::Rule(job) => (job.task)(Err(error)),
             Self::Extract(job) => drop(job.reply.send(Err(error))),
         }
     }
 }
 
 /// A person is typing in the chat, a document waits in the pipeline: the
-/// person goes first. A background task (one page at a time) comes before the
-/// documents, so it moves on while the reading goes on; chat and waiting tasks
-/// still go first between pages.
+/// person goes first.
 #[derive(Debug, Default)]
 pub struct Queue {
     chat: VecDeque<ChatJob>,
     rule: VecDeque<RuleJob>,
-    background: VecDeque<RuleJob>,
     extract: VecDeque<ExtractJob>,
     closed: bool,
 }
@@ -88,7 +83,6 @@ impl Queue {
         match job {
             Job::Chat(chat) => self.chat.push_back(chat),
             Job::Rule(rule) => self.rule.push_back(rule),
-            Job::Background(background) => self.background.push_back(background),
             Job::Extract(extract) => self.extract.push_back(extract),
         }
     }
@@ -98,7 +92,6 @@ impl Queue {
             .pop_front()
             .map(Job::Chat)
             .or_else(|| self.rule.pop_front().map(Job::Rule))
-            .or_else(|| self.background.pop_front().map(Job::Background))
             .or_else(|| self.extract.pop_front().map(Job::Extract))
     }
 }
@@ -233,8 +226,8 @@ impl Shared {
             Job::Chat(_) | Job::Rule(_) => ThreadPriority::UserInitiated,
             // A Linux thread cannot get back from a lowered nice value, and
             // this thread serves the chat too: it stays where it is.
-            Job::Background(_) | Job::Extract(_) if cfg!(target_os = "linux") => return,
-            Job::Background(_) | Job::Extract(_) => *locked(&self.extraction_priority),
+            Job::Extract(_) if cfg!(target_os = "linux") => return,
+            Job::Extract(_) => *locked(&self.extraction_priority),
         };
         set_current_thread_priority(priority);
     }
@@ -429,7 +422,7 @@ fn serve_until_idle(
                 let answer = chat_answer(model, &mut chat, &request.turn);
                 drop(request.reply.send(answer));
             }
-            Job::Rule(rule) | Job::Background(rule) => (rule.task)(Ok(model)),
+            Job::Rule(rule) => (rule.task)(Ok(model)),
         }
     }
 }
@@ -478,8 +471,6 @@ mod queue_tests {
                 message: message.to_owned(),
                 question: None,
                 previous_search: None,
-                previous_request: None,
-                previous_message: None,
             },
             reply: channel().0,
         })
@@ -497,7 +488,7 @@ mod queue_tests {
         while let Some(job) = queue.pop() {
             order.push(match job {
                 Job::Chat(chat) => chat.turn.message,
-                Job::Rule(_) | Job::Background(_) => String::new(),
+                Job::Rule(_) => String::new(),
                 Job::Extract(extract) => extract.request.text,
             });
         }
@@ -513,45 +504,16 @@ mod queue_tests {
         );
     }
 
-    fn rule_job(label: &'static str, log: &Arc<std::sync::Mutex<Vec<&'static str>>>) -> RuleJob {
-        let ran = Arc::clone(log);
-        RuleJob {
-            task: Box::new(move |_model| ran.lock().unwrap().push(label)),
-        }
-    }
-
     #[test]
-    fn background_tasks_follow_rule_tasks_and_come_before_documents() {
-        let ran = Arc::new(std::sync::Mutex::new(Vec::new()));
+    fn rule_tasks_come_before_documents() {
         let mut queue = Queue::default();
-        queue.push(extract_job("first document"));
-        queue.push(Job::Background(rule_job("background", &ran)));
-        queue.push(extract_job("second document"));
-        queue.push(Job::Background(rule_job("later background", &ran)));
-        queue.push(Job::Rule(rule_job("rule", &ran)));
+        queue.push(extract_job("a document"));
+        queue.push(Job::Rule(RuleJob {
+            task: Box::new(|_model| ()),
+        }));
 
-        let mut order = Vec::new();
-        while let Some(job) = queue.pop() {
-            match job {
-                Job::Rule(rule) | Job::Background(rule) => {
-                    (rule.task)(Err(AiError::Model("unused")));
-                    order.push(ran.lock().unwrap().last().copied().unwrap().to_owned());
-                }
-                Job::Extract(extract) => order.push(extract.request.text),
-                Job::Chat(_) => panic!("no chat job was queued"),
-            }
-        }
-
-        assert_eq!(
-            order,
-            [
-                "rule",
-                "background",
-                "later background",
-                "first document",
-                "second document"
-            ]
-        );
+        assert!(matches!(queue.pop(), Some(Job::Rule(_))));
+        assert!(matches!(queue.pop(), Some(Job::Extract(_))));
     }
 
     fn closed_shared() -> Shared {
@@ -573,7 +535,7 @@ mod queue_tests {
         shared.submit(Job::Extract(ExtractJob {
             request: match extract_job("x") {
                 Job::Extract(extract) => extract.request,
-                Job::Chat(_) | Job::Rule(_) | Job::Background(_) => panic!("not an extraction"),
+                Job::Chat(_) | Job::Rule(_) => panic!("not an extraction"),
             },
             reply,
         }));

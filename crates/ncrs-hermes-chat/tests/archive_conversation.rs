@@ -1,5 +1,5 @@
-//! The chat against the test archive: real folders, a real index, a folder
-//! backed trash, no model.
+//! The chat against the test archive: real folders, a real index, a scripted
+//! model.
 
 mod common;
 
@@ -7,12 +7,12 @@ mod common;
 mod tests {
 
     use std::fs;
-    use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
     use crate::common::{count, say, Talk};
     use chrono::NaiveDate;
-    use ncrs_hermes_chat::{Action, ChipReply, Message};
+    use ncrs_ai::Levels;
+    use ncrs_hermes_chat::{Action, ChipReply, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_intake::test_archive::test_archive;
 
@@ -42,49 +42,55 @@ mod tests {
         Talk::in_dir(dir, &["archive"], &["inbox"])
     }
 
-    fn archive(talk: &Talk) -> PathBuf {
-        talk.path("archive")
-    }
-
     const AREAS: usize = 9;
+    const PATTERN: &str = "{year}/{date}_{sender}_{kind}";
 
     #[test]
-    fn conversations_one_and_two_on_the_test_archive_end_at_the_tab() {
+    fn the_test_archive_is_looked_at_and_the_inbox_is_only_pointed_to() {
         let mut talk = archive_talk();
         let before = talk.files();
 
-        // Conversation 1: open the archive; its areas are offered as folders.
+        // The archive: its areas, its levels, and the rule suggestions.
         talk.send(Message::Open);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
-        talk.press(&ChipReply::Folder(archive(&talk)));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatAreasHere, &[("count", &count(AREAS))])]
+        for _ in 0..2 {
+            talk.model
+                .push_levels(Ok(Levels::from_pattern(PATTERN).unwrap()));
+        }
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        assert!(
+            talk.last_parts()
+                .iter()
+                .any(|part| matches!(part, Part::Levels(_))),
+            "{:?}",
+            talk.last_parts()
         );
-        assert!(talk.state.chips().iter().any(|chip| chip.label == "Bank"));
-        assert_eq!(talk.files(), before);
+        assert!(
+            talk.labels().contains(&say(
+                Msg::HermesChatShowAll,
+                &[("areas", &count(AREAS))]
+            )),
+            "{:?}",
+            talk.labels()
+        );
+        talk.press(&ChipReply::SuggestRules);
+        let suggested = talk.suggestions();
+        assert_eq!(suggested.len(), 1, "{suggested:?}");
+        assert_eq!(suggested[0].0, talk.path("archive"));
 
-        // Conversation 2: the inbox against the archive, once. The chat hands
-        // the plan to the tab and changes nothing itself.
+        // The inbox: the chat points to the dialog and changes nothing.
         talk.type_text_understood(
             "Räum Inbox auf",
             r#"{"intent":"tidy_folder","source":"Inbox"}"#,
         );
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        talk.press(&ChipReply::Once);
-        // Folder, sentence, confirm, target, once: five entries of the user.
-        assert_eq!(talk.entries, 5);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
-        assert!(
-            talk.actions.iter().any(|action| matches!(
-                action,
-                Action::OpenFiling { source, target, .. }
-                    if source.ends_with("inbox") && target.ends_with("archive")
-            )),
-            "{:?}",
-            talk.actions
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSortHint, &[])]);
+        let inbox = Some(talk.path("inbox"));
+        talk.press(&ChipReply::OpenSort(inbox.clone()));
+        assert_eq!(
+            talk.actions.last(),
+            Some(&Action::OpenSortDialog { folder: inbox })
         );
         assert_eq!(talk.files(), before, "the chat moves nothing");
+        talk.assert_saves_no_rule();
     }
 }

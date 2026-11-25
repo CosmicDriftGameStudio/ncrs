@@ -110,7 +110,7 @@ pub fn write_read_folders_with_home(
 ) -> Result<Config, FilingWriteError> {
     check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
     write_edited(path, home, |source| {
-        with_read_folders(source, path, locations)
+        with_read_folders(source, path, locations, home)
     })
 }
 

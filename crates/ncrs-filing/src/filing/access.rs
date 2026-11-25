@@ -41,10 +41,7 @@ impl FilingModule {
             ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
                 .with_own(self.own.clone())
                 .with_load(self.load)
-                .with_review(self.review_access())
-                .with_rules(self.rules_access())
                 .with_snapshots(self.snapshots.clone())
-                .with_copy_roots(self.copy_roots())
                 .with_index_work(self.index_work.clone()),
         )
     }
@@ -96,20 +93,8 @@ impl FilingModule {
         self.snapshots.forget();
     }
 
-    /// The handle of the filing job: only when the module is `Ready` and the
+    /// The handle of the review list: only when the module is `Ready` and the
     /// archive marked as the target can be reached.
-    pub fn filing_access(&self) -> Option<FilingAccess> {
-        let root = self.target_root()?;
-        Some(
-            FilingAccess::new(Arc::clone(&self.index), root)
-                .with_location_roots(self.location_roots())
-                .with_copy_roots(self.copy_roots())
-                .with_kind_language(self.own.kind_language),
-        )
-    }
-
-    /// The handle of the review list, on the same terms as the filing job: it
-    /// files into the same target.
     pub fn review_access(&self) -> Option<ReviewAccess> {
         let root = self.target_root()?;
         Some(

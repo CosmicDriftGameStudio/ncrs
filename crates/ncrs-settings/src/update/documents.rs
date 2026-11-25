@@ -1,5 +1,4 @@
-//! The Index and Hermes pages: the folder lists, the models and the ways on
-//! to the chat and the status pages.
+//! The Index and AI pages: the folder list and the models.
 
 use std::path::PathBuf;
 
@@ -50,16 +49,14 @@ pub fn update(
             Task::none()
         }
         SettingsMessage::FolderPicked {
-            kind,
+            kind: AddAs::Indexed,
             path: Some(path),
         }
         | SettingsMessage::FolderGranted {
-            kind,
+            kind: AddAs::Indexed,
             path,
             result: Ok(()),
-        } => change_locations(settings, ctx, |list| {
-            folders::added(list, canonical(path), kind)
-        }),
+        } => change_locations(settings, ctx, |list| folders::added(list, canonical(path))),
         SettingsMessage::FolderGranted {
             path,
             result: Err(reason),
@@ -74,34 +71,9 @@ pub fn update(
         SettingsMessage::RemoveFolder(path) => {
             change_locations(settings, ctx, |list| folders::removed(list, &path))
         }
-        SettingsMessage::StopContinuous(path) => change_locations(settings, ctx, |list| {
-            folders::continuous_stopped(list, &path)
-        }),
-        SettingsMessage::EditFolder(path) => {
-            page_flag(settings, |state| state.folder_dialog = path)
-        }
-        SettingsMessage::ReplaceFolder(edited) => {
-            change_locations(settings, ctx, |list| folders::replaced(list, edited))
-        }
         SettingsMessage::AddOwnDetail(detail) => in_settings(settings, ctx, |state| {
             state.submit(crate::message::SettingField::Own(detail))
         }),
-        SettingsMessage::RunUndone(Ok(left)) => {
-            if left > 0 {
-                actions.push(Action::ShowNotice(fill_template(
-                    ctx.lang.text(Msg::SettingsHermesHistoryUndoLeft),
-                    &[("{left}", &left.to_string())],
-                )));
-            }
-            page_flag(settings, |state| state.facts_requested = false)
-        }
-        SettingsMessage::RunUndone(Err(reason)) => {
-            actions.push(Action::ShowNotice(fill_template(
-                ctx.lang.text(Msg::SettingsHermesHistoryUndoFailed),
-                &[("{reason}", &reason)],
-            )));
-            Task::none()
-        }
         SettingsMessage::FactsLoaded(loaded) => {
             let was_failing = settings
                 .page
@@ -119,22 +91,8 @@ pub fn update(
                 state.facts_in_flight = false;
             })
         }
-        SettingsMessage::ToggleAllAreas => {
-            page_flag(settings, |state| state.all_areas = !state.all_areas)
-        }
-        SettingsMessage::ToggleAllRuns => {
-            page_flag(settings, |state| state.all_runs = !state.all_runs)
-        }
-        SettingsMessage::OpenChat(area) => {
-            actions.push(Action::OpenChat { area });
-            Task::none()
-        }
         SettingsMessage::TogglePause => {
             actions.push(Action::TogglePause);
-            Task::none()
-        }
-        SettingsMessage::UndoRun(batch) => {
-            actions.push(Action::UndoRun(batch));
             Task::none()
         }
         SettingsMessage::OpenAiModel => {

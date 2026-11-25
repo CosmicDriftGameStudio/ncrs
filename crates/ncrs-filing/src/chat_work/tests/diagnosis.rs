@@ -12,18 +12,16 @@
 use std::collections::BTreeMap;
 
 use ncrs_index::InMemoryKeyStore;
-use ncrs_intake::{NeighbourIndex, OwnNames, PdfText};
+use ncrs_intake::PdfText;
 
 use super::*;
-use crate::chat_work::change::segments;
-use crate::chat_work::{TrialOutcome, TrialPlan};
 
 fn scratch_access(scratch: &Path, work: &Path) -> ChatAccess {
     access_over(&scratch.join("data/index.db"), work)
 }
 
 /// An access over a copy of the plain index at `index`, made in `work`.
-pub fn access_over(index_path: &Path, work: &Path) -> ChatAccess {
+fn access_over(index_path: &Path, work: &Path) -> ChatAccess {
     let copy = work.join("index.db");
     let index = if std::env::var_os("NCRS_DIAGNOSIS_COLD").is_some() {
         Index::create_plain(&copy).unwrap()
@@ -43,7 +41,7 @@ pub fn access_over(index_path: &Path, work: &Path) -> ChatAccess {
     )
 }
 
-pub fn read(access: &ChatAccess, folder: &Path) -> FolderReading {
+fn read(access: &ChatAccess, folder: &Path) -> FolderReading {
     let started = std::time::Instant::now();
     let reading = match access.run(ChatWork::Read {
         folder: folder.to_path_buf(),
@@ -90,7 +88,7 @@ fn print_counts(label: &str, counts: &Counts) {
 }
 
 fn fields_report(archive: &FolderReading) {
-    println!("== D1.1 fields in the archive");
+    println!("== fields in the archive");
     print_counts("all", &counts_of(archive.files.iter()));
     let mut by_top: BTreeMap<String, Vec<&PlanFile>> = BTreeMap::new();
     for file in &archive.files {
@@ -116,68 +114,6 @@ fn fields_report(archive: &FolderReading) {
     println!("  top senders: {:?}", &ranked[..ranked.len().min(10)]);
 }
 
-fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &FolderReading) {
-    println!("== D1.2 the downloads against the archive");
-    let plan: TrialPlan = match access.run(ChatWork::Trial {
-        source: Arc::new(downloads.clone()),
-        target: Arc::new(archive.clone()),
-        answered: AnsweredGroups::default(),
-        layout: None,
-        scope: crate::chat_work::ModelScope::FirstPage,
-    }) {
-        ChatResult::Trial(Ok(plan)) => *plan,
-        other => panic!("{other:?}"),
-    };
-    let own = OwnNames {
-        names: &[],
-        ibans: &[],
-        tax_ids: &[],
-    };
-    let neighbours = NeighbourIndex::new(&archive.files, &own, &archive.structure);
-    let mut tally: BTreeMap<String, usize> = BTreeMap::new();
-    for entry in &plan.entries {
-        let in_archive = archive
-            .files
-            .iter()
-            .find(|file| file.hash == entry.hash)
-            .map(|file| file.relative_path.display().to_string());
-        let file = downloads
-            .files
-            .iter()
-            .find(|file| file.hash == entry.hash)
-            .unwrap();
-        let placed = neighbours.place(&entry.fields, file.text.as_deref());
-        let verdict = match &entry.outcome {
-            TrialOutcome::Stays(reason) => format!("Stays({reason:?})"),
-            TrialOutcome::Filed { .. } => "Filed".to_owned(),
-            TrialOutcome::Unsure { .. } => "Unsure".to_owned(),
-            TrialOutcome::AlreadyThere { .. } => "AlreadyThere".to_owned(),
-        };
-        *tally.entry(verdict.clone()).or_default() += 1;
-        println!(
-            "  {} | was {:?} | sender {:?} kind {:?} date {:?} | {verdict} | place {}",
-            entry.name,
-            in_archive,
-            entry.fields.sender,
-            entry.fields.kind,
-            entry.fields.date,
-            placed.map_or_else(
-                || "None".to_owned(),
-                |found| format!(
-                    "{:?} folder {} agreeing {} similar {} pattern {:?} missing {:?}",
-                    found.signal,
-                    found.folder.display(),
-                    found.agreeing,
-                    found.similar,
-                    found.pattern,
-                    found.missing
-                )
-            ),
-        );
-    }
-    println!("  tally: {tally:?}");
-}
-
 #[test]
 #[ignore = "reads NCRS_DIAGNOSIS_SCRATCH, the scratch folder of a protocol run"]
 fn diagnosis() {
@@ -188,7 +124,6 @@ fn diagnosis() {
     let work = tempfile::tempdir().unwrap();
     let access = scratch_access(&scratch, work.path());
     let archive = read(&access, &scratch.join("archive"));
-    let downloads = read(&access, &scratch.join("downloads"));
     println!(
         "areas: {} (unordered: {:?})",
         archive.structure.areas.len(),
@@ -198,7 +133,6 @@ fn diagnosis() {
         println!("  area {} branches {:#?}", area.folder, area.branches);
     }
     fields_report(&archive);
-    trial_report(&access, &downloads, &archive);
 }
 
 #[cfg(feature = "local-ai")]

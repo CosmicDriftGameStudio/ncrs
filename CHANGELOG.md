@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Sorting works with sources, targets and rules: several sources and several
+  targets, freely combined, with file name patterns to include or exclude.
+- A source is filed once or watched, moves or copies, and has its own answer
+  for files without text and for files that match several targets (ask, skip or
+  copy to all).
+- Hermes suggests a scheme or further rules for a target, or a rule for one
+  file. Nothing is saved before you take it.
+- Context menu of a folder: "File…", "Watch as source…" and "Set up as target…".
+
+### Changed
+
+- One page, Settings › Sorting, holds sources, targets with their rules and the
+  history with undo. It replaces the separate pages for rules and questions.
+- Rules decide where a file goes. The AI no longer picks a folder; a file no
+  rule matches stays where it is, and a pattern with a missing value files
+  nothing.
+- The plan shows the source on the left and the targets on the right. Nothing
+  moves before "Copy" or "Move".
+- Watching a source leaves the files that are in it already; they appear only in
+  the plan.
+- The chat recognises the order of a folder and opens the suggestions. It files
+  nothing itself and can still put back the last run.
+- Folders set up in an older version are read as sources and targets. The first
+  change writes them in the new form and keeps the old settings file as
+  `config.toml.before-1.8.0`. ncrs 1.7 and older cannot read the new settings.
+
+### Removed
+
+- The read folder and write folder roles, continuous filing as a command of its
+  own, and the chat's filing runs.
+
 ## [1.7.1] — 2026-11-25
 
 ### Changed

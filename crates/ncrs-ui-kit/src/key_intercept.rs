@@ -20,6 +20,8 @@ type Resolver<'a, Message> = Box<dyn Fn(&Key, Physical, Modifiers) -> Option<Mes
 struct KeyIntercept<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     resolve: Resolver<'a, Message>,
+    /// Told about a mouse press inside, which the input takes all the same.
+    on_mouse_press: Option<Box<dyn Fn() -> Message + 'a>>,
 }
 
 /// Wraps `content`, a text input: a press that `resolve` maps to a message
@@ -36,6 +38,25 @@ where
     Element::new(KeyIntercept {
         content: content.into(),
         resolve: Box::new(resolve),
+        on_mouse_press: None,
+    })
+}
+
+/// Wraps `content`, a text input that takes the press and the focus itself:
+/// `notice` is published too, so the view knows which field the user went into.
+pub fn press_notice<'a, Message, Theme, Renderer>(
+    content: impl Into<Element<'a, Message, Theme, Renderer>>,
+    notice: impl Fn() -> Message + 'a,
+) -> Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: 'a,
+    Renderer: iced::advanced::Renderer + 'a,
+{
+    Element::new(KeyIntercept {
+        content: content.into(),
+        resolve: Box::new(|_, _, _| None),
+        on_mouse_press: Some(Box::new(notice)),
     })
 }
 
@@ -139,6 +160,13 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
+        if let (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(notice)) =
+            (event, &self.on_mouse_press)
+        {
+            if cursor.is_over(layout.bounds()) {
+                shell.publish(notice());
+            }
+        }
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key,
             physical_key,

@@ -2,15 +2,16 @@
 //! visible rows, and the files read again.
 
 use std::f32::consts::{FRAC_PI_2, TAU};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_filing::filing::FilingModule;
+use ncrs_filing::filing::{ColumnReader, FilingModule};
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_index::DocumentStatus;
 
 use crate::action::Action;
 use crate::ctx::{Ctx, PanelFacts};
-use crate::hermes_column::{ColumnRequest, ColumnStage, FileDetail, HermesFileState};
+use crate::hermes_column::{ColumnRequest, ColumnStage, HermesFileState};
 use crate::message::{HermesColumnMessage, Message};
 use crate::reading_again::{self, Ending};
 use crate::state::Hermes;
@@ -29,7 +30,6 @@ pub fn refresh_hermes_column(hermes: &mut Hermes, ctx: &Ctx<'_>) {
         .set_snapshot(hermes.filing_status.snapshot());
     if hermes.hermes_column.epoch() != epoch {
         hermes.hermes_failed_reads.clear();
-        hermes.hermes_detail_reads.clear();
     }
     if visible_row_is_reading(hermes, ctx) {
         hermes.hermes_spinner_angle = (hermes.hermes_spinner_angle + SPINNER_STEP).rem_euclid(TAU);
@@ -51,13 +51,11 @@ pub fn request_hermes_column(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message
     if !hermes.is_active() {
         return Task::none();
     }
-    let mut tasks: Vec<Task<Message>> = ctx
-        .panels
-        .iter()
-        .filter_map(|panel| request_panel_column(hermes, panel))
-        .collect();
-    tasks.extend(request_cursor_detail(hermes, ctx));
-    Task::batch(tasks)
+    Task::batch(
+        ctx.panels
+            .iter()
+            .filter_map(|panel| request_panel_column(hermes, panel)),
+    )
 }
 
 fn request_panel_column(hermes: &mut Hermes, panel: &PanelFacts<'_>) -> Option<Task<Message>> {
@@ -120,32 +118,6 @@ fn request_panel_column(hermes: &mut Hermes, panel: &PanelFacts<'_>) -> Option<T
     ))
 }
 
-/// The review of the file under the cursor, once, when it is an inquiry.
-fn request_cursor_detail(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Option<Task<Message>> {
-    let path = ctx.cursor_entry?.to_path_buf();
-    if !hermes.hermes_column.wants_detail(&path) || !hermes.hermes_detail_reads.insert(path.clone())
-    {
-        return None;
-    }
-    let access = hermes.filing.as_ref()?.review_access()?;
-    let asked = path.clone();
-    Some(Task::perform(
-        tokio::task::spawn_blocking(move || access.suggestion_for(&asked)),
-        move |joined| {
-            let found = joined.unwrap_or_else(|err| Err(err.to_string()));
-            Message::HermesColumn(HermesColumnMessage::Detail {
-                path: path.clone(),
-                result: found.map(|review| {
-                    review.map(|(text_state, suggestion)| FileDetail {
-                        text_state,
-                        suggestion,
-                    })
-                }),
-            })
-        },
-    ))
-}
-
 pub fn update_hermes_column(
     hermes: &mut Hermes,
     message: HermesColumnMessage,
@@ -180,13 +152,6 @@ pub fn update_hermes_column(
                 if reading.generation == panel.request_id && reading.directory == panel.directory {
                     hermes.hermes_column.apply(reading);
                 }
-            }
-            Task::none()
-        }
-        HermesColumnMessage::Detail { path, result } => {
-            if let Ok(Some(detail)) = result {
-                hermes.hermes_detail_reads.remove(&path);
-                hermes.hermes_column.apply_detail(path, detail);
             }
             Task::none()
         }
@@ -238,18 +203,16 @@ pub fn settle_reading_again(
     let tasks: Vec<Task<Message>> = ended
         .into_iter()
         .map(|(path, ending)| {
-            let access = hermes
+            let reader = hermes
                 .filing
                 .as_ref()
-                .and_then(FilingModule::review_access)
+                .and_then(FilingModule::column_reader)
                 .filter(|_| ending == Ending::Finished);
-            match access {
-                Some(review) => {
+            match reader {
+                Some(reader) => {
                     let asked = path.clone();
                     Task::perform(
-                        tokio::task::spawn_blocking(move || {
-                            review.suggestion_for(&asked).map(|found| found.is_some())
-                        }),
+                        tokio::task::spawn_blocking(move || waits_for_the_user(reader, &asked)),
                         move |joined| {
                             Message::HermesColumn(HermesColumnMessage::ReadAgainEnded {
                                 path: path.clone(),
@@ -268,4 +231,23 @@ pub fn settle_reading_again(
         })
         .collect();
     Task::batch(tasks)
+}
+
+/// Blocking: whether the index has an open question about the file.
+fn waits_for_the_user(reader: ColumnReader, path: &Path) -> Result<bool, String> {
+    let Some(directory) = path.parent() else {
+        return Ok(false);
+    };
+    let reading = reader.read(&ColumnRequest {
+        generation: 0,
+        epoch: 0,
+        directory: directory.to_path_buf(),
+        subfolders: Vec::new(),
+        stage: ColumnStage::Listing,
+    })?;
+    Ok(reading
+        .states
+        .as_ref()
+        .and_then(|states| states.files.get(path))
+        .is_some_and(|stored| stored.status == DocumentStatus::InReview))
 }

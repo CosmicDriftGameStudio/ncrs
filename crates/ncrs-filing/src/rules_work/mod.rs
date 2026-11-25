@@ -15,7 +15,7 @@ use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 use ncrs_core::INDEX_NOT_OPEN;
 
 use crate::chat_work::Snapshots;
-use crate::filing_work::target_of;
+use crate::target_path::target_of;
 
 /// What to write to the index.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,10 +23,13 @@ pub enum RuleSave {
     Create {
         spec: RuleSpec,
         origin: RuleOrigin,
+        /// Appended to the rules of this target.
+        target: TargetId,
     },
-    Update(RuleId, RuleSpec),
+    /// With a target, the rule goes there as its last.
+    Update(RuleId, RuleSpec, Option<TargetId>),
     /// The suggestion becomes a confirmed rule with these values.
-    ConfirmSuggestion(RuleId, RuleSpec),
+    ConfirmSuggestion(RuleId, RuleSpec, Option<TargetId>),
 }
 
 /// Another confirm or a discard got to the suggestion first.
@@ -364,19 +367,58 @@ impl RulesAccess {
         applied
     }
 
+    /// Deletes every rule of a removed target; how many went.
+    pub fn delete_rules_of(&self, target: &TargetId) -> Result<usize, String> {
+        let deleted = self.with_index(|index| index.delete_rules_of(target));
+        self.snapshots.forget();
+        deleted
+    }
+
     /// Index refusals, such as a regex that does not compile, come back as
     /// the text of the error. The rule that was made or changed comes back.
     pub fn save(&self, save: RuleSave) -> Result<RuleId, String> {
         let written = self.with_index(|index| match save {
-            RuleSave::Create { spec, origin } => index.create_rule_from(&spec, origin).map(Some),
-            RuleSave::Update(id, spec) => index.update_rule(id, &spec).map(|()| Some(id)),
-            RuleSave::ConfirmSuggestion(id, spec) => index
-                .confirm_suggested_rule(id, &spec)
-                .map(|done| done.then_some(id)),
+            RuleSave::Create {
+                spec,
+                origin,
+                target,
+            } => index.create_rule_in(&spec, origin, &target).map(Some),
+            RuleSave::Update(id, spec, target) => {
+                index.update_rule(id, &spec)?;
+                if let Some(target) = target {
+                    index.set_rule_target(id, &target)?;
+                }
+                Ok(Some(id))
+            }
+            RuleSave::ConfirmSuggestion(id, spec, target) => {
+                if !index.confirm_suggested_rule(id, &spec)? {
+                    return Ok(None);
+                }
+                if let Some(target) = target {
+                    index.set_rule_target(id, &target)?;
+                }
+                Ok(Some(id))
+            }
         });
         self.snapshots.forget();
         let saved = written?;
         saved.ok_or_else(|| NO_SUCH_SUGGESTION.to_owned())
+    }
+
+    /// What a rule made from the document starts with; `None` when the index
+    /// does not know the document.
+    pub fn document_for_rule(&self, id: ncrs_index::DocumentId) -> Result<Option<DocumentForRule>, String> {
+        self.with_index(|index| {
+            let Some(document) = index.document(id)? else {
+                return Ok(None);
+            };
+            Ok(Some(DocumentForRule {
+                sender: document.fields.sender.clone().unwrap_or_default(),
+                kind: document.fields.kind.clone().unwrap_or_default(),
+                tags: document.fields.tags.clone(),
+                text: index.document_text(id)?,
+            }))
+        })
     }
 
     fn with_index<T>(
@@ -387,6 +429,15 @@ impl RulesAccess {
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         work(index).map_err(|err| err.to_string())
     }
+}
+
+/// The facts of a filed document a new rule is made from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentForRule {
+    pub sender: String,
+    pub kind: String,
+    pub tags: std::collections::BTreeSet<String>,
+    pub text: Option<String>,
 }
 
 /// The stored rules with the candidate in the place of `replaces`, or appended
@@ -468,6 +519,9 @@ fn conflict_places(rules: &[Rule], tried: &[TriedDocument]) -> HashMap<RuleId, u
 
 #[cfg(test)]
 mod tests;
+
+mod sort_try;
+pub use sort_try::{try_in_target, SortTry, SortTryRow, SortTryState, MAX_SORT_TRY_ROWS};
 
 /// What the rule is tried with, and what the documents tried so far came to.
 struct Trial<'a> {

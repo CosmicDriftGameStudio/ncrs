@@ -48,3 +48,6 @@ CREATE TABLE source_watch (
 
 -- The batches of one run carry the id of its first batch. NULL is a run of its own.
 ALTER TABLE execution_batch ADD COLUMN run_id INTEGER;
+
+-- What was picked per folder in the chat; the table was made outside the migrations.
+DROP TABLE IF EXISTS folder_pick;

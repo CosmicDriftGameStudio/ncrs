@@ -42,6 +42,7 @@ test-support = ["dep:tempfile"]
 
 [dev-dependencies]
 tempfile = "3.27"
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0", features = ["testing"] }
 # The guard that stops a test from reaching the user's config, index or keychain.
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
 

@@ -128,12 +128,12 @@ fn going_round_in_the_menu_skips_greyed_out_entries_at_both_ends() {
 
 #[test]
 fn going_round_in_the_submenu_skips_greyed_out_entries_at_both_ends() {
-    let mut menu = hermes_menu(&[HermesAction::ShowSuggestion, HermesAction::Inspect]);
+    let mut menu = hermes_menu(&[HermesAction::FileOnce, HermesAction::Inspect]);
     menu.select_last();
     menu.open_submenu();
     menu.select_first();
     let first = menu.selected_hermes_action();
-    assert_eq!(first, Some(HermesAction::HandToInbox));
+    assert_eq!(first, Some(HermesAction::WatchSource));
     menu.move_by(-1);
     assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Exclude));
     menu.move_by(1);
@@ -202,9 +202,63 @@ fn hermes_menu(disabled: &'static [HermesAction]) -> ContextMenu {
         |_| true,
         Some(HermesMenu {
             excluded: false,
+            is_source: false,
+            is_target: false,
             is_enabled: &enabled,
         }),
     )
+}
+
+/// The entries of the submenu on a folder with these roles.
+fn hermes_entries_of(is_source: bool, is_target: bool) -> Vec<HermesAction> {
+    ContextMenu::with_hermes(
+        Point::new(10.0, 10.0),
+        WINDOW,
+        |_| true,
+        Some(HermesMenu {
+            excluded: false,
+            is_source,
+            is_target,
+            is_enabled: &|_| true,
+        }),
+    )
+    .sub_entries()
+    .iter()
+    .filter_map(|entry| match entry {
+        SubEntry::Item { action, .. } => Some(*action),
+        SubEntry::Separator => None,
+    })
+    .collect()
+}
+
+#[test]
+fn a_plain_folder_can_be_filed_watched_and_made_a_target() {
+    assert_eq!(
+        hermes_entries_of(false, false),
+        [
+            HermesAction::FileOnce,
+            HermesAction::WatchSource,
+            HermesAction::AddTarget,
+            HermesAction::ProcessAgain,
+            HermesAction::Exclude,
+            HermesAction::Inspect,
+        ]
+    );
+}
+
+#[test]
+fn a_source_and_a_target_offer_to_be_changed_instead() {
+    let source = hermes_entries_of(true, false);
+    assert!(source.contains(&HermesAction::ChangeSource));
+    assert!(!source.contains(&HermesAction::WatchSource));
+    assert!(source.contains(&HermesAction::AddTarget));
+    let target = hermes_entries_of(false, true);
+    assert!(target.contains(&HermesAction::ChangeTarget));
+    assert!(!target.contains(&HermesAction::AddTarget));
+    assert!(target.contains(&HermesAction::WatchSource));
+    let both = hermes_entries_of(true, true);
+    assert!(both.contains(&HermesAction::ChangeSource));
+    assert!(both.contains(&HermesAction::ChangeTarget));
 }
 
 #[test]
@@ -221,10 +275,7 @@ fn right_opens_the_submenu_on_the_hermes_entry_and_left_closes_it() {
     menu.select_last();
     assert!(menu.selected_is_hermes());
     assert!(menu.open_submenu());
-    assert_eq!(
-        menu.selected_hermes_action(),
-        Some(HermesAction::ShowSuggestion)
-    );
+    assert_eq!(menu.selected_hermes_action(), Some(HermesAction::FileOnce));
     assert!(menu.close_submenu());
     assert!(!menu.submenu_is_open());
     assert!(!menu.close_submenu());
@@ -232,30 +283,19 @@ fn right_opens_the_submenu_on_the_hermes_entry_and_left_closes_it() {
 
 #[test]
 fn the_submenu_skips_separators_and_greyed_entries() {
-    let mut menu = hermes_menu(&[
-        HermesAction::ProcessAgain,
-        HermesAction::FileOnce,
-        HermesAction::FileContinuously,
-        HermesAction::StopContinuous,
-    ]);
+    let mut menu = hermes_menu(&[HermesAction::WatchSource, HermesAction::ProcessAgain]);
     menu.select_last();
     menu.open_submenu();
     menu.move_by(1);
-    assert_eq!(
-        menu.selected_hermes_action(),
-        Some(HermesAction::HandToInbox)
-    );
+    assert_eq!(menu.selected_hermes_action(), Some(HermesAction::AddTarget));
     menu.move_by(1);
-    assert_eq!(
-        menu.selected_hermes_action(),
-        Some(HermesAction::SetFilingLocation)
-    );
+    assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Exclude));
     menu.select_last();
     assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Inspect));
     menu.move_by(1);
     assert_eq!(
         menu.selected_hermes_action(),
-        Some(HermesAction::ShowSuggestion),
+        Some(HermesAction::FileOnce),
         "down from the last entry goes round to the first"
     );
     menu.move_by(-1);
@@ -265,10 +305,7 @@ fn the_submenu_skips_separators_and_greyed_entries() {
         "up from the first entry goes round to the last"
     );
     menu.select_first();
-    assert_eq!(
-        menu.selected_hermes_action(),
-        Some(HermesAction::ShowSuggestion)
-    );
+    assert_eq!(menu.selected_hermes_action(), Some(HermesAction::FileOnce));
     assert!(menu.selected_is_hermes(), "the parent keeps its highlight");
 }
 
@@ -297,6 +334,8 @@ fn the_submenu_folds_to_the_left_where_there_is_no_room() {
         |_| true,
         Some(HermesMenu {
             excluded: true,
+            is_source: false,
+            is_target: false,
             is_enabled: &|_| true,
         }),
     );

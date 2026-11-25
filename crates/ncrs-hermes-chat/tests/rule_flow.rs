@@ -1,57 +1,25 @@
-//! Opening a folder of the archive and making a filing rule for it: the
-//! levels, what goes into the folder, the trial, and the click that stores the
-//! rule. Nothing is saved before that click.
+//! Opening a folder of the archive and recognising its order: the overview,
+//! the levels, and the click that hands them to the rule suggestions. The
+//! chat saves and moves nothing.
 
 mod common;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use crate::common::{count, letter, say, Talk};
     use ncrs_ai::{Levels, Revision};
-    use ncrs_hermes_chat::{ChipReply, Entry, Message, Part};
+    use ncrs_hermes_chat::{Action, ChipReply, Message, Part};
     use ncrs_i18n::Msg;
-    use ncrs_index::{Combinator, Condition, ConditionKind, RuleConditions, RuleSpec};
 
     const DEFAULT_PATTERN: &str = "{year}/{date}_{sender}_{kind}";
-    const CHANGE_STRUCTURE: &str =
-        r#"{"intent":"change_structure","area":"Telefon","order":"by_month"}"#;
-
-    fn spec(word: &str, pattern: &str) -> RuleSpec {
-        RuleSpec {
-            name: None,
-            conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, word)]),
-            extract_number: None,
-            extract_date: None,
-            extract_amount: None,
-            kind: None,
-            tags: BTreeSet::new(),
-            filing_pattern: pattern.to_owned(),
-            confirmed: false,
-            enabled: false,
-        }
-    }
 
     fn levels(pattern: &str) -> Levels {
         Levels::from_pattern(pattern).unwrap()
     }
 
-    /// `Alfa` holds four invoices filed by year; `Telefon` is empty; the
-    /// invoices are in the index as well, so a rule finds them.
+    /// `Alfa` holds four invoices filed by year; `Telefon` is empty.
     fn archive_talk() -> Talk {
-        archive_talk_reading(&["inbox"])
-    }
-
-    fn archive_talk_reading(sources: &[&str]) -> Talk {
-        archive_talk_in(&["archive"], sources)
-    }
-
-    fn archive_talk_in(targets: &[&str], sources: &[&str]) -> Talk {
-        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), targets, sources);
-        for target in targets {
-            std::fs::create_dir_all(talk.path(target)).unwrap();
-        }
+        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
             let id = talk.index_document(
                 &format!("archive/Alfa/2020/2020-{month:02}-{day}.pdf"),
@@ -73,15 +41,12 @@ mod tests {
             );
         }
         std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
-        talk.with_rules()
+        talk
     }
 
     fn open_area(talk: &mut Talk, area: &str) {
-        let folder = talk.path("archive");
-        talk.send(Message::ChangeArea {
-            folder,
-            area: area.to_owned(),
-        });
+        let folder = talk.path("archive").join(area);
+        talk.send(Message::FolderPicked(Some(folder)));
     }
 
     fn has_chip(talk: &Talk, reply: &ChipReply) -> bool {
@@ -95,36 +60,28 @@ mod tests {
         })
     }
 
-    fn the_only_rule(talk: &Talk) -> ncrs_index::Rule {
-        let rules = talk.rules();
-        assert_eq!(rules.len(), 1, "{rules:?}");
-        rules.into_iter().next().unwrap()
-    }
-
-    /// The empty folder `Telefon` up to the proposal of the rule for invoices.
-    fn propose_for_telefon(talk: &mut Talk) {
-        open_area(talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
-        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
-        talk.type_text("Rechnungen kommen hierhin");
-    }
-
-    #[test]
-    fn with_several_targets_the_rule_name_starts_with_the_target() {
-        let mut talk = archive_talk_in(&["archive", "second"], &["inbox"]);
-
-        propose_for_telefon(&mut talk);
-        talk.press(&ChipReply::RuleCreate);
-
+    /// Presses the one button that hands the order on, and checks that it
+    /// comes out once, with the folder and the pattern.
+    fn suggest(talk: &mut Talk, folder: &str, pattern: Option<&str>) {
+        assert!(talk.suggestions().is_empty(), "{:?}", talk.actions);
+        talk.press(&ChipReply::SuggestRules);
         assert_eq!(
-            the_only_rule(&talk).spec.name.as_deref(),
-            Some("archive / Telefon")
+            talk.suggestions(),
+            vec![(talk.path(folder), pattern.map(str::to_owned))]
         );
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatSuggestionsOpen, &[])]
+        );
+        assert!(talk.state.chips().is_empty(), "{:?}", talk.labels());
+        assert!(talk.state.session.rule.is_none());
+        talk.assert_saves_no_rule();
     }
 
     #[test]
-    fn an_empty_folder_gets_the_default_levels_and_the_rule_only_after_the_click() {
+    fn an_empty_folder_gets_the_default_levels_and_one_button_after_them() {
         let mut talk = archive_talk();
+        let before = talk.files();
 
         open_area(&mut talk, "Telefon");
         assert_eq!(
@@ -134,56 +91,21 @@ mod tests {
         let card = levels_card(&talk).expect("a card of levels");
         assert_eq!(card.rows.len(), 2, "year and the file name");
         talk.press(&ChipReply::LevelsKeep);
-        assert_eq!(talk.rule_count(), 0);
 
-        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
-        talk.type_text("Rechnungen kommen hierhin");
-        assert_eq!(
-            talk.model.described(),
-            vec!["Rechnungen kommen hierhin".to_owned()]
-        );
-        assert_eq!(talk.rule_count(), 0, "a proposal saves nothing");
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-
-        talk.press(&ChipReply::RuleCreate);
-        let rule = the_only_rule(&talk);
-        assert_eq!(
-            rule.spec.filing_pattern,
-            format!("Telefon/{DEFAULT_PATTERN}")
-        );
-        assert_eq!(rule.spec.conditions.combinator, Combinator::AllOf);
-        assert_eq!(
-            rule.spec.conditions.list,
-            vec![Condition::new(ConditionKind::Word, "Rechnung")]
-        );
-        assert_eq!(rule.spec.name.as_deref(), Some("Telefon"));
-        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
-        assert!(
-            talk.state.thread().iter().any(|entry| matches!(
-                entry,
-                ncrs_hermes_chat::Entry::Hermes { parts, .. }
-                    if parts.contains(&ncrs_hermes_chat::Part::Text(say(
-                        Msg::HermesChatRuleStored,
-                        &[("name", "Telefon")]
-                    )))
-            )),
-            "the saved rule is named"
-        );
         assert_eq!(
             talk.last_texts(),
-            vec![format!(
-                "{} {}",
-                say(
-                    Msg::HermesChatRuleArchiveMoves,
-                    &[("count", "4"), ("folder", "archive")]
-                ),
-                say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "4")])
-            )],
-            "the four archive documents would move under the new levels"
+            vec![say(
+                Msg::HermesChatLevelsConfirmed,
+                &[("folder", "Telefon")]
+            )]
         );
-        assert!(has_chip(&talk, &ChipReply::RuleNow));
-        assert!(has_chip(&talk, &ChipReply::RuleOnlyNew));
-        assert!(!has_chip(&talk, &ChipReply::Cancel));
+        assert_eq!(
+            talk.labels(),
+            vec![say(Msg::HermesChatSuggestRules, &[])],
+            "one way on"
+        );
+        suggest(&mut talk, "archive/Telefon", Some(DEFAULT_PATTERN));
+        assert_eq!(talk.files(), before);
     }
 
     #[test]
@@ -199,19 +121,25 @@ mod tests {
         assert!(has_chip(&talk, &ChipReply::LevelsDefault));
 
         talk.press(&ChipReply::LevelsKeep);
-        assert!(
-            has_chip(&talk, &ChipReply::RuleCreate),
-            "the trial of what the files of the folder share: {:?}",
-            talk.labels()
-        );
-        talk.press(&ChipReply::RuleCreate);
+        suggest(&mut talk, "archive/Alfa", Some("{year}/{date}"));
+    }
 
-        let rule = the_only_rule(&talk);
-        assert_eq!(rule.spec.filing_pattern, "Alfa/{year}/{date}");
-        assert_eq!(
-            rule.spec.conditions.list,
-            vec![Condition::new(ConditionKind::Sender, "Alfa AG")]
-        );
+    #[test]
+    fn the_whole_target_shows_its_areas_before_the_levels() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("Alfa/{year}/{date}")));
+        talk.send(Message::Open);
+
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+
+        let overview = talk.state.thread().iter().any(|entry| {
+            matches!(entry, ncrs_hermes_chat::Entry::Hermes { parts, .. }
+                if parts.iter().any(|part| matches!(part, Part::Areas(_))))
+        });
+        assert!(overview, "the card of the areas");
+        assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
+        talk.press(&ChipReply::LevelsKeep);
+        assert!(has_chip(&talk, &ChipReply::SuggestRules));
     }
 
     #[test]
@@ -256,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn levels_that_still_do_not_fit_offer_only_the_change() {
+    fn levels_that_still_do_not_fit_offer_the_change_and_no_pattern() {
         let mut talk = archive_talk();
         talk.model.push_levels(Ok(levels("{year}/{sender}/{date}")));
         talk.model.push_levels(Ok(levels("{year}/{kind}/{date}")));
@@ -275,11 +203,11 @@ mod tests {
         assert!(!has_chip(&talk, &ChipReply::LevelsKeep));
         assert!(!has_chip(&talk, &ChipReply::LevelsDefault));
         assert!(has_chip(&talk, &ChipReply::LevelsChange));
-        assert_eq!(talk.rule_count(), 0);
+        suggest(&mut talk, "archive/Alfa", None);
     }
 
     #[test]
-    fn files_that_deviate_are_shown_and_nothing_is_saved_until_a_click() {
+    fn files_that_deviate_are_shown_and_the_default_can_be_taken() {
         let mut talk = archive_talk();
         talk.index_document(
             "archive/Alfa/2019/2020-11-14.pdf",
@@ -309,66 +237,15 @@ mod tests {
         ] {
             assert!(has_chip(&talk, &reply), "{reply:?}");
         }
-        assert_eq!(talk.rule_count(), 0);
-
         talk.press(&ChipReply::LevelsDefault);
         let default_card = levels_card(&talk).expect("the default levels");
         assert_eq!(default_card.rows.len(), 2);
-        assert_eq!(talk.rule_count(), 0);
+        talk.press(&ChipReply::LevelsApply);
+        suggest(&mut talk, "archive/Alfa", Some(DEFAULT_PATTERN));
     }
 
     #[test]
-    fn cancel_saves_nothing() {
-        let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-
-        talk.press(&ChipReply::Cancel);
-
-        assert!(!has_chip(&talk, &ChipReply::RuleCreate), "no dead button");
-        assert_eq!(talk.rule_count(), 0);
-        assert!(talk.state.session.rule.is_none());
-    }
-
-    #[test]
-    fn a_rule_the_form_would_refuse_asks_again_and_saves_nothing() {
-        let mut talk = archive_talk();
-        open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
-        let mut refused = spec("Rechnung", "Telefon/{year}");
-        refused.conditions = RuleConditions::all_of(Vec::new());
-        talk.model.push_rule(Ok(refused));
-
-        talk.type_text("irgendwas");
-
-        assert!(!has_chip(&talk, &ChipReply::RuleCreate));
-        assert!(has_chip(&talk, &ChipReply::Cancel));
-        assert_eq!(talk.rule_count(), 0);
-        let Some(Entry::Hermes { parts, .. }) = talk.state.thread().last() else {
-            panic!("{:?}", talk.state.thread().last());
-        };
-        assert!(
-            matches!(parts.first(), Some(Part::Text(line)) if line.contains(&say(Msg::HermesChatRuleWhat, &[("folder", "Telefon")]))),
-            "{parts:?}"
-        );
-    }
-
-    #[test]
-    fn a_rule_that_matches_nothing_says_so_and_asks_again() {
-        let mut talk = archive_talk();
-        open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
-        talk.model.push_rule(Ok(spec("Zahnarzt", "Telefon/{year}")));
-
-        talk.type_text("Zahnarzt");
-
-        assert!(!has_chip(&talk, &ChipReply::RuleCreate));
-        assert!(talk.last_texts()[0].starts_with(&say(Msg::HermesChatRuleNoneMatch, &[])));
-        assert_eq!(talk.rule_count(), 0);
-    }
-
-    #[test]
-    fn leaving_a_level_out_changes_the_saved_pattern() {
+    fn leaving_a_level_out_changes_the_pattern() {
         let mut talk = archive_talk();
         open_area(&mut talk, "Telefon");
         talk.press(&ChipReply::LevelsChange);
@@ -378,58 +255,39 @@ mod tests {
         }));
         talk.type_text("leave out the year");
         talk.press(&ChipReply::LevelsApply);
-        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
-        talk.type_text("Rechnungen");
 
-        talk.press(&ChipReply::RuleCreate);
-
-        assert_eq!(
-            the_only_rule(&talk).spec.filing_pattern,
-            "Telefon/{date}_{sender}_{kind}"
-        );
+        suggest(&mut talk, "archive/Telefon", Some("{date}_{sender}_{kind}"));
     }
 
     #[test]
-    fn changing_a_proposal_goes_back_to_the_question() {
+    fn dropping_every_level_hands_on_no_pattern() {
         let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
+        open_area(&mut talk, "Telefon");
+        talk.press(&ChipReply::LevelsChange);
+        talk.model.push_revision(Ok(Revision {
+            levels: Levels {
+                folders: Vec::new(),
+                file: None,
+            },
+            done: false,
+        }));
+        talk.type_text("no levels at all");
+        talk.press(&ChipReply::LevelsApply);
 
-        talk.press(&ChipReply::RuleCondition);
-
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatRuleWhat, &[("folder", "Telefon")])]
-        );
-        assert_eq!(talk.rule_count(), 0);
+        suggest(&mut talk, "archive/Telefon", None);
     }
 
     #[test]
-    fn a_description_without_a_folder_takes_folder_and_levels_from_the_rule() {
+    fn a_sentence_after_the_levels_drops_the_confirmed_order() {
         let mut talk = archive_talk();
-        talk.model
-            .push_rule(Ok(spec("Rechnung", "Telefon/{year}/{month}/")));
-        talk.send(Message::Open);
+        open_area(&mut talk, "Telefon");
+        talk.press(&ChipReply::LevelsKeep);
 
-        talk.type_text_understood("Rechnungen nach Telefon, Jahr und Monat", CHANGE_STRUCTURE);
+        talk.type_text_understood("Rechnung", r#"{"intent":"search","text":"Rechnung"}"#);
 
-        assert_eq!(talk.rule_count(), 0);
-        assert!(levels_card(&talk).is_none(), "the proposal has no card");
-        let card = talk.proposal().expect("the proposal card");
-        assert!(
-            card.facts
-                .iter()
-                .any(|fact| fact.value == "Telefon / Jahr / Monat"),
-            "{:?}",
-            card.facts
-        );
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-        assert!(has_chip(&talk, &ChipReply::LevelsChange));
-
-        talk.press(&ChipReply::RuleCreate);
-        assert_eq!(
-            the_only_rule(&talk).spec.filing_pattern,
-            "Telefon/{year}/{month}/"
-        );
+        assert!(!has_chip(&talk, &ChipReply::SuggestRules), "no dead button");
+        assert!(talk.state.session.rule.is_none());
+        assert!(talk.suggestions().is_empty());
     }
 
     #[test]
@@ -445,7 +303,8 @@ mod tests {
 
         assert_eq!(talk.model.recognized().len(), 1, "the folder was read");
         assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
-        assert_eq!(talk.rule_count(), 0);
+        talk.press(&ChipReply::LevelsKeep);
+        suggest(&mut talk, "archive/Alfa", Some("{year}/{date}"));
     }
 
     #[test]
@@ -502,18 +361,16 @@ mod tests {
     }
 
     #[test]
-    fn opening_the_chat_again_drops_an_old_rule_session() {
+    fn opening_the_chat_again_drops_an_old_recognition() {
         let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
+        open_area(&mut talk, "Telefon");
         assert!(talk.state.session.rule.is_some());
 
         talk.send(Message::Open);
 
         assert!(talk.state.session.rule.is_none());
-        assert!(!has_chip(&talk, &ChipReply::RuleCreate), "no dead button");
-        assert_eq!(talk.rule_count(), 0, "the old proposal is gone");
+        assert!(!has_chip(&talk, &ChipReply::LevelsKeep), "no dead button");
         talk.type_text_understood("Rechnung", r#"{"intent":"search","text":"Rechnung"}"#);
-        assert_eq!(talk.rule_count(), 0);
         assert!(
             talk.state.session.rule.is_none(),
             "the sentence went to the router"
@@ -521,106 +378,20 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_outside_the_targets_keeps_the_old_way() {
+    fn a_folder_outside_the_targets_is_looked_at_the_same_way() {
         let mut talk = archive_talk();
         talk.write(
             "inbox/a.pdf",
             &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
         );
+        talk.model.push_levels(Ok(levels("{kind}")));
+        talk.model.push_levels(Ok(levels("{kind}")));
         talk.send(Message::Open);
 
-        talk.press(&ChipReply::Folder(talk.path("inbox")));
+        talk.send(Message::FolderPicked(Some(talk.path("inbox"))));
 
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatSourceSummary,
-                &[("folder", "inbox"), ("count", "1")]
-            )]
-        );
-        assert!(talk.state.session.rule.is_none());
-        assert!(talk.model.recognized().is_empty());
-        assert_eq!(talk.rule_count(), 0);
-    }
-
-    #[test]
-    fn the_proposal_has_the_target_in_words_and_no_levels_card() {
-        let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
-
-        assert!(levels_card(&talk).is_none());
-        let card = talk.proposal().expect("the proposal card");
-        let shown: Vec<&str> = card.facts.iter().map(|fact| fact.value.as_str()).collect();
-        assert!(shown.iter().all(|value| !value.contains('{')), "{shown:?}");
-        assert!(shown.contains(&"Telefon / Jahr"), "{shown:?}");
-    }
-
-    #[test]
-    fn the_trial_says_how_many_more_would_move() {
-        let mut talk = archive_talk();
-        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
-            let id = talk.index_inbox_document(
-                &format!("inbox/2020-{month:02}-{day}.pdf"),
-                &letter(
-                    "Alfa AG",
-                    &format!("{day}.{month:02}.2020"),
-                    "Rechnung",
-                    day + 50,
-                ),
-            );
-            talk.set_fields(
-                id,
-                &ncrs_index::DocumentFields {
-                    sender: Some("Alfa AG".to_owned()),
-                    kind: Some("invoice".to_owned()),
-                    date: chrono::NaiveDate::from_ymd_opt(2020, month, day),
-                    ..ncrs_index::DocumentFields::default()
-                },
-            );
-        }
-        propose_for_telefon(&mut talk);
-
-        let card = talk.proposal().expect("the proposal card");
-        let moves = card.moves.as_ref().expect("examples");
-        assert_eq!(moves.rows.len(), 6, "{:?}", moves.rows);
-        assert_eq!(
-            moves.more,
-            Some(say(Msg::HermesChatRuleExamplesMore, &[("count", "2")]))
-        );
-        assert_eq!(
-            card.counts,
-            Some(say(
-                Msg::HermesChatRuleTrialCounts,
-                &[("right", "0"), ("moves", "8"), ("inbox", "4")]
-            ))
-        );
-        assert!(
-            moves.rows[0].to.starts_with("Telefon/2020/")
-                && moves.rows[0].to.ends_with(".pdf")
-                && moves.rows[0].before.contains("2020-01-10.pdf"),
-            "{:?}",
-            moves.rows[0]
-        );
-    }
-
-    #[test]
-    fn documents_that_lie_right_are_counted_and_nothing_to_move_offers_no_filing() {
-        let mut talk = archive_talk();
-        talk.model.push_levels(Ok(levels("{year}/{date}")));
-        open_area(&mut talk, "Alfa");
-        talk.press(&ChipReply::LevelsKeep);
-        talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
-        talk.type_text("Rechnungen");
-
-        assert_eq!(
-            talk.proposal().expect("the proposal card").counts,
-            Some(say(
-                Msg::HermesChatRuleTrialCounts,
-                &[("right", "4"), ("moves", "0"), ("inbox", "0")]
-            ))
-        );
-        talk.press(&ChipReply::RuleCreate);
-        assert!(!has_chip(&talk, &ChipReply::RuleNow));
+        assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
+        suggest(&mut talk, "inbox", None);
     }
 
     #[test]
@@ -663,16 +434,13 @@ mod tests {
     }
 
     #[test]
-    fn opening_the_chat_during_a_read_keeps_the_rule_session() {
+    fn opening_the_chat_during_a_read_keeps_the_recognition() {
         let mut talk = archive_talk();
         talk.model.push_levels(Ok(levels("{year}/{date}")));
-        let folder = talk.path("archive");
+        let folder = talk.path("archive/Alfa");
         let (_task, _action) = ncrs_hermes_chat::update(
             &mut talk.state,
-            Message::ChangeArea {
-                folder,
-                area: "Alfa".to_owned(),
-            },
+            Message::FolderPicked(Some(folder)),
             &talk.ctx,
         );
         assert!(talk.state.pending_work().is_some(), "the read is running");
@@ -684,22 +452,18 @@ mod tests {
     }
 
     #[test]
-    fn without_the_ai_the_rule_question_is_not_asked() {
+    fn an_empty_folder_needs_no_ai() {
         let mut talk = archive_talk();
-        open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
         talk.ctx.ai_on = false;
 
-        talk.type_text("Rechnungen kommen hierhin");
+        open_area(&mut talk, "Telefon");
+        talk.press(&ChipReply::LevelsKeep);
 
-        assert!(has_chip(&talk, &ChipReply::TurnOnAi));
-        assert!(talk.model.described().is_empty());
-        assert!(talk.state.session.rule.is_none());
-        assert_eq!(talk.rule_count(), 0);
+        suggest(&mut talk, "archive/Telefon", Some(DEFAULT_PATTERN));
     }
 
     #[test]
-    fn a_folder_with_files_and_no_ai_does_not_start_a_rule() {
+    fn a_folder_with_files_and_no_ai_starts_no_recognition() {
         let mut talk = archive_talk();
         talk.ctx.ai_on = false;
 
@@ -707,53 +471,10 @@ mod tests {
 
         assert!(has_chip(&talk, &ChipReply::TurnOnAi));
         assert!(talk.state.session.rule.is_none());
-        assert_eq!(talk.rule_count(), 0);
     }
 
     #[test]
-    fn opening_a_folder_outside_the_targets_by_typing_only_reads_it() {
-        let mut talk = archive_talk();
-        talk.write(
-            "home/Documents/Taxes/a.pdf",
-            &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
-        );
-        let before = talk.files();
-        talk.send(Message::Open);
-
-        talk.type_text_understood(
-            "open ~/Documents/Taxes",
-            r#"{"intent":"open_folder","folder":"~/Documents/Taxes"}"#,
-        );
-
-        assert!(!has_chip(&talk, &ChipReply::ConfirmTidy));
-        assert_eq!(talk.files(), before);
-        assert!(talk.state.session.rule.is_none());
-    }
-
-    #[test]
-    fn dropping_every_level_stores_the_folder_with_one_slash() {
-        let mut talk = archive_talk();
-        open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsChange);
-        talk.model.push_revision(Ok(Revision {
-            levels: Levels {
-                folders: Vec::new(),
-                file: None,
-            },
-            done: false,
-        }));
-        talk.type_text("no levels at all");
-        talk.press(&ChipReply::LevelsApply);
-        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
-        talk.type_text("Rechnungen");
-
-        talk.press(&ChipReply::RuleCreate);
-
-        assert_eq!(the_only_rule(&talk).spec.filing_pattern, "Telefon/");
-    }
-
-    #[test]
-    fn a_nested_folder_does_not_repeat_its_own_path_in_the_levels() {
+    fn a_nested_folder_hands_on_the_pattern_below_itself() {
         let mut talk = archive_talk();
         talk.model.push_levels(Ok(levels("{date}")));
         talk.send(Message::Open);
@@ -762,244 +483,80 @@ mod tests {
             r#"{"intent":"open_folder","folder":"/Alfa/2020"}"#,
         );
         talk.press(&ChipReply::LevelsKeep);
-        talk.model
-            .push_rule(Ok(spec("Rechnung", "Alfa/2020/{date}")));
-        talk.type_text("Rechnungen");
 
-        talk.press(&ChipReply::RuleCreate);
-
-        assert_eq!(the_only_rule(&talk).spec.filing_pattern, "Alfa/2020/{date}");
-    }
-
-    fn applies_to(talk: &Talk) -> String {
-        let card = talk.proposal().expect("the proposal card");
-        assert_eq!(
-            card.facts[0].label,
-            say(Msg::HermesChatProposalAppliesTo, &[]),
-            "the condition comes first"
-        );
-        card.facts[0].value.clone()
+        suggest(&mut talk, "archive/Alfa/2020", Some("{date}"));
     }
 
     #[test]
-    fn a_condition_taken_from_the_files_says_what_they_share() {
-        let mut talk = archive_talk();
-        talk.model.push_levels(Ok(levels("{year}/{date}")));
-        open_area(&mut talk, "Alfa");
+    fn every_way_to_take_the_levels_ends_in_one_suggestion() {
+        for way in [
+            ChipReply::LevelsKeep,
+            ChipReply::LevelsApply,
+            ChipReply::LevelsDone,
+        ] {
+            let mut talk = archive_talk();
+            talk.model.push_levels(Ok(levels("{year}/{date}")));
+            open_area(&mut talk, "Alfa");
+            let expected = if way == ChipReply::LevelsKeep {
+                "{year}/{date}"
+            } else {
+                talk.press(&ChipReply::LevelsDefault);
+                DEFAULT_PATTERN
+            };
 
-        talk.press(&ChipReply::LevelsKeep);
+            talk.press(&way);
 
-        let sender = format!("{}: Alfa AG", say(Msg::ConditionKindSender, &[]));
-        assert_eq!(
-            applies_to(&talk),
-            say(
-                Msg::HermesChatProposalAppliesSharedAll,
-                &[("condition", &sender), ("count", "4")]
-            )
-        );
-        assert!(has_chip(&talk, &ChipReply::RuleCondition));
-    }
-
-    #[test]
-    fn changing_the_condition_keeps_the_levels_and_shows_the_proposal_again() {
-        let mut talk = archive_talk();
-        talk.model.push_levels(Ok(levels("{year}/{date}")));
-        open_area(&mut talk, "Alfa");
-        talk.press(&ChipReply::LevelsKeep);
-        let before = talk.proposal().cloned().expect("the proposal card");
-
-        talk.press(&ChipReply::RuleCondition);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatRuleWhat, &[("folder", "Alfa")])]
-        );
-        talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
-        talk.type_text("nur Rechnungen");
-
-        let card = talk.proposal().expect("the proposal card again");
-        assert_ne!(card.facts[0].value, before.facts[0].value);
-        assert_eq!(
-            card.facts[0].value,
-            format!("{}: Rechnung", say(Msg::ConditionKindWord, &[])),
-            "no reason in words for what the user said"
-        );
-        assert_eq!(card.facts[1], before.facts[1], "the filing stays");
-        assert_eq!(card.facts[2], before.facts[2], "the file name stays");
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-        talk.press(&ChipReply::RuleCreate);
-        let rule = the_only_rule(&talk);
-        assert_eq!(rule.spec.filing_pattern, "Alfa/{year}/{date}");
-        assert_eq!(rule.spec.name.as_deref(), Some("Alfa"));
-        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
-    }
-
-    fn rule_said(talk: &Talk, msg: Msg, name: &str) -> bool {
-        let wanted = Part::Text(say(msg, &[("name", name)]));
-        talk.state
-            .thread()
-            .iter()
-            .any(|entry| matches!(entry, Entry::Hermes { parts, .. } if parts.contains(&wanted)))
-    }
-
-    #[test]
-    fn saving_twice_for_the_same_folder_changes_the_rule_and_adds_none() {
-        let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
-        talk.press(&ChipReply::RuleCreate);
-        let first = the_only_rule(&talk);
-        assert!(rule_said(&talk, Msg::HermesChatRuleStored, "Telefon"));
-        talk.press(&ChipReply::RuleOnlyNew);
-
-        open_area(&mut talk, "Telefon");
-        assert!(
-            talk.last_texts().contains(&say(
-                Msg::HermesChatLevelsExistingRule,
-                &[("folder", "Telefon"), ("name", "Telefon")]
-            )),
-            "{:?}",
-            talk.last_texts()
-        );
-        talk.press(&ChipReply::LevelsChange);
-        talk.model.push_revision(Ok(Revision {
-            levels: levels("{date}_{sender}_{kind}"),
-            done: false,
-        }));
-        talk.type_text("leave out the year");
-        talk.press(&ChipReply::LevelsApply);
-        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
-        talk.type_text("Rechnungen");
-        talk.press(&ChipReply::RuleCreate);
-
-        let second = the_only_rule(&talk);
-        assert_eq!(second.id, first.id);
-        assert_ne!(second.spec.filing_pattern, first.spec.filing_pattern);
-        assert_eq!(second.spec.filing_pattern, "Telefon/{date}_{sender}_{kind}");
-        assert_eq!(second.position, first.position);
-        assert_eq!(second.origin, ncrs_index::RuleOrigin::Chat);
-        assert!(rule_said(&talk, Msg::HermesChatRuleUpdated, "Telefon"));
-    }
-
-    #[test]
-    fn changing_a_level_word_in_the_same_folder_changes_its_rule_and_adds_none() {
-        let mut talk = archive_talk();
-        let mut first = None;
-        for (word, pattern) in [("Rechnung", "Rechnung/{year}"), ("Beleg", "Beleg/{year}")] {
-            open_area(&mut talk, "Telefon");
-            talk.press(&ChipReply::LevelsChange);
-            talk.model.push_revision(Ok(Revision {
-                levels: levels(pattern),
-                done: false,
-            }));
-            talk.type_text("level 1 with another word");
-            talk.press(&ChipReply::LevelsApply);
-            talk.model.push_rule(Ok(spec("Rechnung", pattern)));
-            talk.type_text("Rechnungen");
-            talk.press(&ChipReply::RuleCreate);
-            if word == "Rechnung" {
-                first = Some(the_only_rule(&talk));
-                talk.press(&ChipReply::RuleOnlyNew);
-            }
+            suggest(&mut talk, "archive/Alfa", Some(expected));
         }
-
-        let second = the_only_rule(&talk);
-        assert_eq!(Some(second.id), first.map(|rule| rule.id));
-        assert_eq!(second.spec.filing_pattern, "Telefon/Beleg/{year}");
-        assert_eq!(second.spec.name.as_deref(), Some("Telefon"));
-        assert!(rule_said(&talk, Msg::HermesChatRuleUpdated, "Telefon"));
     }
 
+    /// Every sentence and button of the chat, one conversation: the files
+    /// stay, and no rule, folder or run comes out of it.
     #[test]
-    fn the_proposal_names_the_only_read_folder() {
+    fn no_way_through_the_chat_changes_a_file() {
         let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
-        let card = talk.proposal().expect("a proposal");
-        assert_eq!(card.facts[1].label, say(Msg::HermesChatProposalFrom, &[]));
-        assert_eq!(card.facts[1].value, "inbox");
-    }
-
-    #[test]
-    fn with_two_read_folders_the_proposal_says_all_of_them() {
-        let mut talk = archive_talk_reading(&["inbox", "scans"]);
-        propose_for_telefon(&mut talk);
-        let card = talk.proposal().expect("a proposal");
-        assert_eq!(card.facts[1].label, say(Msg::HermesChatProposalFrom, &[]));
-        assert_eq!(
-            card.facts[1].value,
-            say(Msg::HermesChatProposalFromAll, &[])
+        talk.write(
+            "inbox/a.pdf",
+            &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
         );
-    }
+        let before = talk.files();
+        talk.send(Message::Open);
 
-    fn only_from_label(name: &str) -> String {
-        say(Msg::HermesChatRuleOnlyFrom, &[("folder", name)])
-    }
+        for reply in [
+            r#"{"intent":"tidy_folder","source":"inbox"}"#,
+            r#"{"intent":"tidy_folder","source":"inbox","target":"archive"}"#,
+            r#"{"intent":"bulk_move","target":"Alt"}"#,
+            r#"{"intent":"change_structure","area":"*","order":"by_month"}"#,
+            r#"{"intent":"undo"}"#,
+            r#"{"intent":"leave_as_is"}"#,
+            r#"{"intent":"other"}"#,
+        ] {
+            talk.type_text_understood("ein Satz", reply);
+        }
+        for intent in [
+            ChipReply::IntentTidy,
+            ChipReply::IntentStructure,
+            ChipReply::IntentSearch,
+            ChipReply::IntentUndo,
+        ] {
+            talk.type_text_understood("ein Satz", r#"{"intent":"other"}"#);
+            talk.press(&intent);
+        }
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        open_area(&mut talk, "Alfa");
+        talk.press(&ChipReply::LevelsKeep);
+        talk.press(&ChipReply::SuggestRules);
 
-    #[test]
-    fn with_one_read_folder_the_proposal_offers_no_source_chips() {
-        let mut talk = archive_talk();
-        propose_for_telefon(&mut talk);
-        let labels = talk.labels();
-        assert!(!labels.contains(&only_from_label("inbox")));
-        assert!(!labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
-    }
-
-    #[test]
-    fn with_two_read_folders_the_proposal_offers_a_chip_for_each() {
-        let mut talk = archive_talk_reading(&["inbox", "scans"]);
-        propose_for_telefon(&mut talk);
-        let labels = talk.labels();
-        assert!(labels.contains(&only_from_label("inbox")));
-        assert!(labels.contains(&only_from_label("scans")));
-        assert!(!labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
-    }
-
-    #[test]
-    fn limiting_the_rule_to_a_read_folder_sets_the_condition_and_names_it() {
-        let mut talk = archive_talk_reading(&["inbox", "scans"]);
-        talk.index_inbox_document(
-            "inbox/rechnung.pdf",
-            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
-        );
-        propose_for_telefon(&mut talk);
-        let scans = talk.path("inbox");
-        talk.press(&ChipReply::OnlyFrom(scans.clone()));
-
-        let card = talk.proposal().expect("a proposal");
-        assert_eq!(card.facts[1].value, "inbox");
-        let labels = talk.labels();
-        assert!(labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
-        assert!(!labels.contains(&only_from_label("inbox")));
-
-        talk.press(&ChipReply::RuleCreate);
-        let conditions = the_only_rule(&talk).spec.conditions;
-        assert!(conditions.list.contains(&ncrs_index::Condition::new(
-            ncrs_index::ConditionKind::ReadFolder,
-            scans.to_string_lossy()
-        )));
-    }
-
-    #[test]
-    fn going_back_to_all_read_folders_removes_the_condition() {
-        let mut talk = archive_talk_reading(&["inbox", "scans"]);
-        talk.index_inbox_document(
-            "inbox/rechnung.pdf",
-            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
-        );
-        propose_for_telefon(&mut talk);
-        let inbox = talk.path("inbox");
-        talk.press(&ChipReply::OnlyFrom(inbox));
-        talk.press(&ChipReply::FromAllSources);
-
-        let card = talk.proposal().expect("a proposal");
-        assert_eq!(
-            card.facts[1].value,
-            say(Msg::HermesChatProposalFromAll, &[])
-        );
-        talk.press(&ChipReply::RuleCreate);
-        assert!(the_only_rule(&talk)
-            .spec
-            .conditions
-            .list
-            .iter()
-            .all(|condition| condition.kind != ncrs_index::ConditionKind::ReadFolder));
+        assert_eq!(talk.files(), before);
+        talk.assert_saves_no_rule();
+        for action in &talk.actions {
+            assert!(
+                matches!(
+                    action,
+                    Action::SuggestRules { .. } | Action::OpenSearch
+                ),
+                "{action:?}"
+            );
+        }
     }
 }

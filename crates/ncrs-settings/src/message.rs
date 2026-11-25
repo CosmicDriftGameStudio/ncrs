@@ -19,7 +19,7 @@ use ncrs_i18n::Language;
 use ncrs_pipeline::Load;
 
 use crate::ai_model::DownloadError as AiDownloadError;
-use crate::facts::{AreaFacts, LoadedFacts, ModelKind};
+use crate::facts::{LoadedFacts, ModelKind};
 use crate::folders::AddAs;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
@@ -213,16 +213,8 @@ pub enum SettingsMessage {
         result: Result<(), String>,
     },
     RemoveFolder(PathBuf),
-    /// The read folder stays but no longer files its new files by itself.
-    StopContinuous(PathBuf),
-    /// Opens the dialog of this read folder, or closes it.
-    EditFolder(Option<PathBuf>),
-    /// The folder with this path takes the values of the location.
-    ReplaceFolder(FilingLocation),
     /// The "+" next to the field of an own detail.
     AddOwnDetail(OwnDetail),
-    ToggleAllAreas,
-    ToggleAllRuns,
     /// The API key typed in the dialog of the own server.
     AiKey(ncrs_ai::Secret),
     /// "Test connection": asks the server for its models.
@@ -247,15 +239,8 @@ pub enum SettingsMessage {
     /// The sums of the usage log, per period, and the system's text when the
     /// log could not be read whole.
     UsageLoaded(Vec<(u32, ncrs_ai::UsageSummary)>, Option<String>),
-    /// Opens the chat (F2), at the change of this area when one is named.
-    OpenChat(Option<AreaFacts>),
     TogglePause,
-    /// Puts the run of this journal batch back.
-    UndoRun(i64),
-    /// A run was put back, with how many of its files stayed where they are,
-    /// or the reason it could not be.
-    RunUndone(Result<usize, String>),
-    /// The app read the facts the Index and Hermes pages show.
+    /// The app read the facts the Index page shows.
     FactsLoaded(LoadedFacts),
     /// The terminals and monospace fonts of this machine, read after the tab
     /// opened.

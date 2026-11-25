@@ -19,6 +19,7 @@ pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
     HermesOverviewMessage, HermesPage, QuickFixMessage, ReviewsMessage, RulesMessage,
+    SortingMessage, SuggestMessage, TargetsMessage,
     SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{
@@ -211,6 +212,9 @@ pub enum Message {
     /// The protection buttons of the Index page in the settings.
     HermesOverview(HermesOverviewMessage),
     Rules(RulesMessage),
+    Sorting(SortingMessage),
+    Targets(TargetsMessage),
+    Suggest(SuggestMessage),
     QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
@@ -404,6 +408,9 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::FilingStatus(inner) => Self::FilingStatus(inner),
             Hermes::HermesOverview(inner) => Self::HermesOverview(inner),
             Hermes::Rules(inner) => Self::Rules(inner),
+            Hermes::Sorting(inner) => Self::Sorting(inner),
+            Hermes::Targets(inner) => Self::Targets(inner),
+            Hermes::Suggest(inner) => Self::Suggest(inner),
             Hermes::QuickFix(inner) => Self::QuickFix(inner),
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),

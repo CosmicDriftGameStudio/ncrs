@@ -8,7 +8,6 @@ mod error;
 #[cfg(test)]
 mod eval_seed;
 mod filed_inbox;
-mod folder_pick;
 mod hermes_column;
 mod hermes_counts;
 mod index;
@@ -54,13 +53,12 @@ pub use kinds::{
 pub use model::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
 pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name};
 pub use model::{
-    Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,
-    Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,
-    FieldOrigins, FileStamp, Finding, FindingKind, HermesCounts, IndexStatistics, NewDocument,
-    NoActionReason, PlanItem, PlanOutcome, QuerySpec, ReviewEntry, ReviewEntryId, ReviewReason,
-    Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion, SavedQuery,
-    SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind, SenderAliasState, SenderAliases,
-    StatusCounts, SubtreePattern, TargetId,
+    Amount, BatchId, Combinator, Condition, ConditionKind, ContentHash, Currency, Document,
+    DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin, FieldOrigins,
+    FileStamp, HermesCounts, IndexStatistics, NewDocument, QuerySpec, ReviewEntry, ReviewEntryId,
+    ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
+    SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind, SenderAliasState,
+    SenderAliases, StatusCounts, SubtreePattern, TargetId,
 };
 pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;

@@ -10,16 +10,15 @@ use iced::keyboard::{Key, Modifiers};
 pub use ncrs_config::keymap::*;
 
 use crate::fs::OpenKind;
-use crate::hermes_column::FolderRole;
 use crate::messages::BatchRenameMessage;
 use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
-    HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferDialogMessage,
-    TransferKind, TrashMessage,
+    HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickOpenMessage, RemoteMessage,
+    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferDialogMessage, TransferKind,
+    TrashMessage,
 };
 use ncrs_fs::SortColumn;
 
@@ -114,24 +113,11 @@ impl KeyActionMessage for KeyAction {
             Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Open),
-            Self::Rules => Message::HermesPage(HermesPage::Rules),
-            Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
-            Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
+            Self::Rules => Message::HermesPage(HermesPage::Sorting),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
             Self::HermesFileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
-            Self::HermesFileContinuously => {
-                Message::HermesFile(HermesFileMessage::FileContinuously)
-            }
-            Self::HermesStopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
-            Self::HermesSetInbox => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
-            }
-            Self::HermesSetFilingLocation => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
-            }
-            Self::HermesSetArchive => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Archive))
-            }
+            Self::WatchSource => Message::HermesFile(HermesFileMessage::WatchSource),
+            Self::AddTarget => Message::HermesFile(HermesFileMessage::AddTarget),
             Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::HermesPage(HermesPage::SavedQueries),
@@ -305,8 +291,8 @@ mod tests {
     }
 
     #[test]
-    fn primary_shift_b_opens_the_rules_in_the_panel_and_can_be_rebound() {
-        let message = Some(Message::HermesPage(HermesPage::Rules));
+    fn primary_shift_b_opens_the_sorting_page_in_the_panel_and_can_be_rebound() {
+        let message = Some(Message::HermesPage(HermesPage::Sorting));
         assert_eq!(
             map_key(
                 Key::Character("b".into()),

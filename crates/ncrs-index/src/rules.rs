@@ -397,6 +397,29 @@ impl Index {
         Ok(moved)
     }
 
+    /// Hands one rule to `target` as its last; the rules left behind keep
+    /// their order, the id and the hits stay. Nothing changes when the rule is
+    /// there already.
+    pub fn set_rule_target(&mut self, id: RuleId, target: &TargetId) -> Result<(), IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let current: String = tx
+            .query_row("SELECT target FROM rule WHERE id = ?1", [id.get()], |row| {
+                row.get(0)
+            })
+            .optional()?
+            .ok_or(IndexError::RuleNotFound(id))?;
+        if current != target.as_str() {
+            tx.execute(
+                "UPDATE rule SET target = ?2,
+                     position = (SELECT COALESCE(MAX(position), 0) + 1 FROM rule)
+                 WHERE id = ?1",
+                params![id.get(), target.as_str()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Deletes every rule of `target` with what hangs on it; how many went.
     pub fn delete_rules_of(&mut self, target: &TargetId) -> Result<usize, IndexError> {
         let tx = self.conn_mut().transaction()?;
@@ -426,6 +449,34 @@ mod tests {
     use super::*;
     use crate::model::ConditionKind;
     use crate::test_support::{encrypted_index, rule_spec};
+
+    #[test]
+    fn a_rule_handed_to_another_target_comes_last_there_and_keeps_its_id() {
+        let (_dir, mut index) = encrypted_index();
+        let other = TargetId::new("t2").unwrap();
+        let first = index.create_rule(&rule_spec()).unwrap();
+        let second = index.create_rule(&rule_spec()).unwrap();
+        let there = index
+            .create_rule_in(&rule_spec(), RuleOrigin::Hand, &other)
+            .unwrap();
+
+        index.set_rule_target(first, &other).unwrap();
+
+        let main_ids: Vec<RuleId> = index
+            .rules_of(&TargetId::main())
+            .unwrap()
+            .iter()
+            .map(|rule| rule.id)
+            .collect();
+        let other_ids: Vec<RuleId> = index
+            .rules_of(&other)
+            .unwrap()
+            .iter()
+            .map(|rule| rule.id)
+            .collect();
+        assert_eq!(main_ids, vec![second]);
+        assert_eq!(other_ids, vec![there, first]);
+    }
 
     #[test]
     fn a_rule_may_have_a_name_a_tag_condition_and_no_kind() {

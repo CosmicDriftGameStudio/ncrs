@@ -14,15 +14,6 @@ use ncrs_ui_kit::layout::SETTINGS_NAV_WIDTH;
 use ncrs_ui_kit::nav_list::{nav_list, NavGroup, NavItem};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
-/// In the list the Hermes page shows only its second name: the group head
-/// above it already says Hermes.
-fn nav_label(feature: SettingsFeature) -> Msg {
-    match feature {
-        SettingsFeature::Hermes => Msg::SettingsFeatureHermesSorting,
-        other => feature_label(other),
-    }
-}
-
 fn group_mark(group: SettingsGroup) -> Option<Msg> {
     match group {
         SettingsGroup::Hermes => Some(Msg::HermesBeta),
@@ -51,7 +42,7 @@ pub fn nav<'a>(
     for &feature in listed {
         let group = feature.group();
         let item = NavItem {
-            label: lang.text(nav_label(feature)).to_owned(),
+            label: lang.text(feature_label(feature)).to_owned(),
             suffix: None,
             chosen: shown == Some(feature),
             dimmed: view.state.focus.area == crate::focus::Area::Rows,
@@ -106,13 +97,6 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
         .font(ncrs_ui_kit::APP_FONT_BOLD)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    if let Some(suffix) = feature_suffix(feature) {
-        title = title.push(
-            text(lang.text(suffix).to_owned())
-                .size(font_size::TITLE)
-                .color(palette.dim_text),
-        );
-    }
     if let Some(beta_mark) = feature_beta_mark(feature) {
         title = title.push(
             text(lang.text(beta_mark).to_owned())

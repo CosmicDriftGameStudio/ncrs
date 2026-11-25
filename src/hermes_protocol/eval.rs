@@ -1,7 +1,7 @@
 //! The reading half of the filing eval: the real program with the local model
 //! reads a copy of an archive and of a source folder, and the folder it worked
-//! in is kept. `brother_eval_trial` in `ncrs-filing` then plans the source into
-//! the archive from that folder and counts the hits.
+//! in is kept. With `NCRS_EVAL_TIDY=1` the plan of the source is then made by
+//! the rules and counted.
 //!
 //! ```text
 //! NCRS_EVAL_ARCHIVE=<archive, only read> NCRS_EVAL_SOURCE=<scans, only read>
@@ -13,15 +13,17 @@
 //! `run/downloads` (the source) and `index.db` (the index with the fields the
 //! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model;
 //! `NCRS_EVAL_RESUME=<that folder>` continues a run the wait cut short, and
-//! `NCRS_EVAL_TIDY=1` then tidies the source in the chat, with screenshots in `out`.
-//! `NCRS_EVAL_FILE=copy|move` then files the plan in the tab and undoes it.
+//! `NCRS_EVAL_TIDY=1` then plans the source in the tab, with screenshots in `out`.
+//! An index without rules takes the suggested ones first. A file that also lies
+//! in the original archive is counted as right or wrong by its folder there; the
+//! others only as with or without a place. `NCRS_EVAL_FILE=copy|move` files the
+//! plan in the tab and undoes it.
 //! `NCRS_EVAL_CONTINUOUS=<folder with new files>` (with `NCRS_EVAL_TIDY=1` and
-//! `NCRS_EVAL_FILE=copy` or `move`) answers "Always" in the chat instead of "Once", so the
-//! source files by itself afterwards, copies the folder into the scratch copy
-//! of the source, waits (`NCRS_PROTOCOL_AI_WAIT_SECS`) for the background run,
-//! prints what it filed and the review entries before and after, takes the
-//! pictures for the acceptance (1740x1130) and undoes the run; after the undo
-//! the index must not call the put-back files filed.
+//! `NCRS_EVAL_FILE=copy` or `move`) makes the source a watched one, copies the
+//! folder into the scratch copy of the source, waits (`NCRS_PROTOCOL_AI_WAIT_SECS`)
+//! for the background run, prints what it filed and the open questions before and
+//! after, takes the pictures for the acceptance (1740x1130) and undoes the run;
+//! after the undo the index must not call the put-back files filed.
 //! A run that ended while it was still reading is continued the same way, with
 //! everything it had read.
 //!
@@ -174,7 +176,7 @@ fn brother_eval_read() {
         run.flow_5_tidy();
     }
     drop(run);
-    // The background folder picks may still hold the model, even after the
+    // The reading may still hold the model, even after the
     // run is dropped; a process that ends with it loaded makes the GPU backend
     // abort.
     #[cfg(feature = "local-ai")]

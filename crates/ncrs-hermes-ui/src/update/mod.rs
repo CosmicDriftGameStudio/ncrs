@@ -11,14 +11,17 @@ mod quick_fix;
 mod reviews;
 mod rules;
 mod saved_queries;
+mod sorting;
 mod status;
+mod suggest;
 mod tags;
+mod targets;
 mod watching;
 
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::{FilingWriteError, LocationTransfer};
+use ncrs_config::config::FilingWriteError;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::{Action, ProtectionStep};
@@ -26,21 +29,27 @@ use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
     ActivityMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    Message, QuickFixMessage, ReviewsMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    Message, QuickFixMessage, ReviewsMessage, RulesMessage, SavedQueriesMessage, SortingMessage,
+    TargetsMessage,
+    TagsMessage,
 };
 use crate::rule_form::RuleForm;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
+use crate::source_dialog::SourceDialogKind;
 use crate::state::Hermes;
 use crate::tags_page::TagsPage;
 use crate::watching::SourceRun;
 use ncrs_config::config::Filing;
+use ncrs_index::{DocumentId, TargetId};
 use ncrs_filing::filing::FilingMessage;
 
 pub use self::column::{refresh_hermes_column, request_hermes_column};
 pub use self::filing_job::{run_filing_work, run_filing_work_after};
 pub use self::lifecycle::SavedFilingApplies;
 pub use self::status::{open_filing_status_page, request_hermes_counts, update_filing_status};
+pub use self::suggest::{open_rule as open_suggest_rule, open_scheme as open_suggest_scheme};
+pub use self::targets::open_dialog_then_suggest as open_target_dialog;
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
@@ -51,9 +60,11 @@ pub fn show_page(hermes: &mut Hermes, page: HermesPage, ctx: &Ctx<'_>) -> Outcom
     hermes.close_pages();
     let task = match page {
         HermesPage::SavedQueries => saved_queries::open(hermes, ctx, &mut actions),
-        HermesPage::Rules => rules::open(hermes, ctx, &mut actions),
+        HermesPage::Sorting => {
+            let rules_task = rules::open(hermes, ctx, &mut actions);
+            Task::batch([sorting::open(hermes, ctx, &mut actions), rules_task])
+        }
         HermesPage::Tags => tags::open(hermes, ctx, &mut actions),
-        HermesPage::Reviews => reviews::open(hermes, &mut actions),
         HermesPage::Activity => activity::open(hermes, &mut actions),
         HermesPage::Inspection => {
             let (task, opened) = open_filing_status_page(hermes, ctx);
@@ -79,7 +90,11 @@ pub fn closing(hermes: &Hermes) {
 
 /// A dialog of the page is up, and the next Escape closes it.
 pub fn dialog_is_open(hermes: &Hermes) -> bool {
-    hermes.rules.as_ref().is_some_and(RulesPage::dialog_is_open)
+    hermes.source_dialog.is_some()
+        || hermes.target_dialog.is_some()
+        || hermes.target_removal.is_some()
+        || hermes.suggest.is_some()
+        || hermes.rules.as_ref().is_some_and(RulesPage::dialog_is_open)
         || hermes.tags.as_ref().is_some_and(TagsPage::dialog_is_open)
         || hermes
             .saved_queries
@@ -106,14 +121,28 @@ pub fn close_dialog(hermes: &mut Hermes) -> Option<Task<Message>> {
     if !dialog_is_open(hermes) {
         return None;
     }
+    // The dialog of a target opens over the one of a source and goes first.
+    if hermes.target_dialog.take().is_some()
+        || hermes.source_dialog.take().is_some()
+        || hermes.target_removal.take().is_some()
+    {
+        return Some(Task::none());
+    }
+    // The rule form opens over the dialog of the proposals and goes first.
+    if !hermes.rules.as_ref().is_some_and(RulesPage::dialog_is_open) && hermes.suggest.is_some() {
+        suggest::close(hermes);
+        return Some(Task::none());
+    }
     if dialog_holds_unsaved_input(hermes) {
         return Some(Task::none());
     }
-    Some(Task::batch([
+    let closed = Task::batch([
         rules::close_dialog(hermes),
         tags::close_dialog(hermes),
         saved_queries::close_dialog(hermes),
-    ]))
+    ]);
+    suggest::after_rules(hermes);
+    Some(closed)
 }
 
 /// The one entry of the Hermes pages for the messages that need nothing but
@@ -124,7 +153,10 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::Filing(inner) => update_filing(hermes, inner, ctx),
         Message::FilingStatus(inner) => update_filing_status(hermes, inner, ctx),
         Message::HermesOverview(inner) => update_hermes_overview(hermes, inner, ctx),
-        Message::Rules(inner) => update_rules(hermes, inner),
+        Message::Rules(inner) => update_rules(hermes, inner, ctx),
+        Message::Sorting(inner) => update_sorting(hermes, inner, ctx),
+        Message::Targets(inner) => update_targets(hermes, inner, ctx),
+        Message::Suggest(inner) => suggest::update(hermes, inner, ctx),
         Message::QuickFix(inner) => update_quick_fix(hermes, inner, ctx),
         Message::SavedQueries(inner) => update_saved_queries(hermes, inner, ctx),
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
@@ -159,8 +191,47 @@ pub fn update_quick_fix(hermes: &mut Hermes, message: QuickFixMessage, ctx: &Ctx
     (task, actions)
 }
 
-pub fn update_rules(hermes: &mut Hermes, message: RulesMessage) -> Outcome {
-    (rules::update(hermes, message), Vec::new())
+pub fn update_rules(hermes: &mut Hermes, message: RulesMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rules::update(hermes, message, ctx, &mut actions);
+    suggest::after_rules(hermes);
+    (task, actions)
+}
+
+/// Opens the rule dialog over whatever is shown; see `rules::open_rule_form`.
+pub fn open_rule_form(
+    hermes: &mut Hermes,
+    target: Option<TargetId>,
+    document: Option<DocumentId>,
+    path: Option<&Path>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rules::open_rule_form(hermes, target, document, path, ctx, &mut actions);
+    (task, actions)
+}
+
+/// Opens the dialog of the source at `folder`, or of a new one, or of the
+/// one-off filing of the folder; it works over every tab.
+pub fn open_source_dialog(
+    hermes: &mut Hermes,
+    folder: Option<PathBuf>,
+    kind: SourceDialogKind,
+) -> Task<Message> {
+    sorting::open_dialog(hermes, folder, kind)
+}
+
+fn update_targets(hermes: &mut Hermes, message: TargetsMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    sorting::tick_new_targets(hermes, &message);
+    let task = targets::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_sorting(hermes: &mut Hermes, message: SortingMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = sorting::update(hermes, message, ctx, &mut actions);
+    (task, actions)
 }
 
 pub fn update_saved_queries(
@@ -229,19 +300,6 @@ pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &C
     (task, actions)
 }
 
-/// Turns "file new files by itself" on for a read folder, with `transfer`, or
-/// off with `None`.
-pub fn set_continuous_filing(
-    hermes: &Hermes,
-    folder: &Path,
-    transfer: Option<LocationTransfer>,
-    ctx: &Ctx<'_>,
-) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_file::set_continuous_filing(hermes, folder, transfer, ctx, &mut actions);
-    (task, actions)
-}
-
 pub fn role_save_failed(hermes: &Hermes, error: &FilingWriteError, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     hermes_file::role_save_failed(hermes, error, ctx, &mut actions);
@@ -251,7 +309,7 @@ pub fn role_save_failed(hermes: &Hermes, error: &FilingWriteError, ctx: &Ctx<'_>
 pub fn update_filing(hermes: &mut Hermes, message: FilingMessage, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = lifecycle::update_filing(hermes, message, ctx, &mut actions);
-    (task, actions)
+    (Task::batch([task, suggest::resume(hermes, ctx)]), actions)
 }
 
 pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Outcome {

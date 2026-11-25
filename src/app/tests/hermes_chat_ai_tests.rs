@@ -135,7 +135,7 @@ fn a_hermes_flow_sees_that_the_background_filing_is_allowed_without_a_model() {
     app.hermes.filing_config.first_run = false;
     app.chat_model = None;
 
-    let seen_in_flow = app.with_hermes(Vec::new(), |_, ctx| ctx.watching_allowed);
+    let seen_in_flow = app.with_hermes(|_, ctx| ctx.watching_allowed);
 
     assert!(seen_in_flow);
 }

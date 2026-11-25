@@ -98,6 +98,6 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                 .with_leading(lead)
         })
         .collect();
-    rows.push(add_folder_row(AddAs::Favourite, None, Vec::new(), view));
+    rows.push(add_folder_row(AddAs::Favourite, None, view));
     rows
 }

@@ -768,11 +768,6 @@ pub enum RuleSuggestion {
     Discarded,
 }
 
-mod reorganisation;
-pub use reorganisation::{
-    ConflictReason, Finding, FindingKind, NoActionReason, PlanItem, PlanOutcome,
-};
-
 #[cfg(test)]
 mod tests;
 

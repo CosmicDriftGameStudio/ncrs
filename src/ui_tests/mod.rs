@@ -196,7 +196,7 @@ mod about_card;
 mod ai_model_card;
 
 #[cfg(test)]
-mod settings_tab;
+pub mod settings_tab;
 
 #[cfg(test)]
 mod full_version_page;
@@ -223,11 +223,6 @@ mod servers_page;
 
 #[cfg(test)]
 mod hit_list_snapshots;
-
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[cfg(test)]
-mod quick_fix_menu_actions;
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.

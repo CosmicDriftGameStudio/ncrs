@@ -260,20 +260,15 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
             at(1).toggle()
         }
         KeyAction::OpenHitsLeft | KeyAction::OpenHitsRight => at(2),
-        KeyAction::HermesHandToInbox
+        KeyAction::HermesFileOnce
+        | KeyAction::WatchSource
+        | KeyAction::AddTarget
         | KeyAction::HermesProcessAgain
-        | KeyAction::HermesFileOnce
-        | KeyAction::HermesFileContinuously
-        | KeyAction::HermesStopContinuous
-        | KeyAction::HermesQuickFix
         | KeyAction::HermesExclude => at(0),
         KeyAction::Rules => at(1),
         KeyAction::FilingStatus | KeyAction::SavedQueries | KeyAction::HermesInspect => {
             at(1).within(HermesReview)
         }
-        KeyAction::HermesSetInbox
-        | KeyAction::HermesSetFilingLocation
-        | KeyAction::HermesSetArchive => at(1).within(HermesSetup),
         KeyAction::DownloadOcrModels | KeyAction::DownloadAiModel => {
             at(1).dialog().within(HermesSetup)
         }
@@ -427,25 +422,12 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Rules => {
             Command::themed(action, Hermes, Msg::ActionRules, FuturamaName::ActionRules)
         }
-        KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
-        KeyAction::HermesHandToInbox => {
-            Command::plain(action, Hermes, Msg::ActionHermesHandToInbox)
-        }
         KeyAction::HermesProcessAgain => {
             Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
         }
         KeyAction::HermesFileOnce => Command::plain(action, Hermes, Msg::ActionHermesFileOnce),
-        KeyAction::HermesFileContinuously => {
-            Command::plain(action, Hermes, Msg::ActionHermesFileContinuously)
-        }
-        KeyAction::HermesStopContinuous => {
-            Command::plain(action, Hermes, Msg::ActionHermesStopContinuous)
-        }
-        KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
-        KeyAction::HermesSetFilingLocation => {
-            Command::plain(action, Hermes, Msg::ActionHermesSetFilingLocation)
-        }
-        KeyAction::HermesSetArchive => Command::plain(action, Hermes, Msg::ActionHermesSetArchive),
+        KeyAction::WatchSource => Command::plain(action, Hermes, Msg::ActionWatchSource),
+        KeyAction::AddTarget => Command::plain(action, Hermes, Msg::ActionAddTarget),
         KeyAction::HermesExclude => Command::plain(action, Hermes, Msg::ActionHermesExclude),
         KeyAction::HermesInspect => Command::plain(action, Hermes, Msg::ActionHermesInspect),
         KeyAction::SavedQueries => Command::themed(

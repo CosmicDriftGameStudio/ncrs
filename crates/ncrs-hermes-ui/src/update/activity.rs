@@ -4,6 +4,7 @@ use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 
+use super::status::open_waiting;
 use crate::action::Action;
 use crate::activity_page::{ActivityPage, MAX_BATCHES};
 use crate::message::{ActivityMessage, HermesPage, Message};
@@ -55,7 +56,7 @@ pub fn update(
             }
         }
         ActivityMessage::ShowFile(path) => actions.push(Action::RevealFile(path)),
-        ActivityMessage::OpenReviews => actions.push(Action::ShowPage(HermesPage::Reviews)),
+        ActivityMessage::OpenWaiting => open_waiting(hermes, actions),
         ActivityMessage::OpenReadErrors => actions.push(Action::ShowPage(HermesPage::Inspection)),
     }
     Task::none()

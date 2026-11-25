@@ -207,7 +207,8 @@ pub fn key_button<'a, M: Clone + 'a>(
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let content = row![label_text(label), cap(key, on_press.is_some(), palette)]
+    let is_filled = on_press.is_some() && !matches!(tone, Tone::Secondary);
+    let content = row![label_text(label), cap(key, is_filled, palette)]
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
     sized_button(content.into(), on_press, tone, palette)

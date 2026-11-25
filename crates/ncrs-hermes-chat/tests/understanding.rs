@@ -6,8 +6,10 @@ mod common;
 #[cfg(test)]
 mod tests {
 
+    use std::path::PathBuf;
+
     use crate::common::{letter, say, Talk};
-    use ncrs_ai::{AiError, Compute, LocalModelStatus, LOCAL_MODEL};
+    use ncrs_ai::{AiError, Compute, Levels, LocalModelStatus, LOCAL_MODEL};
     use ncrs_hermes_chat::{Action, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_ui_kit::format;
@@ -84,12 +86,22 @@ mod tests {
             .unwrap()
             .label
             .clone();
+        for _ in 0..2 {
+            talk.model
+                .push_levels(Ok(Levels::from_pattern("Alfa/{year}/").unwrap()));
+        }
         talk.type_text_understood(
-            "den Eingang bitte",
+            "das Archiv bitte",
             &format!(r#"{{"intent":"answer","choice":"{label}"}}"#),
         );
-        assert_eq!(user_bubbles(&talk), ["den Eingang bitte"]);
-        assert_eq!(talk.last_texts()[0], say(Msg::HermesChatAreaHere, &[]));
+        assert_eq!(user_bubbles(&talk), ["das Archiv bitte"]);
+        assert!(
+            talk.last_parts()
+                .iter()
+                .any(|part| matches!(part, Part::Levels(_))),
+            "{:?}",
+            talk.last_parts()
+        );
     }
 
     #[test]
@@ -144,13 +156,7 @@ mod tests {
         let turns = talk.model.turns();
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].message, "räum die Inbox auf");
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatConfirmTidy,
-                &[("source", "inbox"), ("mode", "")]
-            )]
-        );
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSortHint, &[])]);
         assert_eq!(
             user_bubbles(&talk)
                 .iter()
@@ -359,9 +365,8 @@ mod tests {
     }
 
     #[test]
-    fn a_text_too_long_for_the_model_is_said_and_not_kept_for_the_next_turn() {
+    fn a_text_too_long_for_the_model_is_said() {
         let mut talk = small_talk();
-        talk.state.session.previous_message = Some("an earlier long text".to_owned());
         talk.model.push_reply(Err(AiError::TooLong));
 
         talk.type_text("hallo");
@@ -370,7 +375,6 @@ mod tests {
             talk.last_texts(),
             vec![say(Msg::HermesChatModelTooLong, &[])]
         );
-        assert!(talk.state.session.previous_message.is_none());
     }
 
     #[test]
@@ -405,11 +409,6 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"../geheim"}"#,
         );
         fallback(&talk);
-        talk.type_text_understood(
-            "räum Inbox nach ../x",
-            r#"{"intent":"tidy_folder","source":"Inbox","target":"../x"}"#,
-        );
-        fallback(&talk);
     }
 
     #[test]
@@ -420,102 +419,91 @@ mod tests {
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
     }
 
+    fn sort_chip(folder: Option<PathBuf>) -> ChipReply {
+        ChipReply::OpenSort(folder)
+    }
+
     #[test]
-    fn a_tidy_sentence_is_confirmed_and_changed_before_anything_is_read() {
-        let mut talk = small_talk();
-        let before = talk.files();
-        talk.type_text_understood(
-            "verschieb die Inbox ins Archiv",
-            r#"{"intent":"tidy_folder","source":"Inbox","target":"archive","transfer":"move"}"#,
-        );
-        let inbox = talk.path("inbox");
-        let archive = talk.path("archive");
-        let confirm = |mode: Msg| {
-            say(
-                Msg::HermesChatConfirmTidyTo,
-                &[
-                    ("source", &inbox.to_string_lossy()),
-                    ("target", &archive.to_string_lossy()),
-                    ("mode", &say(mode, &[])),
-                ],
-            )
-        };
-        assert_eq!(talk.last_texts(), vec![confirm(Msg::HermesChatConfirmMove)]);
-        assert!(talk.state.pending_work().is_none());
-        assert_eq!(
-            talk.labels(),
-            vec![
-                say(Msg::HermesChatConfirmYes, &[]),
-                say(Msg::HermesChatOtherTarget, &[]),
-                say(Msg::HermesChatCopy, &[]),
-                say(Msg::HermesChatCancel, &[]),
-            ]
-        );
+    fn a_tidy_sentence_points_to_the_folder_and_reads_nothing() {
+        for reply in [
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+            r#"{"intent":"tidy_folder","source":"Inbox","target":"archive","schedule":"always","transfer":"move"}"#,
+        ] {
+            let mut talk = small_talk();
+            let before = talk.files();
+            talk.open();
 
-        talk.press(&ChipReply::SwitchToCopy);
-        assert_eq!(talk.last_texts(), vec![confirm(Msg::HermesChatConfirmCopy)]);
-        assert_eq!(talk.labels()[2], say(Msg::HermesChatMove, &[]));
+            talk.type_text_understood("räum die Inbox auf", reply);
 
-        talk.press(&ChipReply::OtherTarget);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatAskOtherTarget, &[])]
-        );
-        let elsewhere = talk.path("elsewhere");
-        std::fs::create_dir_all(&elsewhere).unwrap();
-        talk.type_text(&elsewhere.to_string_lossy());
-        talk.press(&ChipReply::ReadAnyway);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatConfirmTidyTo,
-                &[
-                    ("source", &talk.path("inbox").to_string_lossy()),
-                    ("target", &elsewhere.to_string_lossy()),
-                    ("mode", &say(Msg::HermesChatConfirmCopy, &[])),
+            assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSortHint, &[])]);
+            assert_eq!(
+                talk.labels(),
+                vec![
+                    say(Msg::HermesChatOpenSort, &[]),
+                    say(Msg::HermesChatOpenRuleForm, &[])
                 ]
-            )]
-        );
-        assert_eq!(talk.files(), before);
+            );
+            assert!(talk.actions.is_empty(), "{:?}", talk.actions);
+
+            talk.press(&sort_chip(Some(talk.path("inbox"))));
+            assert_eq!(
+                talk.actions,
+                vec![Action::OpenSortDialog {
+                    folder: Some(talk.path("inbox"))
+                }]
+            );
+            assert!(talk.works.is_empty(), "{:?}", talk.works);
+            assert_eq!(talk.files(), before);
+        }
     }
 
     #[test]
-    fn yes_reads_and_hands_the_plan_to_the_tab_with_nothing_filed() {
+    fn a_tidy_sentence_with_an_unknown_folder_leaves_the_folder_to_the_app() {
         let mut talk = small_talk();
-        let before = talk.files();
         talk.type_text_understood(
-            "räum die Inbox ins Archiv auf, einmal, kopieren",
-            r#"{"intent":"tidy_folder","source":"Inbox","target":"archive","schedule":"once","transfer":"copy"}"#,
+            "räum Nirgendwo auf",
+            r#"{"intent":"tidy_folder","source":"Nirgendwo"}"#,
         );
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
-        assert!(
-            talk.actions.iter().any(|action| matches!(
-                action,
-                Action::OpenFiling { source, target, .. }
-                    if source.ends_with("inbox") && target.ends_with("archive")
-            )),
-            "{:?}",
-            talk.actions
-        );
-        assert_eq!(talk.files(), before, "the chat moves nothing");
+
+        talk.press(&sort_chip(None));
+
+        assert_eq!(talk.actions, vec![Action::OpenSortDialog { folder: None }]);
+        assert!(talk.works.is_empty(), "{:?}", talk.works);
     }
 
     #[test]
-    fn an_always_in_the_sentence_goes_straight_on_to_the_tab() {
+    fn a_tidy_sentence_with_two_folders_of_the_name_asks_which_one() {
         let mut talk = small_talk();
+        std::fs::create_dir_all(talk.path("other/inbox")).unwrap();
+        talk.ctx.sources.push(talk.path("other/inbox"));
         talk.type_text_understood(
-            "räum die Inbox immer auf",
-            r#"{"intent":"tidy_folder","source":"Inbox","schedule":"always","transfer":"move"}"#,
+            "räum die Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
         );
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
-        assert!(talk
-            .actions
-            .iter()
-            .any(|action| matches!(action, Action::OpenFiling { .. })));
+        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
+
+        talk.press(&ChipReply::NamedFolder(talk.path("other/inbox")));
+
+        talk.press(&sort_chip(Some(talk.path("other/inbox"))));
+        assert_eq!(
+            talk.actions,
+            vec![Action::OpenSortDialog {
+                folder: Some(talk.path("other/inbox"))
+            }]
+        );
+    }
+
+    #[test]
+    fn the_hint_opens_an_empty_rule_form_too() {
+        let mut talk = small_talk();
+        talk.open();
+        talk.type_text_understood("hm", r#"{"intent":"other"}"#);
+        talk.press(&ChipReply::IntentTidy);
+
+        talk.press(&ChipReply::OpenRuleForm);
+
+        assert_eq!(talk.actions, vec![Action::OpenRuleForm]);
+        assert!(talk.works.is_empty(), "{:?}", talk.works);
     }
 
     #[test]

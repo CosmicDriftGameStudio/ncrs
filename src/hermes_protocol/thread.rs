@@ -32,17 +32,10 @@ pub fn entry_text(entry: &Entry) -> String {
                     .map(|row| format!("[{} | {} | {}]", row.name, row.description, row.example))
                     .collect::<Vec<_>>()
                     .join(" "),
-                Part::File(card) => card.segments.join("/"),
                 Part::Levels(card) => card
                     .rows
                     .iter()
                     .map(|row| format!("{}. {}", row.number, row.text))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                Part::Proposal(card) => card
-                    .facts
-                    .iter()
-                    .map(|fact| format!("{}: {}", fact.label, fact.value))
                     .collect::<Vec<_>>()
                     .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),

@@ -12,6 +12,8 @@ pub const LIST_BOX_HEIGHT: f32 = 160.0;
 /// A short field or dropdown, and a wide one, beside its label.
 pub const FIELD_SHORT: f32 = 160.0;
 pub const FIELD_WIDE: f32 = 280.0;
+/// The name column of a filing plan.
+pub const PLAN_NAME: f32 = 270.0;
 /// The side pane of a two-pane page.
 pub const SIDE_PANE: f32 = 300.0;
 

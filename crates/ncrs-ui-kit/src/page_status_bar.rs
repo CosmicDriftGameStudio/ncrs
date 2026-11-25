@@ -24,6 +24,20 @@ pub struct PageStatusBar<'a> {
     pub right: Option<&'a str>,
 }
 
+/// The field at the left end of a bar that names the page.
+pub(crate) fn mode_field<'a, M: 'a>(mode: &str, palette: &Palette) -> Element<'a, M> {
+    container(
+        text(mode.to_owned())
+            .size(font_size::SMALL)
+            .wrapping(Wrapping::None),
+    )
+    .padding([0.0, spacing::L])
+    .height(Length::Fill)
+    .align_y(alignment::Vertical::Center)
+    .style(theme::mode_field(palette))
+    .into()
+}
+
 pub fn page_status_bar<'a, M: 'a>(bar: PageStatusBar<'_>, palette: &Palette) -> Element<'a, M> {
     let small = |content: String, color: Color| {
         container(
@@ -34,15 +48,7 @@ pub fn page_status_bar<'a, M: 'a>(bar: PageStatusBar<'_>, palette: &Palette) -> 
         )
         .padding([0.0, spacing::L])
     };
-    let mode = container(
-        text(bar.mode.to_owned())
-            .size(font_size::SMALL)
-            .wrapping(Wrapping::None),
-    )
-    .padding([0.0, spacing::L])
-    .height(Length::Fill)
-    .align_y(alignment::Vertical::Center)
-    .style(theme::mode_field(palette));
+    let mode = mode_field(bar.mode, palette);
     let middle = match bar.line {
         PageStatusLine::Failure(failure) => small(failure.to_owned(), palette.error),
         PageStatusLine::Notice(notice) => small(format!("\u{2713} {notice}"), palette.success),

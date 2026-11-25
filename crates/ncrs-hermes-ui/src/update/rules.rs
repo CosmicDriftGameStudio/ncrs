@@ -1,21 +1,32 @@
+use std::ffi::OsStr;
+use std::path::Path;
 use std::sync::Arc;
 
 use iced::widget::operation;
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
-use ncrs_filing::rules_work::{RuleChange, RulesAccess};
+use ncrs_filing::rules_work::{
+    try_in_target, DocumentForRule, RuleChange, RulesAccess, SortTry,
+};
+use ncrs_index::{DocumentId, TargetId};
+use ncrs_intake::SortSource;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{HermesPage, Message, RuleFormMessage, RulesMessage};
-use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
+use crate::rule_form::{FormTry, RuleForm, RulePrefill, RuleSave, TRY_DEBOUNCE};
 use crate::rules_page::RulesPage;
 use crate::state::Hermes;
 
 /// The analysis starts with the view; the list appears when it is done.
-pub fn update(hermes: &mut Hermes, message: RulesMessage) -> Task<Message> {
+pub fn update(
+    hermes: &mut Hermes,
+    message: RulesMessage,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
     match message {
         RulesMessage::Loaded { generation, result } => {
             if generation != hermes.rules_generation {
@@ -66,6 +77,7 @@ pub fn update(hermes: &mut Hermes, message: RulesMessage) -> Task<Message> {
             match result {
                 Ok(()) => {
                     hermes.watching.mark_all();
+                    actions.push(Action::RulesChanged);
                     run_rules_load(hermes)
                 }
                 Err(detail) => {
@@ -82,21 +94,63 @@ pub fn update(hermes: &mut Hermes, message: RulesMessage) -> Task<Message> {
             }
             Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
+        RulesMessage::NewIn(target) => {
+            if let Some(view) = hermes.rules.as_mut() {
+                view.begin_new_in(target);
+            }
+            Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
+        }
         RulesMessage::Edit(index) => {
             if let Some(view) = hermes.rules.as_mut() {
                 view.begin_edit(index);
             }
             Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
-        RulesMessage::Form(form_message) => update_rule_form(hermes, form_message),
-        RulesMessage::TryElapsed(generation) => run_rule_try(hermes, generation),
+        RulesMessage::Form(form_message) => update_rule_form(hermes, form_message, actions),
+        RulesMessage::TryElapsed(generation) => run_rule_try(hermes, generation, ctx),
         RulesMessage::Tried { generation, result } => {
             if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
                 form.try_answered(generation, result);
             }
             Task::none()
         }
+        RulesMessage::DocumentLoaded(result) => {
+            match result {
+                Ok(Some(document)) => {
+                    document_loaded(hermes, document, ctx);
+                    Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
+                }
+                Ok(None) => Task::none(),
+                Err(detail) => {
+                    actions.push(Action::ShowError(detail));
+                    Task::none()
+                }
+            }
+        }
     }
+}
+
+/// The form that waited for its document fills in, unless the user typed.
+fn document_loaded(hermes: &mut Hermes, document: DocumentForRule, ctx: &Ctx<'_>) {
+    let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) else {
+        return;
+    };
+    if form.is_edited() {
+        return;
+    }
+    let prefill = RulePrefill {
+        sender: document.sender,
+        kind: document.kind,
+        tags: document.tags,
+        pattern: String::new(),
+    };
+    let destination = form.destination.clone();
+    let called = std::mem::take(&mut form.name);
+    let mut filled = RuleForm::from_document(prefill, ctx.kinds, document.text.as_deref());
+    if filled.name.is_empty() {
+        filled.name = called;
+    }
+    *form = filled.in_target(destination);
 }
 
 fn focus_rule_form(hermes: &Hermes) -> Task<Message> {
@@ -111,9 +165,18 @@ fn focus_rule_form(hermes: &Hermes) -> Task<Message> {
     }
 }
 
+/// A page that only carried a form is of no use once the form is gone.
+fn drop_if_spent(hermes: &mut Hermes) {
+    if hermes.rules.as_ref().is_some_and(RulesPage::is_spent) {
+        hermes.rules = None;
+    }
+}
+
 /// Closes the form without saving, if there is one; whether there was one.
 pub fn cancel_rule_form(hermes: &mut Hermes) -> bool {
-    hermes.rules.as_mut().is_some_and(RulesPage::cancel_form)
+    let cancelled = hermes.rules.as_mut().is_some_and(RulesPage::cancel_form);
+    drop_if_spent(hermes);
+    cancelled
 }
 
 /// Closes the dialog that is up: the delete question or the form.
@@ -123,20 +186,60 @@ pub fn close_dialog(hermes: &mut Hermes) -> Task<Message> {
             view.cancel_form();
         }
     }
+    drop_if_spent(hermes);
     release_focus()
 }
 
-/// Shows the Rules page of the settings with `form` open in its dialog. The
-/// page loads here, so the form can be put in before the settings show it.
+/// Opens the rule dialog for a new rule of `target` (the main one without),
+/// over whatever is shown, with no settings page needed. With a document the
+/// form starts from what the index knows of it once that is read; until then,
+/// and where that names no sender, the rule is called like the file at `path`.
 pub fn open_rule_form(
+    hermes: &mut Hermes,
+    target: Option<TargetId>,
+    document: Option<DocumentId>,
+    path: Option<&Path>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let mut form = RuleForm::new();
+    if let Some(stem) = path.and_then(Path::file_stem).and_then(OsStr::to_str) {
+        stem.clone_into(&mut form.name);
+    }
+    let form = form.in_target(target.unwrap_or_else(TargetId::main));
+    let read_document = match (document, hermes.filing.as_ref().and_then(FilingModule::rules_access)) {
+        (Some(id), Some(access)) => Task::perform(
+            tokio::task::spawn_blocking(move || access.document_for_rule(id)),
+            |joined| {
+                Message::Rules(RulesMessage::DocumentLoaded(
+                    joined.unwrap_or_else(|join| Err(join.to_string())),
+                ))
+            },
+        ),
+        _ => Task::none(),
+    };
+    actions.push(Action::CloseContextMenu);
+    match hermes.rules.as_mut() {
+        Some(view) => view.open_form(form),
+        None => {
+            hermes.rules = Some(RulesPage::for_form(form, Arc::clone(&ctx.kinds.catalog)));
+        }
+    }
+    Task::batch([read_document, focus_rule_form(hermes), schedule_rule_try(hermes)])
+}
+
+/// Shows the page Einsortieren of the settings with `form` open in its dialog.
+/// The page loads here, so the form can be put in before the settings show it.
+pub fn open_form_page(
     hermes: &mut Hermes,
     form: RuleForm,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    actions.push(Action::ShowPage(HermesPage::Rules));
+    actions.push(Action::ShowPage(HermesPage::Sorting));
     hermes.close_pages();
-    let opened = open(hermes, ctx, actions);
+    let rules_opened = open(hermes, ctx, actions);
+    let opened = Task::batch([super::sorting::open(hermes, ctx, actions), rules_opened]);
     let Some(view) = hermes.rules.as_mut() else {
         return opened;
     };
@@ -156,8 +259,19 @@ fn schedule_rule_try(hermes: &mut Hermes) -> Task<Message> {
     )
 }
 
-fn run_rule_try(hermes: &mut Hermes, generation: u64) -> Task<Message> {
-    let Some(request) = hermes
+/// The first source that files into `target`: the files the trial plans.
+fn trial_source(hermes: &Hermes, target: &TargetId) -> Option<SortSource> {
+    hermes
+        .filing_config
+        .sources
+        .iter()
+        .map(|setting| &setting.source)
+        .find(|source| source.targets.contains(target))
+        .cloned()
+}
+
+fn run_rule_try(hermes: &mut Hermes, generation: u64, ctx: &Ctx<'_>) -> Task<Message> {
+    let Some(FormTry { target, rule }) = hermes
         .rules
         .as_mut()
         .and_then(RulesPage::form_mut)
@@ -165,14 +279,27 @@ fn run_rule_try(hermes: &mut Hermes, generation: u64) -> Task<Message> {
     else {
         return Task::none();
     };
-    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::rules_access) else {
+    let source = trial_source(hermes, &target);
+    let access = hermes
+        .filing
+        .as_ref()
+        .and_then(|module| module.sorting_access(Arc::clone(&ctx.trash.0)));
+    let immediate = match (&source, &access) {
+        (None, _) => Some(Ok(SortTry::default())),
+        (_, None) => Some(Err(INDEX_NOT_OPEN.to_owned())),
+        _ => None,
+    };
+    if let Some(result) = immediate {
         if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
-            form.try_answered(generation, Err(INDEX_NOT_OPEN.to_owned()));
+            form.try_answered(generation, result);
         }
+        return Task::none();
+    }
+    let (Some(source), Some(access)) = (source, access) else {
         return Task::none();
     };
     Task::perform(
-        tokio::task::spawn_blocking(move || access.try_rule(&request)),
+        tokio::task::spawn_blocking(move || try_in_target(&access, &source, &target, rule)),
         move |joined| {
             let result = joined.unwrap_or_else(|join| Err(join.to_string()));
             Message::Rules(RulesMessage::Tried { generation, result })
@@ -180,7 +307,11 @@ fn run_rule_try(hermes: &mut Hermes, generation: u64) -> Task<Message> {
     )
 }
 
-fn update_rule_form(hermes: &mut Hermes, message: RuleFormMessage) -> Task<Message> {
+fn update_rule_form(
+    hermes: &mut Hermes,
+    message: RuleFormMessage,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
     let Some(view) = hermes.rules.as_mut() else {
         return Task::none();
     };
@@ -201,6 +332,11 @@ fn update_rule_form(hermes: &mut Hermes, message: RuleFormMessage) -> Task<Messa
                 Ok(id) => {
                     view.saved(id);
                     hermes.watching.mark_all();
+                    actions.push(Action::RulesChanged);
+                    if hermes.rules.as_ref().is_some_and(RulesPage::is_spent) {
+                        hermes.rules = None;
+                        return release_focus();
+                    }
                     run_rules_load(hermes)
                 }
                 Err(detail) => {
@@ -225,13 +361,13 @@ fn update_rule_form(hermes: &mut Hermes, message: RuleFormMessage) -> Task<Messa
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if hermes.rules.is_some() {
+    if hermes.rules.as_ref().is_some_and(|page| !page.is_form_only() || page.form().is_some()) {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
     hermes.rules_generation = hermes.rules_generation.wrapping_add(1);
     hermes.rules = Some(RulesPage::new().with_kinds(Arc::clone(&ctx.kinds.catalog)));
-    run_rules_load(hermes)
+    Task::batch([run_rules_load(hermes), super::targets::load_states(hermes, ctx)])
 }
 
 fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {
@@ -242,6 +378,15 @@ fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {
         }
     }
     access
+}
+
+/// Reads the rules again, if the page is up: what the targets page shows of
+/// them changed behind the rules' own back.
+pub(super) fn reload(hermes: &mut Hermes) -> Task<Message> {
+    if hermes.rules.is_none() {
+        return Task::none();
+    }
+    run_rules_load(hermes)
 }
 
 fn run_rules_load(hermes: &mut Hermes) -> Task<Message> {

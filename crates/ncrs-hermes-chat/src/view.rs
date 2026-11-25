@@ -5,7 +5,7 @@ use iced::{Element, Length, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     areas_card, chat_chip, chat_header, chat_input, chat_list, chat_page, chat_text, chip_row,
-    file_card, folder_mention, hermes_bubble, levels_card, proposal_card, user_bubble,
+    folder_mention, hermes_bubble, levels_card, user_bubble,
     user_folder_bubble, working_bubble, AreaLine, ChatInput,
 };
 use ncrs_ui_kit::palette::Palette;
@@ -14,7 +14,7 @@ use ncrs_ui_kit::panel_footer::panel_footer;
 use crate::chat_store::{Line, Speaker};
 use crate::list_view::list_props;
 use crate::message::Message;
-use crate::state::{AreasCard, CountRow, Entry, FileCard, Part, State};
+use crate::state::{AreasCard, CountRow, Entry, Part, State};
 use crate::texts::documents_label;
 
 pub const INPUT_ID: &str = "hermes-chat-input";
@@ -65,21 +65,10 @@ fn areas<'a>(card: &AreasCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     areas_card(&lines, ctx.palette)
 }
 
-fn file<'a>(card: &FileCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
-    file_card(&card.segments, card.highlighted, ctx.palette)
-}
-
 fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     match part {
         Part::Text(content) => chat_text(content, ctx.palette.text),
         Part::Areas(card) => areas(card, ctx),
-        Part::Proposal(card) => proposal_card(
-            &card.title,
-            &card.facts,
-            card.moves.as_ref(),
-            card.counts.as_deref(),
-            ctx.palette,
-        ),
         Part::Levels(card) => levels_card(
             &card.title,
             &card.rows,
@@ -87,7 +76,6 @@ fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
             card.footer.as_deref(),
             ctx.palette,
         ),
-        Part::File(card) => file(card, ctx),
         Part::Folder(mention) => folder_mention(&mention.name, &mention.path, ctx.palette),
     }
 }

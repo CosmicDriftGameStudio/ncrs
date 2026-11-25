@@ -6,7 +6,7 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::review_work::{AcceptSummary, NotMoved, ReviewItem};
 use ncrs_i18n::{fill_template, Msg};
 
-use super::rules::open_rule_form;
+use super::rules::open_form_page;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{HermesColumnMessage, Message, QuickFixMessage};
@@ -218,9 +218,9 @@ fn open_rule_form_from_menu(
         hermes.filing_config.default_pattern.as_deref(),
         ctx.kinds,
     );
-    open_rule_form(
+    open_form_page(
         hermes,
-        RuleForm::from_document(prefill, ctx.kinds),
+        RuleForm::from_document(prefill, ctx.kinds, None),
         ctx,
         actions,
     )

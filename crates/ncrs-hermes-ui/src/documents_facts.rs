@@ -1,6 +1,5 @@
-//! What the Index and Hermes pages read from the index and the filing journal
-//! in the background: the figures per read folder, the learned areas, the runs
-//! and the line about the AI model.
+//! What the Index page reads from the index in the background: the figures per
+//! folder and the line about the AI model; and how a run of the journal reads.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -10,12 +9,11 @@ use chrono::{DateTime, Local, TimeZone as _};
 
 use ncrs_ai::Compute;
 use ncrs_config::config::FilingLocation;
-use ncrs_core::facts::{AreaFacts, LoadedFacts, ReadFolderCoverage, RunDay, RunFacts};
-use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork, RecentRun};
+use ncrs_core::facts::{LoadedFacts, ReadFolderCoverage, RunDay, RunFacts};
+use ncrs_filing::chat_work::{ChatAccess, RecentRun};
 use ncrs_filing::filing::AiStatus;
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_index::BatchId;
-use ncrs_intake::{area_order_plain, LocationMode};
+use ncrs_intake::LocationMode;
 
 /// The line under the AI row of the Index page: which model is in memory and
 /// on what it computes, or why it failed.
@@ -50,23 +48,9 @@ pub fn ai_detail(status: &AiStatus, lang: Language) -> Option<String> {
     }
 }
 
-pub fn undo_batch(access: &ChatAccess, batch: i64, unexpected: String) -> Result<usize, String> {
-    match access.run(ChatWork::Undo {
-        batch: BatchId::from_number(batch),
-    }) {
-        ChatResult::Undone(undone) => undone.map(|report| report.left),
-        _ => Err(unexpected),
-    }
-}
-
-/// How many runs "Show all" can list.
-const RUNS_LISTED_AT_MOST: usize = 50;
-
 pub fn read_documents_facts(
     chat_access: Option<ChatAccess>,
     locations: &[FilingLocation],
-    lang: Language,
-    now: SystemTime,
 ) -> LoadedFacts {
     let disconnected: Vec<PathBuf> = locations
         .iter()
@@ -79,7 +63,6 @@ pub fn read_documents_facts(
             ..LoadedFacts::default()
         };
     };
-    let mut areas = Vec::new();
     let mut folder_files = BTreeMap::new();
     let mut read_folders = ReadFolderCoverage::default();
     let mut error: Option<String> = None;
@@ -108,40 +91,8 @@ pub fn read_documents_facts(
                 error.get_or_insert(failure);
             }
         }
-        let structure = match access.known_structure(&location.path) {
-            Ok(structure) => structure,
-            // Only a failed read is an error: a folder that is gone shows as disconnected,
-            // and one that is not a folder or is too big has no structure to show.
-            Err(ncrs_filing::chat_work::ReadError::Io(failure)) => {
-                error.get_or_insert(failure);
-                continue;
-            }
-            Err(_) => continue,
-        };
-        areas.extend(
-            structure
-                .areas
-                .iter()
-                .filter(|area| !area.folder.is_empty())
-                .map(|area| AreaFacts {
-                    name: area.folder.clone(),
-                    files: usize::try_from(area.documents).unwrap_or(usize::MAX),
-                    read_folder: location.path.clone(),
-                    root: location.path.join(&area.folder),
-                    order: area_order_plain(lang, area),
-                }),
-        );
     }
-    let recent = access
-        .recent_runs(RUNS_LISTED_AT_MOST)
-        .unwrap_or_else(|failure| {
-            error.get_or_insert(failure);
-            Vec::new()
-        });
-    let runs = recent.iter().map(|run| run_facts(run, now)).collect();
     LoadedFacts {
-        areas,
-        runs,
         folder_files,
         read_folders: Some(read_folders),
         disconnected,
@@ -157,7 +108,7 @@ fn folder_name(folder: &Path) -> String {
         .into_owned()
 }
 
-fn run_facts(run: &RecentRun, now: SystemTime) -> RunFacts {
+pub fn run_facts(run: &RecentRun, now: SystemTime) -> RunFacts {
     let finished = Local
         .timestamp_opt(run.summary.finished_at, 0)
         .single()
@@ -304,12 +255,7 @@ mod tests {
             filing_location(inbox, LocationMode::Inbox),
             filing_location(unplugged, LocationMode::Archive),
         ];
-        let loaded = read_documents_facts(
-            Some(access),
-            &locations,
-            Language::English,
-            SystemTime::now(),
-        );
+        let loaded = read_documents_facts(Some(access), &locations);
         assert_eq!(
             loaded.read_folders,
             Some(ReadFolderCoverage {

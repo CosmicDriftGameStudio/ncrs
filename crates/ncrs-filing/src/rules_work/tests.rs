@@ -4,7 +4,7 @@ use chrono::{TimeZone as _, Utc};
 use ncrs_index::{
     Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, DocumentSource,
     DocumentStatus, FieldOrigin, NewDocument, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec,
-    RuleSuggestion,
+    RuleSuggestion, TargetId,
 };
 use tempfile::TempDir;
 
@@ -199,6 +199,7 @@ fn a_created_rule_is_listed_with_the_origin_hand() {
         .save(RuleSave::Create {
             spec: spec("rent"),
             origin: RuleOrigin::Hand,
+            target: TargetId::main(),
         })
         .unwrap();
 
@@ -217,6 +218,7 @@ fn a_rule_made_from_a_filed_document_has_the_origin_filing() {
         .save(RuleSave::Create {
             spec: spec("rent"),
             origin: RuleOrigin::Filing,
+            target: TargetId::main(),
         })
         .unwrap();
 
@@ -233,7 +235,7 @@ fn confirming_a_suggestion_makes_it_a_listed_rule_and_keeps_its_origin() {
 
     fixture
         .access
-        .save(RuleSave::ConfirmSuggestion(s, edited.clone()))
+        .save(RuleSave::ConfirmSuggestion(s, edited.clone(), None))
         .unwrap();
 
     let load = fixture.access.load().unwrap();
@@ -258,7 +260,7 @@ fn confirming_a_suggestion_that_is_gone_fails_with_a_plain_message() {
 
     let error = fixture
         .access
-        .save(RuleSave::ConfirmSuggestion(s, spec("tax")))
+        .save(RuleSave::ConfirmSuggestion(s, spec("tax"), None))
         .unwrap_err();
 
     assert_eq!(error, NO_SUCH_SUGGESTION);
@@ -284,7 +286,7 @@ fn an_update_changes_the_form_fields_and_keeps_the_rest_of_the_rule() {
 
     fixture
         .access
-        .save(RuleSave::Update(id, changed.clone()))
+        .save(RuleSave::Update(id, changed.clone(), None))
         .unwrap();
 
     let after = fixture.access.load().unwrap().rules[0].clone();
@@ -306,6 +308,7 @@ fn a_regex_the_index_refuses_comes_back_as_the_error_text() {
         .save(RuleSave::Create {
             spec: broken,
             origin: RuleOrigin::Hand,
+            target: TargetId::main(),
         })
         .unwrap_err();
 
@@ -688,4 +691,51 @@ fn a_swap_of_two_names_cannot_run_and_is_counted() {
 
     assert_eq!(ordered, vec![archive_move("c.pdf", "d.pdf")]);
     assert_eq!(blocked, 2);
+}
+
+#[test]
+fn a_saved_rule_goes_to_its_target_and_can_move_to_another() {
+    let fixture = fixture();
+    let other = TargetId::new("t2").unwrap();
+    let id = fixture
+        .access
+        .save(RuleSave::Create {
+            spec: spec("rent"),
+            origin: RuleOrigin::Hand,
+            target: other.clone(),
+        })
+        .unwrap();
+    assert_eq!(fixture.access.load().unwrap().rules[0].rule.target, other);
+
+    fixture
+        .access
+        .save(RuleSave::Update(id, spec("rent"), Some(TargetId::main())))
+        .unwrap();
+
+    assert_eq!(
+        fixture.access.load().unwrap().rules[0].rule.target,
+        TargetId::main()
+    );
+}
+
+#[test]
+fn removing_a_target_deletes_its_rules_only() {
+    let fixture = fixture();
+    let other = TargetId::new("t2").unwrap();
+    for target in [TargetId::main(), other.clone()] {
+        fixture
+            .access
+            .save(RuleSave::Create {
+                spec: spec("rent"),
+                origin: RuleOrigin::Hand,
+                target,
+            })
+            .unwrap();
+    }
+
+    assert_eq!(fixture.access.delete_rules_of(&other).unwrap(), 1);
+
+    let left = fixture.access.load().unwrap().rules;
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].rule.target, TargetId::main());
 }

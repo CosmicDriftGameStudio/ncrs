@@ -6,10 +6,10 @@ use super::theme::size;
 
 #[cfg(test)]
 pub use ncrs_ui_kit::favourites_bar::FAVOURITES_BAR_HEIGHT;
-pub use ncrs_ui_kit::layout::{cursor_row_anchor, CHROME, INITIAL_WINDOW_SIZE, ROW_HEIGHT};
+pub use ncrs_ui_kit::layout::{CHROME, INITIAL_WINDOW_SIZE, ROW_HEIGHT};
 #[cfg(test)]
 pub use ncrs_ui_kit::layout::{
-    search_visible_rows, COLUMN_HEADER_HEIGHT, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT,
+    cursor_row_anchor, search_visible_rows, COLUMN_HEADER_HEIGHT, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT,
     MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH, SEARCH_CONTENT_ROW_HEIGHT,
 };
 

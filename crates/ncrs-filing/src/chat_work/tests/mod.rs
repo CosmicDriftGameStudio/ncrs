@@ -1,31 +1,22 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use chrono::NaiveDate;
+use ncrs_fs::transfer::Counting;
 use ncrs_fs::{FolderBackend, JournaledTrash};
-use ncrs_index::{ContentHash, DocumentFields, Index, KindCatalog, Transfer};
-use ncrs_intake::{
-    hash_path, location_structure, ConditionProblem, PdfUnavailable, PlainText, PlanFile,
-    RuleProblem, TextError,
-};
+use ncrs_index::{BatchKind, ContentHash, DocumentFields, Index, Transfer};
+use ncrs_intake::{hash_path, PdfUnavailable, PlainText, PlanFile, TextError};
 use tempfile::TempDir;
 
 use super::*;
+use crate::execute::{execute_run, trash_run, ExecutionItem, RunPlaces, TrashItem};
 
-mod continuous;
 mod diagnosis;
-mod eval;
-mod groups;
-mod live;
-mod model_scope;
-mod picks;
 mod reading;
 mod recent_runs;
-mod rules_snapshot;
 mod runs;
-mod trial;
+mod snapshots;
 
 struct Setup {
     dir: TempDir,
@@ -79,50 +70,108 @@ impl Setup {
             other => Err(ReadError::Io(format!("{other:?}"))),
         }
     }
+
+    /// Carries files of `inbox` to their places below `archive`, as one run.
+    fn file(&self, name: &str, transfer: Transfer, files: &[(&str, &str)]) -> BatchId {
+        let items: Vec<_> = files
+            .iter()
+            .map(|(file, to)| self.item(&format!("inbox/{file}"), file, to))
+            .collect();
+        self.execute(name, transfer, "inbox", &items, false)
+    }
+
+    /// A file written as `from` that a run carries to `to` below the archive.
+    fn item(&self, from: &str, content: &str, to: &str) -> ExecutionItem {
+        let path = self.write(from, content);
+        ExecutionItem {
+            expected_hash: hash_path(&path).unwrap(),
+            from: path,
+            to: to.split('/').fold(self.archive(), |path, part| path.join(part)),
+            document_id: None,
+            duplicate: false,
+        }
+    }
+
+    fn execute(
+        &self,
+        name: &str,
+        transfer: Transfer,
+        source: &str,
+        items: &[ExecutionItem],
+        inside_target: bool,
+    ) -> BatchId {
+        fs::create_dir_all(self.archive()).unwrap();
+        let report = self
+            .access
+            .with_index(|index| {
+                execute_run(
+                    index,
+                    BatchKind::Hermes,
+                    name,
+                    transfer,
+                    RunPlaces {
+                        source: &self.dir.path().join(source),
+                        target: &self.archive(),
+                        inside_target,
+                    },
+                    items,
+                    &mut Counting,
+                )
+                .map_err(|err| err.to_string())
+            })
+            .unwrap();
+        assert_eq!(report.skipped(), 0);
+        report.batch
+    }
+
+    /// Trashes a copy of `archive/x.txt` that lies in `inbox`.
+    fn trash_copy(&self) -> PathBuf {
+        let keeper = self.write("archive/x.txt", "same");
+        let copy = self.write("inbox/x.txt", "same");
+        let item = TrashItem {
+            path: copy.clone(),
+            expected_hash: hash_path(&keeper).unwrap(),
+            keeper,
+        };
+        let root = self.dir.path().join("inbox");
+        let report = self
+            .access
+            .with_index(|index| {
+                trash_run(index, "Duplicates", &root, &[item], &*self.access.trash)
+                    .map_err(|err| err.to_string())
+            })
+            .unwrap();
+        assert_eq!(report.trashed, 1);
+        assert!(!copy.exists());
+        copy
+    }
+
+    fn archive(&self) -> PathBuf {
+        self.dir.path().join("archive")
+    }
+
+    fn last_run(&self) -> Option<RunSummary> {
+        match self.access.run(ChatWork::LastRun) {
+            ChatResult::LastRun(result) => result.unwrap(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn recent_runs(&self, limit: usize) -> Vec<RecentRun> {
+        self.access
+            .with_index(|index| runs_of_index(index, limit))
+            .unwrap()
+    }
+
+    /// Puts a run back and says how many files came back.
+    fn undo(&self, batch: BatchId) -> usize {
+        match self.access.run(ChatWork::Undo { batch }) {
+            ChatResult::Undone(result) => result.unwrap().undone,
+            other => panic!("{other:?}"),
+        }
+    }
 }
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap()
-}
-
-fn plan_file(path: &str, seed: u8, sender: Option<&str>, when: NaiveDate) -> PlanFile {
-    PlanFile {
-        relative_path: PathBuf::from(path),
-        hash: ContentHash([seed; 32]),
-        fields: DocumentFields {
-            sender: sender.map(str::to_owned),
-            kind: Some("invoice".to_owned()),
-            date: Some(when),
-            ..DocumentFields::default()
-        },
-        text: None,
-        recorded_at: i64::from(seed),
-    }
-}
-
-/// A sender no other seed shares, so that files are no group for the model.
-fn lone_sender(seed: u8) -> String {
-    format!("Sender {}", char::from(b'a' + seed % 26))
-}
-
-fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    let structure = location_structure(&files, &KindCatalog::built_in());
-    let mut hashes = HashMap::new();
-    for file in &files {
-        hashes
-            .entry(file.hash)
-            .or_insert_with(|| file.relative_path.clone());
-    }
-    FolderReading {
-        ai: Default::default(),
-        kinds: Default::default(),
-        root: PathBuf::from(root),
-        files,
-        photos: 0,
-        without_text: 0,
-        structure,
-        duplicates: Vec::new(),
-        hashes,
-    }
 }

@@ -34,7 +34,7 @@ pub fn token_row<'a, M: Clone + 'a>(
         .fold(line, |line, token| line.push(token))
 }
 
-impl<M> std::fmt::Debug for PatternField<'_, M> {
+impl<M> std::fmt::Debug for PatternField<'_, '_, M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PatternField")
             .field("id", &self.id)
@@ -42,13 +42,13 @@ impl<M> std::fmt::Debug for PatternField<'_, M> {
     }
 }
 
-pub struct PatternField<'a, M> {
+pub struct PatternField<'a, 't, M> {
     pub value: &'a str,
     pub id: &'static str,
     pub on_input: Box<dyn Fn(String) -> M + 'a>,
     pub on_submit: M,
     /// The blocks that can be added: label and what pressing it sends.
-    pub tokens: &'a [(&'a str, M)],
+    pub tokens: &'t [(&'t str, M)],
     /// What the pattern makes of an example, dimmed under the blocks.
     pub preview: Option<String>,
     /// What is wrong with the pattern, in the error color under the preview.
@@ -57,8 +57,8 @@ pub struct PatternField<'a, M> {
 
 /// A pattern as a monospace text field, the blocks that can be added to it
 /// (they wrap), the example it produces and what is wrong with it.
-pub fn pattern_field<'a, M: Clone + 'a>(
-    field: PatternField<'a, M>,
+pub fn pattern_field<'a, 't, M: Clone + 'a>(
+    field: PatternField<'a, 't, M>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let mut lines = column![

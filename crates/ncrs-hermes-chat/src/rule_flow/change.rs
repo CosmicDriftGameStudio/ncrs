@@ -22,10 +22,9 @@ fn is_changed(flow: &RuleFlow) -> bool {
 /// The user wants to change the levels: they are shown with the way out, and
 /// the next words are the change.
 pub fn levels_change(state: &mut State, ctx: &Ctx) {
-    let Some(flow) = state.session.rule.as_mut() else {
+    if state.session.rule.is_none() {
         return;
-    };
-    flow.changing = true;
+    }
     show_change(state, ctx, true);
 }
 
@@ -38,17 +37,15 @@ pub fn levels_more(state: &mut State, ctx: &Ctx) {
 pub fn levels_discard(state: &mut State, ctx: &Ctx) {
     if let Some(flow) = state.session.rule.as_mut() {
         flow.levels = flow.found.clone();
-        flow.changing = false;
     }
     show_levels_checked(state, ctx, true);
 }
 
 /// The model gets the levels as they are and the sentence about them.
 pub fn revise(state: &mut State, ctx: &Ctx, sentence: &str) {
-    let Some(flow) = state.session.rule.as_mut() else {
+    let Some(flow) = state.session.rule.as_ref() else {
         return;
     };
-    flow.changing = true;
     let ask = RuleAsk::Revise {
         files: sample(&flow.files, MODEL_FILES),
         kinds: flow.kinds.clone(),
@@ -75,8 +72,8 @@ pub fn revised(state: &mut State, ctx: &Ctx, revision: Revision) {
     }
 }
 
-/// The card with the changed levels marked, what applying them would do to
-/// the files, and the buttons: done is always there.
+/// The card with the changed levels marked, what the files would be called
+/// under them, and the buttons: done is always there.
 pub fn show_change(state: &mut State, ctx: &Ctx, hint: bool) {
     let Some(flow) = state.session.rule.as_ref() else {
         return;
@@ -150,10 +147,9 @@ pub fn level_reference(sentence: &str) -> Option<usize> {
 /// The user named a level only: ask what should change on it, and stay in
 /// the change.
 pub fn ask_level(state: &mut State, ctx: &Ctx, level: usize) {
-    let Some(flow) = state.session.rule.as_mut() else {
+    let Some(flow) = state.session.rule.as_ref() else {
         return;
     };
-    flow.changing = true;
     let changed = is_changed(flow);
     state.step = Step::RuleLevels;
     hermes(
@@ -167,39 +163,9 @@ pub fn ask_level(state: &mut State, ctx: &Ctx, level: usize) {
     );
 }
 
-/// The rule of the levels matches no file: the levels stay, the reason is
-/// said in words, and the change goes on.
-pub fn no_match(state: &mut State, ctx: &Ctx, known: Option<(usize, usize)>) {
-    let Some(flow) = state.session.rule.as_mut() else {
-        return;
-    };
-    flow.changing = true;
-    flow.proposed = None;
-    let folder = flow.folder.clone();
-    let changed = is_changed(flow);
-    let reason = match known {
-        Some((known_files, total)) => fill(
-            ctx.lang,
-            Msg::HermesChatLevelsNotIndexed,
-            &[
-                ("known", &number(known_files)),
-                ("total", &number(total)),
-                ("folder", &folder),
-            ],
-        ),
-        None => fill(
-            ctx.lang,
-            Msg::HermesChatLevelsNoMatch,
-            &[("folder", &folder)],
-        ),
-    };
-    state.step = Step::RuleLevels;
-    hermes(state, vec![Part::Text(reason)], change_chips(ctx, changed));
-}
-
 /// One file of a list of moves: where it goes, and dim under it where it
 /// lies now.
-pub fn move_row(ctx: &Ctx, from: &str, to: String) -> MoveRow {
+fn move_row(ctx: &Ctx, from: &str, to: String) -> MoveRow {
     MoveRow {
         to,
         before: fill(ctx.lang, Msg::HermesChatLevelBefore, &[("value", from)]),
@@ -207,7 +173,7 @@ pub fn move_row(ctx: &Ctx, from: &str, to: String) -> MoveRow {
 }
 
 /// "… and N more" when more files move than the list shows.
-pub fn more_moves(ctx: &Ctx, hidden: usize) -> Option<String> {
+fn more_moves(ctx: &Ctx, hidden: usize) -> Option<String> {
     (hidden > 0).then(|| {
         fill(
             ctx.lang,
@@ -217,10 +183,10 @@ pub fn more_moves(ctx: &Ctx, hidden: usize) -> Option<String> {
     })
 }
 
-/// What applying the levels does to the files the folder holds now: how many
-/// are renamed or moved, and a few of them as they would be and as they were.
+/// The files the folder holds now that the levels would write otherwise: how
+/// many, and a few of them as they would be and as they are.
 fn preview(ctx: &Ctx, flow: &RuleFlow) -> Option<MovesBlock> {
-    let moving: Vec<_> = pattern_mismatches(&flow.pattern(), &flow.written_files(), &flow.kinds)
+    let moving: Vec<_> = pattern_mismatches(&flow.pattern(), &flow.files, &flow.kinds)
         .into_iter()
         .filter_map(|misfit| Some((misfit.file, misfit.written?)))
         .collect();

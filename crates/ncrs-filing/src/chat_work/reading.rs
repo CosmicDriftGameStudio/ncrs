@@ -1,10 +1,9 @@
 //! Reading a folder for the chat: what is in it, which order it follows and
 //! which files are duplicates that can go. Writes nothing.
 
-use std::collections::{BTreeSet, HashMap};
-use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
 use ncrs_index::{ContentHash, Document, DocumentFields, Kinds, SenderAliases};
@@ -13,10 +12,9 @@ use ncrs_intake::{
     location_structure, ArchiveDocument, LocationStructure, OwnNames, PlanFile, TextError,
 };
 
-use super::{ChatAccess, TrashItem};
-use crate::reading_support::{
-    in_parallel, is_stopped, read_error, walk, walk_sorted, ReadError, ReadProgress, Walked,
-};
+use super::ChatAccess;
+use crate::execute::TrashItem;
+use crate::reading_support::{in_parallel, walk_sorted, ReadError, ReadProgress, Walked};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FolderReading {
@@ -69,48 +67,12 @@ struct Known {
     text: Option<String>,
 }
 
-/// The files `read_folder` walks, relative to the folder and in its order;
-/// files that cannot be hashed are still among them.
-pub fn list_files(folder: &Path) -> Result<Vec<PathBuf>, ReadError> {
-    let walked = walk_sorted(folder, &[], &ReadProgress::default())?;
-    Ok(walked.into_iter().map(|file| file.relative).collect())
-}
-
-/// A set `stop` skips the hashing and reading of the files not yet started, so
-/// the reading then lacks them and must not be used after stopping.
 pub fn read_folder(
     access: &ChatAccess,
     folder: &Path,
     progress: &ReadProgress,
-    stop: Option<&AtomicBool>,
 ) -> Result<FolderReading, ReadError> {
-    read_folder_only(access, folder, progress, stop, None, UnknownFiles::Extract)
-}
-
-/// What becomes of a file the index does not know.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnknownFiles {
-    /// Its text is read, which for a scan means OCR.
-    Extract,
-    /// It stays out of the picture, as in [`known_structure`]: a folder that
-    /// only gives context must not cost the minutes of reading its files.
-    Skip,
-}
-
-/// [`read_folder`] for the listed files (paths below `folder`) alone: the
-/// others are neither looked up in the index nor hashed.
-pub fn read_folder_only(
-    access: &ChatAccess,
-    folder: &Path,
-    progress: &ReadProgress,
-    stop: Option<&AtomicBool>,
-    only: Option<&BTreeSet<&PathBuf>>,
-    unknown_files: UnknownFiles,
-) -> Result<FolderReading, ReadError> {
-    let mut walked = walk_sorted(folder, &[], progress)?;
-    if let Some(listed) = only {
-        walked.retain(|file| listed.contains(&file.relative));
-    }
+    let walked = walk_sorted(folder, &[], progress)?;
     progress.total.store(walked.len(), Ordering::Relaxed);
 
     // Whatever the index has under the folder with the same size and mtime is
@@ -125,9 +87,6 @@ pub fn read_folder_only(
         .filter(|position| known.get(*position).is_some_and(Option::is_none))
         .collect();
     let changed_hashes = in_parallel(&changed, access.load, |position| {
-        if is_stopped(stop) {
-            return None;
-        }
         let hash = walked
             .get(*position)
             .and_then(|file| hash_path(&folder.join(&file.relative)).ok());
@@ -151,9 +110,6 @@ pub fn read_folder_only(
                     *slot = Some(record);
                 }
             }
-            None if unknown_files == UnknownFiles::Skip => {
-                progress.done.fetch_add(1, Ordering::Relaxed);
-            }
             None => unknown.push((position, hash)),
         }
     }
@@ -166,9 +122,6 @@ pub fn read_folder_only(
     };
     let aliases = SenderAliases::default();
     let extracted = in_parallel(&unknown, access.load, |(position, _)| {
-        if is_stopped(stop) {
-            return None;
-        }
         let read = walked
             .get(*position)
             .map(|file| access.text_chain.extract(&folder.join(&file.relative)));
@@ -238,7 +191,7 @@ pub fn read_folder_only(
     }
 
     let structure = location_structure(&files, &kinds.catalog);
-    let duplicates = duplicates_of(folder, &files, &structure, &kinds);
+    let duplicates = duplicates_of(folder, &files, &structure);
     let mut hashes = HashMap::new();
     for file in &files {
         hashes
@@ -257,41 +210,6 @@ pub fn read_folder_only(
         kinds: kinds.clone(),
     };
     Ok(reading)
-}
-
-/// The order of a folder from what the index already knows of its files.
-/// Files the index does not know are left out: nothing is hashed, opened or
-/// read for text, so this is cheap enough for a settings page.
-pub fn known_structure(access: &ChatAccess, folder: &Path) -> Result<LocationStructure, ReadError> {
-    match fs::metadata(folder) {
-        Ok(metadata) if metadata.is_dir() => {}
-        Ok(_) => return Err(ReadError::NotADirectory),
-        Err(err) => return Err(read_error(folder, &err)),
-    }
-    let mut walked = Vec::new();
-    walk(
-        folder,
-        Path::new(""),
-        &[],
-        &mut walked,
-        &ReadProgress::default(),
-    )?;
-    let (known, kinds) = unchanged_in_index(access, folder, &walked).map_err(ReadError::Io)?;
-    let files: Vec<PlanFile> = walked
-        .into_iter()
-        .zip(known)
-        .filter_map(|(file, known_record)| {
-            let record = known_record?;
-            Some(PlanFile {
-                relative_path: file.relative,
-                hash: record.hash,
-                fields: record.fields,
-                text: record.text,
-                recorded_at: 0,
-            })
-        })
-        .collect();
-    Ok(location_structure(&files, &kinds.catalog))
 }
 
 fn ai_coverage(access: &ChatAccess, folder: &Path) -> Result<AiCoverage, String> {
@@ -376,13 +294,12 @@ fn known_by_hash(
     })
 }
 
-/// The rule of the reorganisation: a copy that lies in an unordered folder
-/// while the same content has a place in the order can go.
+/// A copy that lies in an unordered folder while the same content has a place
+/// in the order can go.
 fn duplicates_of(
     root: &Path,
     files: &[PlanFile],
     structure: &LocationStructure,
-    kinds: &Kinds,
 ) -> Vec<TrashItem> {
     let documents: Vec<ArchiveDocument> = files
         .iter()
@@ -392,7 +309,7 @@ fn duplicates_of(
         })
         .collect();
     let profile = learn_archive(&documents);
-    duplicate_copies(files, &profile, structure, kinds)
+    duplicate_copies(files, &profile, structure)
         .into_iter()
         .map(|copy| TrashItem {
             path: root.join(copy.source),

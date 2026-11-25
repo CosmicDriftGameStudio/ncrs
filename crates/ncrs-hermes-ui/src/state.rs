@@ -15,6 +15,10 @@ use crate::reading_again::ReadingAgain;
 use crate::reviews_page::ReviewsPage;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
+use crate::sorting_page::SortingPage;
+use crate::source_dialog::SourceDialog;
+use crate::suggest::Suggest;
+use crate::target_dialog::{TargetDialog, TargetRemoval};
 use crate::tags_page::TagsPage;
 use crate::watching::Watching;
 
@@ -29,6 +33,13 @@ pub struct Hermes {
     /// The files "process again" found, held while the question about many
     /// files of the Lesen folders is up.
     pub confirm_again: Option<Vec<PathBuf>>,
+    pub sorting: Option<SortingPage>,
+    pub source_dialog: Option<SourceDialog>,
+    /// Which look at the folder of the source dialog is the last one.
+    pub source_check: u64,
+    pub target_dialog: Option<TargetDialog>,
+    pub target_removal: Option<TargetRemoval>,
+    pub suggest: Option<Suggest>,
     pub rules: Option<RulesPage>,
     pub rules_generation: u64,
     pub saved_queries: Option<SavedQueries>,
@@ -123,14 +134,12 @@ impl Hermes {
 
     /// The page of this state that is loaded, if any.
     pub fn open_page(&self) -> Option<HermesPage> {
-        if self.saved_queries.is_some() {
+        if self.sorting.is_some() {
+            Some(HermesPage::Sorting)
+        } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
-        } else if self.rules.is_some() {
-            Some(HermesPage::Rules)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
-        } else if self.reviews.is_some() {
-            Some(HermesPage::Reviews)
         } else if self.activity.is_some() {
             Some(HermesPage::Activity)
         } else if self.filing_status.page_open() {
@@ -141,6 +150,8 @@ impl Hermes {
     }
 
     pub fn close_pages(&mut self) {
+        self.sorting = None;
+        self.suggest = None;
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;

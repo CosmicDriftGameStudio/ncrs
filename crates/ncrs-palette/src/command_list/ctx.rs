@@ -10,8 +10,8 @@ use super::GitCommandEntry;
 pub enum HermesCommands {
     /// The Hermes column is not up: none of them.
     None,
-    /// No locations are configured: only those that set a folder's role.
-    RolesOnly,
+    /// No folders are configured: only those that set up a source or a target.
+    SetupOnly,
     /// Everything but "process again", which cannot run for the row under the
     /// cursor.
     WithoutProcessAgain,
@@ -19,7 +19,7 @@ pub enum HermesCommands {
 }
 
 impl HermesCommands {
-    /// From what the app knows: the Hermes column is up (`ready`), locations
+    /// From what the app knows: the Hermes column is up (`ready`), folders
     /// are configured (`active`), and "process again" can run for the row
     /// under the cursor.
     pub fn from_facts(
@@ -30,7 +30,7 @@ impl HermesCommands {
         if !ready {
             Self::None
         } else if !active {
-            Self::RolesOnly
+            Self::SetupOnly
         } else if !process_again_enabled() {
             Self::WithoutProcessAgain
         } else {

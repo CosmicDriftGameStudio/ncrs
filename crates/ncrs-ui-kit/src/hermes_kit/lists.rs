@@ -5,6 +5,7 @@ use iced::widget::{
 };
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Pixels};
 
+use crate::format;
 use crate::kit::{self, Check};
 use crate::palette::Palette;
 use crate::theme;
@@ -122,7 +123,7 @@ pub struct TargetCheck<'a, M> {
 /// A row of 28 px: the box, the chip of the target, its name and its path
 /// dimmed. A marked row is outlined like a row of the settings.
 pub fn target_check_row<'a, M: Clone + 'a>(
-    target: TargetCheck<'a, M>,
+    target: TargetCheck<'_, M>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let (name_color, path_color) = if target.marked {
@@ -153,6 +154,71 @@ pub fn target_check_row<'a, M: Clone + 'a>(
         None => area.into(),
     }
 }
+
+/// A place in a target a file could go to.
+#[derive(Debug)]
+pub struct TargetPlace<'a, M> {
+    /// The box before it and what toggles it, where several can be ticked.
+    pub check: Option<(Check, M)>,
+    /// The colour of the chip; see [`target_chip`].
+    pub index: usize,
+    /// "T1 Documents".
+    pub label: &'a str,
+    /// The rule and the path, cut in the middle to the room.
+    pub line: &'a str,
+    /// The keyboard is on this row.
+    pub marked: bool,
+}
+
+/// A row of 28 px and `width`: the box, the chip of the target and where the
+/// file would go. A marked row is outlined like a row of the settings.
+pub fn target_place_row<'a, M: Clone + 'a>(
+    place: TargetPlace<'_, M>,
+    width: f32,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ink = if place.marked {
+        palette.cursor_text
+    } else {
+        palette.text
+    };
+    let chip_room = format::estimated_width(place.label, TEXT_SMALL) + 2.0 * GAP_S;
+    let mut room = width - 2.0 * GAP_XS - chip_room - GAP_S;
+    let mut line = Row::new()
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center);
+    let mut on_toggle = None;
+    if let Some((state, toggle)) = place.check {
+        room -= CHECK_ROOM;
+        line = line.push(kit::checkbox(state, None, palette));
+        on_toggle = Some(toggle);
+    }
+    let line = line
+        .push(target_chip(place.index, place.label, palette))
+        .push(small(
+            format::fit_middle(place.line, room.max(0.0), TEXT_SMALL),
+            ink,
+        ));
+    let row = container(line)
+        .width(Length::Fill)
+        .height(ROW_ONE_LINE)
+        .padding([0.0, GAP_XS])
+        .align_y(alignment::Vertical::Center)
+        .clip(true);
+    let row = if place.marked {
+        row.style(theme::focused_setting(palette))
+    } else {
+        row
+    };
+    let area = mouse_area(row);
+    match on_toggle {
+        Some(message) => area.on_press(message).into(),
+        None => area.into(),
+    }
+}
+
+/// The box of a [`target_place_row`] and the gap after it.
+const CHECK_ROOM: f32 = 24.0;
 
 /// The part right of a list: padding of 16 and 24, scrolling when it is long.
 pub fn detail<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
