@@ -16,6 +16,21 @@ All notable changes to this project are documented here. The format follows
 - Hermes suggests a scheme or further rules for a target, or a rule for one
   file. Nothing is saved before you take it.
 - Context menu of a folder: "File…", "Watch as source…" and "Set up as target…".
+- Git tab: a header with repository, branch, state and worktree, panes you can
+  resize, sidebar sections, and your local changes as a row of the graph with
+  staging and commit next to it. "Ignore…" adds a file, its folder or its type
+  to `.gitignore`.
+- Git: context menu of a commit (check out, branch, tag, cherry-pick, revert,
+  reset, compare), file history that follows renames, and blame.
+- Git: pull fast-forward only, force push with lease, a dialog for passwords git
+  asks for (nothing is stored), and fetching in the background.
+- Git: clean up merged branches and worktrees, each with its reason, in one
+  repository or in several.
+- Repos tab: all repositories in one list with favorites and state; switch to
+  the default branch, pull and fetch for the marked ones.
+- All Git and Repos actions have a key, are in the command list (F1) and can be
+  changed in `[keys.git]` and `[keys.repos]`. In the App Store build Git stays
+  read only.
 
 ### Changed
 
@@ -38,6 +53,12 @@ All notable changes to this project are documented here. The format follows
 
 - The read folder and write folder roles, continuous filing as a command of its
   own, and the chat's filing runs.
+
+### Fixed
+
+- ncrs quits cleanly while an AI model is loaded.
+- A run that was put back only in part can be put back again.
+- The idle load of 1.7.1, where Hermes kept preparing folder suggestions.
 
 ## [1.7.1] — 2026-11-25
 
