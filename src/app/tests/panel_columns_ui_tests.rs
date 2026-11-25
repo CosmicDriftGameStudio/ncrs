@@ -135,19 +135,11 @@ fn panel_app(language: Language) -> App {
         panel.entries = dense_tree();
         panel.selected = 1;
     }
-    let folder = |name: &str, mode, is_target| crate::config::FilingLocation {
-        path: app.home.join(name),
-        mode,
-        images: false,
-        is_target,
-        transfer: Default::default(),
-        continuous: false,
-    };
-    let hermes = [
-        folder("Public", ncrs_intake::LocationMode::Inbox, false),
-        folder("Documents", ncrs_intake::LocationMode::Archive, true),
-    ];
-    app.special_folders = ncrs_files::special_folders::special_folders_of(&hermes, &app.home);
+    app.special_folders = ncrs_files::special_folders::special_folders_of(
+        [app.home.join("Documents").as_path()],
+        [app.home.join("Public").as_path()],
+        &app.home,
+    );
     app.in_language(language)
 }
 

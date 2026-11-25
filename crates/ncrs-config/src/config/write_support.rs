@@ -78,40 +78,66 @@ pub fn not_a_table(path: &Path, key: &str) -> FilingWriteError {
     })
 }
 
-/// `source` with `enabled = true` in `[hermes]` and `locations` in
-/// `[modules.filing]`.
-pub fn with_filing_locations(
-    source: &str,
-    path: &Path,
-    locations: &[FilingLocation],
-) -> Result<String, FilingWriteError> {
-    let mut document = parse_document(source, path)?;
-    let hermes = sub_table(document.as_table_mut(), "hermes", false)
-        .ok_or_else(|| not_a_table(path, "hermes"))?;
-    hermes.insert("enabled", toml_edit::value(true));
-    let modules = sub_table(document.as_table_mut(), "modules", true)
-        .ok_or_else(|| not_a_table(path, "modules"))?;
-    let filing =
-        sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
-    set_locations(filing, locations)?;
-    Ok(document.to_string())
-}
-
 /// `source` with `locations` as the read folders of `[modules.filing]` and
 /// nothing else changed: whether Hermes is on and its AI settings stay as the
-/// user left them. An empty list removes the entries.
+/// user left them. An empty list removes the entries. Folders that are in the
+/// list only because they are a source or a target stay out of the file: the
+/// entry would keep the folder after the source or target is gone.
 pub fn with_read_folders(
     source: &str,
     path: &Path,
     locations: &[FilingLocation],
+    home: Option<&Path>,
 ) -> Result<String, FilingWriteError> {
+    let config = parse_config(source, path, home).map_err(FilingWriteError::Config)?;
+    let locations = if sorting_is_in_file(&config.modules.filing) {
+        folders_of_their_own(&config, locations, home)
+    } else {
+        locations.to_vec()
+    };
     let mut document = parse_document(source, path)?;
     let modules = sub_table(document.as_table_mut(), "modules", true)
         .ok_or_else(|| not_a_table(path, "modules"))?;
     let filing =
         sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
-    set_locations(filing, locations)?;
+    set_locations(filing, &locations)?;
     Ok(document.to_string())
+}
+
+/// The archives of `locations` that `locations_of_sorting` would not give
+/// again without an entry in the file, and those that have one.
+fn folders_of_their_own(
+    config: &Config,
+    locations: &[FilingLocation],
+    home: Option<&Path>,
+) -> Vec<FilingLocation> {
+    let listed: Vec<PathBuf> = config
+        .modules
+        .filing
+        .locations
+        .iter()
+        .flat_map(|entries| entries.get_ref())
+        .filter_map(|entry| expand_location_path(entry.path.get_ref(), home).ok())
+        .collect();
+    let is_only_a_target = |folder: &Path| {
+        !listed.iter().any(|known| same_folder(known, folder))
+            && config
+                .filing
+                .targets
+                .iter()
+                .any(|setting| same_folder(&setting.target.path, folder))
+    };
+    locations
+        .iter()
+        .filter(|location| location.mode == LocationMode::Archive)
+        .filter(|location| !is_only_a_target(&location.path))
+        .map(|location| FilingLocation {
+            is_target: false,
+            transfer: LocationTransfer::default(),
+            continuous: false,
+            ..location.clone()
+        })
+        .collect()
 }
 
 fn set_locations(

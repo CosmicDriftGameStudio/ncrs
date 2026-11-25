@@ -216,19 +216,15 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
     .align_y(alignment::Vertical::Center);
     SettingRow {
         key: Some(RowKey::Text(role.field_id())),
-        label: view.lang.text(color_label(role)).to_owned(),
-        theme_name: None,
         config_key: Some(role.name().to_owned()),
-        description: None,
         problem: field_problem(field, view).or_else(|| contrast_problem(role, view)),
-        warning: None,
-        control: control.into(),
         control_width: None,
         in_command_list: true,
-        list_indent: None,
-        marked_controls: Vec::new(),
-        label_action: None,
-        leading: None,
+        ..SettingRow::text(
+            view.lang.text(color_label(role)).to_owned(),
+            None,
+            control.into(),
+        )
     }
 }
 
@@ -282,20 +278,13 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         description.push_str(lang.text(Msg::SettingsProgramsSandboxNote));
     }
     SettingRow {
-        key: None,
-        label: lang.text(label).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: Some(description),
         problem: field_problem(field, view),
-        warning: None,
-        control: build(None),
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
-        list_indent: None,
-        marked_controls: Vec::new(),
-        label_action: None,
-        leading: None,
+        ..SettingRow::text(
+            lang.text(label).to_owned(),
+            Some(description),
+            build(None),
+        )
     }
     .with_buttons(pressable(&buttons), build)
 }
@@ -367,19 +356,13 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
     }
     SettingRow {
         key: Some(dropdown_key(&items, selected)),
-        label: lang.text(Msg::SettingsRowTerminal).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: Some(lang.text(Msg::SettingsRowTerminalNote).to_owned()),
         problem: field_problem(field, view),
-        warning: None,
-        control: control.into(),
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
-        list_indent: None,
-        marked_controls: Vec::new(),
-        label_action: None,
-        leading: None,
+        ..SettingRow::text(
+            lang.text(Msg::SettingsRowTerminal).to_owned(),
+            Some(lang.text(Msg::SettingsRowTerminalNote).to_owned()),
+            control.into(),
+        )
     }
 }
 

@@ -181,13 +181,13 @@ impl CommandPalette {
         self
     }
 
-    /// Drops the Hermes commands on a file that need configured locations,
-    /// keeping those that set a folder's role.
+    /// Drops the Hermes commands on a file that need configured folders,
+    /// keeping those that set one up.
     pub fn without_hermes_location_commands(mut self) -> Self {
         self.entries.retain(|entry| {
             !entry
                 .command()
-                .is_some_and(|action| action.acts_on_hermes_file() && !action.sets_hermes_role())
+                .is_some_and(|action| action.acts_on_hermes_file() && !action.sets_up_sorting())
         });
         self.rank();
         self

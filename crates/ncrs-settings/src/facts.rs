@@ -1,10 +1,10 @@
-//! What the Index and Hermes pages show that the app knows and the config file
+//! What the Index and AI pages show that the app knows and the config file
 //! does not. The app fills it when something changes, not on every frame.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub use ncrs_core::facts::{AreaFacts, LoadedFacts, ReadFolderCoverage, RunDay, RunFacts};
+pub use ncrs_core::facts::{LoadedFacts, ReadFolderCoverage};
 
 /// A model the user can load and remove again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,13 +44,8 @@ pub struct DocumentsFacts {
     pub unreadable: usize,
     /// Locations whose folder cannot be reached right now.
     pub disconnected: Vec<PathBuf>,
-    /// `None` while the folders are being looked at.
-    pub areas: Option<Vec<AreaFacts>>,
-    /// Newest first.
-    pub runs: Vec<RunFacts>,
     /// How many documents each read folder holds; empty without an index.
     pub folder_files: BTreeMap<PathBuf, usize>,
-    pub rules: usize,
     pub ai: AiState,
     /// What the model in use is, worded: file name, memory and what it
     /// computes on, or why it failed. `None` while there is nothing to add to

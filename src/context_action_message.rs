@@ -3,11 +3,10 @@
 use ncrs_files::context_menu::{ContextAction, HermesAction};
 
 use crate::fs::OpenKind;
-use crate::hermes_column::FolderRole;
 use crate::messages::PanelMessage;
 use crate::messages::{
     ClipboardKind, CompareMessage, GitFileView, HermesFileMessage, HitListMessage, Message,
-    QuickFixMessage, TransferKind,
+    TransferKind,
 };
 
 pub trait ContextActionMessage {
@@ -50,19 +49,13 @@ impl ContextActionMessage for ContextAction {
 impl ContextActionMessage for HermesAction {
     fn message(self) -> Message {
         match self {
-            HermesAction::ShowSuggestion => Message::QuickFix(QuickFixMessage::Open),
-            HermesAction::HandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             HermesAction::ProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
             HermesAction::FileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
-            HermesAction::FileContinuously => {
-                Message::HermesFile(HermesFileMessage::FileContinuously)
+            HermesAction::WatchSource | HermesAction::ChangeSource => {
+                Message::HermesFile(HermesFileMessage::WatchSource)
             }
-            HermesAction::StopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
-            HermesAction::SetFilingLocation => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
-            }
-            HermesAction::SetArchive => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Archive))
+            HermesAction::AddTarget | HermesAction::ChangeTarget => {
+                Message::HermesFile(HermesFileMessage::AddTarget)
             }
             HermesAction::Exclude | HermesAction::Include => {
                 Message::HermesFile(HermesFileMessage::ToggleExclusion)

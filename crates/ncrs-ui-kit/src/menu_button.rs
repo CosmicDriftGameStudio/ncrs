@@ -108,7 +108,7 @@ impl<'a, M> MenuButton<'a, M> {
 }
 
 fn text_width(renderer: &Renderer, content: &str, size: f32) -> f32 {
-    <Renderer as text::Renderer>::Paragraph::with_text(Text {
+    let paragraph = <Renderer as text::Renderer>::Paragraph::with_text(Text {
         content,
         bounds: Size::INFINITE,
         size: Pixels(size),
@@ -118,9 +118,8 @@ fn text_width(renderer: &Renderer, content: &str, size: f32) -> f32 {
         align_y: alignment::Vertical::Top,
         shaping: Shaping::default(),
         wrapping: Wrapping::None,
-    })
-    .min_bounds()
-    .width
+    });
+    paragraph.min_bounds().width
 }
 
 impl<M: Clone> Widget<M, Theme, Renderer> for MenuButton<'_, M> {

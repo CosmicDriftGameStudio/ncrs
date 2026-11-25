@@ -32,12 +32,8 @@ impl App {
         input.viewer = state.viewer;
         input.notes = self.notes_shown() && !self.blocking_overlay_is_open();
         input.filing = self.filing_shown() && !self.blocking_overlay_is_open();
-        input.filing_renaming = input.filing
-            && self
-                .filing_view
-                .session
-                .as_ref()
-                .is_some_and(|session| session.renaming.is_some());
+        input.filing_renaming = input.filing && state.filing_keys.renaming;
+        input.filing_question = input.filing && state.filing_keys.question;
         input.repos = self.repos_shown() && !self.blocking_overlay_is_open();
         input.git = self
             .shown_git_tab()
@@ -75,8 +71,8 @@ impl App {
             .context_menu
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
-        let quick_fix = self.hermes.quick_fix.is_some();
         let confirm_again = self.hermes.confirm_again.is_some();
+        let hermes_dialog = self.hermes_dialog_keys();
         let path_editing =
             self.panels.path_field.is_some() || self.panels.renaming_side().is_some();
         let command_line = self.command_line.is_focused();
@@ -116,12 +112,7 @@ impl App {
         let notes = self.notes_shown();
         let notes_editing = notes && self.notes.editing();
         let filing = self.filing_shown();
-        let filing_renaming = filing
-            && self
-                .filing_view
-                .session
-                .as_ref()
-                .is_some_and(|session| session.renaming.is_some());
+        let filing_keys = ncrs_filing_view::key_facts(&self.filing_view);
         let repos = self.repos_shown();
         let repos_text = repos && self.repos.as_ref().is_some_and(|state| state.takes_text());
         let repos_menu = repos && self.repos.as_ref().is_some_and(|state| state.menu_open());
@@ -157,8 +148,8 @@ impl App {
             context_menu,
             favourite_menu,
             context_submenu,
-            quick_fix,
             confirm_again,
+            hermes_dialog,
             path_editing,
             command_line,
             search,
@@ -189,7 +180,7 @@ impl App {
             notes,
             notes_editing,
             filing,
-            filing_renaming,
+            filing_keys,
             git,
             repos,
             repos_text,

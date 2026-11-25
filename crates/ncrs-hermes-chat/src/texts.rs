@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 pub use ncrs_filing::chat_work::segments;
 use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_intake::{branch_plain, Area, Branch, ConditionProblem, RuleProblem};
+use ncrs_intake::{branch_plain, Area, Branch};
 use ncrs_ui_kit::format;
 
 use crate::ctx::Ctx;
@@ -18,7 +18,6 @@ pub fn problem_text(lang: Language, problem: ncrs_ai::ModelProblem) -> String {
     use ncrs_ai::ModelProblem;
     match problem {
         ModelProblem::TooLong => text(lang, Msg::HermesChatModelTooLong),
-        ModelProblem::Unsupported => text(lang, Msg::HermesChatModelUnsupported),
         ModelProblem::BadReply => text(lang, Msg::HermesChatModelBadReply),
         ModelProblem::Unreachable => text(lang, Msg::HermesChatModelUnreachable),
         ModelProblem::ConsentMissing => text(lang, Msg::HermesChatModelConsentMissing),
@@ -42,26 +41,6 @@ pub fn fill(lang: Language, msg: Msg, values: &[(&str, &str)]) -> String {
         .map(|(name, value)| (name.as_str(), *value))
         .collect();
     fill_template(lang.text(msg), &borrowed)
-}
-
-/// The reason a rule of the chat was refused, in plain words.
-pub fn rule_problem_text(lang: Language, problem: &RuleProblem) -> String {
-    match problem {
-        RuleProblem::NoCondition => text(lang, Msg::HermesChatRuleProblemNoCondition),
-        RuleProblem::Condition(ConditionProblem::Empty) => {
-            text(lang, Msg::HermesChatRuleProblemEmptyValue)
-        }
-        RuleProblem::Condition(ConditionProblem::InvalidRegex(reason)) => fill(
-            lang,
-            Msg::HermesChatRuleProblemInvalidRegex,
-            &[("reason", reason)],
-        ),
-        RuleProblem::Condition(ConditionProblem::InvalidIban) => {
-            text(lang, Msg::HermesChatRuleProblemInvalidIban)
-        }
-        RuleProblem::NoFilingTarget => text(lang, Msg::HermesChatRuleProblemNoFilingTarget),
-        RuleProblem::InvalidPattern => text(lang, Msg::HermesChatRuleProblemInvalidPattern),
-    }
 }
 
 pub fn number(value: usize) -> String {

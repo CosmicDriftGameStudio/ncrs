@@ -274,10 +274,8 @@ pub fn key_button<'a, M: Clone + 'a>(
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let content = row![
-        label_text(label),
-        cap(key, on_press.is_some() && tone.is_filled(), palette)
-    ]
+    let is_filled = on_press.is_some() && tone.is_filled();
+    let content = row![label_text(label), cap(key, is_filled, palette)]
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
     sized_button(content.into(), on_press, tone, palette)
@@ -293,6 +291,18 @@ pub fn segmented<'a, M: Clone + 'a>(
     enabled: bool,
     palette: &Palette,
 ) -> Element<'a, M> {
+    focusable_segmented(options, selected, enabled, false, palette)
+}
+
+/// [`segmented`] for a dialog the keyboard walks through: `focused` outlines
+/// the group in the focus look. At rest it looks exactly like [`segmented`].
+pub fn focusable_segmented<'a, M: Clone + 'a>(
+    options: &[(&str, M)],
+    selected: usize,
+    enabled: bool,
+    focused: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
     let buttons = options.iter().enumerate().map(|(index, (label, message))| {
         widget_button(container(label_text(label)).center_y(Length::Fill))
             .padding([0.0, BUTTON_PADDING_X])
@@ -302,7 +312,7 @@ pub fn segmented<'a, M: Clone + 'a>(
             .into()
     });
     container(Row::with_children(buttons))
-        .style(theme::segment_group(palette))
+        .style(theme::segment_group_focusable(palette, focused))
         .into()
 }
 

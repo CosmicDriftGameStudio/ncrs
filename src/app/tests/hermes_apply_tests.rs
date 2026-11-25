@@ -25,11 +25,13 @@ fn saved_filing() -> Filing {
         ],
         load: Load::default(),
         ai: crate::config::AiSetting::Off,
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
         first_run: false,
+        targets: Vec::new(),
+        sources: Vec::new(),
+        dropped_entries: Vec::new(),
     }
 }
 
@@ -141,16 +143,6 @@ async fn an_ai_change_waits_for_the_next_start_while_a_job_runs() {
     assert!(matches!(applies, SavedFilingApplies::AtNextStart));
     assert!(app.hermes.pipeline.is_some() && app.hermes.filing.is_some());
     assert!(app.hermes.filing_restart.is_none());
-}
-
-#[test]
-fn a_new_module_files_its_first_plans_even_after_an_older_runner_made_many() {
-    let mut app = app_that_can_start_a_module();
-    app.hermes.plans_filed_for = 7;
-
-    drop(app.start_filing_module(&saved_filing()));
-
-    assert_eq!(app.hermes.plans_filed_for, 0);
 }
 
 #[tokio::test]

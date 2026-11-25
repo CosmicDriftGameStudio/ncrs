@@ -1,37 +1,8 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::{ChatIntent, ChatTurn, Schedule};
-use ncrs_filing::chat_work::{
-    ChatWork, FolderReading, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
-    WaitingGroup,
-};
-use ncrs_index::Transfer;
-
-use crate::action::Action;
-
-/// How a new, empty folder to file into is ordered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NewLayout {
-    Year,
-    Sender,
-    Kind,
-    Flat,
-}
-
-/// Filing a source file by file: where the walk stands and what is decided.
-#[derive(Debug, Clone)]
-pub struct Deciding {
-    pub source: Arc<FolderReading>,
-    pub next: usize,
-    /// The position of a file in the source and the folder it goes to.
-    pub picks: Vec<(usize, PathBuf)>,
-    /// One run for every folder the files go to, the next one last.
-    pub runs: Vec<RunPlan>,
-    pub done: usize,
-    pub skipped: usize,
-}
+use ncrs_ai::ChatTurn;
+use ncrs_filing::chat_work::{ChatWork, ReadProgress, RunSummary};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChipReply {
@@ -40,34 +11,11 @@ pub enum ChipReply {
     PickFolder,
     TurnOn,
     ReadAnyway,
-    KeepYes,
     ShowAll,
-    FineAsIs,
-    ToTrash,
-    LeaveThem,
     Later,
-    Once,
-    Always,
-    ModeCopy,
-    ModeMove,
     /// One of the folders a name the model heard can mean.
     NamedFolder(PathBuf),
-    /// Limits the proposed rule to documents from this read folder.
-    OnlyFrom(PathBuf),
-    /// Lifts the limit to one read folder from the proposed rule.
-    FromAllSources,
-    RoleSource,
-    RoleTarget,
-    PhotosYes,
-    PhotosNo,
-    /// Opens the picker for a new folder to file into.
-    NewTarget,
-    DecidePerFile,
-    DecideTarget(PathBuf),
-    DecideSkip,
-    NewLayout(NewLayout),
     PutBack,
-    Undo,
     OpenSearch,
     IntentSearch,
     IntentTidy,
@@ -75,31 +23,15 @@ pub enum ChipReply {
     IntentUndo,
     DownloadModel,
     TurnOnAi,
-    ConfirmTidy,
-    OtherTarget,
-    SwitchToCopy,
-    SwitchToMove,
     /// Reads the folder again that could not be read.
     Retry,
-    /// Moves the files that are in the filing folder already to the trash.
-    TrashDuplicatesNow,
-    /// Runs the trial again against a folder the user picks.
-    TrialOtherTarget,
-    /// Goes through the documents that wait, group by group.
-    WaitingShow,
-    /// Files the group of waiting documents in question where it is proposed.
-    WaitingFile,
-    /// Files the waiting document in question in this folder below the target.
-    WaitingFileInto(PathBuf),
-    /// Opens the picker for the folder the waiting document in question goes to.
-    WaitingOtherFolder,
     /// Accepts the levels shown for the folder.
     LevelsKeep,
     /// Starts the change of the levels in words.
     LevelsChange,
     /// Takes the standard levels.
     LevelsDefault,
-    /// Takes the levels as changed so far: the rule's pattern.
+    /// Takes the levels as changed so far.
     LevelsApply,
     /// Asks for one more change of the levels.
     LevelsMore,
@@ -107,18 +39,11 @@ pub enum ChipReply {
     LevelsDiscard,
     /// The user is done with the levels: they are taken as they are.
     LevelsDone,
-    /// Describes what goes into the folder, in these words.
-    RuleWhat(String),
-    /// Stores the proposed rule.
-    RuleCreate,
-    /// Asks for the condition in a sentence; the levels stay.
-    RuleCondition,
-    /// Files what lies differently with the new rule.
-    RuleNow,
-    /// Leaves what exists as it is: the new rule is for new documents only.
-    RuleOnlyNew,
-    /// Leaves the group of waiting documents in question as it is.
-    WaitingSkip,
+    /// Hands the folder and its confirmed levels to the rule suggestions.
+    SuggestRules,
+    /// Opens the dialog that files this folder, or the active one.
+    OpenSort(Option<PathBuf>),
+    OpenRuleForm,
 }
 
 impl Session {
@@ -131,46 +56,25 @@ impl Session {
 impl ChipReply {
     /// Pressing it does not need the filing module.
     pub fn needs_no_hermes(&self) -> bool {
-        matches!(self, Self::TurnOn | Self::PickFolder)
+        matches!(
+            self,
+            Self::TurnOn | Self::PickFolder | Self::OpenSort(_) | Self::OpenRuleForm
+        )
     }
 
-    /// Whether handling the reply writes files, trash, rules or settings, or
-    /// settles what a later filing run does. A typed answer never runs such a
-    /// reply on its own.
+    /// Whether handling the reply writes files, trash, rules or settings. A
+    /// typed answer never runs such a reply on its own.
     pub fn changes_something(&self) -> bool {
         match self {
-            Self::KeepYes
-            | Self::FineAsIs
-            | Self::ToTrash
-            | Self::RoleSource
-            | Self::DecideTarget(_)
-            | Self::NewLayout(_)
-            | Self::PutBack
-            | Self::TrashDuplicatesNow
-            | Self::WaitingFile
-            | Self::WaitingFileInto(_)
-            | Self::RuleCreate
-            | Self::RuleNow
-            | Self::Undo => true,
+            Self::PutBack => true,
             Self::Cancel
             | Self::Folder(_)
             | Self::PickFolder
             | Self::TurnOn
             | Self::ReadAnyway
             | Self::ShowAll
-            | Self::LeaveThem
             | Self::Later
-            | Self::Once
-            | Self::Always
-            | Self::ModeCopy
-            | Self::ModeMove
             | Self::NamedFolder(_)
-            | Self::RoleTarget
-            | Self::PhotosYes
-            | Self::NewTarget
-            | Self::DecidePerFile
-            | Self::DecideSkip
-            | Self::PhotosNo
             | Self::OpenSearch
             | Self::IntentSearch
             | Self::IntentTidy
@@ -178,13 +82,7 @@ impl ChipReply {
             | Self::IntentUndo
             | Self::DownloadModel
             | Self::TurnOnAi
-            | Self::ConfirmTidy
-            | Self::OtherTarget
-            | Self::SwitchToCopy
-            | Self::SwitchToMove
             | Self::Retry
-            | Self::WaitingShow
-            | Self::WaitingSkip
             | Self::LevelsKeep
             | Self::LevelsChange
             | Self::LevelsDefault
@@ -192,13 +90,9 @@ impl ChipReply {
             | Self::LevelsMore
             | Self::LevelsDiscard
             | Self::LevelsDone
-            | Self::RuleWhat(_)
-            | Self::RuleCondition
-            | Self::OnlyFrom(_)
-            | Self::FromAllSources
-            | Self::RuleOnlyNew
-            | Self::WaitingOtherFolder
-            | Self::TrialOtherTarget => false,
+            | Self::SuggestRules
+            | Self::OpenSort(_)
+            | Self::OpenRuleForm => false,
         }
     }
 }
@@ -243,22 +137,6 @@ pub struct LevelsCard {
     pub footer: Option<String>,
 }
 
-/// A rule proposal: what it applies to, where it files, some examples.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProposalCard {
-    pub title: String,
-    pub facts: Vec<ncrs_ui_kit::hermes_kit::FactRow>,
-    pub moves: Option<ncrs_ui_kit::hermes_kit::MovesBlock>,
-    pub counts: Option<String>,
-}
-
-/// A path as segments, one of them highlighted.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileCard {
-    pub segments: Vec<String>,
-    pub highlighted: Option<usize>,
-}
-
 /// A folder named in the chat: its name, and where it lies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderMention {
@@ -270,9 +148,7 @@ pub struct FolderMention {
 pub enum Part {
     Text(String),
     Levels(LevelsCard),
-    Proposal(ProposalCard),
     Areas(AreasCard),
-    File(FileCard),
     Folder(FolderMention),
 }
 
@@ -285,117 +161,27 @@ pub enum Entry {
 }
 
 /// What the next answer is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Step {
+    #[default]
     Idle,
     /// A folder to read, to learn its order.
     ReadFolder,
-    /// The opening question: any folder, routed by what it is for.
+    /// The opening question: any folder.
     Greeting,
-    /// What a folder with no role is for.
-    Role,
-    /// Whether to read the photos of a source.
-    Photos,
-    /// The next picked folder is a new one to file into.
-    NewTarget,
-    /// How a new folder to file into is ordered.
-    NewLayout,
-    /// Which folder a file goes to.
-    Decide,
     ConfirmUnknown,
-    Keep,
-    ConfirmTidy,
-    OtherTarget,
-    Source,
-    TidyFolder,
-    Target,
-    Once,
-    Mode,
-    Trial,
-    /// The next typed text is the name of a new folder, not for the model.
-    AfterRun,
     UndoAsk,
     /// Typed words change the levels shown.
     RuleLevels,
-    /// Typed words say what goes into the folder.
-    RuleWhat,
-    /// The next picked folder is where the unsure waiting document goes.
-    WaitingFolder,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReadFor {
-    Learn,
-    /// The folder is opened for its levels.
-    Open,
-    Source,
-    Target,
-    NewTarget,
 }
 
 /// A read that failed because the folder was not there, to run again.
 #[derive(Debug, Clone)]
 pub struct Retry {
     pub folder: PathBuf,
-    pub purpose: ReadFor,
     /// The step a typed path failed to resolve in: the retry resolves and
     /// confirms it again instead of reading the path as typed.
     pub unresolved_in: Option<Step>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Tidy {
-    /// Started by "Rearrange now": target and transfer are given and the run
-    /// starts without a question. Holds the rule's folder below the target;
-    /// only documents filed there are filed.
-    pub rule_now: Option<PathBuf>,
-    pub source: PathBuf,
-    pub target: Option<PathBuf>,
-    pub transfer: Option<Transfer>,
-    /// Archive documents the stored rule renames or moves with this run.
-    pub inside: Vec<ncrs_filing::rules_work::ArchiveMove>,
-}
-
-/// What a rule would move: the documents of the inbox and, because the
-/// levels may have changed, the ones that already lie in the archive.
-#[derive(Debug, Clone, Default)]
-pub struct RuleMoves {
-    /// The target the rule files into.
-    pub target: PathBuf,
-    /// The rule's folder below the target.
-    pub prefix: PathBuf,
-    pub from_inbox: usize,
-    pub archive: Vec<ncrs_filing::rules_work::ArchiveMove>,
-    /// Archive files that lie wrong but cannot move in one run.
-    pub archive_blocked: usize,
-}
-
-impl RuleMoves {
-    pub fn total(&self) -> usize {
-        self.from_inbox + self.archive.len()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TrialSession {
-    pub plan: TrialPlan,
-}
-/// Duplicates the chat offers to trash.
-#[derive(Debug, Clone)]
-pub struct Offer {
-    pub name: String,
-    pub root: PathBuf,
-    pub items: Vec<TrashItem>,
-}
-
-/// What the chat understood from a sentence and now waits for a yes to.
-#[derive(Debug, Clone)]
-pub struct Proposal {
-    pub source: PathBuf,
-    pub target: Option<PathBuf>,
-    pub schedule: Option<Schedule>,
-    /// Only set when the user said it.
-    pub transfer: Option<Transfer>,
 }
 
 /// The question the user answered by typing: its text and its buttons, which
@@ -423,85 +209,26 @@ pub struct Thinking {
     pub discard_answer_on_drop: Option<iced::task::Handle>,
 }
 
-/// The walk through the waiting documents: the groups still to ask about, the
-/// one asked now, and how many documents there were and were filed.
-#[derive(Debug)]
-pub struct Walk {
-    pub groups: std::collections::VecDeque<WaitingGroup>,
-    pub current: Option<WaitingGroup>,
-    pub total: usize,
-    pub filed: usize,
-}
-
 #[derive(Debug, Default)]
 pub struct Session {
-    pub waiting: Option<Walk>,
-    /// The greeting follows the count of the waiting documents.
-    pub greeting_after_count: bool,
-    /// How many waiting documents the user was told about last.
-    pub waiting_offered: usize,
-    pub last_check: Option<chrono::DateTime<chrono::Local>>,
-    pub readings: HashMap<PathBuf, Arc<FolderReading>>,
-    /// Folders learned in this chat that are not yet a target of the app.
-    pub learned: Vec<PathBuf>,
-    /// The reading the order questions are about.
-    pub learning: Option<Arc<FolderReading>>,
-    pub read_for: Option<ReadFor>,
-    pub resume_tidy: bool,
-    /// The folder whose role the chat asked about.
-    pub role_asked: Option<PathBuf>,
-    /// The source whose photos the chat asked about.
-    pub photos_of: Option<Arc<FolderReading>>,
-    /// The order a new target without neighbours gets.
-    pub layout: Option<Vec<PatternLevel>>,
-    pub deciding: Option<Deciding>,
-    pub tidy: Option<Tidy>,
     /// The folder the running read is for.
     pub requested: PathBuf,
     pub retry: Option<Retry>,
-    pub trial: Option<TrialSession>,
-    pub offer: Option<Offer>,
     pub last_run: Option<RunSummary>,
-    /// The batches of the runs one tidy-up made, oldest first: one undo takes
-    /// them all back.
-    pub run_chain: Vec<ncrs_index::BatchId>,
-    /// A typed folder waiting for a yes, and the step it was typed in.
-    pub confirm: Option<(PathBuf, Step)>,
-    pub proposal: Option<Proposal>,
-    /// The names the user is asked to choose a folder for.
+    /// A typed folder waiting for a yes.
+    pub confirm: Option<PathBuf>,
+    /// The name the user is asked to choose a folder for.
     pub choosing: Option<crate::named_folders::Naming>,
-    /// The last tidy or structure change Hermes understood.
-    pub previous_request: Option<ChatIntent>,
-    /// The sentence before, when Hermes could do nothing with it.
-    pub previous_message: Option<String>,
     pub unsent: Option<Unsent>,
     /// A button or picked folder that waits for Hermes to start.
     pub unsent_reply: Option<ChipReply>,
     /// How far the running read is.
     pub progress: Option<Arc<ReadProgress>>,
-    /// The duplicates of the folder learned first, offered after the first
-    /// filing, once.
-    pub archive_duplicates: Option<Offer>,
-    pub archive_offered: bool,
-    /// The rule being made from a folder or a description.
+    /// The folder whose order is being recognised.
     pub rule: Option<crate::rule_flow::RuleFlow>,
-    /// What the stored rule moves, kept for "File now".
-    pub rule_moves: Option<RuleMoves>,
-    /// The sources "Rearrange now" still has to go through, one run each.
-    pub rule_queue: Option<RuleQueue>,
-    /// The user chose to file a read folder all the time: the chat list
-    /// shows the chat as running.
-    pub keeps_filing: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct RuleQueue {
-    pub target: PathBuf,
-    pub prefix: PathBuf,
-    pub sources: Vec<PathBuf>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct State {
     pub open: bool,
     pub input: String,
@@ -512,7 +239,7 @@ pub struct State {
     pub thinking: Option<Thinking>,
     /// The turn set during this `update` that no task runs yet.
     pub fresh_turn: bool,
-    /// What the model is asked about a rule or levels.
+    /// What the model is asked about levels.
     pub rule_ask: Option<crate::rule_flow::RuleAsk>,
     /// The ask set during this `update` that no task runs yet.
     pub fresh_rule_ask: bool,
@@ -524,23 +251,9 @@ pub struct State {
     pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
-    /// A background job is making the model's folder picks of the read folders.
-    pub picks_running: bool,
-    /// Set to end the running job: the AI went off. A new job gets a new flag.
-    pub picks_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// The read folders the running job works through, in order.
-    pub picks_sources: Vec<PathBuf>,
-    /// How many of `picks_sources` the running job has finished.
-    pub picks_done: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    /// Files of the current read folder still waiting for the model.
-    pub picks_left: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    /// The pipeline sequence the last job was started for.
-    pub picks_settled_at: Option<usize>,
     /// The index was replaced while a turn ran: the chat starts over once it is idle.
     pub restart_when_idle: bool,
-    /// The job set during this `update` that no task runs yet.
-    pub picks_job: Option<crate::picks::PicksJob>,
-    /// The folders a sentence named, being checked off the UI thread.
+    /// The folder a sentence named, being checked off the UI thread.
     pub naming: Option<crate::named_folders::Naming>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_naming: bool,
@@ -553,48 +266,10 @@ pub struct State {
     pub waiting_for_hermes: bool,
     /// Counts the ticks of the wait; moves the dots of the working line.
     pub tick: usize,
-    /// An action a result of work asks for; `update` hands it to the app.
-    pub queued_action: Option<Action>,
     pub session: Session,
     /// The chats of the list; the conversation above is the one of
     /// `chats.live()`.
     pub chats: crate::chat_list::ChatList,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            open: false,
-            input: String::new(),
-            thread: Vec::new(),
-            pending: None,
-            fresh: false,
-            thinking: None,
-            fresh_turn: false,
-            rule_ask: None,
-            fresh_rule_ask: false,
-            resolving: None,
-            unresolved_sentence: None,
-            fresh_resolve: false,
-            picks_running: false,
-            picks_stop: std::sync::Arc::default(),
-            picks_sources: Vec::new(),
-            picks_done: std::sync::Arc::default(),
-            picks_left: std::sync::Arc::default(),
-            picks_settled_at: None,
-            restart_when_idle: false,
-            picks_job: None,
-            naming: None,
-            fresh_naming: false,
-            step: Step::Idle,
-            greeting_owed: false,
-            waiting_for_hermes: false,
-            tick: 0,
-            queued_action: None,
-            session: Session::default(),
-            chats: crate::chat_list::ChatList::default(),
-        }
-    }
 }
 
 impl State {
@@ -618,7 +293,7 @@ impl State {
         self.thinking.as_ref().map(|thinking| &thinking.turn)
     }
 
-    /// What the model is asked about a rule; the app asks it on a blocking
+    /// What the model is asked about levels; the app asks it on a blocking
     /// thread.
     pub fn pending_rule_ask(&self) -> Option<&crate::rule_flow::RuleAsk> {
         self.rule_ask.as_ref()
@@ -631,7 +306,7 @@ impl State {
             .map(|(typed, step)| (typed.as_path(), *step))
     }
 
-    /// The names the app waits to have checked.
+    /// The name the app waits to have checked.
     pub fn pending_naming(&self) -> Option<&crate::named_folders::Naming> {
         self.naming.as_ref()
     }

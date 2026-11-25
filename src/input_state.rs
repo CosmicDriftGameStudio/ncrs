@@ -107,6 +107,8 @@ pub struct InputState {
     pub notes: bool,
     /// The filing tab is up and a name is typed in it: Escape leaves the field.
     pub filing_renaming: bool,
+    /// A question is open in the filing tab: Escape leaves it alone.
+    pub filing_question: bool,
     /// The filing tab is up with nothing over it: an Option tap opens no menu.
     pub filing: bool,
     /// The Git tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
@@ -180,6 +182,10 @@ impl InputState {
             (
                 self.filing_renaming,
                 Message::FilingView(ncrs_filing_view::Message::RenameCancel),
+            ),
+            (
+                self.filing_question,
+                Message::FilingView(ncrs_filing_view::Message::QuestionLeave),
             ),
             // The plan stays; Escape only goes back to the panels.
             (self.filing, Message::ShowTab(ShownTab::Panels)),
@@ -521,7 +527,7 @@ mod tests {
     #[test]
     fn every_overlay_escape_closes_also_blocks_the_tap() {
         type OpenOverlay = fn(&mut InputState);
-        let overlays: [(&str, OpenOverlay); 14] = [
+        let overlays: [(&str, OpenOverlay); 15] = [
             ("monitor_filter", |input| {
                 input.monitor = true;
                 input.monitor_filter = true;
@@ -545,6 +551,10 @@ mod tests {
             ("filing_renaming", |input| {
                 input.filing = true;
                 input.filing_renaming = true;
+            }),
+            ("filing_question", |input| {
+                input.filing = true;
+                input.filing_question = true;
             }),
         ];
         for (name, open) in overlays {

@@ -1,15 +1,15 @@
-//! `NCRS_EVAL_CONTINUOUS=<folder with new files>`: after the chat tidied the
-//! source with "Always" and copied it in the tab, new files arrive in the
-//! source, the app files the sure ones by itself, and the run is put back.
+//! `NCRS_EVAL_CONTINUOUS=<folder with new files>`: the source is watched, what
+//! lies in it is its backlog. New files arrive, the app files the ones a rule
+//! takes by itself, and the run is put back.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use ncrs_config::config::LocationTransfer;
-use ncrs_index::{BatchId, BatchKind, InMemoryKeyStore, Index, JournalState};
-use ncrs_intake::LocationMode;
+use ncrs_index::{BatchId, BatchKind, DocumentStatus, InMemoryKeyStore, Index, JournalState};
 
+use super::quiet_window::QuietWindow;
 use super::scratch::copy_tree;
 use super::tidy_flows::relative_files;
 use super::{all, expect, Check, Protocol, READ_LIMIT};
@@ -48,7 +48,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         file
     }
 
-    fn open_index(&self) -> Option<Index> {
+    pub(in crate::hermes_protocol) fn open_index(&self) -> Option<Index> {
         Index::open(&self.index_path, &InMemoryKeyStore::empty()).ok()
     }
 
@@ -56,9 +56,14 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         Some(self.open_index()?.open_reviews().ok()?.len())
     }
 
-    fn hermes_batches(&self) -> Vec<BatchId> {
+    pub(in crate::hermes_protocol) fn hermes_batches(&self) -> Vec<BatchId> {
         self.open_index()
-            .and_then(|index| index.undoable_batches(BatchKind::Hermes, 50).ok())
+            .map(|index| {
+                [BatchKind::Hermes, BatchKind::Filing]
+                    .into_iter()
+                    .flat_map(|kind| index.undoable_batches(kind, 50).unwrap_or_default())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -113,7 +118,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let mut last_tick = Instant::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
-        let mut idle_since: Option<Instant> = None;
+        let mut window = QuietWindow::default();
         let mut status_shot = false;
         let mut last_status = Instant::now();
         let mut reports_seen = 0;
@@ -136,6 +141,13 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 );
             }
             if last_tick.elapsed() >= Duration::from_secs(1) {
+                // Looked at before the next tick: what the last one started,
+                // such as the counts read every fifth tick, has had a second
+                // to report back.
+                let quiet = self.app().pipeline_is_idle_for_test() && self.session.in_flight == 0;
+                if window.look(Instant::now(), quiet, quiet_for(self)) {
+                    return window.since();
+                }
                 self.deliver(Message::FilingStatus(FilingStatusMessage::Tick));
                 last_tick = Instant::now();
             }
@@ -144,27 +156,20 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 status_shot = true;
                 self.shot_wide("continuous-status");
             }
-            let quiet = self.app().pipeline_is_idle_for_test() && self.session.in_flight == 0;
-            idle_since = if quiet {
-                idle_since.or_else(|| Some(Instant::now()))
-            } else {
-                None
-            };
-            if idle_since.is_some_and(|since| since.elapsed() >= quiet_for(self)) {
-                return idle_since;
-            }
         }
         None
     }
 
-    /// Runner state, the queue per step, waiting candidates and whether a job runs.
+    /// Runner state, the queue per step, whether the watched sources are
+    /// filing and whether a job runs.
     fn pipeline_line(&self) -> String {
-        let (state, queues, candidates) = self.app().pipeline_status_for_test();
-        let (tools, tab_blocks) = self.app().continuous_gates_for_test();
+        let (state, queues, filing_now) = self.app().pipeline_status_for_test();
+        let (allowed, tab_blocks) = self.app().continuous_gates_for_test();
         format!(
-            "runner {state}, queued per step {queues}, {candidates} candidates, jobs busy {}, tools {}, tab blocks {}",
+            "runner {state}, queued per step {queues}, watched filing {}, jobs busy {}, allowed {}, tab blocks {}",
+            if filing_now { "running" } else { "idle" },
             self.app().jobs_busy_for_test(),
-            if tools { "Some" } else { "None" },
+            if allowed { "yes" } else { "no" },
             if tab_blocks { "yes" } else { "no" }
         )
     }
@@ -253,54 +258,44 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         images
     }
 
-    /// Runs after the copy of `NCRS_EVAL_FILE=copy`: the source files by
-    /// itself.
-    pub fn continuous_after_copy(&mut self, new_files: &Path) {
+    /// Lets the watched source take what lies in it as its backlog, which no
+    /// run files.
+    fn wait_for_backlog(&mut self) -> bool {
         let started = Instant::now();
-        let downloads = self.downloads.clone();
-        let same_folder = |path: &Path| {
-            path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-                == downloads
-                    .canonicalize()
-                    .unwrap_or_else(|_| downloads.clone())
+        let recorded = |protocol: &Self| {
+            protocol.open_index().is_some_and(|index| {
+                index
+                    .has_source_backlog(&protocol.downloads)
+                    .unwrap_or(false)
+            })
         };
-        let switched_on = self.wait_until(Duration::from_secs(60), |app| {
-            app.filing_locations_for_test().iter().any(|location| {
-                same_folder(&location.path)
-                    && location.continuous
-                    && location.mode == LocationMode::Inbox
-                    && location.transfer == LocationTransfer::Copy
-            })
-        });
-        let on_the_source = self
-            .app()
-            .filing_locations_for_test()
-            .iter()
-            .filter(|location| same_folder(&location.path))
-            .map(|location| {
-                format!(
-                    "{} / continuous {} / {}",
-                    if location.mode == LocationMode::Inbox {
-                        "Inbox"
-                    } else {
-                        "Archive"
-                    },
-                    location.continuous,
-                    if location.transfer == LocationTransfer::Copy {
-                        "Copy"
-                    } else {
-                        "Move"
-                    }
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
-        let setting = format!("after the tab run: {on_the_source}");
-        println!("[{}] continuous setting: {setting}", self.language.code());
-        let setting_check = expect(
-            switched_on,
-            format!("the source is no continuous Inbox with Copy: {setting}"),
-        );
+        while started.elapsed() < Duration::from_secs(60) && !recorded(self) {
+            self.deliver(Message::FilingStatus(FilingStatusMessage::Tick));
+            self.pump(Duration::from_secs(1));
+        }
+        recorded(self)
+    }
+
+    /// Runs after the copy or move of `NCRS_EVAL_FILE=copy|move`.
+    pub fn continuous_after_tab_run(&mut self, new_files: &Path, expected: LocationTransfer) {
+        let started = Instant::now();
+        // An open tab keeps its source from filing by itself.
+        self.deliver(Message::FilingView(ncrs_filing_view::Message::Cancel));
+        let sources = self.app().sources_for_test();
+        let setting_check = all([
+            expect(
+                sources.iter().any(|setting| {
+                    setting.source.path == self.downloads
+                        && setting.source.watch
+                        && setting.source.transfer == expected
+                }),
+                format!("the downloads are no watched source with {expected:?}: {sources:?}"),
+            ),
+            expect(
+                self.wait_for_backlog(),
+                "the files that lay in the source are no backlog after 60 s",
+            ),
+        ]);
 
         let new_names = relative_files(new_files);
         let new_total = new_names.len();
@@ -355,7 +350,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         }
         let filed_new = carried.intersection(&new_names).count();
         println!(
-            "[{}] continuous: {filed_new} filed, {} stayed; open reviews {} -> {}",
+            "[{}] continuous: {filed_new} filed, {} stayed; open questions {} -> {}",
             self.language.code(),
             new_total.saturating_sub(filed_new),
             count_text(reviews_before),
@@ -366,13 +361,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             self.language.code(),
             longest.as_secs_f64()
         );
-        let reviews_ok = match (reviews_before, reviews_after) {
-            (Some(before), Some(after)) => expect(
-                after <= before,
-                format!("open review entries went from {before} to {after}"),
-            ),
-            _ => Err("the index did not open to count the review entries".to_owned()),
-        };
         let wait_check = all([
             expect(
                 ended.is_some(),
@@ -383,7 +371,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             ),
             expect(report_count > 0, "no ContinuousFiled report came"),
             expect(!runs.is_empty(), "no new run in the journal"),
-            reviews_ok,
         ]);
 
         let images = self.continuous_pictures();
@@ -401,14 +388,16 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             &summary,
             started.elapsed().as_secs_f64(),
             &images.join(", "),
-            "the sure new files are filed by themselves in one run; the unsure ones stay; no review entry is added",
+            "the new files a rule takes are filed by themselves; the others stay",
             all([setting_check, wait_check]),
         );
 
         let undo_started = Instant::now();
         let mut undo_checks: Vec<Check> = Vec::new();
         for (batch, run) in &runs {
-            self.deliver(Message::Settings(SettingsMessage::UndoRun(batch.number())));
+            self.deliver(Message::Sorting(
+                ncrs_hermes_ui::SortingMessage::Undo(batch.number()),
+            ));
             let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
             undo_checks.push(idle);
             let left: Vec<String> = run
@@ -425,6 +414,29 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 ),
             ));
         }
+        let still_filed: Vec<String> = self
+            .open_index()
+            .map(|index| {
+                runs.iter()
+                    .flat_map(|(_, run)| run.filed.iter())
+                    .filter(|(from, _)| {
+                        index
+                            .document_by_path(from)
+                            .ok()
+                            .flatten()
+                            .is_none_or(|document| document.status == DocumentStatus::Filed)
+                    })
+                    .map(|(from, _)| from.display().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        undo_checks.push(expect(
+            still_filed.is_empty(),
+            format!(
+                "after undo the index has no document, or a filed one, for: {}",
+                still_filed.join(", ")
+            ),
+        ));
         let source_after = relative_files(&self.downloads);
         undo_checks.push(expect(
             source_after == source_with_new,

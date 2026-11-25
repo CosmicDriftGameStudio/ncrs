@@ -1,18 +1,22 @@
-//! The state of the filing tab: one session, from the start of the reading to
-//! the run.
+//! The state of the filing tab: one session, from the first plan to the run.
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, PoisonError};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
-use ncrs_filing::chat_work::{apply_overrides, LiveFile, LivePlan, LiveRun, LiveState, Override};
+use ncrs_filing::chat_work::ReadProgress;
+use ncrs_filing::sorting::{PlanRow, ReadProblem, RowPlace, RowState, RunEntry, WaitReason};
 use ncrs_i18n::{Language, Msg};
+use ncrs_index::{ContentHash, DocumentId, RuleId, TargetId};
+use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget};
 
+use crate::question::Question;
+use crate::run::RunProgress;
 use crate::texts::say;
 
-/// Tells a session from an earlier one when a read it started comes back.
+/// Tells a session from an earlier one when work it started comes back.
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Default)]
@@ -20,202 +24,323 @@ pub struct State {
     pub session: Option<Session>,
 }
 
+/// A file of the source with what the rules make of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    /// Below the source.
+    pub relative: PathBuf,
+    pub path: PathBuf,
+    pub hash: Option<ContentHash>,
+    pub document: Option<DocumentId>,
+    pub state: RowState,
+}
+
+impl From<PlanRow> for Row {
+    fn from(row: PlanRow) -> Self {
+        Self {
+            relative: row.relative,
+            path: row.path,
+            hash: row.hash,
+            document: row.document,
+            state: row.state,
+        }
+    }
+}
+
+/// What the user decided for a file in place of the rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Change {
+    Places(Vec<(TargetId, PathBuf)>),
+    Stay,
+}
+
+/// What the user can do about a row right there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Link {
+    MakeRule,
+    SuggestRule,
+    Assign,
+    Leave,
+    Ask,
+}
+
+/// What a run left.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Outcome {
+    pub filed: usize,
+    pub left: usize,
+    pub trashed: usize,
+    /// One line per file that was not filed.
+    pub problems: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct Session {
     pub id: u64,
-    pub source: PathBuf,
-    pub target: PathBuf,
-    pub run: Arc<LiveRun>,
-    /// The last plan the run published, without the user's changes.
-    pub plan: Option<LivePlan>,
-    /// The planning has returned.
-    pub finished: Option<Result<(), String>>,
-    /// By the path relative to the source.
-    pub overrides: BTreeMap<PathBuf, Override>,
-    /// Relative to the source.
+    pub source: SortSource,
+    /// The whole folder once; otherwise the open questions of a watched source.
+    pub once: bool,
+    /// All configured targets in their order: the first one is T1.
+    pub targets: Vec<SortTarget>,
+    pub rule_names: HashMap<RuleId, String>,
+    pub rows: Vec<Row>,
+    pub waiting: Vec<(TargetId, WaitReason)>,
+    /// A plan came back, so no rows means there are none.
+    pub planned: bool,
+    /// A plan is being made; with `reading` it reads files too.
+    pub planning: bool,
+    pub reading: bool,
+    /// The rules changed while a plan was made.
+    pub stale: bool,
+    pub progress: Arc<ReadProgress>,
+    pub stop: Arc<AtomicBool>,
+    /// By the path below the source.
+    pub changes: BTreeMap<PathBuf, Change>,
+    /// Below the source.
     pub selected: Option<PathBuf>,
+    /// The link of the selected row the keyboard is on.
+    pub marked_link: Option<usize>,
     /// The name typed for the selected file.
     pub renaming: Option<String>,
+    pub question: Option<Question>,
     pub only_new: bool,
     pub trash_dupes: bool,
-    /// The read folder is set to copy: its files are not moved out and its
-    /// duplicates are not trashed.
-    pub copy_only: bool,
-    pub closed_folders: BTreeSet<PathBuf>,
-    pub filing: bool,
-    pub error: Option<String>,
-    /// The names of the files that are in a folder of the write folder, by the
-    /// folder below it.
-    pub existing: BTreeMap<PathBuf, Vec<String>>,
-    /// The folders of the write folder, read when the tree shows them all.
-    pub target_folders: BTreeSet<PathBuf>,
+    /// Duplicates can be taken back from the trash of this system.
+    pub trash_can_restore: bool,
+    /// A target, and a folder below it.
+    pub closed_folders: BTreeSet<(TargetId, PathBuf)>,
+    /// The names of the files that are in a folder of a target.
+    pub existing: BTreeMap<(TargetId, PathBuf), Vec<String>>,
+    /// The folders of the targets, read when the tree shows them all.
+    pub target_folders: BTreeSet<(TargetId, PathBuf)>,
     /// The folders whose files are being read right now.
-    pub reading: BTreeSet<PathBuf>,
-    /// The folders of the write folder are being listed.
+    pub reading_folders: BTreeSet<(TargetId, PathBuf)>,
+    /// The folders of the targets are being listed.
     pub listing: bool,
-    /// `plan` with `overrides` on top, formed when either changes.
-    pub shown: Option<LivePlan>,
-    /// The version of the run's plan that `plan` holds.
-    pub seen_version: u64,
-    /// The source is to be filed continuously once this run is filed; closing
-    /// the tab without filing drops the wish with the session.
-    pub then_continuous: bool,
+    pub running: Option<Arc<RunProgress>>,
+    /// The rows whose question is being answered.
+    pub answering: BTreeSet<PathBuf>,
+    pub outcome: Option<Outcome>,
+    pub error: Option<String>,
 }
 
 impl Session {
-    pub fn new(source: PathBuf, target: PathBuf, run: Arc<LiveRun>) -> Self {
+    pub fn new(source: SortSource, once: bool) -> Self {
         Self {
             id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             source,
-            target,
-            run,
-            plan: None,
-            finished: None,
-            overrides: BTreeMap::new(),
+            once,
+            targets: Vec::new(),
+            rule_names: HashMap::new(),
+            rows: Vec::new(),
+            waiting: Vec::new(),
+            planned: false,
+            planning: false,
+            reading: false,
+            stale: false,
+            progress: Arc::default(),
+            stop: Arc::default(),
+            changes: BTreeMap::new(),
             selected: None,
+            marked_link: None,
             renaming: None,
+            question: None,
             only_new: true,
             trash_dupes: false,
-            copy_only: false,
+            trash_can_restore: false,
             closed_folders: BTreeSet::new(),
-            filing: false,
-            error: None,
             existing: BTreeMap::new(),
             target_folders: BTreeSet::new(),
-            reading: BTreeSet::new(),
+            reading_folders: BTreeSet::new(),
             listing: false,
-            shown: None,
-            seen_version: 0,
-            then_continuous: false,
+            running: None,
+            answering: BTreeSet::new(),
+            outcome: None,
+            error: None,
         }
-    }
-
-    /// The plan the user sees: what the run published with the changes on top.
-    pub fn shown_plan(&self) -> Option<LivePlan> {
-        self.shown_ref().map(Cow::into_owned)
-    }
-
-    /// The same without a copy, as long as nothing changed since it was formed.
-    pub fn shown_ref(&self) -> Option<Cow<'_, LivePlan>> {
-        match (&self.shown, &self.plan) {
-            (Some(shown), _) => Some(Cow::Borrowed(shown)),
-            (None, Some(plan)) => Some(Cow::Owned(apply_overrides(plan, &self.overrides))),
-            (None, None) => None,
-        }
-    }
-
-    fn refresh_shown(&mut self) {
-        self.shown = self
-            .plan
-            .as_ref()
-            .map(|plan| apply_overrides(plan, &self.overrides));
-    }
-
-    pub fn set_override(&mut self, from: PathBuf, change: Override) {
-        self.overrides.insert(from, change);
-        self.refresh_shown();
-    }
-
-    /// The tab still plans or files its folder; a finished plan that waits
-    /// for the user does not hold the background filing back.
-    pub fn is_working(&self) -> bool {
-        self.filing || !self.plan_is_done()
-    }
-
-    pub fn plan_is_done(&self) -> bool {
-        self.plan.as_ref().is_some_and(|plan| plan.done)
-    }
-
-    /// Takes over what the run has published since.
-    pub fn take_snapshot(&mut self) {
-        let version = self.run.version.load(Ordering::Acquire);
-        if version == self.seen_version {
-            return;
-        }
-        let published = self
-            .run
-            .plan
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        if published.is_some() {
-            self.plan = published;
-            self.seen_version = version;
-            self.refresh_shown();
-        }
-    }
-
-    /// `(looked at, all)` files: while every file waits, the files the reading
-    /// has taken in so far.
-    pub fn read_count(&self) -> (usize, usize) {
-        let Some(plan) = &self.plan else {
-            return (self.run.progress.done(), self.run.progress.total());
-        };
-        let total = plan.files.len();
-        let waiting = count_state(&plan.files, |state| matches!(state, LiveState::Waiting));
-        if waiting == total {
-            return (self.run.progress.done().min(total), total);
-        }
-        let looking = count_state(&plan.files, |state| matches!(state, LiveState::Looking));
-        (total.saturating_sub(waiting + looking), total)
     }
 
     pub fn source_name(&self) -> String {
-        self.source.file_name().map_or_else(
-            || self.source.display().to_string(),
+        self.source.path.file_name().map_or_else(
+            || self.source.path.display().to_string(),
             |name| name.to_string_lossy().into_owned(),
         )
     }
 
-    pub fn file(&self, from: &Path) -> Option<LiveFile> {
-        self.shown_ref()?
-            .files
+    /// The targets of the source in their order, with the index that gives
+    /// each its number and colour.
+    pub fn source_targets(&self) -> impl Iterator<Item = (usize, &SortTarget)> {
+        self.targets
             .iter()
-            .find(|file| file.from == from)
-            .cloned()
+            .enumerate()
+            .filter(|(_, target)| self.source.targets.contains(&target.id))
+    }
+
+    pub fn target_index(&self, id: &TargetId) -> Option<usize> {
+        self.targets.iter().position(|target| target.id == *id)
+    }
+
+    /// "T1".
+    pub fn target_number(&self, id: &TargetId) -> String {
+        self.target_index(id)
+            .map_or_else(|| id.to_string(), |index| format!("T{}", index + 1))
+    }
+
+    pub fn rule_name(&self, id: RuleId) -> &str {
+        self.rule_names.get(&id).map_or("", String::as_str)
+    }
+
+    pub fn row(&self, relative: &Path) -> Option<&Row> {
+        self.rows.iter().find(|row| row.relative == relative)
+    }
+
+    pub fn selected_row(&self) -> Option<&Row> {
+        self.row(self.selected.as_ref()?)
+    }
+
+    /// Where a run would file the row: what the user decided, or else the rule.
+    pub fn places<'a>(&'a self, row: &'a Row) -> Cow<'a, [(TargetId, PathBuf)]> {
+        match (self.changes.get(&row.relative), &row.state) {
+            (Some(Change::Places(places)), _) => Cow::Borrowed(places),
+            (Some(Change::Stay), _) => Cow::Borrowed(&[]),
+            (None, RowState::Place(place)) => Cow::Owned(vec![place_of(place)]),
+            (None, RowState::Several(places)) if self.copies_to_all() => {
+                Cow::Owned(places.iter().map(place_of).collect())
+            }
+            (None, _) => Cow::Borrowed(&[]),
+        }
+    }
+
+    pub fn copies_to_all(&self) -> bool {
+        self.once && self.source.several == OnSeveralTargets::CopyToAll
+    }
+
+    pub fn copy_only(&self) -> bool {
+        self.source.transfer == LocationTransfer::Copy
+    }
+
+    /// The one place a new name or folder is given to.
+    pub fn one_place(&self, row: &Row) -> Option<(TargetId, PathBuf)> {
+        if let [place] = &*self.places(row) {
+            return Some(place.clone());
+        }
+        match &row.state {
+            RowState::NameTaken { place, .. } if !self.changes.contains_key(&row.relative) => {
+                Some(place_of(place))
+            }
+            _ => None,
+        }
+    }
+
+    /// What a run would carry out.
+    pub fn entries(&self) -> Vec<RunEntry> {
+        if !self.once {
+            return Vec::new();
+        }
+        self.rows
+            .iter()
+            .filter_map(|row| {
+                let places = self.places(row);
+                if places.is_empty() {
+                    return None;
+                }
+                Some(RunEntry {
+                    path: row.path.clone(),
+                    hash: row.hash?,
+                    document: row.document,
+                    places: places.into_owned(),
+                })
+            })
+            .collect()
+    }
+
+    pub fn links(&self, row: &Row) -> Vec<Link> {
+        if self.answering.contains(&row.relative) || self.running.is_some() {
+            return Vec::new();
+        }
+        let several = matches!(&row.state, RowState::Several(_)) && !self.copies_to_all();
+        if self.changes.contains_key(&row.relative) {
+            return if several { vec![Link::Ask] } else { Vec::new() };
+        }
+        match &row.state {
+            RowState::NoRule if self.once => vec![Link::MakeRule, Link::SuggestRule],
+            RowState::NoRule => vec![Link::MakeRule, Link::SuggestRule, Link::Leave],
+            RowState::NoText if self.asks_without_text() => vec![Link::Assign, Link::Leave],
+            RowState::Several(_) if several => vec![Link::Ask],
+            _ => Vec::new(),
+        }
+    }
+
+    /// A watched source only has a question about such a file when it asks.
+    pub fn asks_without_text(&self) -> bool {
+        !self.once || self.source.no_text == OnNoText::Ask
+    }
+
+    /// Nothing may be filed while one of the targets is not ready, and not from
+    /// a plan that is still being made.
+    pub fn can_file(&self) -> bool {
+        self.once
+            && self.planned
+            && !self.planning
+            && !self.is_filing()
+            && self.waiting.is_empty()
+            && !self.entries().is_empty()
+    }
+
+    pub fn is_filing(&self) -> bool {
+        self.running.is_some() || !self.answering.is_empty()
+    }
+
+    /// Still being read, so not a problem yet.
+    pub fn is_being_read(&self, row: &Row) -> bool {
+        self.reading && row.state == RowState::NotRead(ReadProblem::Unknown)
     }
 }
 
-fn count_state(files: &[LiveFile], is: impl Fn(&LiveState) -> bool) -> usize {
-    files.iter().filter(|file| is(&file.state)).count()
+pub fn place_of(place: &RowPlace) -> (TargetId, PathBuf) {
+    (place.target.clone(), place.relative.clone())
 }
 
-/// Planning runs: the app ticks while it does.
+/// The app ticks while it is.
 pub fn is_running(state: &State) -> bool {
     state
         .session
         .as_ref()
-        .is_some_and(|session| session.finished.is_none())
+        .is_some_and(|session| session.planning || session.is_filing())
 }
 
-/// Asks the planning to end; the app calls it on quit.
+/// Asks the planning and the run to end; the app calls it on quit.
 pub fn stop(state: &State) {
     if let Some(session) = &state.session {
-        session.run.stop.store(true, Ordering::Relaxed);
+        session.stop.store(true, Ordering::Relaxed);
+        if let Some(running) = &session.running {
+            running.stop();
+        }
     }
+}
+
+/// The source the tab is open for. The background filing leaves it alone.
+pub fn busy_source(state: &State) -> Option<&Path> {
+    state
+        .session
+        .as_ref()
+        .map(|session| session.source.path.as_path())
+}
+
+/// A question lies over the tab and takes the keys.
+pub fn question_is_open(state: &State) -> bool {
+    state
+        .session
+        .as_ref()
+        .is_some_and(|session| session.question.is_some())
 }
 
 /// The title of the tab, `None` without a session.
 pub fn tab_title(state: &State, lang: Language) -> Option<String> {
     let session = state.session.as_ref()?;
-    let folder = session.source_name();
-    if matches!(session.finished, Some(Err(_))) {
-        return Some(say(lang, Msg::FilingViewTabFailed, &[("folder", &folder)]));
-    }
-    if session.filing {
-        return Some(say(lang, Msg::FilingViewTabFiling, &[("folder", &folder)]));
-    }
-    if session.plan_is_done() {
-        return Some(say(lang, Msg::FilingViewTabReady, &[("folder", &folder)]));
-    }
-    let (done, total) = session.read_count();
     Some(say(
         lang,
-        Msg::FilingViewTabRunning,
-        &[
-            ("folder", &folder),
-            ("done", &done.to_string()),
-            ("total", &total.to_string()),
-        ],
+        Msg::FilingViewTabTitle,
+        &[("folder", &session.source_name())],
     ))
 }

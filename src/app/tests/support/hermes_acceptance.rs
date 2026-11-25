@@ -9,28 +9,6 @@ impl App {
         self.chat_model_error = None;
     }
 
-    /// The flow that writes "files continuously" for a read folder into the
-    /// config, as the end of the filing tab runs it.
-    pub fn switch_continuous_for_test(
-        &mut self,
-        chosen: &std::path::Path,
-        transfer: ncrs_config::config::LocationTransfer,
-    ) -> Task<Message> {
-        let folder = chosen.to_path_buf();
-        self.run_hermes_flow(Vec::new(), move |hermes, ctx| {
-            ncrs_hermes_ui::set_continuous_filing(hermes, &folder, Some(transfer), ctx)
-        })
-    }
-
-    /// What the folder dialog of the reviews answers.
-    pub fn set_folder_picker_for_test(&mut self, pick: fn(&Path) -> Task<Option<PathBuf>>) {
-        self.pick_folder = pick;
-    }
-
-    pub fn reviews_page_for_test(&self) -> Option<&ncrs_hermes_ui::reviews_page::ReviewsPage> {
-        self.hermes.reviews.as_ref()
-    }
-
     pub fn activity_page_for_test(&self) -> Option<&ncrs_hermes_ui::activity_page::ActivityPage> {
         self.hermes.activity.as_ref()
     }

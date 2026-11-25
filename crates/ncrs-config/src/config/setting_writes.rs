@@ -90,14 +90,6 @@ pub fn filing_load_setting(load: Load) -> Setting {
     }
 }
 
-pub fn default_pattern_setting(pattern: Option<&str>) -> Setting {
-    Setting {
-        tables: &[MODULES_TABLE, FILING_TABLE],
-        key: "default_pattern",
-        value: pattern.map(toml_edit::Value::from),
-    }
-}
-
 /// The lists of what is the user's own in `[modules.filing]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OwnDetail {
@@ -316,20 +308,6 @@ pub fn ai_threads_dropped_setting() -> Setting {
         key: "threads",
         value: None,
     }
-}
-
-/// Sets `default_pattern` in `[modules.filing]`, or drops the line for
-/// `None`; same guarantees as [`write_theme_preset`]. The loader ignores a
-/// pattern Hermes cannot render, so a caller checks it with `pattern_is_valid`.
-pub fn write_default_pattern(
-    path: &Path,
-    pattern: Option<&str>,
-) -> Result<Config, FilingWriteError> {
-    write_setting(
-        path,
-        default_pattern_setting(pattern.map(str::trim)),
-        home_from_env().as_deref(),
-    )
 }
 
 /// Sets one list of the user's own details in `[modules.filing]`, or drops the

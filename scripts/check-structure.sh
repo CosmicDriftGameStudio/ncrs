@@ -18,7 +18,6 @@ crates/ncrs-filing/src/chat_work/tests/mod.rs
 crates/ncrs-pipeline/src/runner/mod.rs
 crates/ncrs-intake/src/filing_plan/tests/mod.rs
 crates/ncrs-index/src/model/mod.rs
-crates/ncrs-hermes-chat/tests/rule_flow.rs
 "
 
 status=0

@@ -1,8 +1,8 @@
 use crate::app::*;
 
 impl App {
-    pub(in crate::app) fn overview_facts(&self, ocr_models_present: bool) -> OverviewFacts {
-        ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx(), ocr_models_present)
+    pub(in crate::app) fn overview_facts(&self) -> OverviewFacts {
+        ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx())
     }
 
     /// Opens the settings on the page of Settings that shows this Hermes page.
@@ -21,25 +21,12 @@ impl App {
         }
         match wanted {
             Some(page) => {
-                let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::show_page(hermes, page, ctx)
-                });
+                let outcome = self
+                    .with_hermes(|hermes, ctx| ncrs_hermes_ui::show_page(hermes, page, ctx));
                 self.run_hermes_outcome(outcome)
             }
             None => ncrs_hermes_ui::leave_pages(&mut self.hermes).map(Message::from),
         }
-    }
-
-    pub(in crate::app) fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
-        let inquiry_paths = if matches!(message, QuickFixMessage::Open) {
-            self.inquiry_paths()
-        } else {
-            Vec::new()
-        };
-        let outcome = self.with_hermes(inquiry_paths, |hermes, ctx| {
-            ncrs_hermes_ui::update_quick_fix(hermes, message, ctx)
-        });
-        self.run_hermes_outcome(outcome)
     }
 
     /// The messages of the Hermes pages that the pages answer on their own.
@@ -50,18 +37,18 @@ impl App {
             Message::FilingStatus(inner) => Page::FilingStatus(inner),
             Message::HermesOverview(inner) => Page::HermesOverview(inner),
             Message::Rules(inner) => Page::Rules(inner),
+            Message::Sorting(inner) => Page::Sorting(inner),
+            Message::Targets(inner) => Page::Targets(inner),
+            Message::Suggest(inner) => Page::Suggest(inner),
             Message::SavedQueries(inner) => Page::SavedQueries(inner),
             Message::Tags(inner) => Page::Tags(inner),
-            Message::Reviews(inner) => Page::Reviews(inner),
             Message::Activity(inner) => Page::Activity(inner),
-            Message::DocumentsFiled(result) => Page::DocumentsFiled(result),
             Message::ContinuousFiled(result) => Page::ContinuousFiled(result),
             Message::HermesColumn(inner) => Page::HermesColumn(inner),
             _ => return Task::none(),
         };
-        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update(hermes, page, ctx)
-        });
+        let outcome =
+            self.with_hermes(|hermes, ctx| ncrs_hermes_ui::update(hermes, page, ctx));
         outcome.map_or_else(Task::none, |ran| self.run_hermes_outcome(ran))
     }
 
@@ -91,11 +78,10 @@ impl App {
 fn settings_feature_of(page: HermesPage) -> crate::messages::SettingsFeature {
     use crate::messages::SettingsFeature;
     match page {
-        HermesPage::Rules => SettingsFeature::Rules,
+        HermesPage::Sorting => SettingsFeature::Hermes,
         HermesPage::SavedQueries => SettingsFeature::Reports,
         HermesPage::Tags => SettingsFeature::Tags,
         HermesPage::Inspection => SettingsFeature::ReadErrors,
-        HermesPage::Reviews => SettingsFeature::Reviews,
         HermesPage::Activity => SettingsFeature::Activity,
     }
 }
@@ -105,11 +91,10 @@ pub(in crate::app) fn hermes_page_of(
 ) -> Option<HermesPage> {
     use crate::messages::SettingsFeature;
     match feature {
-        SettingsFeature::Rules => Some(HermesPage::Rules),
+        SettingsFeature::Hermes => Some(HermesPage::Sorting),
         SettingsFeature::Reports => Some(HermesPage::SavedQueries),
         SettingsFeature::Tags => Some(HermesPage::Tags),
         SettingsFeature::ReadErrors => Some(HermesPage::Inspection),
-        SettingsFeature::Reviews => Some(HermesPage::Reviews),
         SettingsFeature::Activity => Some(HermesPage::Activity),
         _ => None,
     }

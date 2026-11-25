@@ -24,11 +24,8 @@ impl Runner {
             first_step: VecDeque::new(),
             continuations: VecDeque::new(),
             waiting_first: HashSet::new(),
-            continuous_roots: locations
-                .iter()
-                .filter(|location| location.continuous)
-                .map(|location| location.path.clone())
-                .collect(),
+            late: VecDeque::new(),
+            waits_for_the_rest: steps.iter().map(|step| step.waits_for_the_rest()).collect(),
             taken: HashMap::new(),
             deferred: Vec::new(),
             gone: Default::default(),
@@ -41,8 +38,6 @@ impl Runner {
             rate: VecDeque::new(),
             errors: VecDeque::new(),
             left_pipeline: 0,
-            plans_made: 0,
-            candidates: Candidates::default(),
             changes: ChangeLog::default(),
         };
         let shared = Arc::new(Shared {
@@ -51,6 +46,7 @@ impl Runner {
             changed: Condvar::new(),
             steps,
             locations,
+            added_locations: Mutex::new(Vec::new()),
             clock,
             settings,
         });
@@ -71,16 +67,11 @@ impl Runner {
     /// Runs a known file through all steps again, even if nothing about it
     /// changed. False when the path is in none of the locations.
     pub fn process_again(&self, path: &Path) -> bool {
-        let Some(location) = self
-            .shared
-            .locations
-            .iter()
-            .find(|location| path.starts_with(&location.path))
-        else {
+        let Some(location) = self.shared.location_of(path) else {
             return false;
         };
         self.shared
-            .update(|state| state.queue_again(location, path));
+            .update(|state| state.queue_again(&location, path));
         self.shared.work_ready.notify_all();
         true
     }
@@ -89,55 +80,39 @@ impl Runner {
     /// step: a file or folder that was left out until now is found without
     /// waiting for the next rescan. False when the path is in no location.
     pub fn rescan_around(&self, path: &Path) -> bool {
-        let Some(location) = self
-            .shared
-            .locations
-            .iter()
-            .find(|location| path.starts_with(&location.path))
-        else {
+        let Some(location) = self.shared.location_of(path) else {
             return false;
         };
-        self.shared.update(|state| state.queue_scan(location));
+        self.shared.update(|state| state.queue_scan(&location));
         self.shared.work_ready.notify_all();
         true
     }
 
-    /// Whether the candidates were read from the index once for this runner.
-    pub fn continuous_seeded(&self) -> bool {
-        self.shared.lock().candidates.is_seeded()
-    }
-
-    /// Hands over the files the index holds as new and without review in
-    /// the continuous locations, which the runner does not look at again
-    /// after a restart.
-    pub fn seed_continuous_candidates(&self, found: Vec<ContinuousCandidate>) {
-        self.shared.update(|state| state.candidates.seed(found));
-    }
-
-    pub fn continuous_candidates_waiting(&self) -> usize {
-        self.shared.lock().candidates.len()
-    }
-
-    /// Whether files the rules left open wait in a continuous location for
-    /// which `wanted` says yes (given the location's root).
-    pub fn has_continuous_candidates(&self, wanted: &dyn Fn(&Path) -> bool) -> bool {
-        self.shared.lock().candidates.any_in(wanted)
-    }
-
-    /// Takes the waiting files of the continuous locations for which `wanted`
-    /// says yes; the others keep waiting.
-    pub fn take_continuous_candidates(
-        &self,
-        wanted: &dyn Fn(&Path) -> bool,
-    ) -> Vec<ContinuousCandidate> {
-        self.shared.update(|state| state.candidates.take_in(wanted))
-    }
-
-    /// The locations (by root) that file by themselves from now on; files
-    /// that are already running keep what they started with.
-    pub fn set_continuous_roots(&self, new_roots: impl IntoIterator<Item = PathBuf>) {
-        let roots: HashSet<PathBuf> = new_roots.into_iter().collect();
-        self.shared.update(|state| state.continuous_roots = roots);
+    /// Takes a location that came after the start: it is watched and scanned
+    /// from now on. Nothing happens for a path the runner has.
+    pub fn add_location(&self, location: Location) {
+        if self.shared.location_of(&location.path).is_some() {
+            return;
+        }
+        self.shared
+            .added_locations
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(location.clone());
+        let forward = forward_watch_events(&self.shared);
+        let at = self.shared.clock.now();
+        self.shared.update(|state| {
+            if state.stopping {
+                return;
+            }
+            // Before the start has stored its watcher, the start takes it up.
+            if state.watcher.is_none() {
+                return;
+            }
+            state.watch_added(&location, forward, at);
+            state.queue_scan(&location);
+        });
+        self.shared.work_ready.notify_all();
     }
 
     /// Workers that are above the new target leave after their current job.
@@ -176,7 +151,11 @@ impl Runner {
     }
 
     #[cfg(test)]
-    pub(super) fn wait_for(&self, what: &str, until: impl Fn(&Snapshot) -> bool) -> Snapshot {
+    pub(in crate::runner) fn wait_for(
+        &self,
+        what: &str,
+        until: impl Fn(&Snapshot) -> bool,
+    ) -> Snapshot {
         const HANG_GUARD: Duration = Duration::from_secs(30);
         let deadline = Instant::now() + HANG_GUARD;
         let mut state = self.shared.lock();
@@ -203,5 +182,56 @@ impl Runner {
 impl Drop for Runner {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+impl Shared {
+    /// The locations of the start and those added since.
+    pub(in crate::runner) fn all_locations(&self) -> Vec<Location> {
+        let added = self
+            .added_locations
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.locations.iter().chain(added.iter()).cloned().collect()
+    }
+
+    pub(in crate::runner) fn location_of(&self, path: &Path) -> Option<Location> {
+        let added = self
+            .added_locations
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.locations
+            .iter()
+            .chain(added.iter())
+            .find(|location| path.starts_with(&location.path))
+            .cloned()
+    }
+}
+
+pub(in crate::runner) fn forward_watch_events(
+    shared: &Arc<Shared>,
+) -> impl Fn(WatchEvent) + Clone + Send + 'static {
+    let weak: Weak<Shared> = Arc::downgrade(shared);
+    move |event| {
+        if let Some(alive) = weak.upgrade() {
+            alive.on_watch_event(event);
+        }
+    }
+}
+
+impl State {
+    /// Puts a location that came after the watcher was built under it.
+    pub(in crate::runner) fn watch_added(
+        &mut self,
+        location: &Location,
+        forward: impl Fn(WatchEvent) + Clone + Send + 'static,
+        at: SystemTime,
+    ) {
+        let Some(watcher) = self.watcher.as_mut() else {
+            return;
+        };
+        if let Err(err) = watcher.add_forwarding(location, forward) {
+            self.push_error(location.path.clone(), Task::Watch, err.to_string(), at);
+        }
     }
 }

@@ -34,11 +34,10 @@ fn english_areas_bubbles(app: &mut App, card: AreasCard) {
                 "Done reading: **3779 files** in **20 areas**. This is the order I see:".to_owned(),
             ),
             Part::Areas(card),
-            Part::Text("Shall I sort new files in the same way?".to_owned()),
         ],
         vec![
-            chip("Yes, carry on like this", ChipReply::KeepYes, true),
-            chip("Change something", ChipReply::LevelsChange, false),
+            chip("Looks right", ChipReply::LevelsKeep, true),
+            chip("Change", ChipReply::LevelsChange, false),
         ],
     );
 }
@@ -175,37 +174,14 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
         targets: Vec::new(),
         ..ctx
     };
-    let press = |chat_app: &mut App, reply: ChipReply| {
-        let chip = chat_app
-            .hermes_chat
-            .chips()
-            .iter()
-            .find(|chip| chip.reply == reply)
-            .unwrap()
-            .clone();
-        let mut next = Some(HermesChatMessage::ChipPressed {
-            label: chip.label,
-            reply: chip.reply,
-        });
-        while let Some(message) = next.take() {
-            drop(ncrs_hermes_chat::update(
-                &mut chat_app.hermes_chat,
-                message,
-                &unlearned,
-            ));
-            next = chat_app
-                .hermes_chat
-                .pending_work()
-                .cloned()
-                .map(|work| HermesChatMessage::Done(Box::new(access.run(work))));
-        }
-    };
     send(
         &mut app,
         &unlearned,
         HermesChatMessage::FolderPicked(Some(root.join("archive"))),
     );
-    press(&mut app, ChipReply::RoleTarget);
+    let work = app.hermes_chat.pending_work().cloned().unwrap();
+    let read = HermesChatMessage::Done(Box::new(access.run(work)));
+    send(&mut app, &unlearned, read);
     app
 }
 

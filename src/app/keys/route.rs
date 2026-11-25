@@ -43,8 +43,8 @@ fn modal_key(
         // panel behind it; any other key does nothing until it is closed.
         Modal::HeaderMenu => ncrs_files::keys::header_menu_key(&key).map(Message::Panel),
         Modal::VolumeMenu => ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message),
-        Modal::QuickFix => ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from),
         Modal::ConfirmAgain => ncrs_hermes_ui::keys::confirm_again_key(&key).map(Message::from),
+        Modal::HermesDialog => hermes_dialog_key(prompt.hermes_dialog, &key, key_modifiers),
         Modal::FavouriteMenu => {
             ncrs_files::favourites_bar::menu_key(&key).map(Message::FavouritesBar)
         }
@@ -465,7 +465,6 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::Files(MenuMessage::ContextMenuMove(_))
             | Message::Files(MenuMessage::ContextMenuFirst)
             | Message::Files(MenuMessage::ContextMenuLast)
-            | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
@@ -539,7 +538,7 @@ fn volume_menu_message(pressed: VolumeMenuKey) -> Message {
     }
 }
 
-fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
+pub(in crate::app) fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
     if key_modifiers == Modifiers::SHIFT {
         Some(Message::TabInPage { backward: true })
     } else if key_modifiers.is_empty() {

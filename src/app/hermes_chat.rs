@@ -7,18 +7,13 @@ impl App {
         message: HermesChatMessage,
     ) -> Task<Message> {
         let mut first_run = Task::none();
-        if matches!(
-            message,
-            HermesChatMessage::Open | HermesChatMessage::OpenAbout(_)
-        ) {
+        if message == HermesChatMessage::Open {
             if self.blocking_overlay_is_open() {
                 return Task::none();
             }
             if self.hermes_chat.open && !self.hermes_chat_shown() {
                 self.shown_tab = ShownTab::Hermes;
-                if matches!(message, HermesChatMessage::Open) {
-                    return ncrs_hermes_chat::focus_input();
-                }
+                return ncrs_hermes_chat::focus_input();
             }
             self.close_context_menu();
             let filing = &self.hermes.filing_config;
@@ -161,50 +156,27 @@ impl App {
         }
     }
 
-    /// The path the module resolved a configured folder to, so folders found
-    /// in the index compare equal to it; the configured one when it is not
-    /// resolved.
-    fn resolved_location_path(&self, configured: &std::path::Path) -> std::path::PathBuf {
-        self.hermes
-            .filing
-            .as_ref()
-            .and_then(|module| {
-                module
-                    .locations()
-                    .iter()
-                    .filter(|entry| entry.configured.path == configured)
-                    .find_map(|entry| match &entry.status {
-                        crate::filing::LocationStatus::Ready(location) => {
-                            Some(location.path.clone())
-                        }
-                        _ => None,
-                    })
-            })
-            .unwrap_or_else(|| configured.to_path_buf())
-    }
-
     pub(in crate::app) fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
         let availability = self.chat_availability();
-        let locations = &self.hermes.filing_config.locations;
+        let filing = &self.hermes.filing_config;
         ncrs_hermes_chat::Ctx {
             lang: self.lang,
             availability,
             home: self.home.clone(),
-            targets: locations
+            targets: filing
+                .targets
                 .iter()
-                .filter(|location| location.is_target)
-                .map(|location| self.resolved_location_path(&location.path))
+                .map(|setting| setting.target.path.clone())
                 .collect(),
-            sources: locations
+            sources: filing
+                .sources
                 .iter()
-                .filter(|location| location.mode == LocationMode::Inbox)
-                .map(|location| location.path.clone())
+                .map(|setting| setting.source.path.clone())
                 .collect(),
             favourites: self.panels.favourites.clone(),
             now: chrono::Local::now(),
             resolve_folder: self.resolve_folder,
             ai_on: self.chat_ai_on(),
-            ocr_models_present: self.ocr_models_present(),
             changes_allowed: self.changes_allowed(),
             model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
         }
@@ -241,26 +213,52 @@ impl App {
                 self.hermes_chat.open = false;
                 self.open_search()
             }
-            ncrs_hermes_chat::Action::SetFolderRole { folder, role } => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::set_folder_role(hermes, &folder, role, ctx)
-                }),
-            ncrs_hermes_chat::Action::OpenFiling {
-                source,
-                target,
-                watch_source,
-            } => {
-                let opened = self.open_filing(source, target);
-                if let Some(session) = self.filing_view.session.as_mut() {
-                    session.then_continuous = watch_source;
-                }
-                opened
+            ncrs_hermes_chat::Action::SuggestRules { folder, pattern } => {
+                self.suggest_rules_for(&folder, pattern)
             }
-            ncrs_hermes_chat::Action::OpenOcrModels => {
-                self.update_ocr_models(OcrModelsMessage::Open)
+            ncrs_hermes_chat::Action::OpenSortDialog { folder } => {
+                let folder = folder.or_else(|| {
+                    let panel = self.active_panel();
+                    (panel.remote().is_none() && !panel.is_virtual()).then(|| panel.path.clone())
+                });
+                self.open_once_dialog(folder)
+            }
+            ncrs_hermes_chat::Action::OpenRuleForm => {
+                let target = self
+                    .hermes
+                    .filing_config
+                    .targets
+                    .first()
+                    .map(|setting| setting.target.id.clone());
+                self.run_hermes_flow(|hermes, ctx| {
+                    ncrs_hermes_ui::open_rule_form(hermes, target, None, None, ctx)
+                })
             }
             ncrs_hermes_chat::Action::TurnOnHermes => self.turn_on_hermes(),
             ncrs_hermes_chat::Action::ChangesLocked => self.refuse_locked_change(),
+        }
+    }
+
+    /// The dialog with rule suggestions for the target at `folder`; a folder
+    /// that is none yet becomes one first. `pattern` is tried first.
+    fn suggest_rules_for(&mut self, folder: &Path, pattern: Option<String>) -> Task<Message> {
+        let known = self
+            .hermes
+            .filing_config
+            .targets
+            .iter()
+            .map(|setting| &setting.target)
+            .find(|target| ncrs_config::config::same_folder(&target.path, folder))
+            .map(|target| target.id.clone());
+        match known {
+            Some(target) => self.run_hermes_flow(|hermes, ctx| {
+                ncrs_hermes_ui::open_suggest_scheme(hermes, target, pattern, ctx)
+            }),
+            None => self
+                .with_hermes(|hermes, ctx| {
+                    ncrs_hermes_ui::open_target_dialog(hermes, folder, pattern, ctx)
+                })
+                .map(Message::from),
         }
     }
 
@@ -268,7 +266,7 @@ impl App {
     /// user left: the module is built again.
     fn turn_on_hermes(&mut self) -> Task<Message> {
         if self.hermes.filing_config.enabled {
-            return self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::restart_hermes_module);
+            return self.run_hermes_flow(ncrs_hermes_ui::restart_hermes_module);
         }
         if self.turning_hermes_on {
             return Task::none();

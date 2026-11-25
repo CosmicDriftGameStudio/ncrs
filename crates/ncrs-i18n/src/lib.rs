@@ -368,12 +368,17 @@ mod tests {
                 | Msg::TrashColumnName
                 | Msg::SettingsUsageTokens
                 | Msg::RulesFormName
+                | Msg::SortingFieldTargetName
                 | Msg::RulesFormTagsOptional
                 | Msg::RuleSuggestionsConditionText
                 // The same words in German: Name, Start, Problem.
                 | Msg::BatchRenameTokenName
                 | Msg::BatchRenameStart
                 | Msg::BatchRenameColumnProblem
+                // Only placeholders and an arrow, or two file patterns: nothing to translate.
+                | Msg::SortingStateRule
+                | Msg::SortingFigureSeveral
+                | Msg::SortingIncludePlaceholder
                 // Git command names, kept as is in German too.
                 | Msg::GitViewToolbarPull
                 | Msg::GitViewToolbarPush
@@ -384,7 +389,6 @@ mod tests {
                 | Msg::GitViewNoticeDetails
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
-                | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 // Loanwords German uses for these file kinds, as in "Kaputter Link".
@@ -443,8 +447,6 @@ mod tests {
                 | Msg::HermesChatListDetail
                 // A key chord with a placeholder for the modifier, the same in every language.
                 | Msg::HermesChatListNewKey
-                // An arrow and a placeholder, the same in every language.
-                | Msg::FilingViewStateFiled
                 // Only placeholders and a comma.
                 | Msg::PermissionsTitlePartsJoined
                 // Only placeholders and a colon.
@@ -477,7 +479,8 @@ mod tests {
                 // The name of the feature, the same in both languages.
                 | Msg::ColumnHermes
                 | Msg::GroupHermes
-                | Msg::SettingsFeatureHermes
+                // Only the two names with an arrow between.
+                | Msg::SettingsHermesHistoryTo
                 | Msg::SettingsFeatureIndex
                 // The same word in both languages: the name of the Monitor page.
                 | Msg::SettingsFeatureSystem

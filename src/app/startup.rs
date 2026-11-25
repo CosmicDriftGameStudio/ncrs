@@ -607,7 +607,7 @@ impl App {
             git_view_settings: ncrs_config::git_view::GitViewSettings::default(),
             git_settings: ncrs_config::git::GitSettings::default(),
             special_folders: Vec::new(),
-            special_folders_source: Vec::new(),
+            special_folders_source: (Vec::new(), Vec::new()),
             appearance: ncrs_config::panel_columns::Appearance::default(),
             ui_scale: 1.0,
             settings: Settings::default(),

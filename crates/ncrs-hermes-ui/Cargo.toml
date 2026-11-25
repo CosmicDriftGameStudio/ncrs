@@ -37,6 +37,9 @@ test-support = ["dep:tempfile", "ncrs-filing/test-support"]
 
 [dev-dependencies]
 tempfile = "3.27"
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "image-without-codecs", "tiny-skia"] }
+iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0", features = ["testing"] }
 ncrs-config ={ path = "../ncrs-config", version = "0.0.0", features = ["test-support"] }
 ncrs-filing = { path = "../ncrs-filing", version = "0.0.0", features = ["test-support"] }

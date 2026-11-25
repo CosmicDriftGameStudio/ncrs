@@ -1,27 +1,25 @@
-//! The flows that file, change and answer: 5 tidy, 6 structure, 7 unknown.
+//! The flows that file, change and answer: 5 tidy, 6 levels, 7 unknown.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
+use std::ffi::OsString;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ncrs_hermes_chat::{ChipReply, Step};
-use ncrs_i18n::Msg;
+use ncrs_config::config::LocationTransfer;
+use ncrs_filing::sorting::{adopt, suggest_scheme, ReadProblem, RowState};
+use ncrs_hermes_chat::{ChipReply, Entry, Part};
+use ncrs_index::{BatchId, TargetId};
 
 use super::thread::{chat, chip_labels, has_chip, last_hermes_has_chips, last_text};
 use super::{all, env_path, expect, Check, Protocol, READ_LIMIT};
 use crate::app::App;
+use crate::e2e_tests::Session;
 use crate::messages::Message;
 
 impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
-    /// Whether the newest bubble ends like the text of `msg`: the words after
-    /// its last placeholder.
-    fn last_says(&self, msg: Msg) -> bool {
-        let template = self.language.text(msg);
-        let fixed = template.rsplit('}').next().unwrap_or(template);
-        last_text(self.app()).contains(fixed)
-    }
-
-    /// The chat asks for the folders and hands over to the tab; the tab plans
-    /// live. Nothing is filed: the run never presses copy or move.
+    /// The chat answers the sentence with the way to the dialog; the plan of the
+    /// source is then made by the rules. Nothing is filed before `NCRS_EVAL_FILE`.
     pub fn flow_5_tidy(&mut self) {
         self.back_to_start();
         let before_downloads = self.files_below(&self.downloads);
@@ -29,71 +27,37 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let sentence = self.say("Downloads aufräumen", "Tidy up Downloads");
         let started = Instant::now();
         self.type_sentence(sentence);
-        let (_, _, mut limit) = self.wait_idle(READ_LIMIT, None);
-        let mut questions = Vec::new();
-        let archive = self.archive.clone();
-        let continuous = env_path("NCRS_EVAL_CONTINUOUS").is_some();
-        for round in 1..=20 {
-            let labels = chip_labels(self.app());
-            questions.push(format!(
-                "round {round}: {} => {labels}",
-                last_text(self.app()).chars().take(80).collect::<String>()
-            ));
-            if self.app().filing_session_for_test().is_some() {
-                break;
-            }
-            let first_press = self.press_chip(|reply| match reply {
-                ChipReply::Folder(path) | ChipReply::NamedFolder(path) => *path == archive,
-                _ => false,
-            });
-            let pressed = first_press
-                .or_else(|failed| {
-                    // "Always" files the source once now and then by itself.
-                    if continuous {
-                        self.press_chip(|reply| *reply == ChipReply::Always)
-                    } else {
-                        Err(failed)
-                    }
-                })
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Once))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ConfirmTidy))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::KeepYes));
-            if pressed.is_err() {
-                break;
-            }
-            let (_, _, again) = self.wait_idle(READ_LIMIT, None);
-            limit = again;
-            if limit.is_err() {
-                break;
-            }
-        }
-        let handed_over = self.last_says(Msg::HermesChatHandover);
-        // The tab is the shown page now; the chat is the next tab after it.
-        self.deliver(Message::NextTab);
-        let chat_image = self.shot("tidy-handover");
-        self.deliver(Message::PreviousTab);
+        let (_, _, limit) = self.wait_idle(READ_LIMIT, None);
+        let chat_image = self.shot("tidy-answer");
+        let offers_the_dialog = has_chip(self.app(), |reply| {
+            matches!(reply, ChipReply::OpenSort(_) | ChipReply::NamedFolder(_))
+        });
+        let labels = chip_labels(self.app());
 
+        let rules = self.adopt_suggested_rules();
+        let opened = self.open_plan_of_downloads();
         let mid_image = self.plan_in_tab_until_done();
         let done_image = self.shot("filing-done");
         let tally = self.filing_tally();
         println!("[{}] 5 tidy filing tally: {tally}", self.language.code());
 
-        let planned = self
-            .app()
-            .filing_session_for_test()
-            .is_some_and(|session| session.plan_is_done());
+        let planned = self.filing_is_planned();
         let moved = before_downloads.saturating_sub(self.files_below(&self.downloads));
         let arrived = self
             .files_below(&self.archive)
             .saturating_sub(before_archive);
         let result = all([
             limit,
-            expect(handed_over, "the chat did not say it hands over to the tab"),
-            expect(planned, "the tab did not finish planning"),
+            expect(
+                offers_the_dialog,
+                format!("the chat offers no way to the dialog: {labels}"),
+            ),
+            rules.as_ref().map(|_| ()).map_err(Clone::clone),
+            opened,
+            expect(planned, "no finished plan in the tab"),
             expect(
                 mid_image.is_some(),
-                "no screenshot of the tab at about half decided",
+                "no screenshot of the tab while it reads",
             ),
             expect(
                 moved == 0 && arrived == 0,
@@ -104,41 +68,109 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         ]);
         self.record(
             "5 tidy",
-            &format!("questions: {} ;; tally: {tally}", questions.join(" ;; ")),
+            &format!(
+                "buttons: {labels} ;; rules: {} ;; tally: {tally}",
+                rules.unwrap_or_else(|error| error)
+            ),
             started.elapsed().as_secs_f64(),
             &format!(
                 "{chat_image}, {}, {done_image}",
                 mid_image.unwrap_or_else(|| "no mid shot".to_owned())
             ),
-            "the chat hands over; the tab plans every file; nothing is filed",
+            "the chat offers the dialog; the tab plans every file by the rules; nothing is filed",
             result,
         );
         match std::env::var("NCRS_EVAL_FILE").as_deref() {
             Ok("copy") => {
                 self.copy_planned_files();
                 if let Some(new_files) = env_path("NCRS_EVAL_CONTINUOUS") {
-                    self.continuous_after_copy(&new_files);
+                    self.continuous_after_tab_run(&new_files, LocationTransfer::Copy);
                 }
             }
-            Ok("move") => self.move_planned_files(false),
-            Ok("move-sure") => self.move_planned_files(true),
+            Ok("move") => {
+                self.move_planned_files();
+                if let Some(new_files) = env_path("NCRS_EVAL_CONTINUOUS") {
+                    self.continuous_after_tab_run(&new_files, LocationTransfer::Move);
+                }
+            }
             _ => {}
         }
-        if continuous && std::env::var("NCRS_EVAL_FILE").as_deref() != Ok("copy") {
-            println!("NCRS_EVAL_CONTINUOUS needs NCRS_EVAL_FILE=copy, nothing ran");
+        if env_path("NCRS_EVAL_CONTINUOUS").is_some()
+            && !matches!(
+                std::env::var("NCRS_EVAL_FILE").as_deref(),
+                Ok("copy" | "move")
+            )
+        {
+            println!("NCRS_EVAL_CONTINUOUS needs NCRS_EVAL_FILE=copy or move, nothing ran");
         }
     }
 
-    /// `NCRS_EVAL_FILE=copy`: presses copy in the tab and checks the archive,
-    /// the source, the index and the chat, then undoes the run in the chat.
-    fn copy_planned_files(&mut self) {
-        use ncrs_filing::chat_work::LiveState;
-        let started = Instant::now();
-        let Some(plan) = self
+    /// An index without rules plans nothing: the ones suggested from the archive
+    /// are taken, without the model so every run takes the same.
+    fn adopt_suggested_rules(&self) -> Result<String, String> {
+        let index = self.open_index().ok_or("the index did not open")?;
+        let there = index.rules().map_err(|error| error.to_string())?.len();
+        drop(index);
+        if there > 0 {
+            return Ok(format!("{there} of the index"));
+        }
+        let trash: Arc<dyn crate::fs::Trash> = Arc::new(crate::fs::JournaledTrash::new(
+            self.out.join("journal.toml"),
+            crate::fs::FolderBackend(self.out.clone()),
+        ));
+        let access = self
             .app()
+            .filing_module_for_test()
+            .and_then(|module| module.sorting_access(trash))
+            .ok_or("sorting is not ready")?;
+        let found = suggest_scheme(&access, None, &TargetId::main(), None, 0, None)
+            .map_err(|error| format!("{error:?}"))?;
+        let made = adopt(&access, &TargetId::main(), &found.items)
+            .map_err(|error| format!("{error:?}"))?;
+        Ok(format!("{} adopted", made.len()))
+    }
+
+    fn open_plan_of_downloads(&mut self) -> Check {
+        let source = self
+            .app()
+            .sources_for_test()
+            .iter()
+            .map(|setting| setting.source.clone())
+            .find(|source| source.path == self.downloads)
+            .ok_or("the downloads are no source")?;
+        let Session { app, runtime, .. } = &mut self.session;
+        let task = runtime.enter(|| app.open_filing_plan(source, true));
+        self.session.drive(task);
+        Ok(())
+    }
+
+    fn filing_is_planned(&self) -> bool {
+        self.app()
             .filing_session_for_test()
-            .and_then(|session| session.shown_plan())
-        else {
+            .is_some_and(|session| session.planned && !session.planning)
+    }
+
+    /// Where the plan puts its files.
+    fn planned_places(&self) -> Option<Vec<PathBuf>> {
+        let session = self.app().filing_session_for_test()?;
+        Some(
+            session
+                .rows
+                .iter()
+                .flat_map(|row| session.places(row).into_owned())
+                .filter_map(|(target, relative)| {
+                    let index = session.target_index(&target)?;
+                    Some(session.targets.get(index)?.path.join(relative))
+                })
+                .collect(),
+        )
+    }
+
+    /// `NCRS_EVAL_FILE=copy`: presses copy in the tab and checks the archive and
+    /// the source, then undoes the run.
+    fn copy_planned_files(&mut self) {
+        let started = Instant::now();
+        let Some(rows) = self.planned_places() else {
             self.record(
                 "5 tidy copy",
                 "no plan in the tab",
@@ -149,36 +181,20 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             );
             return;
         };
-        let rows: Vec<std::path::PathBuf> = plan
-            .files
-            .iter()
-            .filter_map(|file| match &file.state {
-                LiveState::Filed { folder, name, .. } => Some(folder.join(name)),
-                _ => None,
-            })
-            .collect();
-        let unreadable: Vec<ncrs_index::ContentHash> = plan
-            .files
-            .iter()
-            .filter(|file| file.state == LiveState::Unreadable)
-            .filter_map(|file| file.hash)
-            .collect();
         let filed = rows.len();
         let downloads_before = self.files_below(&self.downloads);
         let archive_before = self.files_below(&self.archive);
 
-        let copied = self.press_and_wait(ncrs_index::Transfer::Copy);
+        let batches = self.hermes_batches();
+        let copied = self.press_and_wait(LocationTransfer::Copy);
         let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
         let archive_after = self.files_below(&self.archive);
         let downloads_after = self.files_below(&self.downloads);
-        let missing = self.missing_samples(&rows);
-        let tag = self.language.text(Msg::FilingViewTagUnreadable);
-        let tagged = self.own_tagged_count(&unreadable, tag);
-        let says_filed = self.last_says(Msg::HermesChatFiledInTabCopy);
+        let missing = Self::missing_samples(&rows);
         let copied_image = self.shot("filing-copied");
         let copy_result = all([
             idle,
-            expect(copied, "the tab still had its session after 300 s"),
+            expect(copied, "the run in the tab was not over after 300 s"),
             expect(
                 archive_after == archive_before + filed,
                 format!("the archive went from {archive_before} to {archive_after}, planned {filed}"),
@@ -193,28 +209,13 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 missing.is_empty(),
                 format!("sample rows missing in the archive: {}", missing.join(", ")),
             ),
-            expect(
-                tagged == Some(unreadable.len()),
-                format!(
-                    "{tagged:?} of {} unreadable files carry the tag (own)",
-                    unreadable.len()
-                ),
-            ),
-            expect(
-                says_filed,
-                format!(
-                    "the chat's last message is not the filed text: {}",
-                    last_text(self.app())
-                ),
-            ),
         ]);
 
-        let (undo, undo_idle) = self.undo_in_chat();
+        let undo = self.undo_runs_since(&batches);
         let archive_undone = self.files_below(&self.archive);
         let undone_image = self.shot("filing-undone");
         let undo_result = all([
             undo,
-            undo_idle,
             expect(
                 archive_undone == archive_before,
                 format!(
@@ -223,9 +224,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             ),
         ]);
         let summary = format!(
-            "{filed} planned, archive {archive_before} -> {archive_after} -> {archive_undone}, downloads {downloads_before} -> {downloads_after}, {} of {} unreadable tagged",
-            tagged.map_or_else(|| "?".to_owned(), |count| count.to_string()),
-            unreadable.len()
+            "{filed} planned, archive {archive_before} -> {archive_after} -> {archive_undone}, downloads {downloads_before} -> {downloads_after}"
         );
         println!("[{}] 5 tidy copy: {summary}", self.language.code());
         self.record(
@@ -233,32 +232,35 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             &summary,
             started.elapsed().as_secs_f64(),
             &format!("{copied_image}, {undone_image}"),
-            "the files are copied, tagged and announced in the chat; undo removes the copies",
+            "the files are copied; undo removes the copies",
             all([copy_result, undo_result]),
         );
     }
 
-    /// Presses `transfer` in the tab and ticks until its session is gone;
-    /// false when 300 s were not enough.
-    fn press_and_wait(&mut self, transfer: ncrs_index::Transfer) -> bool {
-        self.press_message_and_wait(ncrs_filing_view::Message::File(transfer))
-    }
-
-    fn press_message_and_wait(&mut self, press: ncrs_filing_view::Message) -> bool {
-        self.deliver(Message::FilingView(press));
+    /// Presses `transfer` in the tab and ticks until the run is over; false
+    /// when there was nothing to run or 300 s were not enough.
+    fn press_and_wait(&mut self, transfer: LocationTransfer) -> bool {
+        self.deliver(Message::FilingView(ncrs_filing_view::Message::File(
+            transfer,
+        )));
         let started = Instant::now();
         while started.elapsed() < Duration::from_secs(300)
-            && self.app().filing_session_for_test().is_some()
+            && self
+                .app()
+                .filing_session_for_test()
+                .is_some_and(|session| session.is_filing())
         {
             self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
             self.pump(Duration::from_millis(100));
         }
-        self.app().filing_session_for_test().is_none()
+        self.app()
+            .filing_session_for_test()
+            .is_some_and(|session| session.outcome.is_some())
     }
 
     /// The first, middle and last of the planned rows that are not in the
     /// archive.
-    fn missing_samples(&self, rows: &[std::path::PathBuf]) -> Vec<String> {
+    fn missing_samples(rows: &[PathBuf]) -> Vec<String> {
         [
             rows.first(),
             rows.get(rows.len().div_euclid(2)),
@@ -266,35 +268,35 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         ]
         .into_iter()
         .flatten()
-        .filter(|row| !self.archive.join(row).is_file())
+        .filter(|row| !row.is_file())
         .map(|row| row.display().to_string())
         .collect()
     }
 
-    /// Presses the chat's undo chip and waits for the chat.
-    fn undo_in_chat(&mut self) -> (Check, Check) {
-        let undo = self.press_chip(|reply| *reply == ChipReply::PutBack);
-        let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
-        (undo, idle)
+    /// Takes back every run that is not among `before`.
+    fn undo_runs_since(&mut self, before: &[BatchId]) -> Check {
+        let runs: Vec<BatchId> = self
+            .hermes_batches()
+            .into_iter()
+            .filter(|batch| !before.contains(batch))
+            .collect();
+        let mut checks = vec![expect(!runs.is_empty(), "no run in the journal to undo")];
+        for batch in runs {
+            self.deliver(Message::Sorting(ncrs_hermes_ui::SortingMessage::Undo(
+                batch.number(),
+            )));
+            checks.push(self.wait_idle(READ_LIMIT, None).2);
+        }
+        all(checks)
     }
 
     /// `NCRS_EVAL_FILE=move`: moves the planned files with the duplicates in
-    /// the source trashed, checks archive and source, then undoes the run in
-    /// the chat and records what came back.
-    /// `sure_only`: presses "Move only the sure ones"; the unsure files stay.
-    fn move_planned_files(&mut self, sure_only: bool) {
-        use ncrs_filing::chat_work::LiveState;
-        let label = if sure_only {
-            "5 tidy move sure"
-        } else {
-            "5 tidy move"
-        };
+    /// the source trashed, checks archive and source, then undoes the run
+    /// and records what came back.
+    fn move_planned_files(&mut self) {
+        let label = "5 tidy move";
         let started = Instant::now();
-        let Some(plan) = self
-            .app()
-            .filing_session_for_test()
-            .and_then(|session| session.shown_plan())
-        else {
+        let Some(rows) = self.planned_places() else {
             self.record(
                 label,
                 "no plan in the tab",
@@ -305,22 +307,16 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             );
             return;
         };
-        let mut rows = Vec::new();
         let mut moved_sources = BTreeSet::new();
         let mut duplicates = Vec::new();
-        for file in &plan.files {
-            match &file.state {
-                LiveState::Filed { unsure: true, .. } if sure_only => {}
-                LiveState::Filed { folder, name, .. } => {
-                    rows.push(folder.join(name));
-                    moved_sources.insert(file.from.clone());
+        if let Some(session) = self.app().filing_session_for_test() {
+            for row in &session.rows {
+                if let RowState::AlreadyThere { path, .. } = &row.state {
+                    moved_sources.insert(row.relative.clone());
+                    duplicates.push((row.relative.clone(), path.clone(), file_stamp(path)));
+                } else if !session.places(row).is_empty() {
+                    moved_sources.insert(row.relative.clone());
                 }
-                LiveState::AlreadyThere { at } => {
-                    moved_sources.insert(file.from.clone());
-                    let keeper = self.archive.join(at);
-                    duplicates.push((file.from.clone(), keeper.clone(), file_stamp(&keeper)));
-                }
-                _ => {}
             }
         }
         let filed = rows.len();
@@ -332,12 +328,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.deliver(Message::FilingView(
             ncrs_filing_view::Message::ToggleTrashDupes,
         ));
-        let done = if sure_only {
-            self.shot("filing-unsure-marked");
-            self.press_message_and_wait(ncrs_filing_view::Message::FileSure)
-        } else {
-            self.press_and_wait(ncrs_index::Transfer::Move)
-        };
+        let batches = self.hermes_batches();
+        let done = self.press_and_wait(LocationTransfer::Move);
         let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
         let archive_after = self.files_below(&self.archive);
         let downloads_after = self.files_below(&self.downloads);
@@ -347,11 +339,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             .filter(|(_, keeper, stamp)| file_stamp(keeper) != *stamp || stamp.is_none())
             .map(|(_, keeper, _)| keeper.display().to_string())
             .collect();
-        let missing = self.missing_samples(&rows);
+        let missing = Self::missing_samples(&rows);
         let moved_image = self.shot("filing-moved");
         let move_result = all([
             idle,
-            expect(done, "the tab still had its session after 300 s"),
+            expect(done, "the run in the tab was not over after 300 s"),
             expect(
                 archive_after == archive_before + filed,
                 format!(
@@ -378,7 +370,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             ),
         ]);
 
-        let (undo, undo_idle) = self.undo_in_chat();
+        let undo = self.undo_runs_since(&batches);
         let archive_undone = self.files_below(&self.archive);
         let downloads_undone = self.files_below(&self.downloads);
         let back: Vec<String> = duplicates
@@ -389,7 +381,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let undone_image = self.shot("filing-move-undone");
         let undo_result = all([
             undo,
-            undo_idle,
             expect(
                 archive_undone == archive_before,
                 format!(
@@ -416,168 +407,148 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         );
     }
 
-    /// How many of the files with these hashes carry the tag as the user's
-    /// own; `None` when the index does not open.
-    fn own_tagged_count(&self, hashes: &[ncrs_index::ContentHash], tag: &str) -> Option<usize> {
-        let index =
-            ncrs_index::Index::open(&self.index_path, &ncrs_index::InMemoryKeyStore::empty())
-                .ok()?;
-        Some(
-            hashes
-                .iter()
-                .filter(|hash| {
-                    index
-                        .document_by_hash(hash)
-                        .ok()
-                        .flatten()
-                        .is_some_and(|document| document.fields.tags.contains(tag))
-                })
-                .count(),
-        )
-    }
-
-    /// Feeds the tab its ticks and reads its snapshot between pumps until the
-    /// plan is done. The mid shot is the first snapshot with 30 % or more of
-    /// the files decided (neither waiting nor looked at) and not all of them;
-    /// when the plan jumps past that, the first partial snapshot stands in,
-    /// and with none the shot is taken once the plan is done. The case is
-    /// printed.
+    /// Feeds the tab its ticks until the plan is done. The mid shot is the first
+    /// plan with files that are still read; without one it is the done plan.
     fn plan_in_tab_until_done(&mut self) -> Option<String> {
-        use ncrs_filing::chat_work::LiveState;
+        self.app().filing_session_for_test()?;
         let started = Instant::now();
         let mut mid = None;
-        let mut first_partial = None;
-        while started.elapsed() < READ_LIMIT {
+        while started.elapsed() < READ_LIMIT && !self.filing_is_planned() {
             self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
             self.pump(Duration::from_millis(100));
             let Some(session) = self.app().filing_session_for_test() else {
                 break;
             };
-            let done = session.plan_is_done();
-            let (decided, all_files) = session.shown_plan().map_or((0, 0), |plan| {
-                let decided = plan
-                    .files
-                    .iter()
-                    .filter(|file| !matches!(file.state, LiveState::Waiting | LiveState::Looking))
-                    .count();
-                (decided, plan.files.len())
-            });
-            if done {
-                break;
-            }
-            let partial = decided > 0 && decided < all_files;
-            if partial && decided * 10 >= all_files * 3 {
+            let partial = session.planned && session.rows.iter().any(|row| session.is_being_read(row));
+            if partial && mid.is_none() {
                 mid = Some(self.shot("filing-mid"));
-                println!(
-                    "[{}] 5 tidy mid shot: {decided} of {all_files} decided",
-                    self.language.code()
-                );
-                break;
-            }
-            if partial && first_partial.is_none() {
-                first_partial = Some(self.shot("filing-mid-early"));
             }
         }
-        self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
-        if mid.is_none() {
-            let case = if first_partial.is_some() {
-                "the plan jumped past 30 %: the first partial snapshot stands in"
-            } else {
-                "the plan jumped from nothing to done: the shot is of the done plan"
-            };
-            println!("[{}] 5 tidy mid shot: {case}", self.language.code());
-            mid = first_partial.or_else(|| Some(self.shot("filing-mid-done")));
-        }
-        while started.elapsed() < READ_LIMIT
-            && self
-                .app()
-                .filing_session_for_test()
-                .is_some_and(|session| !session.plan_is_done())
-        {
-            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
-            self.pump(Duration::from_millis(100));
-        }
-        mid
+        mid.or_else(|| Some(self.shot("filing-mid-done")))
     }
 
     /// One line: how many files, and where the plan puts them.
     fn filing_tally(&self) -> String {
-        use ncrs_filing::chat_work::LiveState;
-        let Some(plan) = self
-            .app()
-            .filing_session_for_test()
-            .and_then(|session| session.shown_plan())
-        else {
+        let Some(session) = self.app().filing_session_for_test() else {
             return "no plan".to_owned();
         };
-        let count = |is: fn(&LiveState) -> bool| plan.files.iter().filter(|f| is(&f.state)).count();
-        let staying: Vec<String> = plan
-            .files
+        let count =
+            |is: fn(&RowState) -> bool| session.rows.iter().filter(|row| is(&row.state)).count();
+        let staying: Vec<String> = session
+            .rows
             .iter()
-            .filter(|file| matches!(file.state, LiveState::NoFolder | LiveState::Unreadable))
-            .map(|file| format!("{} {:?}", file.from.display(), file.state))
+            .filter(|row| {
+                !matches!(
+                    row.state,
+                    RowState::Place(_) | RowState::AlreadyThere { .. }
+                )
+            })
+            .map(|row| format!("{} {:?}", row.relative.display(), row.state))
             .collect();
         format!(
-            "{} files, {} filed ({} unsure), {} already there, {} without folder, {} unreadable; staying: {}",
-            plan.files.len(),
-            count(|state| matches!(state, LiveState::Filed { .. })),
-            count(|state| matches!(state, LiveState::Filed { unsure: true, .. })),
-            count(|state| matches!(state, LiveState::AlreadyThere { .. })),
-            count(|state| matches!(state, LiveState::NoFolder)),
-            count(|state| matches!(state, LiveState::Unreadable)),
+            "{} files, {} with a place ({}), {} already there, {} without a rule, {} without text, {} not read; staying: {}",
+            session.rows.len(),
+            count(|state| matches!(state, RowState::Place(_))),
+            self.hits(),
+            count(|state| matches!(state, RowState::AlreadyThere { .. })),
+            count(|state| matches!(state, RowState::NoRule)),
+            count(|state| matches!(state, RowState::NoText)),
+            count(|state| matches!(state, RowState::NotRead(ReadProblem::Unknown))),
             staying.join(", "),
         )
     }
 
-    pub fn flow_6_structure(&mut self) {
-        for (label, sentence) in [
+    /// The planned places against the original archive: a file of the same name
+    /// and size lies there in the folder it belongs to.
+    fn hits(&self) -> String {
+        let mut folders: HashMap<(OsString, u64), BTreeSet<PathBuf>> = HashMap::new();
+        for relative in relative_files(&self.original) {
+            let size = std::fs::metadata(self.original.join(&relative)).map(|meta| meta.len());
+            if let (Some(name), Ok(size), Some(folder)) =
+                (relative.file_name(), size, relative.parent())
+            {
+                folders
+                    .entry((name.to_owned(), size))
+                    .or_default()
+                    .insert(folder.to_path_buf());
+            }
+        }
+        let Some(session) = self.app().filing_session_for_test() else {
+            return "no plan".to_owned();
+        };
+        let (mut right, mut wrong, mut unknown) = (0, 0, 0);
+        for row in &session.rows {
+            let RowState::Place(place) = &row.state else {
+                continue;
+            };
+            let size = std::fs::metadata(&row.path).map_or(0, |meta| meta.len());
+            let belongs = row
+                .path
+                .file_name()
+                .and_then(|name| folders.get(&(name.to_owned(), size)));
+            match (belongs, place.relative.parent()) {
+                (Some(belongs), Some(folder)) if belongs.contains(folder) => right += 1,
+                (Some(_), _) => wrong += 1,
+                (None, _) => unknown += 1,
+            }
+        }
+        format!("{right} right, {wrong} wrong, {unknown} without a comparison")
+    }
+
+    /// The order of the archive is read, changed in words and kept; no file moves.
+    pub fn flow_6_levels(&mut self) {
+        self.ask_for_folder();
+        let before = self.files_below(&self.archive);
+        let archive = self.archive.to_string_lossy().into_owned();
+        let steps = [
+            ("6 read", archive, true),
             (
-                "6 bank",
+                "6 year first",
                 self.say(
-                    "Kontoauszüge der Sparkasse kommen nach Bank, dann Jahr und Monat",
-                    "Statements from the Sparkasse go to Bank, then year and month",
-                ),
+                    "erst ein Ordner für das Jahr und der Dateiname mit Jahr_Monat_Tag",
+                    "first a folder for the year and the file name with year_month_day",
+                )
+                .to_owned(),
+                true,
             ),
             (
-                "6 insurance",
-                self.say(
-                    "Versicherungspost nach Versicherung und Absender",
-                    "Insurance mail to Versicherung and sender",
-                ),
+                "6 by month",
+                self.say("ne, lieber nach Monat", "no, rather by month")
+                    .to_owned(),
+                true,
             ),
-        ] {
-            self.back_to_start();
-            let started = Instant::now();
-            self.type_sentence(sentence);
-            let (_, _, limit) = self.wait_idle(READ_LIMIT, None);
-            let image = self.shot(&format!("{}-proposal", label.replace(' ', "-")));
-            let proposed = has_chip(self.app(), |reply| *reply == ChipReply::RuleCreate);
-            let asked = has_chip(self.app(), |reply| matches!(reply, ChipReply::RuleWhat(_)));
+            ("6 done", self.say("fertig", "done").to_owned(), false),
+        ];
+        for (label, sentence, shows_levels) in steps {
+            let (seconds, _, limit) = self.say_and_wait(&sentence, None);
+            let image = self.shot(&label.replace(' ', "-"));
+            let levels = matches!(
+                chat(self.app()).thread().last(),
+                Some(Entry::Hermes { parts, .. })
+                    if parts.iter().any(|part| matches!(part, Part::Levels(_)))
+            );
             let met = all([
                 limit,
                 expect(
-                    last_hermes_has_chips(self.app()),
-                    "no proposal or question with buttons",
+                    levels || !shows_levels,
+                    format!("no levels are shown; last: {}", last_text(self.app())),
                 ),
                 expect(
-                    proposed || asked,
-                    format!(
-                        "neither a proposed rule nor the question what goes in; last: {}",
-                        last_text(self.app())
-                    ),
+                    last_hermes_has_chips(self.app()),
+                    "the answer has no buttons",
                 ),
+                expect(self.files_below(&self.archive) == before, "files changed"),
             ]);
-            // The rule is only proposed here: nothing is saved without a click
-            // on "Create rule", and the protocol never makes it.
-            if has_chip(self.app(), |reply| *reply == ChipReply::Cancel) {
-                let _ = self.press_chip(|reply| *reply == ChipReply::Cancel);
-            }
             self.record(
                 label,
-                &format!("typed '{sentence}'; labels: {}", chip_labels(self.app())),
-                started.elapsed().as_secs_f64(),
+                &format!("typed '{sentence}'; buttons: {}", chip_labels(self.app())),
+                seconds,
                 &image,
-                "a rule proposal with levels and buttons, or the question what goes in",
+                if shows_levels {
+                    "the levels as changed, with buttons"
+                } else {
+                    "the levels are taken, the rule suggestions are offered"
+                },
                 met,
             );
         }
@@ -605,9 +576,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             let met = all([
                 limit,
                 expect(
-                    last_hermes_has_chips(self.app())
-                        && !matches!(chat(self.app()).step, Step::Role)
-                        && !self.last_says(Msg::HermesChatChangeAreaAsk),
+                    last_hermes_has_chips(self.app()),
                     format!(
                         "no honest answer with buttons; last: {}",
                         last_text(self.app())
@@ -633,13 +602,11 @@ fn file_stamp(path: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
 }
 
 /// The files below `root`, relative to it.
-pub(in crate::hermes_protocol) fn relative_files(
-    root: &std::path::Path,
-) -> BTreeSet<std::path::PathBuf> {
+pub(in crate::hermes_protocol) fn relative_files(root: &std::path::Path) -> BTreeSet<PathBuf> {
     fn walk(
         root: &std::path::Path,
         dir: &std::path::Path,
-        found: &mut BTreeSet<std::path::PathBuf>,
+        found: &mut BTreeSet<PathBuf>,
     ) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;

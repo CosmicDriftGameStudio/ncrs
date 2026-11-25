@@ -28,6 +28,8 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 pub const SETTINGS_NAV_WIDTH: f32 = 232.0;
 /// The page of the settings tab does not grow wider than this.
 pub const SETTINGS_PAGE_MAX_WIDTH: f32 = 760.0;
+/// The page Einsortieren, whose rows have several columns.
+pub const SETTINGS_WIDE_PAGE_MAX_WIDTH: f32 = 1400.0;
 /// Control column of a setting whose control is a row of options.
 pub const SETTINGS_WIDE_CONTROL_WIDTH: f32 = 460.0;
 
@@ -133,10 +135,6 @@ pub const MENU_WIDTH: f32 = 300.0;
 pub const MENU_SUB_WIDTH: f32 = 420.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;
-/// The quick-fix menu: wider than the context menu for a target path, with a
-/// two-line header above its entries.
-pub const QUICK_FIX_WIDTH: f32 = 480.0;
-pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
 
 /// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
 /// or ending there when it would not fit.

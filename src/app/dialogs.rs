@@ -62,17 +62,6 @@ impl App {
         }
     }
 
-    /// The inquiries under the cursor or among the marked files of the active
-    /// panel.
-    pub(in crate::app) fn inquiry_paths(&self) -> Vec<PathBuf> {
-        self.action_sources()
-            .into_iter()
-            .filter(|path| {
-                self.hermes.hermes_column.state_of(path) == Some(HermesFileState::Inquiry)
-            })
-            .collect()
-    }
-
     pub(in crate::app) fn update_command_line(
         &mut self,
         message: CommandLineMessage,
@@ -304,8 +293,33 @@ impl App {
     /// Every dialog and card that covers the panels and the pages.
     pub(in crate::app) fn dialog_is_open(&self) -> bool {
         self.dialog_apart_from_hermes_is_open()
-            || self.hermes.quick_fix.is_some()
             || self.hermes.confirm_again.is_some()
+            || self.hermes_dialog_keys() != HermesDialogKeys::Closed
+    }
+
+    /// The last dialog drawn is the one on top: the same order as
+    /// `ncrs_hermes_ui::dialogs`.
+    pub(in crate::app) fn hermes_dialog_keys(&self) -> HermesDialogKeys {
+        let rule_dialog = self
+            .hermes
+            .rules
+            .as_ref()
+            .is_some_and(|page| page.dialog_is_open());
+        if rule_dialog && self.settings_shown() {
+            HermesDialogKeys::Closed
+        } else if rule_dialog {
+            HermesDialogKeys::Rule
+        } else if self.hermes.target_removal.is_some() {
+            HermesDialogKeys::TargetRemoval
+        } else if self.hermes.target_dialog.is_some() {
+            HermesDialogKeys::Target
+        } else if self.hermes.source_dialog.is_some() {
+            HermesDialogKeys::Source
+        } else if self.hermes.suggest.is_some() {
+            HermesDialogKeys::Suggest
+        } else {
+            HermesDialogKeys::Closed
+        }
     }
 
     pub(in crate::app) fn dialog_apart_from_hermes_is_open(&self) -> bool {
@@ -410,11 +424,9 @@ impl App {
             copies.close();
         }
         self.remote.close_all();
-        ncrs_hermes_chat::stop_picks(&self.hermes_chat);
         // Freeing the model on the GPU takes seconds and must finish before
         // the process ends, and the runtime waits for the running blocking
-        // tasks at its end (the picks job, stopped above), so the window goes
-        // away first.
+        // tasks at its end, so the window goes away first.
         #[cfg(feature = "local-ai")]
         let ending = {
             self.quitting = true;

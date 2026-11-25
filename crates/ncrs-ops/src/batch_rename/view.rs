@@ -81,18 +81,16 @@ fn token_row<'a>(
     lang: Language,
     palette: &Palette,
 ) -> iced::widget::Row<'a, OpsMessage> {
-    let mut line = row![kit::dim(label.to_owned(), palette)]
-        .spacing(spacing::LINE_GAP)
-        .align_y(alignment::Vertical::Center);
-    for token in tokens {
-        line = line.push(kit::button(
-            token_label(*token, lang),
-            Some(send(BatchRenameMessage::Insert(*token))),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    line
+    let blocks: Vec<(&str, OpsMessage)> = tokens
+        .iter()
+        .map(|token| {
+            (
+                token_label(*token, lang),
+                send(BatchRenameMessage::Insert(*token)),
+            )
+        })
+        .collect();
+    kit::token_row(label, &blocks, palette)
 }
 
 fn labelled<'a>(

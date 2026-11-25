@@ -42,12 +42,14 @@ use ncrs_pipeline::{intake_steps, IndexAccess, Load, OwnDetails, Runner, Setting
 
 use crate::chat_work::ChatAccess;
 use crate::column_reading::{read_column, ColumnReading, ColumnRequest};
-use crate::filing_work::FilingAccess;
+use crate::paths_work::PathAccess;
 use crate::query_work::QueryAccess;
-use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
+use crate::sorting::SortingAccess;
 use crate::tags_work::TagsAccess;
-use ncrs_config::config::{AiSetting, Filing, FilingLocation, LocationTransfer};
+use ncrs_config::config::{
+    AiSetting, Filing, FilingLocation, SourceSetting, TargetSetting,
+};
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -128,6 +130,9 @@ pub struct FilingModule {
     store: SharedStore,
     index: IndexSlot,
     locations: Vec<ResolvedLocation>,
+    /// As saved last, paused ones included.
+    sources: Vec<SourceSetting>,
+    targets: Vec<TargetSetting>,
     phase: Phase,
     load: Load,
     /// Changes with every new `Work` and with a dismissal: a result of an older
@@ -168,13 +173,11 @@ pub struct FilingModule {
     pipeline_text_chain: Mutex<Option<Arc<TextChain>>>,
     /// What the last settling of an interrupted run could not do.
     settle_problem: SettleNote,
-    /// The chat, the review list and the filing tab count their work here.
+    /// The chat and the filing tab count their work here.
     index_work: crate::index_work::IndexWork,
     /// The rules and kinds the UI shows while a run holds the index; every
     /// write through a handle of this module drops them.
     snapshots: crate::chat_work::Snapshots,
-    /// What the review list and the quick fix built from the archive.
-    neighbour_cache: crate::review_work::NeighbourCache,
     /// The plain file was confirmed and what a crash left is being settled;
     /// the module is ready when that is done.
     settling: bool,

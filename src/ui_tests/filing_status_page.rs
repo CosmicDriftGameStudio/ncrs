@@ -165,22 +165,18 @@ fn the_status_bar_says_when_the_pipeline_is_paused() {
 }
 
 #[test]
-fn the_status_bar_names_reviews_and_failures() {
+fn the_status_bar_names_waiting_files_and_failures() {
     let mut failing = snapshot(RunnerState::Running, 0, 0);
     failing.steps[0].failed = 2;
-    let counts = ncrs_index::HermesCounts {
-        open_reviews: 2421,
-        ..ncrs_index::HermesCounts::default()
-    };
-    let app = App::with_filing_snapshot(failing, taken_at()).with_hermes_counts(counts);
+    let app = App::with_filing_snapshot(failing, taken_at()).with_questions(2421);
     assert!(shows(
         &app,
-        "idle \u{b7} 2\u{a0}421 to review \u{b7} 2 failed"
+        "idle \u{b7} 2\u{a0}421 wait for you \u{b7} 2 failed"
     ));
     let german = app.in_language(Language::German);
     assert!(shows(
         &german,
-        "ruht \u{b7} 2\u{a0}421 R\u{fc}ckfragen \u{b7} 2 Fehler"
+        "ruht \u{b7} 2\u{a0}421 warten auf dich \u{b7} 2 Fehler"
     ));
 }
 

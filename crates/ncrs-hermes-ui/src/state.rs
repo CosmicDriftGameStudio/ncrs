@@ -10,36 +10,39 @@ use crate::activity_page::ActivityPage;
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
 use crate::message::HermesPage;
-use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
-use crate::reviews_page::ReviewsPage;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
+use crate::sorting_page::SortingPage;
+use crate::source_dialog::SourceDialog;
+use crate::suggest::Suggest;
+use crate::target_dialog::{TargetDialog, TargetRemoval};
 use crate::tags_page::TagsPage;
+use crate::watching::Watching;
 
 /// What only the Hermes pages use: the pages that are up. Each page has a
 /// generation, so the answer of work that was started for a page that was
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
-    /// The fixes for an inquiry; at most one of it and the context menu.
-    pub quick_fix: Option<QuickFix>,
-    pub quick_fix_generation: u64,
     /// The files "process again" found, held while the question about many
     /// files of the Lesen folders is up.
     pub confirm_again: Option<Vec<PathBuf>>,
+    pub sorting: Option<SortingPage>,
+    pub source_dialog: Option<SourceDialog>,
+    /// Which look at the folder of the source dialog is the last one.
+    pub source_check: u64,
+    pub target_dialog: Option<TargetDialog>,
+    pub target_removal: Option<TargetRemoval>,
+    pub suggest: Option<Suggest>,
     pub rules: Option<RulesPage>,
     pub rules_generation: u64,
     pub saved_queries: Option<SavedQueries>,
     pub saved_queries_generation: u64,
     pub tags: Option<TagsPage>,
     pub tags_generation: u64,
-    pub reviews: Option<ReviewsPage>,
-    pub reviews_generation: u64,
     pub activity: Option<ActivityPage>,
     pub activity_generation: u64,
-    /// The planned documents wait for a free queue; the next tick asks again.
-    pub filing_due: bool,
     /// What the filing status page and the status bar show of the pipeline.
     pub filing_status: FilingStatus,
     /// What the index says about the files and folders the panels show.
@@ -50,8 +53,6 @@ pub struct Hermes {
     pub hermes_reads: HashSet<(PathBuf, ColumnStage)>,
     /// Reads of the column that gave up, until something is invalidated.
     pub hermes_failed_reads: HashSet<(PathBuf, ColumnStage)>,
-    /// Files whose status bar detail is being read.
-    pub hermes_detail_reads: HashSet<PathBuf>,
     /// How far the spinner of a file being read has turned, in radians.
     pub hermes_spinner_angle: f32,
     /// The folder the PDF library is missing from, as of the last pipeline start.
@@ -64,8 +65,8 @@ pub struct Hermes {
     pub filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pub pipeline: Option<ncrs_pipeline::Runner>,
-    /// `Snapshot::plans_made` the filing job was last asked for.
-    pub plans_filed_for: usize,
+    /// What the watched sources are to be filed from next.
+    pub watching: Watching,
     /// The module is being rebuilt after an AI setting changed: its
     /// generation and the filing config it starts with.
     pub filing_restart: Option<(u64, Filing)>,
@@ -119,19 +120,16 @@ impl Hermes {
     pub fn invalidate_hermes_path(&mut self, path: &Path) {
         self.hermes_column.invalidate_path(path);
         self.hermes_failed_reads.clear();
-        self.hermes_detail_reads.remove(path);
     }
 
     /// The page of this state that is loaded, if any.
     pub fn open_page(&self) -> Option<HermesPage> {
-        if self.saved_queries.is_some() {
+        if self.sorting.is_some() {
+            Some(HermesPage::Sorting)
+        } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
-        } else if self.rules.is_some() {
-            Some(HermesPage::Rules)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
-        } else if self.reviews.is_some() {
-            Some(HermesPage::Reviews)
         } else if self.activity.is_some() {
             Some(HermesPage::Activity)
         } else if self.filing_status.page_open() {
@@ -142,10 +140,11 @@ impl Hermes {
     }
 
     pub fn close_pages(&mut self) {
+        self.sorting = None;
+        self.suggest = None;
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
-        self.reviews = None;
         self.activity = None;
         self.filing_status.close_page();
     }

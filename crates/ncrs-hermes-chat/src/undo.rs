@@ -82,26 +82,16 @@ pub fn put_back(state: &mut State, ctx: &Ctx) {
         return;
     };
     state.step = Step::Idle;
-    let chain = std::mem::take(&mut state.session.run_chain);
-    let work_to_do = if chain.len() > 1 && chain.contains(&summary.batch) {
-        ChatWork::UndoAll {
-            batches: chain.into_iter().rev().collect(),
-        }
-    } else {
-        ChatWork::Undo {
-            batch: summary.batch,
-        }
-    };
     work(
         state,
-        work_to_do,
+        ChatWork::Undo {
+            batch: summary.batch,
+        },
         Some(text(ctx.lang, Msg::HermesChatWorkingUndo)),
     );
 }
 
 pub fn undone_done(state: &mut State, ctx: &Ctx, result: Result<UndoReport, String>) {
-    state.session.readings.clear();
-    crate::follow_up::forget(state);
     state.step = Step::Idle;
     let report = match result {
         Ok(report) => report,

@@ -6,7 +6,6 @@ use iced::{alignment, Background, Border, Color, Element, Length, Pixels, Theme}
 
 use crate::format;
 use crate::palette::Palette;
-use crate::theme;
 
 use super::*;
 
@@ -14,14 +13,8 @@ const CARD_PAD_Y: f32 = 8.0;
 const CARD_PAD_X: f32 = 12.0;
 const CARD_RADIUS: f32 = 8.0;
 const CARD_LINE: f32 = 20.0;
-const SEGMENT_PAD_X: f32 = 4.0;
-const SEGMENT_TINT: f32 = 0.22;
-const PATH_SEPARATOR: &str = "/";
 const NAME_MAX_WIDTH: f32 = 160.0;
 const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
-/// A path segment longer than this is cut in the middle so a path wraps
-/// between segments instead of running out of the card.
-const SEGMENT_MAX_CHARS: usize = 28;
 
 fn card<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
     let colors = *palette;
@@ -185,13 +178,6 @@ pub struct MovesBlock {
     pub more: Option<String>,
 }
 
-/// A label with its value, a row of the proposal card.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FactRow {
-    pub label: String,
-    pub value: String,
-}
-
 fn moves_section<'a, M: 'a>(
     mut column: Column<'a, M>,
     moves: &MovesBlock,
@@ -224,51 +210,6 @@ fn moves_section<'a, M: 'a>(
         column = column.push(card_text(rest, palette.dim_text, Wrapping::Word, false));
     }
     column
-}
-
-/// A rule proposal: what it applies to and where it files, the files it
-/// would rename or move, and the counts.
-pub fn proposal_card<'a, M: 'a>(
-    title: &str,
-    facts: &[FactRow],
-    moves: Option<&MovesBlock>,
-    counts: Option<&str>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut column = Column::new()
-        .push(card_text(title, palette.text, Wrapping::Word, true))
-        .spacing(GAP_S);
-    for fact in facts {
-        column = column.push(
-            Row::new()
-                .push(
-                    container(card_text(
-                        &fact.label,
-                        palette.dim_text,
-                        Wrapping::Word,
-                        false,
-                    ))
-                    .width(Length::FillPortion(2)),
-                )
-                .push(
-                    container(card_text(
-                        &fact.value,
-                        palette.text,
-                        Wrapping::WordOrGlyph,
-                        false,
-                    ))
-                    .width(Length::FillPortion(5)),
-                )
-                .spacing(GAP_M),
-        );
-    }
-    if let Some(block) = moves {
-        column = moves_section(column, block, palette);
-    }
-    if let Some(line) = counts {
-        column = column.push(card_text(line, palette.dim_text, Wrapping::Word, false));
-    }
-    card(column.into(), palette)
 }
 
 /// The levels of a pattern, one row each, under a title and above a footer.
@@ -327,17 +268,6 @@ pub fn levels_card<'a, M: 'a>(
     card(column.into(), palette)
 }
 
-/// A folder the chat names: its name in bold, its path below it.
-pub fn folder_mention<'a, M: 'a>(name: &str, path: &str, palette: &Palette) -> Element<'a, M> {
-    card(
-        Column::new()
-            .push(card_text(name, palette.text, Wrapping::WordOrGlyph, true))
-            .push(path_hint("", path, TEXT_SMALL, palette.dim_text, palette))
-            .into(),
-        palette,
-    )
-}
-
 /// `content` with the full `name` in a small box on hover when `shown` is a
 /// shortened form of it.
 fn with_full_name<'a, M: 'a>(
@@ -352,51 +282,13 @@ fn with_full_name<'a, M: 'a>(
     crate::kit::tooltip(content, name.to_owned(), tooltip::Position::Top, palette)
 }
 
-fn path_pieces<'a, M: 'a>(
-    segments: &[String],
-    highlighted: Option<usize>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let colors = *palette;
-    let mut pieces: Vec<Element<'a, M>> = Vec::new();
-    for (index, segment) in segments.iter().enumerate() {
-        if index > 0 {
-            pieces.push(mono(PATH_SEPARATOR, TEXT_BODY, colors.dim_text));
-        }
-        let shown = format::ellipsize_keeping_both_ends(segment, SEGMENT_MAX_CHARS);
-        if highlighted == Some(index) {
-            let marked = container(mono(shown.clone(), TEXT_BODY, colors.text))
-                .padding([0.0, SEGMENT_PAD_X])
-                .style(move |_: &Theme| container::Style {
-                    background: Some(Background::Color(
-                        colors.primary_button().0.scale_alpha(SEGMENT_TINT),
-                    )),
-                    border: Border {
-                        color: colors.primary_button().0,
-                        width: 1.0,
-                        radius: theme::radius::CORNER.into(),
-                    },
-                    ..container::Style::default()
-                })
-                .into();
-            pieces.push(with_full_name(marked, &shown, segment, palette));
-        } else {
-            let plain = mono(shown.clone(), TEXT_BODY, colors.text);
-            pieces.push(with_full_name(plain, &shown, segment, palette));
-        }
-    }
-    Row::with_children(pieces)
-        .spacing(GAP_XS)
-        .wrap()
-        .align_x(alignment::Horizontal::Left)
-        .into()
-}
-
-/// One file as a path in segments; the segment at `highlighted` is marked.
-pub fn file_card<'a, M: 'a>(
-    segments: &[String],
-    highlighted: Option<usize>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    card(path_pieces(segments, highlighted, palette), palette)
+/// A folder the chat names: its name in bold, its path below it.
+pub fn folder_mention<'a, M: 'a>(name: &str, path: &str, palette: &Palette) -> Element<'a, M> {
+    card(
+        Column::new()
+            .push(card_text(name, palette.text, Wrapping::WordOrGlyph, true))
+            .push(path_hint("", path, TEXT_SMALL, palette.dim_text, palette))
+            .into(),
+        palette,
+    )
 }

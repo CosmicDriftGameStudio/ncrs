@@ -18,7 +18,7 @@ use crate::model_file::ModelPin;
 
 /// The pinned llama.cpp crate; `the_llama_version_matches_the_workspace` keeps
 /// it equal to the workspace dependency.
-const LLAMA_CPP_VERSION: &str = "0.1.160";
+const LLAMA_CPP_VERSION: &str = "0.1.161";
 /// The sampler chain of `LocalModel::sample_reply`.
 const SAMPLER_CHAIN: &str = "grammar(root),greedy";
 

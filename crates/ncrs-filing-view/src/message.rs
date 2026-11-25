@@ -3,51 +3,63 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use ncrs_index::{BatchId, Transfer};
+use ncrs_index::TargetId;
+use ncrs_intake::LocationTransfer;
 
-/// What a finished run did.
+use crate::decide::Decided;
+use crate::run::Carried;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FiledReport {
-    pub transfer: Transfer,
-    pub done: usize,
-    pub trashed: usize,
-    /// The files, relative to the source, that stay there.
-    pub left: Vec<PathBuf>,
-    pub batch: BatchId,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
-    /// Take the plan the reading thread has published.
+    /// A redraw while something runs.
     Tick,
-    /// The planning of the session with this id has returned.
-    PlanFinished(u64, Result<(), String>),
-    /// A file, by its path relative to the source.
+    Planned {
+        session: u64,
+        /// The files the index did not know were read for it.
+        read: bool,
+        result: Result<Box<Decided>, String>,
+    },
+    /// A rule or a target changed: decide again with what is known.
+    RulesChanged,
+    /// Look at the source and the targets again, with reading.
+    Recheck,
     Select(PathBuf),
     SelectNext,
     SelectPrevious,
+    LinkNext,
+    LinkPrevious,
+    /// The link the keyboard is on.
+    PressMarkedLink,
+    MakeRule(PathBuf),
+    SuggestRule(PathBuf),
+    Assign(PathBuf),
+    Leave(PathBuf),
+    Ask(PathBuf),
+    QuestionToggle(usize),
+    QuestionToggleMarked,
+    QuestionNext,
+    QuestionPrevious,
+    /// Into these places of the question.
+    QuestionAnswer(Vec<usize>),
+    /// What Enter does.
+    QuestionConfirm,
+    QuestionLeave,
     StartRename,
     RenameInput(String),
     RenameSubmit,
     RenameCancel,
     PickFolder,
     FolderPicked(Option<PathBuf>),
-    /// The file stays where it is.
+    /// The selected file stays where it is; again, it follows its rule.
     Stay,
     ToggleOnlyNew,
-    /// The folders of the write folder, listed for the session with this id.
-    FoldersListed(u64, BTreeSet<PathBuf>),
-    /// The file names read in folders of the write folder, for the session with
-    /// this id.
-    ExistingRead(u64, Vec<(PathBuf, Vec<String>)>),
+    FoldersListed(u64, BTreeSet<(TargetId, PathBuf)>),
+    ExistingRead(u64, Vec<((TargetId, PathBuf), Vec<String>)>),
     ToggleTrashDupes,
-    ToggleFolder(PathBuf),
-    File(Transfer),
-    /// Moves only the files with a sure place; the unsure ones stay in the read
-    /// folder.
-    FileSure,
-    Filed(Result<FiledReport, String>),
+    ToggleFolder(TargetId, PathBuf),
+    File(LocationTransfer),
+    Carried(u64, Result<Box<Carried>, String>),
+    /// The answer to one open question of a watched source.
+    Answered(u64, PathBuf, Result<Box<Carried>, String>),
     Cancel,
-    /// The tags of a cancelled plan are written; nothing to do.
-    Marked(Result<(), String>),
 }

@@ -6,6 +6,8 @@
 
 mod ai_step;
 mod clock;
+#[cfg(test)]
+mod eval_base;
 mod load;
 mod runner;
 mod step;
@@ -14,7 +16,7 @@ mod steps;
 pub use clock::{Clock, SystemClock};
 pub use load::Load;
 pub use runner::{
-    Busy, ChangeOutcome, ChangedPath, ContinuousCandidate, ErrorEntry, Runner, RunnerState,
+    Busy, ChangeOutcome, ChangedPath, ErrorEntry, Runner, RunnerState,
     Settings, Snapshot, StepSnapshot, Task, WorkerSnapshot, MAX_CHANGED_PATHS, MAX_ERRORS,
     RATE_MINUTES,
 };

@@ -20,12 +20,10 @@ pub enum SettingsFeature {
     Index,
     /// The one model of Hermes and the switch that turns him on.
     Ai,
-    /// Documents that wait for the user, in groups.
-    Reviews,
+    /// Sources and targets of the filing.
+    Hermes,
     /// What Hermes does now and what it filed.
     Activity,
-    Hermes,
-    Rules,
     Tags,
     Reports,
     ReadErrors,
@@ -42,7 +40,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 20] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -59,10 +57,8 @@ impl SettingsFeature {
         Self::ReadErrors,
         Self::Reports,
         Self::Ai,
-        Self::Reviews,
-        Self::Activity,
         Self::Hermes,
-        Self::Rules,
+        Self::Activity,
         Self::Tags,
         Self::Usage,
     ];
@@ -72,11 +68,10 @@ impl SettingsFeature {
     pub fn is_filled_by_app(self) -> bool {
         matches!(
             self,
-            Self::Rules
+            Self::Hermes
                 | Self::Tags
                 | Self::Reports
                 | Self::ReadErrors
-                | Self::Reviews
                 | Self::Activity
                 | Self::Updates
         )
@@ -97,13 +92,9 @@ impl SettingsFeature {
             | Self::Notes
             | Self::Git => SettingsGroup::Files,
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
-            Self::Ai
-            | Self::Reviews
-            | Self::Activity
-            | Self::Hermes
-            | Self::Rules
-            | Self::Tags
-            | Self::Usage => SettingsGroup::Hermes,
+            Self::Ai | Self::Hermes | Self::Activity | Self::Tags | Self::Usage => {
+                SettingsGroup::Hermes
+            }
         }
     }
 }
@@ -144,10 +135,8 @@ mod tests {
                 ReadErrors,
                 Reports,
                 Ai,
-                Reviews,
-                Activity,
                 Hermes,
-                Rules,
+                Activity,
                 Tags,
                 Usage
             ]
@@ -169,10 +158,8 @@ mod tests {
             (ReadErrors, SettingsGroup::Documents),
             (Reports, SettingsGroup::Documents),
             (Ai, SettingsGroup::Hermes),
-            (Reviews, SettingsGroup::Hermes),
-            (Activity, SettingsGroup::Hermes),
             (Hermes, SettingsGroup::Hermes),
-            (Rules, SettingsGroup::Hermes),
+            (Activity, SettingsGroup::Hermes),
             (Tags, SettingsGroup::Hermes),
             (Usage, SettingsGroup::Hermes),
         ];

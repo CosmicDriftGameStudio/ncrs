@@ -460,7 +460,7 @@ fn a_model_without_the_agreement_for_folders_is_not_asked_and_the_dialog_says_so
     assert_eq!(proposal_for(&refused, &names), Proposal::ConsentMissing);
 
     let failing =
-        ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::Unsupported)]);
+        ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::TooLong)]);
     assert_eq!(proposal_for(&failing, &names), Proposal::Pattern(None));
 }
 

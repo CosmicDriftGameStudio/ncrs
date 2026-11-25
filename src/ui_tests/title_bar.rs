@@ -85,10 +85,7 @@ fn failing_hermes(language: Language) -> App {
         unchanged: 0,
     }];
     App::with_filing_snapshot(snapshot, taken_at())
-        .with_hermes_counts(ncrs_index::HermesCounts {
-            open_reviews: 2421,
-            ..ncrs_index::HermesCounts::default()
-        })
+        .with_questions(2421)
         .in_language(language)
 }
 
@@ -158,27 +155,6 @@ fn the_file_lists_show_the_tags_after_the_names() {
         assert!(
             matches,
             "the main view does not match tests/snapshots/{name}.png"
-        );
-    }
-}
-
-#[test]
-fn the_hermes_quick_fix_matches_its_snapshots() {
-    for (language, name) in [
-        (Language::English, "hermes_quick_fix_en"),
-        (Language::German, "hermes_quick_fix_de"),
-    ] {
-        let app = App::with_hermes_quick_fix_sample()
-            .unwrap()
-            .in_language(language);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_reference_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the quick-fix menu does not match tests/snapshots/{name}.png"
         );
     }
 }

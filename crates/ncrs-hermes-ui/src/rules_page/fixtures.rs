@@ -1,5 +1,5 @@
 use super::*;
-use ncrs_index::{Index, Rule, RuleConditions, RuleId};
+use ncrs_index::{Index, Rule, RuleConditions, RuleId, RuleOrigin, TargetId};
 use std::collections::BTreeSet;
 
 /// The `n`th id (from 1) an index hands out.
@@ -38,6 +38,7 @@ pub fn listed(id: i64, global_index: usize) -> ListedRule {
             id: rule_id(usize::try_from(id).unwrap()),
             position: i64::try_from(global_index).unwrap() + 1,
             origin: RuleOrigin::Hand,
+            target: TargetId::main(),
             spec: spec(RuleConditions::all_of(vec![Condition::new(
                 ConditionKind::Word,
                 "rent",

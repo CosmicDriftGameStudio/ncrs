@@ -93,11 +93,6 @@ fn a_version_28_database_keeps_its_rules_and_reviews_and_stops_reusing_their_ids
             (9, "no_matching_rule".to_owned())
         ]
     );
-    let open_twice = index.conn.execute(
-        "INSERT INTO review_entry (document_id, reason, created_at) VALUES (1, 'no_matching_rule', 3)",
-        [],
-    );
-    assert!(open_twice.is_err(), "one open review per document survives");
     let violations: i64 = index
         .conn
         .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
@@ -107,6 +102,20 @@ fn a_version_28_database_keeps_its_rules_and_reviews_and_stops_reusing_their_ids
     assert_eq!(violations, 0);
     assert_eq!(max_sequence(&index, "rule"), Some(7));
     assert_eq!(max_sequence(&index, "review_entry"), Some(9));
+
+    // Step 037 closed review 5, so the document may open another one, once.
+    index
+        .conn
+        .execute(
+            "INSERT INTO review_entry (document_id, reason, created_at) VALUES (1, 'no_matching_rule', 3)",
+            [],
+        )
+        .unwrap();
+    let open_twice = index.conn.execute(
+        "INSERT INTO review_entry (document_id, reason, created_at) VALUES (1, 'no_matching_rule', 4)",
+        [],
+    );
+    assert!(open_twice.is_err(), "one open review per document survives");
 
     assert!(index.delete_rule(crate::RuleId::new(7)).unwrap());
     assert!(index.create_rule(&rule_spec()).unwrap().get() > 7);

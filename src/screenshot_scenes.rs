@@ -10,15 +10,21 @@
     reason = "test code: a failing setup is the signal"
 )]
 
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveRun, LiveState, Override};
+use ncrs_filing::sorting::{ReadProblem, RowState};
+use ncrs_filing_view::{Change, Row, Session, State as FilingState};
 use ncrs_git_view::{Message as GitMessage, State as GitState};
 use ncrs_i18n::Language;
-use ncrs_index::ContentHash;
+use ncrs_index::{
+    Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, Index, RuleConditions,
+    RuleId, RuleOrigin, RuleSpec, TargetId,
+};
+use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, Place, SortSource, SortTarget};
 use ncrs_monitor::{
     CpuInfo, Depth, DriveRow, HostInfo, LoadInfo, MonitorMessage, NetworkRow, SensorRow, Snapshot,
     TaskCounts, TaskRow, TaskStatus, Usage,
@@ -224,73 +230,173 @@ const FILING_FOLDERS: [&str; 8] = [
 const FILING_COMPANIES: [&str; 5] = ["Acme Ltd", "Globex", "Initech", "Umbrella", "Hooli"];
 const FILING_FILES: usize = 60;
 
-fn filing_state(index: usize, resolved: usize) -> LiveState {
-    if index >= resolved {
-        return if index < resolved + 2 {
-            LiveState::Looking
-        } else {
-            LiveState::Waiting
+fn filing_target() -> TargetId {
+    TargetId::new("documents").expect("the name of the target")
+}
+
+/// A session of `source` with one target and a rule per folder of it. Only an
+/// index gives out the numbers of rules.
+pub fn filing_session(
+    source: &str,
+    target: &str,
+    folders: impl IntoIterator<Item = &'static str>,
+) -> (Session, Vec<RuleId>) {
+    let dir = tempfile::tempdir().expect("scratch folder");
+    let mut index = Index::create_plain(&dir.path().join("index.db")).expect("the index");
+    let mut rules = Vec::new();
+    let mut names = HashMap::new();
+    for folder in folders {
+        let name = folder.replace('/', " ");
+        let spec = RuleSpec {
+            name: Some(name.clone()),
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                name.to_lowercase(),
+            )]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: None,
+            tags: BTreeSet::new(),
+            filing_pattern: folder.to_owned(),
+            confirmed: true,
+            enabled: true,
         };
+        let rule = index
+            .create_rule_in(&spec, RuleOrigin::default(), &filing_target())
+            .expect("the rule");
+        rules.push(rule);
+        names.insert(rule, name);
     }
-    match index % 10 {
-        3 => LiveState::AlreadyThere {
-            at: PathBuf::from(FILING_FOLDERS[index % FILING_FOLDERS.len()])
-                .join(format!("old-{index:03}.pdf")),
+    let mut session = Session::new(
+        SortSource {
+            path: PathBuf::from(source),
+            include: String::new(),
+            exclude: String::new(),
+            targets: vec![filing_target()],
+            watch: false,
+            transfer: LocationTransfer::Move,
+            no_text: OnNoText::Ask,
+            several: OnSeveralTargets::Ask,
+            own_volume: None,
         },
-        6 => LiveState::NoFolder,
-        9 => LiveState::Unreadable,
-        _ => LiveState::Filed {
-            folder: PathBuf::from(FILING_FOLDERS[index % FILING_FOLDERS.len()]),
-            name: format!(
-                "{} {} 2026-{:02}.pdf",
-                ["Invoice", "Contract", "Policy", "Notice"][index % 4],
-                FILING_COMPANIES[index % FILING_COMPANIES.len()],
-                index % 12 + 1
-            ),
-            unsure: false,
-        },
+        true,
+    );
+    session.targets = vec![SortTarget {
+        id: filing_target(),
+        name: "Documents".to_owned(),
+        path: PathBuf::from(target),
+        own_volume: Some(false),
+    }];
+    session.rule_names = names;
+    session.trash_can_restore = true;
+    (session, rules)
+}
+
+pub fn filing_place(rule: RuleId, relative: PathBuf) -> RowState {
+    RowState::Place(Place {
+        target: filing_target(),
+        rule,
+        relative,
+        fields: DocumentFields::default(),
+    })
+}
+
+pub fn filing_already_there(path: PathBuf) -> RowState {
+    RowState::AlreadyThere {
+        target: filing_target(),
+        path,
     }
 }
 
-/// The Filing tab with the read folder, the write tree and 60 scans, `resolved`
-/// of them already looked at; all of them when `done`.
-pub fn filing_tab(read: usize, done: bool) -> ncrs_filing_view::State {
-    let resolved = if done { FILING_FILES } else { read };
-    let mut session = ncrs_filing_view::Session::new(
-        PathBuf::from("/Users/alex/Scans"),
-        PathBuf::from("/Users/alex/Documents"),
-        Arc::new(LiveRun::default()),
-    );
-    let files = (0..FILING_FILES)
-        .map(|index| LiveFile {
-            from: PathBuf::from(format!("scan-{index:03}.pdf")),
-            hash: Some(ContentHash([1; 32])),
-            state: filing_state(index, resolved),
-            by_user: false,
-            placed_by: None,
+pub fn filing_row(source: &Path, index: usize, relative: PathBuf, state: RowState) -> Row {
+    Row {
+        path: source.join(&relative),
+        relative,
+        hash: Some(ContentHash([1; 32])),
+        document: i64::try_from(index).ok().map(DocumentId::from_number),
+        state,
+    }
+}
+
+/// While the rows from `known` on are still read.
+pub fn filing_is_reading(session: &mut Session, known: usize) {
+    session.planning = true;
+    session.reading = true;
+    session
+        .progress
+        .total
+        .store(session.rows.len().saturating_sub(known), Ordering::Relaxed);
+    for row in session.rows.iter_mut().skip(known) {
+        row.state = RowState::NotRead(ReadProblem::Unknown);
+    }
+}
+
+fn filing_state(index: usize, rules: &[RuleId]) -> RowState {
+    let at = index % FILING_FOLDERS.len();
+    let folder = PathBuf::from(FILING_FOLDERS[at]);
+    match index % 10 {
+        3 => filing_already_there(
+            Path::new("/Users/alex/Documents")
+                .join(folder)
+                .join(format!("old-{index:03}.pdf")),
+        ),
+        6 => RowState::NoRule,
+        9 => RowState::NoText,
+        _ => filing_place(
+            rules[at],
+            folder.join(format!(
+                "{} {} 2026-{:02} {index:03}.pdf",
+                ["Invoice", "Contract", "Policy", "Notice"][index % 4],
+                FILING_COMPANIES[index % FILING_COMPANIES.len()],
+                index % 12 + 1
+            )),
+        ),
+    }
+}
+
+/// The Filing tab with a source, a target and 60 scans. The first `read` ones
+/// are known, the others are being read; all of them are decided when `done`.
+pub fn filing_tab(read: usize, done: bool) -> FilingState {
+    let (mut session, rules) =
+        filing_session("/Users/alex/Scans", "/Users/alex/Documents", FILING_FOLDERS);
+    let source = session.source.path.clone();
+    session.rows = (0..FILING_FILES)
+        .map(|index| {
+            filing_row(
+                &source,
+                index,
+                PathBuf::from(format!("scan-{index:03}.pdf")),
+                filing_state(index, &rules),
+            )
         })
         .collect();
-    session.plan = Some(LivePlan {
-        source_root: session.source.clone(),
-        target_root: session.target.clone(),
-        files,
-        done,
-        folder_choice_unsupported: false,
-    });
+    session.planned = true;
     for (at, folder) in FILING_FOLDERS.iter().enumerate() {
         let there = (0..at % 6 + 1)
             .map(|number| format!("old-{number:03}.pdf"))
             .collect();
-        session.existing.insert(PathBuf::from(folder), there);
+        session
+            .existing
+            .insert((filing_target(), PathBuf::from(folder)), there);
     }
     session.selected = Some(PathBuf::from("scan-004.pdf"));
     if done {
-        session.overrides.insert(
+        session.changes.insert(
             PathBuf::from("scan-004.pdf"),
-            Override::Name("Invoice Acme Ltd 2026-05 Heating.pdf".to_owned()),
+            Change::Places(vec![(
+                filing_target(),
+                PathBuf::from(FILING_FOLDERS[4]).join("Invoice Acme Ltd 2026-05 Heating.pdf"),
+            )]),
         );
+    } else {
+        filing_is_reading(&mut session, read);
+        session
+            .progress
+            .done
+            .store((FILING_FILES - read) / 3, Ordering::Relaxed);
     }
-    ncrs_filing_view::State {
+    FilingState {
         session: Some(session),
     }
 }

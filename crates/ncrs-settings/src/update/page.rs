@@ -210,18 +210,10 @@ pub fn update(
         | SettingsMessage::FolderPicked { .. }
         | SettingsMessage::FolderGranted { .. }
         | SettingsMessage::RemoveFolder(_)
-        | SettingsMessage::StopContinuous(_)
         | SettingsMessage::ScanRepos
-        | SettingsMessage::EditFolder(_)
-        | SettingsMessage::ReplaceFolder(_)
         | SettingsMessage::AddOwnDetail(_)
-        | SettingsMessage::ToggleAllAreas
-        | SettingsMessage::ToggleAllRuns
-        | SettingsMessage::OpenChat(_)
         | SettingsMessage::TogglePause
-        | SettingsMessage::UndoRun(_)
         | SettingsMessage::FactsLoaded(_)
-        | SettingsMessage::RunUndone(_)
         | SettingsMessage::OpenAiModel
         | SettingsMessage::AskRemoveModel(_)
         | SettingsMessage::CancelRemoveModel

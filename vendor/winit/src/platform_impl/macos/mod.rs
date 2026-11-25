@@ -17,7 +17,7 @@ mod window_delegate;
 
 use std::fmt;
 
-pub(crate) use self::app_state::take_opened_paths;
+pub(crate) use self::app_state::{take_opened_paths, take_quit_request};
 pub(crate) use self::event::{physicalkey_to_scancode, scancode_to_physicalkey, KeyEventExtra};
 pub(crate) use self::event_loop::{
     ActiveEventLoop, EventLoop, EventLoopProxy, OwnedDisplayHandle,

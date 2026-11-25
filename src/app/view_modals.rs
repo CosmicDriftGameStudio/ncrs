@@ -9,12 +9,6 @@ impl App {
         let (window, lang, palette) = (self.window_size, self.lang, &self.palette);
         let focus = self.dialog_focus;
         let layer = match modal {
-            Modal::QuickFix => popup_layer(
-                quick_fix_view::view(self.hermes.quick_fix.as_ref()?, lang, palette)
-                    .map(Message::from),
-                Some(Message::QuickFix(QuickFixMessage::Close)),
-                RightPress::PassThrough,
-            ),
             Modal::HeaderMenu => ncrs_files::header_menu_view(
                 self.panels.header_menu.as_ref()?,
                 self.column_settings(),
@@ -148,6 +142,11 @@ impl App {
                 )
                 .map(Message::AiModel),
             ),
+            Modal::HermesDialog => scrim(
+                ncrs_hermes_ui::dialogs(&self.hermes, &self.hermes_view_ctx())
+                    .pop()?
+                    .map(Message::from),
+            ),
             Modal::ConfirmAgain => scrim(
                 ncrs_hermes_ui::confirm_again_dialog(&self.hermes, &self.hermes_view_ctx())?
                     .map(Message::from),
@@ -255,9 +254,8 @@ impl App {
         {
             return Some(scrim(dialog.map(Message::Settings)));
         }
-        let dialog = ncrs_hermes_ui::dialogs(&self.hermes, &self.hermes_view_ctx())
-            .into_iter()
-            .next()?;
+        // The last one is on top: a rule over the proposals, a target over a source.
+        let dialog = ncrs_hermes_ui::dialogs(&self.hermes, &self.hermes_view_ctx()).pop()?;
         Some(scrim(dialog.map(Message::from)))
     }
 }

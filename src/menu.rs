@@ -596,11 +596,18 @@ mod tests {
         assert!(setup
             .items
             .iter()
-            .any(|i| i.action == KeyAction::HermesSetInbox));
-        assert!(hermes
-            .items
-            .iter()
-            .any(|entry| matches!(entry, MenuEntry::Item(i) if i.action == KeyAction::Rules)));
+            .any(|i| i.action == KeyAction::DownloadAiModel));
+        for action in [
+            KeyAction::HermesFileOnce,
+            KeyAction::WatchSource,
+            KeyAction::AddTarget,
+            KeyAction::Rules,
+        ] {
+            assert!(hermes
+                .items
+                .iter()
+                .any(|entry| matches!(entry, MenuEntry::Item(i) if i.action == action)));
+        }
         let go = menu_of(&model, CommandGroup::Go);
         let favourites = submenu_of(go, Submenu::Favourites);
         assert!(favourites

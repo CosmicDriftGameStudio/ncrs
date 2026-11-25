@@ -13,8 +13,31 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use ncrs_i18n::{Language, Msg};
 
+mod rule_row;
+pub use rule_row::RuleCells;
+
 /// How much of the cursor ink a hint keeps on the cursor fill.
 const HINT_ON_CURSOR_ALPHA: f32 = 0.7;
+
+/// The label of a row of columns gets one part of the width, the rest this many.
+const COLUMNS_PORTION: u16 = 4;
+
+/// How the parts of a row stand.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RowLayout {
+    /// The label with the description under it, the control at the right.
+    #[default]
+    Form,
+    /// Like [`Self::Form`], but the control takes a fixed share of the width,
+    /// so what it starts with stands at the same place in every row.
+    Columns,
+    /// The heading of the rows under it: the label, the description dimmed
+    /// beside it and the buttons at the right, all on one line.
+    Heading,
+    /// The control is the whole row; the label only names it.
+    Bare,
+}
+
 
 /// What the keyboard can do on a row; a row without one is skipped by it.
 #[derive(Debug, Clone, PartialEq)]
@@ -188,6 +211,9 @@ pub struct SettingRow<'a, M> {
     /// Set: the label is a link that sends this message (the name of a file
     /// that opens).
     pub label_action: Option<M>,
+    /// The label is in the text colour although it is a link.
+    pub quiet_label: bool,
+    pub layout: RowLayout,
 }
 
 pub struct Group<'a, M> {
@@ -198,6 +224,28 @@ pub struct Group<'a, M> {
 }
 
 impl<'a, M: Clone + 'a> Group<'a, M> {
+    /// A group whose heading carries a `note` and the buttons that add to its
+    /// list.
+    pub fn headed(
+        title: &str,
+        note: Option<&str>,
+        buttons: Vec<RowButton<M>>,
+        rows: Vec<SettingRow<'a, M>>,
+        palette: &Palette,
+    ) -> Self {
+        let build = |marked| button_row(None, &buttons, marked, palette);
+        let heading = SettingRow {
+            layout: RowLayout::Heading,
+            ..SettingRow::text(title.to_owned(), note.map(str::to_owned), build(None))
+        }
+        .with_buttons(pressable(&buttons), build);
+        Self {
+            intro: None,
+            title: String::new(),
+            rows: std::iter::once(heading).chain(rows).collect(),
+        }
+    }
+
     /// The group for the messages of the page around.
     pub fn map<N: Clone + 'a>(self, wrap: impl Fn(M) -> N + Clone + 'a) -> Group<'a, N> {
         Group {
@@ -250,6 +298,8 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
                 .collect(),
             leading: self.leading.map(|lead| lead.map(wrap.clone())),
             label_action: self.label_action.map(&wrap),
+            quiet_label: self.quiet_label,
+            layout: self.layout,
         }
     }
 
@@ -271,6 +321,8 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             marked_controls: Vec::new(),
             leading: None,
             label_action: None,
+            quiet_label: false,
+            layout: RowLayout::Form,
         }
     }
 
@@ -278,6 +330,13 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
     pub fn with_label_action(self, message: M) -> Self {
         Self {
             label_action: Some(message),
+            ..self
+        }
+    }
+
+    fn with_quiet_label(self) -> Self {
+        Self {
+            quiet_label: true,
             ..self
         }
     }
@@ -302,6 +361,74 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             ..Self::text(label, description, build(None))
         }
         .with_buttons(pressable(&buttons), build)
+    }
+
+    /// A listed row with a column of its own between the label and the
+    /// actions; `middle` draws it, in the colours it gets, each time the row
+    /// is built.
+    pub fn listed_columns(
+        label: String,
+        description: Option<String>,
+        middle: impl Fn(&Palette) -> Element<'a, M>,
+        status: Option<String>,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let build = |marked: Option<usize>| {
+            let colors = ink(palette, marked.is_some());
+            let leading = status
+                .clone()
+                .map(|shown| status_text(shown, colors.dim_text));
+            row![
+                container(middle(&colors)).width(Length::Fill),
+                button_row(leading, &buttons, marked, palette),
+            ]
+            .spacing(spacing::L)
+            .align_y(alignment::Vertical::Center)
+            .into()
+        };
+        Self {
+            list_indent: Some(0.0),
+            layout: RowLayout::Columns,
+            ..Self::text(label, description, build(None))
+        }
+        .with_buttons(pressable(&buttons), build)
+    }
+
+
+    /// The head of a group of rows that folds (a target and its rules): the
+    /// arrow, `lead` (its chip), the name as a link, `description` under it and
+    /// the buttons. Folding is the first thing Enter does on the row and what a
+    /// click on the name does; the arrow itself only shows the state.
+    pub fn folding_head(
+        open: bool,
+        lead: Element<'a, M>,
+        label: String,
+        description: Option<String>,
+        on_toggle: M,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let arrow = if open { "▾" } else { "▸" };
+        let lead = Row::new()
+            .push(status_text(arrow.to_owned(), palette.text))
+            .push(lead)
+            .spacing(spacing::M)
+            .align_y(alignment::Vertical::Center);
+        let build = |marked: Option<usize>| {
+            let marked_button = marked.and_then(|at| at.checked_sub(1));
+            button_row(None, &buttons, marked_button, palette)
+        };
+        let mut presses = vec![on_toggle.clone()];
+        presses.extend(pressable(&buttons));
+        Self {
+            list_indent: Some(0.0),
+            ..Self::text(label, description, build(None))
+        }
+        .with_buttons(presses, build)
+        .with_leading(lead.into())
+        .with_label_action(on_toggle)
+        .with_quiet_label()
     }
 
     /// A listed row with an input field before its buttons; `field` draws the
@@ -459,7 +586,44 @@ pub fn simple_row<'a, M: Clone + 'a>(
         marked_controls: Vec::new(),
         leading: None,
         label_action: None,
+        quiet_label: false,
+        layout: RowLayout::Form,
     }
+}
+
+/// The colours of a row. On the cursor fill the text takes the cursor's ink,
+/// the hint a fainter one of it.
+fn ink(palette: &Palette, has_focus: bool) -> Palette {
+    if !has_focus {
+        return *palette;
+    }
+    Palette {
+        text: palette.cursor_text,
+        dim_text: palette.cursor_text.scale_alpha(HINT_ON_CURSOR_ALPHA),
+        accent: palette.cursor_text,
+        ..*palette
+    }
+}
+
+fn heading_row<'a, M: Clone + 'a>(
+    title: String,
+    note: String,
+    control: Element<'a, M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let name = text(title)
+        .size(font_size::HEADER)
+        .color(palette.text)
+        .wrapping(Wrapping::None);
+    let note = text(note).size(font_size::SMALL).color(palette.dim_text);
+    iced::widget::column![
+        row![name, container(note).width(Length::Fill), control]
+            .spacing(spacing::M)
+            .height(size::BUTTON + 2.0 * spacing::XS)
+            .align_y(alignment::Vertical::Center),
+        kit::divider(palette),
+    ]
+    .into()
 }
 
 /// A word in the body size that never wraps.
@@ -568,6 +732,10 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
     let mut first = true;
     let mut keyed_so_far = 0;
     for group in groups {
+        let has_heading_row = group
+            .rows
+            .first()
+            .is_some_and(|setting| setting.layout == RowLayout::Heading);
         let rows: Vec<Element<'a, M>> = group
             .rows
             .into_iter()
@@ -627,37 +795,50 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                             .map(|caution| kit::warning_line(caution.clone(), palette)),
                     )
                     .collect();
-                // On the cursor fill the text takes the cursor's ink, the hint a
-                // fainter one of it.
-                let row_palette = if has_focus {
-                    Palette {
-                        text: palette.cursor_text,
-                        dim_text: palette.cursor_text.scale_alpha(HINT_ON_CURSOR_ALPHA),
-                        ..*palette
-                    }
-                } else {
-                    *palette
-                };
+                let row_palette = ink(palette, has_focus);
                 let title = match setting.label_action {
+                    Some(message) if setting.quiet_label => {
+                        let quiet = Palette {
+                            accent: row_palette.text,
+                            ..row_palette
+                        };
+                        kit::text_link(setting.label.clone(), message, &quiet)
+                    }
                     Some(message) => kit::text_link(setting.label.clone(), message, &row_palette),
                     None => kit::paragraph(setting.label.clone(), &row_palette),
                 };
-                let plain_row = kit::form_row_titled(
-                    title,
-                    setting
-                        .theme_name
-                        .as_deref()
-                        .or(setting.config_key.as_deref()),
-                    setting.description.as_deref(),
-                    lines_below,
-                    row_control,
-                    if setting.list_indent.is_some() {
-                        Length::Shrink
-                    } else {
-                        Length::Fixed(setting.control_width.unwrap_or(size::CONTROL_WIDTH))
-                    },
-                    &row_palette,
-                );
+                let control_width = match (setting.layout, setting.list_indent) {
+                    (RowLayout::Columns, _) => Length::FillPortion(COLUMNS_PORTION),
+                    (_, Some(_)) => Length::Shrink,
+                    (_, None) => Length::Fixed(setting.control_width.unwrap_or(size::CONTROL_WIDTH)),
+                };
+                let plain_row = match setting.layout {
+                    RowLayout::Heading => heading_row(
+                        setting.label,
+                        setting.description.unwrap_or_default(),
+                        row_control,
+                        &row_palette,
+                    ),
+                    RowLayout::Bare => iced::widget::column![
+                        container(row_control)
+                            .width(Length::Fill)
+                            .padding([spacing::XS, 0.0]),
+                        kit::divider(palette),
+                    ]
+                    .into(),
+                    RowLayout::Form | RowLayout::Columns => kit::form_row_titled(
+                        title,
+                        setting
+                            .theme_name
+                            .as_deref()
+                            .or(setting.config_key.as_deref()),
+                        setting.description.as_deref(),
+                        lines_below,
+                        row_control,
+                        control_width,
+                        &row_palette,
+                    ),
+                };
                 let led_row = match setting.leading {
                     Some(lead) => {
                         iced::widget::row![lead, container(plain_row).width(Length::Fill)]
@@ -711,10 +892,15 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
         }
         // A group without a title would only repeat its row's label.
         if group.title.is_empty() {
+            let room_above = match (has_heading_row, first) {
+                (true, true) => 0.0,
+                (true, false) => spacing::SECTION_LEAD,
+                (false, _) => spacing::M,
+            };
             sections.push(
                 container(content)
                     .padding(Padding {
-                        top: spacing::M,
+                        top: room_above,
                         ..Padding::ZERO
                     })
                     .into(),

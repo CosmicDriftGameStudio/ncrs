@@ -121,7 +121,11 @@ async fn editing_a_note_waits_for_the_full_version_but_moving_the_cursor_does_no
 
 #[tokio::test]
 async fn running_a_hermes_plan_waits_for_the_full_version() {
-    let run = || Message::FilingView(ncrs_filing_view::Message::File(ncrs_index::Transfer::Move));
+    let run = || {
+        Message::FilingView(ncrs_filing_view::Message::File(
+            ncrs_intake::LocationTransfer::Move,
+        ))
+    };
 
     let mut locked = app_with_a_file(Entitlement::TrialNotStarted);
     drop(locked.update(run()));
@@ -133,6 +137,40 @@ async fn running_a_hermes_plan_waits_for_the_full_version() {
     let mut trial = app_with_a_file(Entitlement::Trial { days_left: 9 });
     drop(trial.update(run()));
     assert!(trial.job_error.is_none());
+}
+
+#[tokio::test]
+async fn answering_an_open_question_waits_for_the_full_version_but_deciding_in_a_plan_does_not() {
+    let answer = || Message::FilingView(ncrs_filing_view::Message::QuestionConfirm);
+    let with_session = |once: bool| {
+        let mut app = app_with_a_file(Entitlement::Expired);
+        app.filing_view.session = Some(ncrs_filing_view::Session::new(
+            ncrs_intake::SortSource {
+                path: PathBuf::from("/scans"),
+                include: String::new(),
+                exclude: String::new(),
+                targets: Vec::new(),
+                watch: !once,
+                transfer: ncrs_intake::LocationTransfer::Copy,
+                no_text: ncrs_intake::OnNoText::Ask,
+                several: ncrs_intake::OnSeveralTargets::Ask,
+                own_volume: None,
+            },
+            once,
+        ));
+        app
+    };
+
+    let mut watched = with_session(false);
+    drop(watched.update(answer()));
+    assert_eq!(
+        watched.job_error.as_deref(),
+        Some(refusal(&watched, Msg::StoreStatusExpired).as_str())
+    );
+
+    let mut plan = with_session(true);
+    drop(plan.update(answer()));
+    assert!(plan.job_error.is_none());
 }
 
 #[test]

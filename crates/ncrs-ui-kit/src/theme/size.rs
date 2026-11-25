@@ -14,6 +14,8 @@ pub const LIST_BOX_HEIGHT: f32 = 160.0;
 /// A short field or dropdown, and a wide one, beside its label.
 pub const FIELD_SHORT: f32 = 160.0;
 pub const FIELD_WIDE: f32 = 280.0;
+/// The name column of a filing plan.
+pub const PLAN_NAME: f32 = 270.0;
 /// The side pane of a two-pane page.
 pub const SIDE_PANE: f32 = 300.0;
 
@@ -35,7 +37,6 @@ pub const TAB_WIDTH: f32 = 240.0;
 pub const TAB_MIN_WIDTH: f32 = 100.0;
 /// The room of the arrow at each end of scrolling title bar tabs.
 pub const TAB_ARROW: f32 = 24.0;
-pub const DOT: f32 = 6.0;
 /// The side of a status or folder icon: the line height of a panel row's text.
 pub const ICON: f32 = 14.0;
 /// The gap between two columns of a list of rows.

@@ -132,18 +132,12 @@ pub(in crate::index::tests) fn assert_v0_6_0_content(index: &Index) {
         .document_by_path(Path::new("inbox/scan-2.pdf"))
         .unwrap()
         .unwrap();
-    assert_eq!(
-        (receipt.id.get(), receipt.status),
-        (2, DocumentStatus::Planned)
-    );
+    assert_eq!((receipt.id.get(), receipt.status), (2, DocumentStatus::New));
     let notice = index
         .document_by_path(Path::new("inbox/scan-3.pdf"))
         .unwrap()
         .unwrap();
-    assert_eq!(
-        (notice.id.get(), notice.status),
-        (3, DocumentStatus::InReview)
-    );
+    assert_eq!((notice.id.get(), notice.status), (3, DocumentStatus::New));
 
     assert_v0_6_0_search_and_other_tables(index, &invoice, &receipt, &notice);
 }
@@ -154,7 +148,7 @@ pub(in crate::index::tests) fn assert_v0_6_0_search_and_other_tables(
     receipt: &crate::model::Document,
     notice: &crate::model::Document,
 ) {
-    use crate::model::{Condition, ConditionKind, ReviewReason, RuleConditions};
+    use crate::model::{Condition, ConditionKind, RuleConditions};
 
     assert_eq!(index.search_text("hosting", 10).unwrap(), [invoice.id]);
     assert_eq!(index.search_text("chair", 10).unwrap(), [receipt.id]);
@@ -174,10 +168,7 @@ pub(in crate::index::tests) fn assert_v0_6_0_search_and_other_tables(
     assert_eq!(rule.filing_pattern, "{year}/{sender}/");
     assert!(rule.confirmed);
 
-    let reviews = index.open_reviews().unwrap();
-    assert_eq!(reviews.len(), 1);
-    assert_eq!(reviews[0].document_id, notice.id);
-    assert_eq!(reviews[0].reason, ReviewReason::NoMatchingRule);
+    assert!(index.open_reviews().unwrap().is_empty());
 
     let learned_pattern: String = index
         .connection()
@@ -514,7 +505,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_inbox_documents(
         .document_by_path(Path::new("inbox/scan-2.pdf"))
         .unwrap()
         .unwrap();
-    assert_eq!(receipt.status, DocumentStatus::InReview);
+    assert_eq!(receipt.status, DocumentStatus::New);
     assert_eq!(receipt.fields.kind.as_deref(), Some("receipt"));
     let receipt_origins = index.field_origins(receipt.id).unwrap();
     assert_eq!(receipt_origins.of(Field::Kind), FieldOrigin::Rule(None));
@@ -528,7 +519,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_inbox_documents(
         .document_by_path(Path::new("inbox/scan-3.pdf"))
         .unwrap()
         .unwrap();
-    assert_eq!(notice.status, DocumentStatus::InReview);
+    assert_eq!(notice.status, DocumentStatus::New);
     assert_eq!(index.search_text("hosting", 10).unwrap(), [invoice]);
     assert_eq!(index.search_text("chair", 10).unwrap(), [receipt.id]);
     assert_eq!(index.search_text("Finanzamt", 10).unwrap(), [notice.id]);
@@ -560,7 +551,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_rule_with_identifiers(
     use crate::model::{Condition, ConditionKind, RuleOrigin};
 
     assert_eq!(identifiers.origin, RuleOrigin::Hand);
-    assert!(!identifiers.spec.confirmed);
+    assert!(!identifiers.spec.confirmed && !identifiers.spec.enabled);
     assert_eq!(
         identifiers.spec.conditions.list,
         [
@@ -632,7 +623,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_suggested_rule(
     use crate::model::{Condition, ConditionKind, RuleEvidence, RuleOrigin};
 
     assert_eq!(suggested.origin, RuleOrigin::Suggestion);
-    assert!(!suggested.spec.confirmed);
+    assert!(!suggested.spec.confirmed && !suggested.spec.enabled);
     assert_eq!(
         suggested.spec.conditions.list,
         [Condition::new(ConditionKind::Word, "Rechnung")]
@@ -680,7 +671,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
     receipt: DocumentId,
     notice: DocumentId,
 ) {
-    use crate::model::{Field, SenderAliasKind, SenderAliasState};
+    use crate::model::{SenderAliasKind, SenderAliasState};
 
     let aliases: Vec<_> = index
         .sender_aliases()
@@ -724,14 +715,21 @@ pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
         ]
     );
 
-    let reviews = index.open_reviews().unwrap();
-    let reasons: Vec<_> = reviews.iter().map(|r| (r.document_id, r.reason)).collect();
+    // Step 037 closes every open question; the documents are looked at again.
+    assert!(index.open_reviews().unwrap().is_empty());
+    assert!(index.open_review_of(receipt).unwrap().is_none());
+    assert!(index.open_review_of(notice).unwrap().is_none());
+    let reasons: Vec<String> = index
+        .conn
+        .prepare("SELECT reason || ':' || COALESCE(field, '') FROM review_entry ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
     assert_eq!(
         reasons,
-        [
-            (receipt, ReviewReason::MissingField(Field::Recipient)),
-            (notice, ReviewReason::LowConfidence(Field::Kind)),
-        ]
+        ["missing_field:recipient", "low_confidence:kind"]
     );
 
     let learned_pattern: String = index

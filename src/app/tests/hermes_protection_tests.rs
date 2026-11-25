@@ -1,6 +1,7 @@
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
-use ncrs_intake::LocationMode;
+use ncrs_config::config::SourceSetting;
+use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
 use tempfile::TempDir;
 
 use crate::app::*;
@@ -111,7 +112,7 @@ fn overview_message(message: HermesOverviewMessage) -> Message {
 }
 
 fn facts_of(app: &App) -> OverviewFacts {
-    app.overview_facts(false)
+    app.overview_facts()
 }
 
 #[test]
@@ -467,18 +468,23 @@ async fn the_chat_greets_while_hermes_starts_and_the_first_folder_becomes_a_loca
 
     let documents = dir.path().join("Documents");
     std::fs::create_dir(&documents).unwrap();
-    let task = app.run_hermes_chat_action(ncrs_hermes_chat::Action::SetFolderRole {
+    let task = app.run_hermes_chat_action(ncrs_hermes_chat::Action::SuggestRules {
         folder: documents,
-        role: FolderRole::FilingLocation,
+        pattern: None,
     });
     settle_task(&mut app, task).await;
-    let [location] = app.hermes.filing_config.locations.as_slice() else {
+    settle(
+        &mut app,
+        Message::Targets(ncrs_hermes_ui::TargetsMessage::Save),
+    )
+    .await;
+    let [setting] = app.hermes.filing_config.targets.as_slice() else {
         panic!(
-            "one location expected: {:?}",
-            app.hermes.filing_config.locations
+            "one target expected: {:?}",
+            app.hermes.filing_config.targets
         );
     };
-    assert!(location.is_target && location.path.ends_with("Documents"));
+    assert!(setting.target.path.ends_with("Documents"));
     assert!(config_in(&dir).contains("Documents"), "{}", config_in(&dir));
 }
 
@@ -583,18 +589,28 @@ fn found_in(location_dir: &str, count: usize) -> Vec<PathBuf> {
         .collect()
 }
 
-fn app_with_read_and_archive_folder() -> App {
+fn app_with_a_watched_source() -> App {
     let mut app = App::with_fixed_panels();
-    app.hermes.filing_config.locations = vec![
-        location("/home/test/Scans", LocationMode::Inbox, false),
-        location("/home/test/Archive", LocationMode::Archive, true),
-    ];
+    app.hermes.filing_config.sources = vec![SourceSetting {
+        source: SortSource {
+            path: PathBuf::from("/home/test/Scans"),
+            include: String::new(),
+            exclude: String::new(),
+            targets: Vec::new(),
+            watch: true,
+            transfer: LocationTransfer::Move,
+            no_text: OnNoText::Ask,
+            several: OnSeveralTargets::Ask,
+            own_volume: Some(false),
+        },
+        paused: None,
+    }];
     app
 }
 
 #[tokio::test]
-async fn several_files_in_a_read_folder_ask_before_they_are_processed_again() {
-    let mut app = app_with_read_and_archive_folder();
+async fn several_files_in_a_watched_source_ask_before_they_are_processed_again() {
+    let mut app = app_with_a_watched_source();
     let found = found_in("/home/test/Scans", 3);
 
     settle(
@@ -609,7 +625,7 @@ async fn several_files_in_a_read_folder_ask_before_they_are_processed_again() {
 
 #[tokio::test]
 async fn cancelling_the_question_queues_nothing() {
-    let mut app = app_with_read_and_archive_folder();
+    let mut app = app_with_a_watched_source();
     settle(
         &mut app,
         Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
@@ -631,7 +647,7 @@ async fn cancelling_the_question_queues_nothing() {
 
 #[tokio::test]
 async fn confirming_the_question_queues_the_files() {
-    let mut app = app_with_read_and_archive_folder();
+    let mut app = app_with_a_watched_source();
     settle(
         &mut app,
         Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
@@ -653,8 +669,8 @@ async fn confirming_the_question_queues_the_files() {
 }
 
 #[tokio::test]
-async fn one_file_or_files_outside_read_folders_are_processed_without_a_question() {
-    let mut app = app_with_read_and_archive_folder();
+async fn one_file_or_files_outside_watched_sources_are_processed_without_a_question() {
+    let mut app = app_with_a_watched_source();
     for found in [
         found_in("/home/test/Scans", 1),
         found_in("/home/test/Archive", 3),

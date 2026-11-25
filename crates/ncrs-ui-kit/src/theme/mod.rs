@@ -8,7 +8,9 @@ use crate::hermes_state::{FolderRole, HermesFileState};
 use crate::palette::{contrast_ratio, Palette};
 
 pub mod git;
+mod links;
 mod settings;
+pub use links::{link_button, named_link_button};
 pub use settings::{feature_item, focused_setting, marked_setting};
 
 /// Behind a modal dialog: darkens the panels without hiding them. Not part of
@@ -537,29 +539,27 @@ pub fn segment_button(
 
 /// The one grey outline around a group of segments.
 pub fn segment_group(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    segment_group_focusable(palette, false)
+}
+
+/// [`segment_group`] that takes the focus outline while the keyboard is on it.
+pub fn segment_group_focusable(
+    palette: &Palette,
+    focused: bool,
+) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     let outline = control_outline(&colors, colors.panel);
     move |_theme| container::Style {
-        border: Border {
-            color: outline,
-            width: spacing::BORDER_WIDTH,
-            radius: radius::CORNER.into(),
+        border: if focused {
+            focus_border(&colors)
+        } else {
+            Border {
+                color: outline,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            }
         },
         ..container::Style::default()
-    }
-}
-
-/// A flat button in the text color, for an action inside the content.
-pub fn link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: hovered.then(|| hover_fill(&colors)),
-            text_color: colors.text,
-            border: Border::default(),
-            ..button::Style::default()
-        }
     }
 }
 
@@ -643,9 +643,8 @@ pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
 /// The color of a folder's role tag.
 pub fn hermes_role_color(palette: &Palette, role: FolderRole) -> Color {
     match role {
-        FolderRole::Inbox => palette.primary_button().0,
-        FolderRole::FilingLocation => palette.success,
-        FolderRole::Archive => palette.dim_text,
+        FolderRole::Source => palette.primary_button().0,
+        FolderRole::Target => palette.success,
     }
 }
 
@@ -975,18 +974,3 @@ pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> contai
 
 #[cfg(test)]
 mod tests;
-
-/// A flat button in the accent, for a name that opens what it names: it reads
-/// as a link and not as plain text.
-pub fn named_link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: hovered.then(|| hover_fill(&colors)),
-            text_color: colors.accent,
-            border: Border::default(),
-            ..button::Style::default()
-        }
-    }
-}

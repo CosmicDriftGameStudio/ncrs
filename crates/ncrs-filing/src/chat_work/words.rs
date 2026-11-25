@@ -1,7 +1,7 @@
 //! Name matching for folders and kinds the user typed.
 
 /// Lowercase, umlauts and ß folded to ASCII, punctuation at both ends trimmed.
-pub fn normalize_word(word: &str) -> String {
+fn normalize_word(word: &str) -> String {
     let mut folded = String::with_capacity(word.len());
     for character in word.trim_matches(|c: char| !c.is_alphanumeric()).chars() {
         for lower in character.to_lowercase() {
@@ -30,20 +30,6 @@ fn without_plural_ending(word: &str) -> &str {
         }
     }
     word
-}
-
-/// `same_word`, or one of the two inside the other ("Bankstatements" and
-/// "Bank"), for words long enough not to match by accident.
-pub fn word_within(typed: &str, name: &str) -> bool {
-    const SHORTEST: usize = 3;
-    if same_word(typed, name) {
-        return true;
-    }
-    let typed_norm = normalize_word(typed);
-    let name_norm = normalize_word(name);
-    typed_norm.chars().count() >= SHORTEST
-        && name_norm.chars().count() >= SHORTEST
-        && (typed_norm.contains(&name_norm) || name_norm.contains(&typed_norm))
 }
 
 /// Whether two spellings name the same thing, ignoring case, umlauts and one

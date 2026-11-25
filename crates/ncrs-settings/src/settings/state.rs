@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::facts::{LoadedFacts, ModelKind};
 use crate::message::{SettingChange, SettingField, TerminalChoice};
@@ -93,17 +93,11 @@ pub struct SettingsState {
     /// "Own command" was picked in the terminal list but nothing is saved
     /// for it yet.
     pub terminal_own: bool,
-    /// The read folder whose dialog is open.
-    pub folder_dialog: Option<PathBuf>,
     /// The model the user is asked about removing.
     pub model_to_remove: Option<ModelKind>,
-    /// The Order section lists every area, not the first three.
-    pub all_areas: bool,
-    /// The History section lists every run it knows, not the last three.
-    pub all_runs: bool,
     /// Why the last change of the folder lists was refused, worded.
     pub folder_note: Option<String>,
-    /// What the app read for the Index and Hermes pages; `None` until it did.
+    /// What the app read for the Index page; `None` until it did.
     pub loaded: Option<LoadedFacts>,
     /// The app was asked to read it, so it does not ask again.
     pub facts_requested: bool,
@@ -176,10 +170,7 @@ impl SettingsState {
             terminals: Vec::new(),
             integration: ncrs_handoff::integration::State::default(),
             terminal_own: false,
-            folder_dialog: None,
             model_to_remove: None,
-            all_areas: false,
-            all_runs: false,
             folder_note: None,
             loaded: None,
             facts_requested: false,
@@ -197,14 +188,13 @@ impl SettingsState {
         }
     }
 
-    /// A small dialog of the Index or Hermes page is up; Escape closes it
-    /// and not the page.
+    /// The question before a model is removed is up; Escape closes it and not
+    /// the page.
     pub fn dialog_is_open(&self) -> bool {
-        self.folder_dialog.is_some() || self.model_to_remove.is_some()
+        self.model_to_remove.is_some()
     }
 
     pub fn close_dialog(&mut self) {
-        self.folder_dialog = None;
         self.model_to_remove = None;
     }
 
@@ -592,10 +582,7 @@ impl SettingsState {
     pub fn refused(&mut self, change: &SettingChange, failure: String) -> bool {
         if matches!(change, SettingChange::Locations(_)) {
             self.folder_note = Some(failure);
-            return matches!(
-                self.feature,
-                SettingsFeature::Index | SettingsFeature::Hermes
-            );
+            return self.feature == SettingsFeature::Index;
         }
         let Some(&field) = fields_of(change).first() else {
             return false;

@@ -4,29 +4,24 @@ use std::time::SystemTime;
 
 use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, FailureScope, Provider, CONFIDENT};
 use ncrs_index::{
-    Document, DocumentFields, DocumentId, DocumentStatus, Field, FieldOrigin, FieldOrigins,
-    IndexError, KindCatalog, KindLanguage, Kinds, ReviewReason,
+    ContentHash, Document, DocumentFields, DocumentId, DocumentStatus, Field, FieldOrigin,
+    FieldOrigins, IndexError, KindCatalog, KindLanguage,
 };
-use ncrs_intake::{
-    plan, relative_to_location, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
-};
+use ncrs_intake::{LocationMode, AI_FIELD_ORDER};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
 
-/// Bump when the AI reads more or better: archive documents are asked again.
+/// Bump when the AI reads more or better: documents are asked again.
 pub const AI_READ_VERSION: u32 = 2;
 
-/// How sure the provider must be that a file is no document for Hermes to
-/// exclude it.
-pub const NOT_A_DOCUMENT_CONFIDENCE: f32 = 0.9;
-
 /// Asks the provider for the fields that are empty or hold a value the rules
-/// only guessed (`FieldOrigin::is_heuristic`): for documents the rules could
-/// not place, and for documents nobody plans. What comes back is only ever
+/// only guessed (`FieldOrigin::is_heuristic`). What comes back is only ever
 /// field values: a sure one replaces an empty or guessed value, an unsure one
-/// for an empty field is sent to the review list. A document nobody plans is
-/// asked once per `AI_READ_VERSION`; the index remembers it.
+/// is dropped. Every document is asked once per `AI_READ_VERSION`, whatever
+/// the answer; the index remembers it. The step runs after everything else
+/// and only enriches: `Continue` means a field changed, `Unchanged` that
+/// nothing did.
 #[derive(Debug)]
 pub struct AiStep {
     index: Arc<dyn IndexAccess>,
@@ -43,6 +38,14 @@ pub struct AiStep {
 
 /// How often a document that makes the model fail is tried.
 const DOCUMENT_ATTEMPTS: u8 = 3;
+
+/// What the step looked at before the provider call, which ran without the
+/// index.
+struct Subject {
+    document: Document,
+    kinds: Arc<KindCatalog>,
+    origins: FieldOrigins,
+}
 
 impl AiStep {
     pub fn new(
@@ -74,16 +77,10 @@ impl AiStep {
         *count >= DOCUMENT_ATTEMPTS
     }
 
-    /// The document and the kinds the index knows; a document being planned
-    /// must still be new.
-    fn document(
-        &self,
-        item: &Item,
-        must_be_new: bool,
-    ) -> Result<Option<(Document, Arc<KindCatalog>, FieldOrigins)>, String> {
-        let id = item
-            .document
-            .ok_or_else(|| "the file has no document".to_owned())?;
+    /// The document and the kinds the index knows, unless the document is
+    /// gone or was filed or is being decided elsewhere.
+    fn subject(&self, item: &Item) -> Result<Option<Subject>, String> {
+        let id = document_id(item)?;
         let (document, kinds, origins) = with_index_value(self.index.as_ref(), |index| {
             Ok::<_, IndexError>((
                 index.document(id)?,
@@ -94,19 +91,55 @@ impl AiStep {
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map_err(|err| err.to_string())?;
         Ok(document
-            .filter(|found| !must_be_new || found.status == DocumentStatus::New)
-            .map(|found| (found, kinds, origins)))
+            .filter(|found| is_open_for_fields(item.location.mode, found.status))
+            .map(|document| Subject {
+                document,
+                kinds,
+                origins,
+            }))
+    }
+
+    /// The text the earlier steps stored; an item that waited for this step
+    /// arrives without it.
+    fn text_of(&self, item: &Item) -> Result<Option<String>, String> {
+        if let Some(text) = &item.text {
+            return Ok(Some(text.clone()));
+        }
+        let id = document_id(item)?;
+        let stored = with_index_value(self.index.as_ref(), |index| index.document_text(id))
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map_err(|err| err.to_string())?;
+        Ok(stored.filter(|text| !text.is_empty()))
+    }
+
+    fn asked_this_version(&self, item: &Item) -> Result<bool, String> {
+        let id = document_id(item)?;
+        with_index_value(self.index.as_ref(), |index| index.ai_read_version(id))
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map(|version| version >= AI_READ_VERSION)
+            .map_err(|err| err.to_string())
     }
 
     fn remember_asked(&self, item: &Item) -> Result<(), String> {
-        let id = item
-            .document
-            .ok_or_else(|| "the file has no document".to_owned())?;
+        let id = document_id(item)?;
         with_index_value(self.index.as_ref(), |index| {
             index.set_ai_read_version(id, AI_READ_VERSION)
         })
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map_err(|err| err.to_string())
+    }
+}
+
+fn document_id(item: &Item) -> Result<DocumentId, String> {
+    item.document
+        .ok_or_else(|| "the file has no document".to_owned())
+}
+
+/// An inbox document that is filed or planned is nobody's business here.
+fn is_open_for_fields(mode: LocationMode, status: DocumentStatus) -> bool {
+    match mode {
+        LocationMode::Inbox => matches!(status, DocumentStatus::New | DocumentStatus::InReview),
+        LocationMode::Archive => true,
     }
 }
 
@@ -147,14 +180,6 @@ pub fn sender_is_the_user(sender: &str, own_name: Option<&str>) -> bool {
         .any(|window| window == own.as_slice())
 }
 
-/// An unconfirmed rule needs the user whatever the provider says.
-fn wants_fields(reason: ReviewReason) -> bool {
-    matches!(
-        reason,
-        ReviewReason::NoMatchingRule | ReviewReason::MissingField(_)
-    )
-}
-
 fn is_open(fields: &DocumentFields, field: Field) -> bool {
     match field {
         Field::Sender => fields.sender.is_none(),
@@ -177,31 +202,31 @@ pub fn clear_field(fields: &mut DocumentFields, field: Field) {
     }
 }
 
+
 impl Step for AiStep {
     fn name(&self) -> &'static str {
         "ai"
     }
 
+    fn waits_for_the_rest(&self) -> bool {
+        true
+    }
+
     fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
-        let review_reason = item.review.filter(|&reason| wants_fields(reason));
-        let fields_only = item.review.is_none() && item.plan.is_none();
-        if review_reason.is_none() && !fields_only {
-            return Ok(StepOutcome::Continue);
+        if !item.force && self.asked_this_version(item)? {
+            return Ok(StepOutcome::Unchanged);
         }
-        if item.not_a_document {
-            if fields_only {
-                self.remember_asked(item)?;
-            }
-            return Ok(StepOutcome::Continue);
-        }
-        let Some(text) = item.text.as_deref() else {
-            if fields_only {
-                self.remember_asked(item)?;
-            }
-            return Ok(StepOutcome::Continue);
+        let Some(text) = self.text_of(item)? else {
+            self.remember_asked(item)?;
+            return Ok(StepOutcome::Unchanged);
         };
-        let Some((document, kinds, origins)) = self.document(item, review_reason.is_some())? else {
-            return Ok(StepOutcome::Continue);
+        let Some(Subject {
+            document,
+            kinds,
+            origins,
+        }) = self.subject(item)?
+        else {
+            return Ok(StepOutcome::Unchanged);
         };
         let open_fields: Vec<Field> = AI_FIELD_ORDER
             .into_iter()
@@ -209,10 +234,8 @@ impl Step for AiStep {
             .collect();
         // The recipient alone is no reason to send the text anywhere.
         if open_fields.iter().all(|&field| field == Field::Recipient) {
-            if fields_only {
-                self.remember_asked(item)?;
-            }
-            return Ok(StepOutcome::Continue);
+            self.remember_asked(item)?;
+            return Ok(StepOutcome::Unchanged);
         }
         // A guessed value must not steer the provider towards the wrong one.
         let mut known = document.fields.clone();
@@ -220,45 +243,30 @@ impl Step for AiStep {
             clear_field(&mut known, field);
         }
         let request = ExtractionRequest {
-            text: text.to_owned(),
+            text,
             open_fields: open_fields.clone(),
             known,
             source: item.location.path.clone(),
             kinds,
             language: self.kind_language,
-            judge_document: item.location.mode == LocationMode::Inbox,
+            judge_document: false,
         };
         let extraction = match self.provider.extract(&request) {
             Ok(extraction) => extraction,
-            // Nothing was sent; the user is asked elsewhere, and the document
-            // goes on to the review list as it was.
-            Err(AiError::ConsentRequired(_)) => return Ok(StepOutcome::Continue),
-            // An `Err` would drop the item from the review list, so it
-            // continues with its reason and fields as they were. Only a
-            // failure of the document itself counts against it; offline or a
-            // refused key says nothing about the document.
+            // Nothing was sent; the user is asked elsewhere.
+            Err(AiError::ConsentRequired(_)) => return Ok(StepOutcome::Unchanged),
+            // Only a failure of the document itself counts against it; offline
+            // or a refused key says nothing about the document.
             Err(error) => {
                 if self.provider.failure_scope(&error) == FailureScope::Document
                     && self.out_of_attempts(item)
                 {
                     self.remember_asked(item)?;
                 }
-                return Ok(StepOutcome::Continue);
+                return Ok(StepOutcome::Unchanged);
             }
         };
-        // Nothing it read is worth keeping from a file that is no document,
-        // and a rule must not plan it.
-        if extraction
-            .not_a_document
-            .is_some_and(|sure| sure >= NOT_A_DOCUMENT_CONFIDENCE)
-        {
-            item.not_a_document = true;
-            if fields_only {
-                self.remember_asked(item)?;
-            }
-            return Ok(StepOutcome::Continue);
-        }
-        let (confident, mut unsure): (Vec<&ExtractedField>, Vec<&ExtractedField>) = extraction
+        let confident: Vec<&ExtractedField> = extraction
             .fields
             .iter()
             .filter(|found| open_fields.contains(&found.field))
@@ -269,38 +277,16 @@ impl Step for AiStep {
                         .iter()
                         .any(|own| sender_is_the_user(&found.value, Some(own)))
             })
-            .partition(|found| found.confidence >= CONFIDENT);
-        // An unsure value never replaces a guess, so it is no reason to ask a person.
-        unsure.retain(|found| is_open(&document.fields, found.field));
-        let least_sure = FIELD_ORDER
-            .into_iter()
-            .find(|&field| unsure.iter().any(|found| found.field == field));
-        let plan_again =
-            matches!(review_reason, Some(ReviewReason::MissingField(_))) && least_sure.is_none();
-        let planning =
-            self.write_and_plan(item, &confident, plan_again, review_reason.is_some())?;
-        // Asked and answered, also for a document that goes to review below.
+            .filter(|found| found.confidence >= CONFIDENT)
+            .collect();
+        let changed = self.write_fields(item, &confident, &document.hash)?;
+        // Asked and answered, also when nothing was found.
         self.remember_asked(item)?;
-        if fields_only {
-            return Ok(StepOutcome::Continue);
-        }
-
-        if let Some(field) = least_sure {
-            item.review = Some(ReviewReason::LowConfidence(field));
-            return Ok(StepOutcome::Continue);
-        }
-        match planning {
-            Some(Planning::Plan(filing)) => {
-                item.plan = Some(Box::new(filing));
-                item.review = None;
-                Ok(StepOutcome::Finished)
-            }
-            Some(Planning::Review { reason: now, .. }) => {
-                item.review = Some(now);
-                Ok(StepOutcome::Continue)
-            }
-            None => Ok(StepOutcome::Continue),
-        }
+        Ok(if changed {
+            StepOutcome::Continue
+        } else {
+            StepOutcome::Unchanged
+        })
     }
 }
 
@@ -315,29 +301,27 @@ fn confidence_percent(confidence: f32) -> u8 {
 }
 
 impl AiStep {
-    /// Writes the confident fields over the empty and the guessed ones, reading the document
-    /// again first: the provider call ran without the index. With `plan_again`
-    /// the rules decide anew on the merged fields.
-    fn write_and_plan(
+    /// Writes the confident fields over the empty and the guessed ones, reading
+    /// the document again first: the provider call ran without the index. A
+    /// document that is gone, has other bytes or is no longer open for fields
+    /// is left alone. True when a field changed.
+    fn write_fields(
         &self,
         item: &Item,
         confident: &[&ExtractedField],
-        plan_again: bool,
-        must_be_new: bool,
-    ) -> Result<Option<Planning>, String> {
-        let id = item
-            .document
-            .ok_or_else(|| "the file has no document".to_owned())?;
-        let text = item.text.as_deref().unwrap_or_default();
+        asked_about: &ContentHash,
+    ) -> Result<bool, String> {
+        let id = document_id(item)?;
         with_index_value(self.index.as_ref(), |index| {
             let Some(current) = index.document(id)? else {
-                return Ok(None);
+                return Ok(false);
             };
-            if must_be_new && current.status != DocumentStatus::New {
-                return Ok(None);
+            if current.hash != *asked_about
+                || !is_open_for_fields(item.location.mode, current.status)
+            {
+                return Ok(false);
             }
             let origins = index.field_origins(id)?;
-            let known_before = current.fields.clone();
             let mut merged = current.fields;
             let mut changed = false;
             for found in confident {
@@ -357,48 +341,7 @@ impl AiStep {
                     )
                 })?;
             }
-            if !plan_again {
-                return Ok(None);
-            }
-            let sender_aliases = index.confirmed_sender_aliases()?;
-            let manual_fields = index.field_origins(id)?.manual_fields();
-            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
-            let rules = index.rules()?;
-            let location_path =
-                relative_to_location(&item.path, std::slice::from_ref(&item.location.path));
-            let plan_with = |fields: &DocumentFields| {
-                plan(
-                    &rules,
-                    &PlanInput {
-                        text,
-                        fields,
-                        path: Some(location_path),
-                        location: Some(&item.location.path),
-                        sender_aliases: &sender_aliases,
-                        manual_fields: &manual_fields,
-                        kinds: &kinds,
-                    },
-                )
-            };
-            let planning = plan_with(&merged);
-            // A value the model read out of the text must not move the
-            // document to a rule it did not match before.
-            let rule_before = match plan_with(&known_before) {
-                Planning::Plan(filing) => Some(filing.rule),
-                Planning::Review { rule, .. } => rule,
-            };
-            if matches!(&planning, Planning::Plan(filing) if Some(filing.rule) != rule_before) {
-                return Ok(None);
-            }
-            if let Planning::Plan(filing) = &planning {
-                if filing.fields != merged {
-                    index.set_document_fields(id, &filing.fields, |_| {
-                        FieldOrigin::Rule(Some(filing.rule))
-                    })?;
-                }
-                index.place_document(id)?;
-            }
-            Ok::<_, IndexError>(Some(planning))
+            Ok::<_, IndexError>(changed)
         })
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map_err(|err| err.to_string())

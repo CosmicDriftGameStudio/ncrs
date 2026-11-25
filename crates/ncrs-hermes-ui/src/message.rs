@@ -3,23 +3,23 @@
 
 use std::path::PathBuf;
 
-use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
 use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
-use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::review_work::{AcceptSummary, ReviewItem, TargetComparison};
-use ncrs_filing::rules_work::{RulesLoad, TryResult};
+use ncrs_filing::rules_work::{DocumentForRule, RulesLoad, SortTry};
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
-use ncrs_index::{DocumentId, HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
+use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
-use crate::filing_pieces::TargetEdit;
-use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
-use crate::reviews_page::{Answer, Question, ReviewsLoad};
+use crate::filing_status::SourceQuestions;
+use crate::hermes_column::{ColumnReading, ColumnStage};
+pub use crate::sorting_page::SortingMessage;
+pub use crate::suggest::SuggestMessage;
+pub use crate::target_dialog::TargetsMessage;
+use crate::watching::SourceRun;
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,16 +28,15 @@ pub enum Message {
     FilingStatus(FilingStatusMessage),
     HermesOverview(HermesOverviewMessage),
     Rules(RulesMessage),
-    QuickFix(QuickFixMessage),
+    Sorting(SortingMessage),
+    Targets(TargetsMessage),
+    Suggest(SuggestMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
-    Reviews(ReviewsMessage),
     Activity(ActivityMessage),
-    /// The filing job on its blocking thread is done.
-    DocumentsFiled(Result<FilingSummary, String>),
-    /// The background filing of new files is done: the read folders and how
-    /// many files each had filed.
-    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
+    /// The background filing of the watched sources is done: what each one
+    /// came to.
+    ContinuousFiled(Result<Vec<SourceRun>, String>),
     HermesColumn(HermesColumnMessage),
     HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings
@@ -48,16 +47,23 @@ pub enum Message {
 /// Everything the filing status page sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilingStatusMessage {
-    /// Shows the page with the files that could not be read.
+    /// Shows the activity page.
     Open,
+    /// Shows the questions that wait: the plan of their source, or the page of
+    /// the sources when several have some.
+    OpenWaiting,
     /// The once-a-second look at the pipeline.
     Tick,
     /// The module and runner of the previous settings are gone; the one of
     /// the generation starts now.
     Restarted(u64),
     TogglePause,
-    /// The counts of Hermes, read in the background.
-    HermesCounts(Result<HermesCounts, String>),
+    /// The counts of Hermes and the open questions of the sources, read in the
+    /// background.
+    HermesCounts {
+        counts: Result<HermesCounts, String>,
+        questions: Result<Vec<SourceQuestions>, String>,
+    },
     /// The "Zeigen" of an error row: show its file in the panel.
     ErrorActivated(PathBuf),
     /// The button of one error row: that file is read again.
@@ -66,6 +72,9 @@ pub enum FilingStatusMessage {
     ProcessAllAgain,
     /// The documents of locations removed from the settings left the index.
     LocationsForgotten(Result<(), String>),
+    /// The folders saved after the start, looked up in the background; empty
+    /// when that failed.
+    LocationsResolved(Vec<ncrs_filing::filing::ResolvedLocation>),
 }
 
 /// What the background reads for the Hermes column answer with.
@@ -78,12 +87,7 @@ pub enum HermesColumnMessage {
         stage: ColumnStage,
         result: Result<ColumnReading, String>,
     },
-    /// What the review list knows about the file under the cursor.
-    Detail {
-        path: PathBuf,
-        result: Result<Option<FileDetail>, String>,
-    },
-    /// Whether a file read again that finished now waits in the review list.
+    /// Whether a file read again that finished now waits for the user.
     ReadAgainEnded {
         path: PathBuf,
         result: Result<bool, String>,
@@ -111,11 +115,10 @@ pub enum HermesOverviewMessage {
 /// The pages of the settings that the Hermes crate fills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesPage {
-    Rules,
+    Sorting,
     SavedQueries,
     Tags,
     Inspection,
-    Reviews,
     Activity,
 }
 
@@ -215,56 +218,31 @@ pub enum TagsMessage {
 /// panel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HermesFileMessage {
-    HandToInbox,
     ProcessAgain,
-    SetRole(FolderRole),
     /// Opens the filing tab for the folder under the cursor.
     FileOnce,
-    /// The same, and the folder files continuously once the run is filed.
-    FileContinuously,
-    /// The folder under the cursor no longer files continuously.
-    StopContinuous,
+    /// Opens the dialog of the source at the folder under the cursor, a new
+    /// one when the folder is no source yet.
+    WatchSource,
+    /// The same for the target at the folder under the cursor.
+    AddTarget,
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
     ShowInInspection,
-    /// The configured locations after a role was set, as written.
-    RoleSaved(Box<Result<Filing, FilingWriteError>>),
     /// The files "process again" stands for: folders resolved to their
     /// documents, excluded ones left out.
     ProcessAgainFound(Result<Vec<PathBuf>, String>),
     /// The documents without stored text, found after the OCR models arrived;
     /// they are read again without a question.
     TextlessFound(Result<Vec<PathBuf>, String>),
-    /// The question about many files of the Lesen folders: yes.
+    /// The question about many files of the watched sources: yes.
     ConfirmProcessAgain,
-    /// The question about many files of the Lesen folders: no, or Escape.
+    /// The question about many files of the watched sources: no, or Escape.
     CancelProcessAgain,
     Included {
         path: PathBuf,
         result: Result<IncludeOutcome, String>,
     },
-}
-
-/// Everything the quick-fix menu of an inquiry sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum QuickFixMessage {
-    /// The key: opens the menu on the cursor row or the marked files.
-    Open,
-    Close,
-    /// The reviews of the generation's files. Dropped when the menu was closed
-    /// or opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
-    },
-    Move(isize),
-    First,
-    Last,
-    Hover(usize),
-    Activate,
-    Click(usize),
-    /// The sequential filing of the accepted suggestions is done.
-    Filed(AcceptSummary),
 }
 
 /// Everything the rules page sends.
@@ -291,8 +269,6 @@ pub enum RulesMessage {
         generation: u64,
         result: Result<(), String>,
     },
-    /// Opens the form for a new rule.
-    New,
     /// "Ändern" on the rule at this position: its dialog opens.
     Edit(usize),
     Form(RuleFormMessage),
@@ -303,8 +279,13 @@ pub enum RulesMessage {
     /// meanwhile.
     Tried {
         generation: u64,
-        result: Result<TryResult, String>,
+        result: Result<SortTry, String>,
     },
+    /// "+ Regel…" on a target: the form for a new rule of it.
+    NewIn(ncrs_index::TargetId),
+    /// What the index knows of the document a rule is made from; the form
+    /// that waited for it fills in unless the user already typed.
+    DocumentLoaded(Result<Option<DocumentForRule>, String>),
 }
 
 /// Everything the form of a rule sends.
@@ -312,7 +293,12 @@ pub enum RulesMessage {
 pub enum RuleFormMessage {
     Name(String),
     Condition(ConditionEdit),
-    Target(TargetEdit),
+    /// The text of the pattern field.
+    Pattern(String),
+    /// A block chip: adds `{name}` to the pattern.
+    PatternChip(&'static str),
+    /// The target dropdown.
+    Destination(ncrs_index::TargetId),
     TagInput(String),
     /// The link that offers a tag of its own.
     OpenTagInput,
@@ -328,40 +314,6 @@ pub enum RuleFormMessage {
     },
 }
 
-/// Everything the reviews page sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReviewsMessage {
-    /// The open reviews of the generation. Dropped when the page was closed
-    /// or opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<ReviewsLoad, String>,
-    },
-    /// Folds or unfolds the group of a question.
-    ToggleGroup(Question),
-    /// Answers the question of a group for all its documents.
-    Answer(Question, Answer),
-    /// Answers the question for one document of the group.
-    AnswerFile(Question, Answer, DocumentId),
-    /// Answers the question about the inbox file at the path, which is no
-    /// document.
-    AnswerRepeat(Answer, PathBuf),
-    /// The name of a file: opens it in the viewer.
-    OpenFile(PathBuf),
-    /// The text of the input in the row of a document changed.
-    InputChanged(DocumentId, String),
-    /// How the files in the taken places compare with the incoming ones. Dropped
-    /// when the list was read again meanwhile.
-    Compared {
-        generation: u64,
-        result: Vec<(DocumentId, Option<TargetComparison>)>,
-    },
-    /// The folder the user picked for the documents that wait for one.
-    FolderPicked(Option<PathBuf>),
-    /// What an answer did to its documents.
-    Filed(AcceptSummary),
-}
-
 /// Everything the activity page sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivityMessage {
@@ -370,6 +322,6 @@ pub enum ActivityMessage {
         result: Result<Vec<ActivityBatch>, String>,
     },
     ShowFile(PathBuf),
-    OpenReviews,
+    OpenWaiting,
     OpenReadErrors,
 }

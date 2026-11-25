@@ -2,136 +2,232 @@
 //! buttons.
 
 use iced::widget::row;
-use iced::Element;
-use ncrs_filing::chat_work::{tally, LivePlan};
+use iced::{alignment, Color, Element};
+use ncrs_filing::sorting::RowState;
 use ncrs_i18n::{Language, Msg};
-use ncrs_index::Transfer;
-use ncrs_ui_kit::compare_bar::{compare_bar, Tally};
-use ncrs_ui_kit::kit::{button, checkbox, key_button, paragraph, Check, Tone};
+use ncrs_index::TargetId;
+use ncrs_intake::LocationTransfer;
+use ncrs_ui_kit::compare_bar::{mode_tally_bar, Tally};
+use ncrs_ui_kit::kit::{
+    button, checkbox, key_button, paragraph, Check, Tone, ENTER_KEY,
+};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::spacing;
 
 use crate::message::Message;
-use crate::state::Session;
-use crate::texts::say;
-use crate::update::can_file;
+use crate::state::{Change, Session};
+use crate::texts::{count, open_color, say, target_list};
 
-/// The figures of the bar as text, in the order shown; they add up to the
-/// files of the plan.
-pub fn figures(session: &Session, plan: &LivePlan, lang: Language) -> Vec<String> {
-    let counts = tally(plan);
-    let (done, total) = session.read_count();
-    let number = |count: usize| count.to_string();
-    vec![
-        say(
-            lang,
-            Msg::FilingViewTallyRead,
-            &[("done", &number(done)), ("total", &number(total))],
-        ),
-        say(
-            lang,
-            Msg::FilingViewTallyGoes,
-            &[
-                ("count", &number(counts.filed)),
-                ("folders", &number(counts.folders)),
-            ],
-        ),
-        say(
-            lang,
-            Msg::FilingViewTallyAlready,
-            &[("count", &number(counts.already_there))],
-        ),
-        say(
-            lang,
-            Msg::FilingViewTallyNoFolder,
-            &[("count", &number(counts.no_folder))],
-        ),
-        say(
-            lang,
-            Msg::FilingViewTallyUnreadable,
-            &[("count", &number(counts.unreadable))],
-        ),
-    ]
+#[derive(Debug, Default)]
+struct Counts {
+    read: usize,
+    by_rule: usize,
+    present: usize,
+    no_rule: usize,
+    no_text: usize,
+    problems: usize,
+    /// How many files go to each set of targets.
+    several: Vec<(Vec<TargetId>, usize)>,
 }
 
-pub fn footer<'a>(
+fn counts(session: &Session) -> Counts {
+    let mut counts = Counts::default();
+    for row in &session.rows {
+        if !matches!(row.state, RowState::NotRead(_)) {
+            counts.read += 1;
+        }
+        match session.changes.get(&row.relative) {
+            Some(Change::Stay) => continue,
+            Some(Change::Places(_)) => {
+                counts.by_rule += 1;
+                continue;
+            }
+            None => {}
+        }
+        match &row.state {
+            RowState::Place(_) => counts.by_rule += 1,
+            RowState::AlreadyThere { .. } => counts.present += 1,
+            RowState::NoRule => counts.no_rule += 1,
+            RowState::NoText => counts.no_text += 1,
+            RowState::Several(places) => {
+                let ids: Vec<TargetId> = places.iter().map(|place| place.target.clone()).collect();
+                match counts.several.iter_mut().find(|(known, _)| *known == ids) {
+                    Some((_, files)) => *files += 1,
+                    None => counts.several.push((ids, 1)),
+                }
+            }
+            RowState::NotRead(_) if session.is_being_read(row) => {}
+            RowState::NotRead(_)
+            | RowState::NameTaken { .. }
+            | RowState::MissingValue { .. }
+            | RowState::BadName { .. } => counts.problems += 1,
+            RowState::SetAside => {}
+        }
+    }
+    counts
+}
+
+/// The figures of the bar, in the order shown.
+pub fn figures(session: &Session, lang: Language, palette: &Palette) -> Vec<(String, Color)> {
+    if let Some(running) = &session.running {
+        return vec![(
+            progress(lang, Msg::FilingViewRunFiling, running.done(), running.total()),
+            palette.text,
+        )];
+    }
+    if let Some(outcome) = &session.outcome {
+        let mut shown = vec![(
+            count(lang, Msg::FilingViewRunFiled, outcome.filed),
+            palette.success,
+        )];
+        if outcome.trashed > 0 {
+            shown.push((
+                count(lang, Msg::FilingViewRunTrashed, outcome.trashed),
+                palette.text,
+            ));
+        }
+        if outcome.left > 0 {
+            shown.push((
+                count(lang, Msg::FilingViewRunLeft, outcome.left),
+                palette.text,
+            ));
+        }
+        return shown;
+    }
+    let counts = counts(session);
+    let read = if session.reading {
+        progress(
+            lang,
+            Msg::FilingViewFigureReading,
+            session.progress.done(),
+            session.progress.total(),
+        )
+    } else {
+        count(lang, Msg::SortingFigureRead, counts.read)
+    };
+    let mut shown = vec![(read, palette.text)];
+    let tallies = [
+        (Msg::SortingFigureByRule, counts.by_rule, palette.success),
+        (Msg::SortingFigurePresent, counts.present, palette.dim_text),
+        (Msg::SortingFigureNoRule, counts.no_rule, open_color(palette)),
+        (Msg::SortingFigureNoText, counts.no_text, palette.error),
+    ];
+    shown.extend(
+        tallies
+            .into_iter()
+            .filter(|(_, files, _)| session.once || *files > 0)
+            .map(|(msg, files, color)| (count(lang, msg, files), color)),
+    );
+    for (ids, files) in counts.several {
+        shown.push((
+            say(
+                lang,
+                Msg::SortingFigureSeveral,
+                &[
+                    ("count", &files.to_string()),
+                    ("targets", &target_list(lang, session, ids.iter())),
+                ],
+            ),
+            open_color(palette),
+        ));
+    }
+    if counts.problems > 0 {
+        shown.push((
+            count(lang, Msg::FilingViewFigureProblems, counts.problems),
+            palette.error,
+        ));
+    }
+    shown
+}
+
+fn progress(lang: Language, msg: Msg, done: usize, total: usize) -> String {
+    say(
+        lang,
+        msg,
+        &[
+            ("done", &done.to_string()),
+            ("total", &total.to_string()),
+        ],
+    )
+}
+
+fn carry_button<'a>(
     session: &Session,
-    plan: &LivePlan,
+    transfer: LocationTransfer,
+    files: usize,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let texts = figures(session, plan, lang);
-    let colors = [
-        palette.text,
-        palette.success,
-        palette.dim_text,
-        palette.text,
-        palette.error,
-    ];
-    let counts = tally(plan);
-    let filed = counts.filed;
-    let mut tallies: Vec<Tally> = texts
+    let label = match transfer {
+        LocationTransfer::Copy => Msg::SortingButtonCopy,
+        LocationTransfer::Move => Msg::SortingButtonMove,
+    };
+    let (key, tone) = if transfer == session.source.transfer {
+        (ENTER_KEY, Tone::Primary)
+    } else {
+        ("⇧↵", Tone::Secondary)
+    };
+    key_button(
+        &count(lang, label, files),
+        key,
+        session.can_file().then_some(Message::File(transfer)),
+        tone,
+        palette,
+    )
+}
+
+pub fn footer<'a>(session: &Session, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let tallies = figures(session, lang, palette)
         .into_iter()
-        .zip(colors)
         .map(|(text, color)| Tally { text, color })
         .collect();
-    if session.filing {
-        tallies.push(Tally {
-            text: say(
-                lang,
-                Msg::FilingViewFiling,
-                &[("count", &filed.to_string())],
-            ),
-            color: palette.text,
-        });
+    let files = session.entries().len();
+    let is_over = session.outcome.is_some() && files == 0;
+    let mut controls: Vec<Element<'a, Message>> = Vec::new();
+    if session.once && !is_over {
+        let possible =
+            !session.copy_only() && session.trash_can_restore && session.running.is_none();
+        controls.push(
+            row![
+                checkbox(
+                    if session.trash_dupes {
+                        Check::On
+                    } else {
+                        Check::Off
+                    },
+                    possible.then_some(Message::ToggleTrashDupes),
+                    palette,
+                ),
+                paragraph(lang.text(Msg::FilingViewTrashDupes), palette),
+            ]
+            .spacing(spacing::XS)
+            .align_y(alignment::Vertical::Center)
+            .into(),
+        );
     }
-    let ready = can_file(session) && filed > 0;
-    let carry = |transfer, label: Msg, key: &str| {
-        key_button(
-            &say(lang, label, &[("count", &filed.to_string())]),
-            key,
-            (ready && !(session.copy_only && transfer == Transfer::Move))
-                .then_some(Message::File(transfer)),
-            Tone::Primary,
-            palette,
-        )
-    };
-    let sure = filed - counts.unsure;
-    let mut controls = vec![
-        row![
-            checkbox(
-                if session.trash_dupes {
-                    Check::On
-                } else {
-                    Check::Off
-                },
-                (!session.copy_only).then_some(Message::ToggleTrashDupes),
-                palette,
-            ),
-            paragraph(lang.text(Msg::FilingViewTrashDupes), palette),
-        ]
-        .spacing(spacing::XS)
-        .into(),
-        button(
-            lang.text(Msg::DialogCancel),
-            (!session.filing).then_some(Message::Cancel),
-            Tone::Secondary,
-            palette,
-        ),
-    ];
-    if counts.unsure > 0 && sure > 0 {
+    if !session.waiting.is_empty() || session.error.is_some() {
         controls.push(button(
-            &say(
-                lang,
-                Msg::FilingViewMoveSure,
-                &[("count", &sure.to_string())],
-            ),
-            (ready && !session.copy_only).then_some(Message::FileSure),
+            lang.text(Msg::FilingViewRecheck),
+            (!session.planning && !session.is_filing()).then_some(Message::Recheck),
             Tone::Secondary,
             palette,
         ));
     }
-    controls.push(carry(Transfer::Copy, Msg::FilingViewCopy, "↵"));
-    controls.push(carry(Transfer::Move, Msg::FilingViewMove, "⇧↵"));
-    compare_bar(lang.text(Msg::FilingViewTitle), tallies, controls, palette)
+    let close = if session.once && session.outcome.is_none() {
+        Msg::DialogCancel
+    } else {
+        Msg::DialogClose
+    };
+    controls.push(button(
+        lang.text(close),
+        Some(Message::Cancel),
+        Tone::Secondary,
+        palette,
+    ));
+    if session.once && !is_over {
+        for transfer in [LocationTransfer::Copy, LocationTransfer::Move] {
+            controls.push(carry_button(session, transfer, files, lang, palette));
+        }
+    }
+    mode_tally_bar(lang.text(Msg::FilingViewMode), tallies, controls, palette)
 }

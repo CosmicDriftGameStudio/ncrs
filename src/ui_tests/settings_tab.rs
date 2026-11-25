@@ -1,7 +1,9 @@
 use super::app_simulator as simulator;
 use std::path::PathBuf;
 
-use ncrs_intake::LocationMode;
+use ncrs_config::config::{SourceSetting, TargetSetting};
+use ncrs_index::TargetId;
+use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget};
 
 use super::*;
 use crate::config::{AiSetting, Filing, FilingLocation};
@@ -32,12 +34,49 @@ fn hermes_config() -> Filing {
         ],
         load: Default::default(),
         ai: AiSetting::Local { threads: None },
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
         first_run: false,
+        targets: vec![TargetSetting {
+            target: SortTarget {
+                id: documents(),
+                name: "Documents".to_owned(),
+                path: PathBuf::from("/home/test/Documents/Filed"),
+                own_volume: Some(false),
+            },
+            paused: None,
+        }],
+        sources: vec![SourceSetting {
+            source: SortSource {
+                path: PathBuf::from("/home/test/Downloads/Scans"),
+                include: "*.pdf".to_owned(),
+                exclude: String::new(),
+                targets: vec![documents()],
+                watch: true,
+                transfer: LocationTransfer::Move,
+                no_text: OnNoText::Ask,
+                several: OnSeveralTargets::Ask,
+                own_volume: Some(false),
+            },
+            paused: None,
+        }],
+        dropped_entries: Vec::new(),
     }
+}
+
+fn documents() -> TargetId {
+    TargetId::new("documents").expect("a valid id")
+}
+
+/// The filing page with a source and a target, as it is before the disk
+/// answered.
+pub fn filing_page_app() -> App {
+    let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+    drop(app.update(Message::Settings(SettingsMessage::Select(
+        SettingsFeature::Hermes,
+    ))));
+    app
 }
 
 fn matches_snapshot(app: &App, name: &str) {
@@ -94,10 +133,7 @@ fn the_filing_page_is_marked_beta_in_both_languages() {
 
 #[test]
 fn the_filing_page_matches_its_snapshots() {
-    both_languages(
-        || App::with_settings_open(SettingsFeature::Hermes, hermes_config()),
-        "settings_hermes",
-    );
+    both_languages(filing_page_app, "settings_hermes");
 }
 
 fn both_languages(app: impl Fn() -> App, name: &str) {
@@ -204,17 +240,19 @@ fn the_search_filters_the_rows_by_label() {
     ))));
     let switch_hidden = simulator(&app).find("On").is_err();
     assert!(switch_hidden);
-    simulator(&app).find("Rules").expect("the rules row");
+    simulator(&app).find("Sorting").expect("the page with the rules");
 }
 
 #[test]
 fn the_pages_of_hermes_are_always_in_the_list() {
     let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
     let shows = |label: &str| simulator(&app).find(label).is_ok();
-    for label in ["Index", "Hermes", "Rules", "Tags", "Reports", "Read errors"] {
+    for label in ["Index", "Sorting", "Tags", "Reports", "Read errors"] {
         assert!(shows(label), "{label}");
     }
-    assert!(!shows("Advanced"));
+    for label in ["Rules", "Advanced"] {
+        assert!(!shows(label), "{label}");
+    }
 }
 
 #[test]

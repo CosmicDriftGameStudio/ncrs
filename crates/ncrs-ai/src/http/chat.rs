@@ -8,8 +8,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::*;
 use crate::chat::{
-    chat_user_message, parse_chat_reply, ChatIntent, ChatModel, ChatTurn, FolderChoiceLane,
-    CHAT_SYSTEM_PROMPT,
+    chat_user_message, parse_chat_reply, ChatIntent, ChatModel, ChatTurn, CHAT_SYSTEM_PROMPT,
 };
 use crate::rules::{
     annotated_paths, parse_generate, parse_levels, parse_revision, prefix_text, repair_note_for,
@@ -183,25 +182,6 @@ impl ChatModel for OpenAiCompatible {
         let prefix = prefix_text(&documents_of(files), kinds);
         let request = RuleRequest::revise(&prefix, &revise_question(previous, sentence));
         parse_revision(&self.answer_rule_request(&request)?)
-    }
-
-    /// The folder prompt is built for the built-in model only. Without the
-    /// agreement to folder and file names the answer says so, so the user is
-    /// told what is missing instead of seeing no folder.
-    fn choose_folders(
-        &self,
-        _folders: &[(String, Vec<String>)],
-        _documents: &[String],
-        _lane: FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError> {
-        if !self.may_send_all(&[ConsentPurpose::Folders]) {
-            return Err(AiError::ConsentRequired(OutgoingPreview {
-                endpoint: self.endpoint.origin.clone(),
-                model: self.model.clone(),
-                body: String::new(),
-            }));
-        }
-        Err(AiError::Unsupported)
     }
 
     /// A server is there when it is asked; nothing is loaded here.

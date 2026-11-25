@@ -5,7 +5,6 @@ use crate::app::*;
 /// and menus that belong to a page are the page's and come after these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Modal {
-    QuickFix,
     HeaderMenu,
     FavouriteMenu,
     ContextMenu,
@@ -31,6 +30,26 @@ pub enum Modal {
     CommandPalette,
     ThemeFetch,
     Prompt,
+    HermesDialog,
+}
+
+/// Which dialog of Hermes has the keys. They open over every tab, so the keys
+/// go to them before any page.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum HermesDialogKeys {
+    #[default]
+    Closed,
+    /// The rules Hermes proposes.
+    Suggest,
+    /// A source, or the one-off filing of a folder.
+    Source,
+    /// A target, over the dialog of a source or alone.
+    Target,
+    /// The question before a target is removed.
+    TargetRemoval,
+    /// The dialog of a rule, apart from the one over the settings, which have
+    /// keys for it.
+    Rule,
 }
 
 impl PromptKeyState {
@@ -39,7 +58,6 @@ impl PromptKeyState {
     /// their own (a conflict, the progress of a job, the grant at the start).
     pub fn modal_stack(&self) -> Vec<Modal> {
         [
-            (self.quick_fix, Modal::QuickFix),
             (self.header_menu, Modal::HeaderMenu),
             (self.favourite_menu, Modal::FavouriteMenu),
             (self.context_menu, Modal::ContextMenu),
@@ -52,6 +70,10 @@ impl PromptKeyState {
             (self.about, Modal::About),
             (self.ocr_models, Modal::OcrModels),
             (self.ai_model, Modal::AiModel),
+            (
+                self.hermes_dialog != HermesDialogKeys::Closed,
+                Modal::HermesDialog,
+            ),
             (self.confirm_again, Modal::ConfirmAgain),
             (self.start_over_dialog, Modal::StartOver),
             (self.compare_dialog, Modal::Compare),

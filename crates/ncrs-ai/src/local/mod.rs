@@ -9,7 +9,7 @@
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::context::LlamaContext;
@@ -38,7 +38,6 @@ use reply_sampler::ReplySampler;
 mod backends;
 mod chat_session;
 mod check;
-mod folder_choice;
 mod lazy;
 mod reply_sampler;
 mod rule_session;
@@ -98,12 +97,6 @@ pub struct LocalModel {
     /// Whether the running job is one a person waits for; the worker sets it
     /// for each job.
     person_waiting: AtomicBool,
-    /// The folder list of the last folder choice, decoded: a large archive
-    /// takes most of a minute to decode, and a plan asks again and again with
-    /// the same list. It goes with the model when that is unloaded.
-    // ponytail: one list only (about 0.8 GB for 370 folders); two write folders
-    // asked in turn decode again each time, keep one per list if that happens.
-    kept_folder_list: Mutex<Option<folder_choice::KeptFolderList>>,
 }
 
 impl LocalModel {
@@ -130,7 +123,6 @@ impl LocalModel {
             compute,
             stop: config.stop,
             person_waiting: AtomicBool::new(true),
-            kept_folder_list: Mutex::new(None),
         })
     }
 

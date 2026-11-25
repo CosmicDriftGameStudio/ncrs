@@ -51,6 +51,8 @@ impl FilingModule {
             store,
             index: Arc::default(),
             locations: Vec::new(),
+            sources: filing.sources.clone(),
+            targets: filing.targets.clone(),
             phase: Phase::Starting,
             load: filing.load,
             generation: 0,
@@ -67,7 +69,6 @@ impl FilingModule {
             settle_problem: SettleNote::default(),
             index_work: crate::index_work::IndexWork::default(),
             snapshots: crate::chat_work::Snapshots::default(),
-            neighbour_cache: Default::default(),
             settling: false,
         };
         if db_path.is_none() {

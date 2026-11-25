@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ncrs_index::{Field, Index, ReviewReason};
+use ncrs_index::Index;
 
 use super::archive::{self, Inbox};
 use crate::e2e_tests::acceptance_v160::Live;
@@ -49,7 +49,7 @@ impl World {
         drop(index);
         std::fs::write(
             root.join("config.toml"),
-            Self::archive_only_config(&archive_dir),
+            Self::target_config(&archive_dir),
         )
         .unwrap();
         Self {
@@ -63,31 +63,19 @@ impl World {
     }
 
     /// The first start reads the archive alone, so that every inbox file meets
-    /// an archive that is already indexed; [`World::add_inbox_to_config`] follows.
-    fn archive_only_config(archive: &Path) -> String {
-        format!(
-            "{CONFIG_HEAD}[[modules.filing.locations]]\npath = {archive:?}\nmode = \"archive\"\ntarget = true\n"
-        )
+    /// an archive that is already indexed; [`World::add_source_to_config`] follows.
+    fn target_config(archive: &Path) -> String {
+        format!("{CONFIG_HEAD}[[modules.filing.targets]]\nid = \"main\"\npath = {archive:?}\n")
     }
 
-    pub fn add_inbox_to_config(&self) {
-        std::fs::write(
-            self.root.join("config.toml"),
-            Self::config(&self.inbox_dir, &self.archive_dir, false),
-        )
-        .unwrap();
-    }
-
-    pub fn config(inbox: &Path, archive: &Path, continuous: bool) -> String {
-        format!(
-            "{CONFIG_HEAD}[[modules.filing.locations]]\npath = {inbox:?}\nmode = \"inbox\"\n{}\
-             [[modules.filing.locations]]\npath = {archive:?}\nmode = \"archive\"\ntarget = true\n",
-            if continuous {
-                "continuous = true\n"
-            } else {
-                ""
-            }
-        )
+    pub fn add_source_to_config(&self) {
+        let config = format!(
+            "{}[[modules.filing.sources]]\npath = {:?}\ntargets = [\"main\"]\n\
+             when = \"watch\"\nfiles = \"move\"\n",
+            Self::target_config(&self.archive_dir),
+            self.inbox_dir
+        );
+        std::fs::write(self.root.join("config.toml"), config).unwrap();
     }
 
     pub fn index(&self) -> Index {
@@ -138,6 +126,24 @@ pub fn copies_recorded(world: &World) -> usize {
         .count()
 }
 
+/// Every inbox file is a document or noted as a copy of one.
+pub fn inbox_read(world: &World) -> bool {
+    let documents = world
+        .index()
+        .documents_beneath(&world.inbox_dir)
+        .unwrap()
+        .len();
+    documents + copies_recorded(world) >= files_in(&world.inbox_dir)
+        && copies_recorded(world) == world.inbox.duplicates.len()
+}
+
+pub fn backlog_recorded(world: &World) -> bool {
+    world
+        .index()
+        .has_source_backlog(&world.inbox_dir)
+        .unwrap()
+}
+
 pub fn files_in(folder: &Path) -> usize {
     std::fs::read_dir(folder).map_or(0, |entries| entries.count())
 }
@@ -181,114 +187,50 @@ pub fn wait_quiet_and<P: Live>(
     })
 }
 
-/// What happened to each group of the inbox: how many are still there and why.
+/// How far the reading of the inbox got.
 pub fn describe(world: &World) {
-    let index = world.index();
-    let line = |label: &str, files: &[PathBuf]| {
-        let mut left = 0;
-        let mut why: Vec<(String, usize)> = Vec::new();
-        for file in files {
-            if file.exists() {
-                left += 1;
-                let reason = index
-                    .document_by_path(file)
-                    .unwrap()
-                    .and_then(|document| index.open_review_of(document.id).unwrap())
-                    .map_or_else(
-                        || "no review".to_owned(),
-                        |entry| format!("{:?}", entry.reason),
-                    );
-                match why.iter_mut().find(|(known, _)| *known == reason) {
-                    Some((_, count)) => *count += 1,
-                    None => why.push((reason, 1)),
-                }
-            }
-        }
-        let described: Vec<String> = why
-            .iter()
-            .map(|(reason, count)| format!("{reason} x{count}"))
-            .collect();
-        println!(
-            "{label}: {} files, {left} left {}",
-            files.len(),
-            described.join(", ")
-        );
-    };
-    let pairs =
-        |pairs: &[(PathBuf, PathBuf)]| pairs.iter().map(|(a, _)| a.clone()).collect::<Vec<_>>();
-    line("sure", &pairs(&world.inbox.sure));
-    line("duplicates", &pairs(&world.inbox.duplicates));
-    line("clashes", &pairs(&world.inbox.clashes));
-    line("no date", &world.inbox.no_date);
-    line("no amount", &world.inbox.no_amount);
-    line("unsure sender (miete)", &world.inbox.unsure_sender);
-    line("no rule", &world.inbox.no_rule);
-    line("unconfirmed", &world.inbox.unconfirmed);
-}
-
-/// The pipeline cannot find out by itself that it is unsure of a sender, so a
-/// few documents of a known sender are given that question in the index.
-pub fn mark_unsure_senders(world: &World) {
-    let mut index = world.index();
-    for path in &world.inbox.unsure_sender_marked {
-        let document = index
-            .document_by_path(path)
+    println!(
+        "inbox: {} files, {} documents, {} copies noted, backlog recorded: {}",
+        files_in(&world.inbox_dir),
+        world
+            .index()
+            .documents_beneath(&world.inbox_dir)
             .unwrap()
-            .expect("a known document");
-        let entry = index
-            .open_review_of(document.id)
-            .unwrap()
-            .expect("a review to replace");
-        index.resolve_review(entry.id).unwrap();
-        index
-            .add_review(document.id, ReviewReason::LowConfidence(Field::Sender))
-            .unwrap();
-    }
+            .len(),
+        copies_recorded(world),
+        backlog_recorded(world)
+    );
 }
 
-fn reason_of(index: &Index, path: &Path) -> Option<ReviewReason> {
-    let document = index.document_by_path(path).unwrap()?;
-    Some(index.open_review_of(document.id).unwrap()?.reason)
-}
-
-/// What the normal pipeline made of the inbox: the sure ones are filed, and
-/// every kind of question has at least three documents.
+/// What lay in the inbox when the source was first watched stays there, without
+/// a question, and an exact copy of an indexed archive file is no document: the
+/// index notes it as a repeat of the archive document.
 pub fn check_phase_a(world: &World) {
     let index = world.index();
-    for (from, target) in &world.inbox.sure {
-        assert!(
-            !from.exists() && target.is_file(),
-            "sure but not filed: {from:?}"
-        );
+    let inbox = &world.inbox;
+    let pairs = inbox
+        .sure
+        .iter()
+        .chain(&inbox.duplicates)
+        .chain(&inbox.clashes)
+        .map(|(file, _)| file);
+    let singles = inbox
+        .no_date
+        .iter()
+        .chain(&inbox.known_sender)
+        .chain(&inbox.no_rule)
+        .chain(&inbox.unconfirmed);
+    for file in pairs.chain(singles) {
+        assert!(file.is_file(), "{file:?} left the inbox");
     }
-    let expect = |label: &str, files: &[PathBuf], reason: &dyn Fn(&ReviewReason) -> bool| {
-        assert!(files.len() >= 3, "{label}: fewer than three documents");
-        for file in files {
-            assert!(file.is_file(), "{label}: {file:?} is gone");
-            let found = reason_of(&index, file);
-            assert!(
-                found.as_ref().is_some_and(reason),
-                "{label}: {file:?} has review {found:?}"
-            );
-        }
-    };
-    let taken = |reason: &ReviewReason| *reason == ReviewReason::TargetExists;
-    let paths = |pairs: &[(PathBuf, PathBuf)]| {
-        pairs
-            .iter()
-            .map(|(from, _)| from.clone())
-            .collect::<Vec<_>>()
-    };
-    // An exact copy of an indexed archive file is no document and has no
-    // review entry: it stays in the inbox and the index notes it as a repeat
-    // of the archive document, which the group "Liegt schon in der Ablage"
-    // asks about.
-    assert!(world.inbox.duplicates.len() >= 3);
-    for (copy, original) in &world.inbox.duplicates {
-        assert!(
-            copy.is_file() && original.is_file(),
-            "{copy:?}: a copy or its original is gone"
-        );
+    for (_, target) in &inbox.sure {
+        assert!(!target.exists(), "{target:?} was filed from the backlog");
+    }
+    assert!(index.recent_batches(5).unwrap().is_empty());
+    assert!(index.open_reviews().unwrap().is_empty());
+
+    assert!(inbox.duplicates.len() >= 3);
+    for (copy, original) in &inbox.duplicates {
         assert!(
             index.document_by_path(copy).unwrap().is_none(),
             "{copy:?} became a document"
@@ -303,29 +245,5 @@ pub fn check_phase_a(world: &World) {
             holder, original_document.id,
             "{copy:?} is a copy of another document"
         );
-        assert!(index.open_review_of(holder).unwrap().is_none());
     }
-    expect("clashes", &paths(&world.inbox.clashes), &taken);
-    expect("no date", &world.inbox.no_date, &|reason| {
-        *reason == ReviewReason::MissingField(Field::Date)
-    });
-    expect("no amount", &world.inbox.no_amount, &|reason| {
-        *reason == ReviewReason::MissingField(Field::Amount)
-    });
-    expect("no rule", &world.inbox.no_rule, &|reason| {
-        *reason == ReviewReason::NoMatchingRule
-    });
-    expect(
-        "no rule, known neighbours",
-        &world.inbox.unsure_sender,
-        &|reason| *reason == ReviewReason::NoMatchingRule,
-    );
-    expect("unconfirmed", &world.inbox.unconfirmed, &|reason| {
-        *reason == ReviewReason::UnconfirmedRule
-    });
-    expect(
-        "unsure sender",
-        &world.inbox.unsure_sender_marked,
-        &|reason| *reason == ReviewReason::LowConfidence(Field::Sender),
-    );
 }

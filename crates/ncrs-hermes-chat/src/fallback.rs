@@ -1,9 +1,11 @@
 //! The answers that only point to what Hermes can do, and the chips for them.
 
+use std::path::PathBuf;
+
 use ncrs_i18n::Msg;
 
 use crate::ctx::Ctx;
-use crate::state::{Chip, ChipReply, State};
+use crate::state::{Chip, ChipReply, State, Step};
 use crate::texts::text;
 use crate::update::{chip, say};
 
@@ -28,11 +30,27 @@ pub fn explain_not_yet(state: &mut State, ctx: &Ctx) {
     );
 }
 
-pub fn batch_not_yet(state: &mut State, ctx: &Ctx) {
+/// The chat files nothing itself: where that is done, and the ways there.
+/// `folder` is the one the sentence named.
+pub fn sort_hint(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) {
+    state.step = Step::Idle;
     say(
         state,
-        text(ctx.lang, Msg::HermesChatBatchNotYet),
-        fallback_chips(ctx),
+        text(ctx.lang, Msg::HermesChatSortHint),
+        vec![
+            chip(
+                ctx,
+                Msg::HermesChatOpenSort,
+                ChipReply::OpenSort(folder),
+                true,
+            ),
+            chip(
+                ctx,
+                Msg::HermesChatOpenRuleForm,
+                ChipReply::OpenRuleForm,
+                false,
+            ),
+        ],
     );
 }
 

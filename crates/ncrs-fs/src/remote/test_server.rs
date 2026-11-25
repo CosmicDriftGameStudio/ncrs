@@ -21,7 +21,7 @@ use russh::keys::{PrivateKey, PublicKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, PublicKeyOffer, Session, VerifiedPublicKey};
 use russh::{Channel, ChannelId};
 use russh_sftp::protocol::{
-    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
+    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, SftpHandle, Status, StatusCode,
 };
 
 use super::credentials::PassphraseStore;
@@ -467,7 +467,7 @@ enum Open {
 struct Fs {
     root: PathBuf,
     control: Arc<Control>,
-    handles: HashMap<String, Open>,
+    handles: HashMap<SftpHandle, Open>,
     next: u64,
 }
 
@@ -494,9 +494,9 @@ impl Fs {
         self.root.join(relative.trim_start_matches('/'))
     }
 
-    fn remember(&mut self, open: Open) -> String {
+    fn remember(&mut self, open: Open) -> SftpHandle {
         self.next += 1;
-        let handle = format!("h{}", self.next);
+        let handle = SftpHandle::from(format!("h{}", self.next));
         self.handles.insert(handle.clone(), open);
         handle
     }
@@ -540,7 +540,7 @@ impl russh_sftp::server::Handler for Fs {
         })
     }
 
-    async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
+    async fn close(&mut self, id: u32, handle: SftpHandle) -> Result<Status, Self::Error> {
         self.handles.remove(&handle);
         Ok(status(id))
     }
@@ -548,7 +548,7 @@ impl russh_sftp::server::Handler for Fs {
     async fn read(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
@@ -573,7 +573,7 @@ impl russh_sftp::server::Handler for Fs {
     async fn write(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
@@ -624,7 +624,7 @@ impl russh_sftp::server::Handler for Fs {
         })
     }
 
-    async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
+    async fn readdir(&mut self, id: u32, handle: SftpHandle) -> Result<Name, Self::Error> {
         if self.control.stall_listing.load(Ordering::SeqCst) {
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }

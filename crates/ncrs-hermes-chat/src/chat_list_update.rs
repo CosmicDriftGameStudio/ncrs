@@ -40,17 +40,12 @@ fn part_text(part: &Part) -> String {
     match part {
         Part::Text(text) => text.clone(),
         Part::Levels(card) => card.title.clone(),
-        Part::Proposal(card) => match &card.counts {
-            Some(counts) => format!("{}\n{counts}", card.title),
-            None => card.title.clone(),
-        },
         Part::Areas(card) => card
             .rows
             .iter()
             .map(|row| format!("{}: {}", row.name, row.description))
             .collect::<Vec<_>>()
             .join("\n"),
-        Part::File(card) => card.segments.join(" / "),
         Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
     }
 }
@@ -86,20 +81,10 @@ pub fn transcript(thread: &[Entry]) -> Vec<Line> {
         .collect()
 }
 
-/// Where the conversation stands: filing that goes on, a finished job, a
-/// plan that waits for a yes, or a question.
+/// Where the conversation stands: levels that wait for a yes, a finished job,
+/// or a question.
 pub fn status_of(state: &State) -> ChatStatus {
-    let session = &state.session;
-    let has_plan = session.proposal.is_some()
-        || session.tidy.is_some()
-        || session.trial.is_some()
-        || session.deciding.is_some()
-        || session.rule.is_some();
-    if session.keeps_filing {
-        ChatStatus::Running
-    } else if state.step == Step::AfterRun {
-        ChatStatus::Done
-    } else if has_plan {
+    if state.session.rule.is_some() {
         ChatStatus::PlanOpen
     } else if state.step == Step::Idle && state.thread.iter().any(|e| matches!(e, Entry::User(_))) {
         ChatStatus::Done

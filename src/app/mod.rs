@@ -38,9 +38,7 @@ use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
-#[cfg(test)]
-use crate::hermes_column::FolderRole;
-use crate::hermes_column::{ColumnView, HermesFileState};
+use crate::hermes_column::ColumnView;
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
@@ -56,9 +54,9 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, ConflictChoice, FilingStatusMessage, GitTabId, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
-    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, ShownTab, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickOpenMessage,
+    RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
+    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -67,11 +65,7 @@ use crate::ocr_models::OcrModelsCard;
 use crate::ocr_models::{download_models, DownloadError};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
-#[cfg(test)]
-use crate::quick_fix::QuickFix;
 use crate::quick_open::{self, QuickOpen, QuickOpenAction, QuickOpenCtx};
-#[cfg(test)]
-use crate::review_work::ReviewItem;
 use crate::saved_queries::Draft;
 #[cfg(test)]
 use crate::saved_queries::SavedQueries;
@@ -102,7 +96,6 @@ use crate::ui::grant as grant_ui;
 use crate::ui::hermes_overview as hermes_overview_ui;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
-use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::remote as remote_ui;
 use crate::ui::settings as settings_ui;
@@ -127,7 +120,6 @@ use ncrs_files::{PanelMessage, Panels};
 use ncrs_hermes_ui::SavedFilingApplies;
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
-use ncrs_intake::LocationMode;
 use ncrs_ops::keys::{
     Bound as OpsBound, ConflictKey, DialogKey, TransferOverlayKey, TrashBound, TrashKey,
 };
@@ -424,10 +416,11 @@ pub struct App {
     git_view_settings: ncrs_config::git_view::GitViewSettings,
     /// How the Git tab pulls and how often it fetches in the background.
     git_settings: ncrs_config::git::GitSettings,
-    /// Folders that get a symbol of their own, worked out from the Hermes
-    /// folders in `special_folders_source` so a frame only reads them.
+    /// Folders that get a symbol of their own, worked out from the
+    /// targets and sources in `special_folders_source` so a frame only reads
+    /// them.
     special_folders: Vec<(PathBuf, ncrs_ui_kit::file_icon::SpecialFolder)>,
-    special_folders_source: Vec<ncrs_config::config::FilingLocation>,
+    special_folders_source: (Vec<PathBuf>, Vec<PathBuf>),
     /// The `[appearance]` setting and the scale of the window it asks for.
     appearance: ncrs_config::panel_columns::Appearance,
     ui_scale: f32,
@@ -584,8 +577,8 @@ pub struct PromptKeyState {
     pub notes_editing: bool,
     /// The filing tab is up: its keys move in the list and pick a folder.
     pub filing: bool,
-    /// A file name is being typed in the filing tab, so the keys are the field's.
-    pub filing_renaming: bool,
+    /// What the keys of the filing tab depend on.
+    pub filing_keys: ncrs_filing_view::KeyFacts,
     /// A Git tab is up: its keys move in its lists and Escape goes back.
     pub git: Option<GitTabId>,
     /// The Repos tab is up: its keys move in the list and Escape goes back.
@@ -616,10 +609,10 @@ pub struct PromptKeyState {
     pub favourite_menu: bool,
     /// Its Hermes submenu is up too: Escape and Left go back to the menu.
     pub context_submenu: bool,
-    /// The quick-fix menu is up, so keys move its highlight.
-    pub quick_fix: bool,
     /// The question about many files to process again is up.
     pub confirm_again: bool,
+    /// The dialog of Hermes that has the keys, if one is up.
+    pub hermes_dialog: HermesDialogKeys,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -676,7 +669,7 @@ impl Default for PromptKeyState {
             notes: false,
             notes_editing: false,
             filing: false,
-            filing_renaming: false,
+            filing_keys: ncrs_filing_view::KeyFacts::default(),
             git: None,
             repos: false,
             repos_text: false,
@@ -692,8 +685,8 @@ impl Default for PromptKeyState {
             context_menu: false,
             favourite_menu: false,
             context_submenu: false,
-            quick_fix: false,
             confirm_again: false,
+            hermes_dialog: HermesDialogKeys::default(),
             busy: false,
             typed: Arc::default(),
         }

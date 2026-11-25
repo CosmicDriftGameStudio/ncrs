@@ -8,7 +8,6 @@ use std::error::Error;
 
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
-use ncrs_settings::facts::AreaFacts;
 use ncrs_settings::folders::AddAs;
 
 use crate::app::*;
@@ -102,7 +101,7 @@ async fn the_last_segment_of_the_index_page_writes_the_load_and_sets_it() -> Tes
 }
 
 #[tokio::test]
-async fn a_folder_added_on_the_index_page_is_read_and_becomes_the_target() -> TestResult {
+async fn a_folder_added_on_the_index_page_is_only_read_and_never_a_target() -> TestResult {
     let dir = tempfile::tempdir()?;
     let mut app = app_with_file(SettingsFeature::Index, "", &dir)?;
     let archive = folder(&dir, "Archive")?;
@@ -118,14 +117,14 @@ async fn a_folder_added_on_the_index_page_is_read_and_becomes_the_target() -> Te
 
     let location = single_location(&app)?;
     assert_eq!(location.path, archive);
-    assert!(location.is_target);
+    assert!(!location.is_target);
+    assert_eq!(location.mode, ncrs_intake::LocationMode::Archive);
     assert!(written(&dir)?.contains("Archive"));
     Ok(())
 }
 
 #[tokio::test]
-async fn removing_the_target_hands_it_to_the_next_archive_and_the_last_folder_can_go() -> TestResult
-{
+async fn removing_a_folder_leaves_the_others_and_the_last_folder_can_go() -> TestResult {
     let dir = tempfile::tempdir()?;
     let mut app = app_with_file(SettingsFeature::Index, "", &dir)?;
     let first = folder(&dir, "First")?;
@@ -140,18 +139,12 @@ async fn removing_the_target_hands_it_to_the_next_archive_and_the_last_folder_ca
         )
         .await;
     }
-    assert_eq!(
-        locations_of(&app)
-            .iter()
-            .map(|location| location.is_target)
-            .collect::<Vec<_>>(),
-        vec![true, false]
-    );
+    assert_eq!(locations_of(&app).len(), 2);
 
     settle(&mut app, settings(SettingsMessage::RemoveFolder(first))).await;
-    let remaining = locations_of(&app);
-    assert_eq!(remaining.len(), 1);
-    assert!(remaining.iter().all(|location| location.is_target));
+    let remaining = single_location(&app)?;
+    assert_eq!(remaining.path, second);
+    assert!(!remaining.is_target);
 
     settle(&mut app, settings(SettingsMessage::RemoveFolder(second))).await;
     assert!(locations_of(&app).is_empty());
@@ -159,35 +152,14 @@ async fn removing_the_target_hands_it_to_the_next_archive_and_the_last_folder_ca
 }
 
 #[tokio::test]
-async fn a_read_folder_added_on_the_hermes_page_is_an_inbox_and_never_the_target() -> TestResult {
+async fn hermes_stays_off_when_a_folder_is_removed() -> TestResult {
     let dir = tempfile::tempdir()?;
-    let mut app = app_with_file(SettingsFeature::Hermes, "", &dir)?;
-    let scans = folder(&dir, "Scans")?;
-
-    settle(
-        &mut app,
-        settings(SettingsMessage::FolderPicked {
-            kind: AddAs::ReadFolder,
-            path: Some(scans),
-        }),
-    )
-    .await;
-
-    let location = single_location(&app)?;
-    assert_eq!(location.mode, LocationMode::Inbox);
-    assert!(!location.is_target);
-    Ok(())
-}
-
-#[tokio::test]
-async fn hermes_stays_off_when_a_read_folder_is_removed() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let mut app = app_with_file(SettingsFeature::Hermes, "", &dir)?;
+    let mut app = app_with_file(SettingsFeature::Index, "", &dir)?;
     let scans = folder(&dir, "Scans")?;
     settle(
         &mut app,
         settings(SettingsMessage::FolderPicked {
-            kind: AddAs::ReadFolder,
+            kind: AddAs::Indexed,
             path: Some(scans.clone()),
         }),
     )
@@ -198,31 +170,6 @@ async fn hermes_stays_off_when_a_read_folder_is_removed() -> TestResult {
     let config = from_text(&written(&dir)?)?;
     assert!(!config.filing.enabled);
     assert!(config.filing.locations.is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn the_dialog_writes_when_and_images_of_a_read_folder() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let mut app = app_with_file(SettingsFeature::Hermes, "", &dir)?;
-    let scans = folder(&dir, "Scans")?;
-    settle(
-        &mut app,
-        settings(SettingsMessage::FolderPicked {
-            kind: AddAs::ReadFolder,
-            path: Some(scans),
-        }),
-    )
-    .await;
-    let mut edited = locations_of(&app).remove(0);
-    edited.mode = LocationMode::Archive;
-    edited.images = true;
-
-    settle(&mut app, settings(SettingsMessage::ReplaceFolder(edited))).await;
-
-    let location = single_location(&app)?;
-    assert_eq!(location.mode, LocationMode::Archive);
-    assert!(location.images);
     Ok(())
 }
 
@@ -259,23 +206,6 @@ async fn a_rule_violation_shows_as_a_note_and_leaves_the_file() -> TestResult {
         .as_ref()
         .is_some_and(|state| state.folder_note.is_some()));
     Ok(())
-}
-
-#[test]
-fn changing_an_area_in_the_chat_opens_the_chat() {
-    let mut app = App::with_settings_open(SettingsFeature::Hermes, Default::default());
-    let area = AreaFacts {
-        name: "Steuern".to_owned(),
-        files: 12,
-        read_folder: PathBuf::from("/home/test/Scans"),
-        root: PathBuf::from("/home/test/Scans/Steuern"),
-        order: String::new(),
-    };
-
-    drop(app.update(settings(SettingsMessage::OpenChat(Some(area)))));
-
-    assert!(app.hermes_chat.open);
-    assert!(app.settings.page.is_none());
 }
 
 fn single_location(app: &App) -> Result<crate::config::FilingLocation, Box<dyn Error>> {

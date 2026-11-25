@@ -25,15 +25,29 @@ fn collect(data_dir: Option<&Path>) -> Vec<Request> {
     requests
 }
 
-pub(in crate::app) fn found_in(data_dir: PathBuf) -> impl Stream<Item = Message> {
+/// Whether the system asked to quit through the Dock menu or an Apple event,
+/// which skips the window's close button and the menu: the app ends through
+/// `Message::Quit` so the model is freed first.
+fn quit_asked() -> bool {
+    #[cfg(target_os = "macos")]
+    return winit::platform::macos::take_quit_request();
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
+pub(in crate::app) fn found_in(data_dir: Option<PathBuf>) -> impl Stream<Item = Message> {
     iced::stream::channel(1, async move |mut output| loop {
         tokio::time::sleep(POLL_EVERY).await;
         let looked_in = data_dir.clone();
-        let found = tokio::task::spawn_blocking(move || collect(Some(&looked_in)))
-            .await
-            .unwrap_or_default();
-        if !found.is_empty() && output.send(Message::HandedOver(found)).await.is_err() {
-            return;
+        let (found, quit) =
+            tokio::task::spawn_blocking(move || (collect(looked_in.as_deref()), quit_asked()))
+                .await
+                .unwrap_or_default();
+        let handed_over = (!found.is_empty()).then_some(Message::HandedOver(found));
+        for message in handed_over.into_iter().chain(quit.then_some(Message::Quit)) {
+            if output.send(message).await.is_err() {
+                return;
+            }
         }
     })
 }
@@ -48,15 +62,15 @@ impl App {
             .map(Path::to_path_buf)
     }
 
-    /// The inbox, looked at for as long as it is there. Only a find is a
-    /// message: one on every look would rebuild the window twice a second.
+    /// Looked at for as long as there is an inbox, or a system that may hand
+    /// something over. Only a find is a message: one on every look would
+    /// rebuild the window twice a second.
     pub(in crate::app) fn watch_handoffs(&self) -> Subscription<Message> {
-        match self.handoff_dir() {
-            Some(dir) if !self.quitting => {
-                Subscription::run_with(dir, |dir| found_in(dir.clone()))
-            }
-            _ => Subscription::none(),
+        let dir = self.handoff_dir();
+        if self.quitting || (dir.is_none() && !cfg!(target_os = "macos")) {
+            return Subscription::none();
         }
+        Subscription::run_with(dir, |dir| found_in(dir.clone()))
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as

@@ -30,11 +30,13 @@ fn filing_with(locations: Vec<FilingLocation>) -> Filing {
         locations,
         load: Load::default(),
         ai: ncrs_config::config::AiSetting::Off,
-        default_pattern: None,
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
         first_run: false,
+        targets: Vec::new(),
+        sources: Vec::new(),
+        dropped_entries: Vec::new(),
     }
 }
 

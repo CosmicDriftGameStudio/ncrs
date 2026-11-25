@@ -41,14 +41,11 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
-        | Message::QuickFix(QuickFixMessage::Open)
         | Message::HermesFile(
-            HermesFileMessage::HandToInbox
-            | HermesFileMessage::ProcessAgain
+            HermesFileMessage::ProcessAgain
             | HermesFileMessage::FileOnce
-            | HermesFileMessage::FileContinuously
-            | HermesFileMessage::StopContinuous
-            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::WatchSource
+            | HermesFileMessage::AddTarget
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
         )
@@ -96,14 +93,11 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
-        | Message::QuickFix(QuickFixMessage::Open)
         | Message::HermesFile(
-            HermesFileMessage::HandToInbox
-            | HermesFileMessage::ProcessAgain
+            HermesFileMessage::ProcessAgain
             | HermesFileMessage::FileOnce
-            | HermesFileMessage::FileContinuously
-            | HermesFileMessage::StopContinuous
-            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::WatchSource
+            | HermesFileMessage::AddTarget
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
         )
@@ -118,13 +112,12 @@ fn asks_for_hermes(message: &Message) -> bool {
     matches!(
         message,
         Message::HermesFile(
-            HermesFileMessage::HandToInbox
-                | HermesFileMessage::ProcessAgain
-                | HermesFileMessage::SetRole(_)
+            HermesFileMessage::ProcessAgain
+                | HermesFileMessage::WatchSource
+                | HermesFileMessage::AddTarget
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
-        ) | Message::QuickFix(QuickFixMessage::Open)
-            | Message::HermesPage(HermesPage::Rules | HermesPage::SavedQueries)
+        ) | Message::HermesPage(HermesPage::Sorting | HermesPage::SavedQueries)
     )
 }
 
@@ -244,7 +237,7 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
-            self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
+            self.with_hermes(ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
             if session_unchanged {
                 Task::none()
@@ -359,8 +352,6 @@ impl App {
 
             Message::HermesFile(file_message) => self.update_hermes_file(file_message),
 
-            Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
-
             // --- path field ---
             Message::ClickedOutside => self.update_path_field(Message::ClickedOutside),
 
@@ -452,9 +443,11 @@ impl App {
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             plain @ (Message::Rules(_)
+            | Message::Sorting(_)
+            | Message::Targets(_)
+            | Message::Suggest(_)
             | Message::SavedQueries(_)
             | Message::Tags(_)
-            | Message::Reviews(_)
             | Message::Activity(_)) => self.update_hermes_plain(plain),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
@@ -478,9 +471,7 @@ impl App {
             Message::Store(store_message) => self.update_store(store_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
-            plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
-                self.update_hermes_plain(plain)
-            }
+            plain @ Message::ContinuousFiled(_) => self.update_hermes_plain(plain),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),

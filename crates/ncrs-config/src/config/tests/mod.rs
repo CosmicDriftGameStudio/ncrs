@@ -13,6 +13,7 @@ mod continuous;
 mod loading_and_filing;
 mod open_rules;
 mod paths_and_servers;
+mod sorting;
 mod writing;
 
 use self::loading_and_filing::*;

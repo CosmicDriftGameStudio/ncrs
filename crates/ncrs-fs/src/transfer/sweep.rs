@@ -79,17 +79,10 @@ fn last_touched(meta: &std::fs::Metadata) -> Option<SystemTime> {
     modified.max(changed)
 }
 
-#[cfg(not(any(test, feature = "test-support")))]
-fn clock_now() -> SystemTime {
-    SystemTime::now()
-}
-
-#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     static CLOCK_SKEW: std::cell::Cell<Duration> = const { std::cell::Cell::new(Duration::ZERO) };
 }
 
-#[cfg(any(test, feature = "test-support"))]
 fn clock_now() -> SystemTime {
     SystemTime::now() + CLOCK_SKEW.with(std::cell::Cell::get)
 }

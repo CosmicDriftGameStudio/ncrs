@@ -7,10 +7,12 @@ use std::sync::Arc;
 use iced::widget::operation;
 use iced::Task;
 use ncrs_config::config::{Filing, FilingLocation};
-use ncrs_filing::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work};
+use ncrs_filing::filing::{
+    resolve_locations, FilingMessage, FilingModule, LocationStatus, Phase, ResolvedLocation, Work,
+};
 use ncrs_i18n::{fill_template, Msg};
 
-use super::filing_job::{run_filing, run_filing_work, run_filing_work_after};
+use super::filing_job::{run_filing_work, run_filing_work_after};
 use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::message::{FilingStatusMessage, Message, TagsMessage};
@@ -27,9 +29,8 @@ pub enum SavedFilingApplies {
 /// Replaces nothing: the caller has dropped any module and pipeline before.
 pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
     hermes.filing_config = filing.clone();
-    // A new runner counts its plans from zero again; the old count would
-    // keep its first plans from ever being filed.
-    hermes.plans_filed_for = 0;
+    // A new runner numbers its changes from one again.
+    hermes.watching.reset();
     let Some(store) = hermes.key_store.clone() else {
         return Task::none();
     };
@@ -111,14 +112,59 @@ pub fn apply_saved_filing(
             .as_ref()
             .is_none_or(|module| !module.has_configured_locations() && module.can_be_replaced());
     if !replaceable {
-        hermes.filing_config = filing;
-        super::continuous::sync_continuous_roots(hermes);
-        return (SavedFilingApplies::AtNextStart, forget);
+        let resolving = keep_running_module_with_saved_transfers(hermes, filing);
+        return (
+            SavedFilingApplies::AtNextStart,
+            Task::batch([forget, resolving]),
+        );
     }
     (
         SavedFilingApplies::Now,
         Task::batch([forget, replace_module(hermes, &filing, ctx)]),
     )
+}
+
+/// The sources and targets and copy or move of the folders the module has
+/// take effect with the next job, and a new folder is watched and scanned at
+/// once. A removed one or a changed mode waits for the next start.
+/// The new folders are looked up on disk in the background: a dead mount can
+/// hang that, and the answer comes as `LocationsResolved`.
+pub(in crate::update) fn keep_running_module_with_saved_transfers(
+    hermes: &mut Hermes,
+    filing: Filing,
+) -> Task<Message> {
+    let to_resolve = hermes.filing.as_mut().and_then(|module| {
+        module.adopt_sorting(&filing);
+        module.configured_with_new(&filing.locations)
+    });
+    let sorting_changed = hermes.filing_config.sources != filing.sources
+        || hermes.filing_config.targets != filing.targets;
+    hermes.filing_config = filing;
+    if sorting_changed {
+        hermes.watching.mark_all();
+    }
+    let Some(configured) = to_resolve else {
+        return Task::none();
+    };
+    Task::future(async move {
+        let resolved = tokio::task::spawn_blocking(move || resolve_locations(&configured))
+            .await
+            .unwrap_or_default();
+        Message::FilingStatus(FilingStatusMessage::LocationsResolved(resolved))
+    })
+}
+
+/// The runner and the module take up the locations that came after the start.
+pub fn take_up_resolved_locations(hermes: &mut Hermes, resolved: Vec<ResolvedLocation>) {
+    let Some(module) = hermes.filing.as_mut() else {
+        return;
+    };
+    let usable = module.take_resolved_locations(resolved);
+    if let Some(runner) = hermes.live_pipeline() {
+        for location in usable {
+            runner.add_location(location);
+        }
+    }
 }
 
 /// The locations of the old list that the new one no longer has, without
@@ -138,8 +184,8 @@ fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<Path
 /// may still index a file that arrives in a removed location.
 fn forget_removed_locations(hermes: &Hermes, filing: &Filing) -> Task<Message> {
     let removed = removed_locations(&hermes.filing_config.locations, &filing.locations);
-    let review_access = hermes.filing.as_ref().and_then(FilingModule::review_access);
-    let (false, Some(access)) = (removed.is_empty(), review_access) else {
+    let path_access = hermes.filing.as_ref().and_then(FilingModule::path_access);
+    let (false, Some(access)) = (removed.is_empty(), path_access) else {
         return Task::none();
     };
     Task::perform(
@@ -237,7 +283,7 @@ pub fn change_protection(
         return Task::none();
     };
     drop(hermes.reading_again.give_up());
-    hermes.plans_filed_for = 0;
+    hermes.watching.reset();
     let pipeline = hermes.pipeline.take();
     hermes.refresh_filing_snapshot(ctx.now);
     run_filing_work_after(pipeline, work)
@@ -354,9 +400,9 @@ pub fn update_filing(
     }));
     tasks.extend(field.map(operation::focus));
     if pipeline_started {
-        // The index is open and `reconcile` has settled what a crash left;
-        // what an earlier run planned but did not move goes now.
-        run_filing(hermes, ctx, actions);
+        // The index is open and `reconcile` has settled what a crash left:
+        // look at the watched sources in full.
+        hermes.watching.mark_all();
     }
     if skipped > 0 {
         let text = fill_template(

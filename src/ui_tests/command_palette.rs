@@ -130,10 +130,13 @@ fn typed(app: &mut App, query: &str) {
 
 #[test]
 fn the_hermes_group_is_marked_beta_in_both_languages() {
-    for language in [Language::EnglishFuturama, Language::GermanFuturama] {
+    for (language, command) in [
+        (Language::EnglishFuturama, "rules"),
+        (Language::GermanFuturama, "regeln"),
+    ] {
         let mut app = App::with_fixed_filing(Phase::Ready).in_language(language);
         open(&mut app);
-        typed(&mut app, "hermes");
+        typed(&mut app, command);
         assert!(shows(&app, "Beta"), "{language:?}");
     }
 }

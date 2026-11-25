@@ -269,7 +269,7 @@ fn a_version_11_database_gains_sender_aliases() {
 }
 
 #[test]
-fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
+fn a_version_12_database_keeps_its_rule_order_and_enables_every_confirmed_rule() {
     use crate::model::{Field, FieldOrigin, RuleId};
 
     let dir = TempDir::new().unwrap();
@@ -302,7 +302,10 @@ fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
     assert_eq!(ids, [RuleId::new(2), RuleId::new(5), RuleId::new(7)]);
     let positions: Vec<_> = rules.iter().map(|rule| rule.position).collect();
     assert_eq!(positions, [2, 5, 7]);
-    assert!(rules.iter().all(|rule| rule.spec.enabled));
+    // Step 037 switches the unconfirmed rule 5 off.
+    assert!(rules
+        .iter()
+        .all(|rule| rule.spec.enabled == rule.spec.confirmed));
     let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(
         origins.of(Field::Kind),
@@ -608,7 +611,7 @@ fn a_version_19_database_loses_its_tax_context_tables_and_columns() {
 
 #[test]
 fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_no_rule() {
-    use crate::model::{DocumentId, Field, FieldOrigin, ReviewReason, RuleId};
+    use crate::model::{Field, FieldOrigin, ReviewReason, RuleId};
 
     let (_dir, index) = migrated_from_19();
 
@@ -658,13 +661,7 @@ fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_
         .into_iter()
         .map(|entry| (entry.document_id, entry.reason))
         .collect();
-    assert_eq!(
-        open,
-        [
-            (crate::DocumentId::new(1), ReviewReason::NoMatchingRule),
-            (DocumentId::new(2), ReviewReason::NoMatchingRule)
-        ]
-    );
+    assert!(open.is_empty(), "{open:?}");
 
     let origins = index.field_origins(crate::DocumentId::new(1)).unwrap();
     assert_eq!(

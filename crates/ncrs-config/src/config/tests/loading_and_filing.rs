@@ -224,40 +224,6 @@ fn the_configs_of_the_1_x_releases_still_load() {
     }
 }
 
-pub fn default_pattern_of(content: &str) -> Option<String> {
-    load_filing(content, None).unwrap().filing.default_pattern
-}
-
-#[test]
-fn a_valid_default_pattern_is_read_and_an_invalid_one_is_ignored() {
-    assert_eq!(default_pattern_of("[modules.filing]\n"), None);
-    assert_eq!(
-        default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}/\"\n"),
-        Some("{year}/{sender}/".to_owned())
-    );
-    for invalid in ["{nope}/x", "", "/abs/{year}", "{year"] {
-        let text = format!("[modules.filing]\ndefault_pattern = '{invalid}'\n");
-        assert_eq!(default_pattern_of(&text), None, "{invalid}");
-    }
-}
-
-#[test]
-fn a_default_pattern_of_an_older_version_is_upgraded_without_touching_the_file() {
-    let text = "[modules.filing]\ndefault_pattern = \"{tax_context}/{year}/{sender}\"\n";
-    assert_eq!(
-        default_pattern_of(text),
-        Some("{year}/{sender}/".to_owned())
-    );
-    assert_eq!(
-        default_pattern_of("[modules.filing]\ndefault_pattern = \"{tax_context}\"\n"),
-        Some(ncrs_intake::FALLBACK_PATTERN.to_owned())
-    );
-    assert_eq!(
-        default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}\"\n"),
-        Some("{year}/{sender}/".to_owned())
-    );
-}
-
 #[test]
 fn the_tags_of_the_file_list_default_to_kind_and_own_and_drop_what_is_unknown() {
     let default = from_text("version = 1\n").unwrap().file_list_tags;
@@ -362,35 +328,6 @@ fn the_own_details_are_written_and_dropped_keeping_the_rest() {
     assert!(text.contains("# my note"));
     assert!(text.contains("enabled = true"));
     assert!(!text.contains("own_names"));
-}
-
-#[test]
-fn the_default_pattern_is_written_changed_and_dropped_keeping_the_rest() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("config.toml");
-    std::fs::write(
-        &path,
-        "version = 1\n# my note\nlang = \"en\"\n\n[modules.filing]\nenabled = true\n",
-    )
-    .unwrap();
-
-    let written = write_default_pattern(&path, Some("{year}/{number}")).unwrap();
-    assert_eq!(
-        written.filing.default_pattern.as_deref(),
-        Some("{year}/{number}")
-    );
-    let changed = write_default_pattern(&path, Some("{date}_{sender}")).unwrap();
-    assert_eq!(
-        changed.filing.default_pattern.as_deref(),
-        Some("{date}_{sender}")
-    );
-    let dropped = write_default_pattern(&path, None).unwrap();
-    assert_eq!(dropped.filing.default_pattern, None);
-
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("# my note"));
-    assert!(text.contains("enabled = true"));
-    assert!(!text.contains("default_pattern"));
 }
 
 #[test]
@@ -818,10 +755,6 @@ fn a_config_of_before_the_settings_pages_still_loads() {
     );
     let config = load_text(&text);
 
-    assert_eq!(
-        config.filing.default_pattern.as_deref(),
-        Some("{year}/{sender}/")
-    );
     assert_eq!(config.kinds.stored_kind("Gehaltsabrechnung"), "payslip");
     assert_eq!(
         config

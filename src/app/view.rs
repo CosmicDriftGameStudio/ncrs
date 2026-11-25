@@ -12,7 +12,7 @@ impl App {
                 self.hermes.is_active().then(|| {
                     let column = ColumnView::new(
                         &self.hermes.hermes_column,
-                        &self.hermes.filing_config.locations,
+                        &self.hermes.filing_config,
                         self.hermes.hermes_spinner_angle,
                         &self.file_list_tags,
                         &self.tag_exceptions,
@@ -271,7 +271,7 @@ impl App {
                 .as_ref()
                 .filter(|card| card.is_downloading())
                 .and_then(AiModelCard::progress),
-            system_reads_scans: crate::ocr_models::system_reads_scans(),
+            home: &self.home,
         }
     }
 }

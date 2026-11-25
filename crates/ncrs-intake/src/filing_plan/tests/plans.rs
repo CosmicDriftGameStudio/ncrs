@@ -147,10 +147,6 @@ fn an_explicit_file_name_with_no_known_piece_is_a_missing_field() {
     let planning = plan_for(plain, TEXT, &DocumentFields::default());
 
     assert_eq!(reason(&planning), ReviewReason::MissingField(Field::Sender));
-    assert_eq!(
-        missing_field("{year}/{sender}_{number}", &known(None, None, true)),
-        Some(Field::Sender)
-    );
 }
 
 #[test]
@@ -293,64 +289,4 @@ fn stays_below_checks_components() {
     assert!(!stays_below(Path::new("a/../../b")));
     assert!(!stays_below(Path::new("/a")));
     assert!(!stays_below(Path::new("./a")));
-}
-
-#[test]
-fn the_parts_of_a_path_mark_the_fields_it_is_made_of() {
-    let fields = DocumentFields {
-        sender: Some("Company A".to_owned()),
-        kind: Some("invoice".to_owned()),
-        date: NaiveDate::from_ymd_opt(2024, 3, 5),
-        ..DocumentFields::default()
-    };
-    let parts = render_pattern_parts(
-        "{sender}/{date}_{kind}",
-        &fields,
-        &Kinds::built_in(KindLanguage::English),
-    )
-    .unwrap();
-    let separator = std::path::MAIN_SEPARATOR_STR;
-    let shown: Vec<(&str, Option<Field>)> = parts
-        .iter()
-        .map(|part| (part.text.as_str(), part.field))
-        .collect();
-    assert_eq!(
-        shown,
-        [
-            ("Company A", Some(Field::Sender)),
-            (separator, None),
-            ("2024-03-05", Some(Field::Date)),
-            ("_", None),
-            ("Invoice", Some(Field::Kind)),
-        ]
-    );
-    let joined: String = parts.iter().map(|part| part.text.as_str()).collect();
-    assert_eq!(
-        Some(PathBuf::from(joined)),
-        render_pattern_in(
-            "{sender}/{date}_{kind}",
-            &fields,
-            &Kinds::built_in(KindLanguage::English)
-        )
-    );
-}
-
-#[test]
-fn parts_are_refused_where_the_path_is() {
-    assert_eq!(
-        render_pattern_parts(
-            "{sender}",
-            &DocumentFields::default(),
-            &Kinds::built_in(KindLanguage::English)
-        ),
-        None
-    );
-    assert_eq!(
-        render_pattern_parts(
-            "{nonsense}",
-            &DocumentFields::default(),
-            &Kinds::built_in(KindLanguage::English)
-        ),
-        None
-    );
 }
