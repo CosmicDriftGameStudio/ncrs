@@ -247,6 +247,8 @@ pub(crate) fn repository_runs_commands() -> ActionError {
 
 /// The only transports an unattended call may use: no `ext::` command transport.
 const UNATTENDED_PROTOCOLS: &str = "https:http:ssh:git:file";
+/// A push into a local folder runs the hooks found there, whatever this call sets.
+const UNATTENDED_PUSH_PROTOCOLS: &str = "https:http:ssh:git";
 /// `-c` settings of an unattended call: no command transport, no background
 /// maintenance that a fetch would start (it runs the repository's own gc hooks),
 /// and nothing in submodules: their config is not checked for commands.
@@ -405,6 +407,9 @@ impl Git {
             command.args(["-c", setting]);
         }
         self.apply_prompts(&mut command);
+        if self.is_unattended() && args.contains(&"push") {
+            command.env("GIT_ALLOW_PROTOCOL", UNATTENDED_PUSH_PROTOCOLS);
+        }
         if let Some(filters) = &self.reading_without {
             command
                 .env("GIT_OPTIONAL_LOCKS", "0")

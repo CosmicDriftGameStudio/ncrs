@@ -116,7 +116,6 @@ fn an_unattended_pull_leaves_submodules_alone() {
     let unattended = Git::open_unattended(repo.path()).unwrap();
     unattended.fetch(Some("origin")).unwrap();
     unattended.pull(None).unwrap();
-    unattended.push().unwrap();
     assert!(!marker.exists());
 
     let _attended = repo.git.pull(None);
@@ -216,4 +215,25 @@ fn a_filter_name_that_cannot_be_switched_off_is_refused() {
     let repo = repo();
     repo.sh(&["config", "filter.a=b.clean", "evil"]);
     Git::open_reading(repo.path()).unwrap_err();
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unattended_push_runs_no_hook_of_a_local_remote() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (origin, repo) = with_origin();
+    repo.sh(&["push", "-q", "origin", "HEAD:refs/heads/topic"]);
+    let marker = origin.path().join("hook-ran");
+    let hook = origin.path().join("hooks/pre-receive");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    unattended.delete_remote_branch("origin", "topic", None).unwrap_err();
+    assert!(!marker.exists());
+
+    repo.git.delete_remote_branch("origin", "topic", None).unwrap();
+    assert!(marker.exists(), "git itself runs it");
 }
