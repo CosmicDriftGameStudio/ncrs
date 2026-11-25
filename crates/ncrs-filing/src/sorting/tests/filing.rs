@@ -33,9 +33,9 @@ fn a_source_is_filed_into_its_target_and_taken_back() {
 
     assert_eq!(setup.run(&source).unwrap().done(), 1);
     assert!(to.exists() && !from.exists());
-    let document = setup.document(&to);
-    assert_eq!(document.status, DocumentStatus::Filed);
-    setup.index(|index| assert!(index.open_review_of(document.id).unwrap().is_none()));
+    let filed_again = setup.document(&to);
+    assert_eq!(filed_again.status, DocumentStatus::Filed);
+    setup.index(|index| assert!(index.open_review_of(filed_again.id).unwrap().is_none()));
 }
 
 #[test]
@@ -85,14 +85,14 @@ fn several_targets_are_copied_into_and_taken_back_as_one_run() {
     let undone = setup.access.undo(report.run.unwrap()).unwrap();
     assert_eq!((undone.undone, undone.left), (2, 0));
     assert!(from.exists() && !first.exists() && !second.exists());
-    let known = setup.index(|index| index.duplicate_paths(document.id).unwrap());
-    assert!(known.is_empty());
+    let known_after_undo = setup.index(|index| index.duplicate_paths(document.id).unwrap());
+    assert!(known_after_undo.is_empty());
 
     assert_eq!(setup.run(&source).unwrap().done(), 1);
     assert!(from.exists() && first.exists() && second.exists());
-    let known = setup.document(&from);
+    let filed_again = setup.document(&from);
     assert_eq!(
-        (known.id, known.status),
+        (filed_again.id, filed_again.status),
         (document.id, DocumentStatus::Filed)
     );
     setup.index(|index| assert!(index.open_review_of(document.id).unwrap().is_none()));

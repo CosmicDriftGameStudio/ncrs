@@ -511,7 +511,7 @@ fn a_rule_without_a_name_is_called_by_what_it_looks_for() {
         excluded,
         Condition::new(ConditionKind::Word, "invoice"),
     ]));
-    let title = |spec: &RuleSpec| rule_title(spec, Language::English, &KindCatalog::built_in());
+    let title = |titled: &RuleSpec| rule_title(titled, Language::English, &KindCatalog::built_in());
     spec.name = None;
     assert_eq!(title(&spec), "Company A, invoice");
     spec.name = Some("Bills".to_owned());

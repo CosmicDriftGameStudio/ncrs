@@ -55,7 +55,7 @@ pub fn try_in_target(
     candidate: RuleTry,
 ) -> Result<SortTry, String> {
     let RuleTry { replaces, spec } = candidate;
-    let spec = RuleSpec {
+    let enabled_spec = RuleSpec {
         confirmed: true,
         enabled: true,
         ..spec
@@ -67,7 +67,7 @@ pub fn try_in_target(
             .ok_or_else(|| ncrs_core::INDEX_NOT_OPEN.to_owned())?;
         index.rules_of(target).map_err(|err| err.to_string())?
     };
-    let (mut rules, candidate_id) = with_candidate(&stored, replaces, spec);
+    let (mut rules, candidate_id) = with_candidate(&stored, replaces, enabled_spec);
     for rule in &mut rules {
         if rule.id == candidate_id {
             rule.target = target.clone();

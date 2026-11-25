@@ -111,16 +111,19 @@ fn differs_from_system(
 }
 
 fn holds_known_file(access: &SortingAccess, folder: &Path) -> bool {
-    let folder = ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let known = access.with_index(|index| index.documents_under(&folder).map_err(text));
+    let canonical_folder =
+        ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let known = access.with_index(|index| index.documents_under(&canonical_folder).map_err(text));
     known.is_ok_and(|documents| documents.iter().any(|(_, path)| path.is_file()))
 }
 
 /// How many documents the index knows below `folder` while none of them is
 /// there; 0 when one is. An empty mount point looks like that. Asks the disk.
 pub fn all_gone_below(access: &SortingAccess, folder: &Path) -> Result<usize, String> {
-    let folder = ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let known = access.with_index(|index| index.known_paths_under(&folder).map_err(text))?;
+    let canonical_folder =
+        ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let known =
+        access.with_index(|index| index.known_paths_under(&canonical_folder).map_err(text))?;
     let one_is_there = known.iter().any(|path| path.is_file());
     Ok(if one_is_there { 0 } else { known.len() })
 }
@@ -147,7 +150,7 @@ fn system_folders() -> Vec<PathBuf> {
 
 #[cfg(unix)]
 fn device_of(path: &Path) -> Option<String> {
-    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::MetadataExt as _;
     fs::metadata(path).ok().map(|found| found.dev().to_string())
 }
 
@@ -256,15 +259,15 @@ mod tests {
                 several: OnSeveralTargets::Ask,
                 own_volume,
             };
-            let root = Path::new(root);
+            let root_path = Path::new(root);
             let device_of = |path: &Path| {
-                if path == root {
+                if path == root_path {
                     device.map(str::to_owned)
                 } else {
                     Some("system".to_owned())
                 }
             };
-            source_is_mounted_with(&source, root, device_of, &[PathBuf::from("/")])
+            source_is_mounted_with(&source, root_path, device_of, &[PathBuf::from("/")])
         };
         for place in [
             "/Users/me/Downloads",

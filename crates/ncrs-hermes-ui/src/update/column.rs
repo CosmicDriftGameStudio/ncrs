@@ -209,10 +209,10 @@ pub fn settle_reading_again(
                 .and_then(FilingModule::column_reader)
                 .filter(|_| ending == Ending::Finished);
             match reader {
-                Some(reader) => {
+                Some(column_reader) => {
                     let asked = path.clone();
                     Task::perform(
-                        tokio::task::spawn_blocking(move || waits_for_the_user(reader, &asked)),
+                        tokio::task::spawn_blocking(move || waits_for_the_user(column_reader, &asked)),
                         move |joined| {
                             Message::HermesColumn(HermesColumnMessage::ReadAgainEnded {
                                 path: path.clone(),

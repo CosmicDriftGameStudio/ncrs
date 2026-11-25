@@ -31,7 +31,7 @@ pub struct Question {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AskedPlace {
-    pub place: (TargetId, PathBuf),
+    place: (TargetId, PathBuf),
     /// The colour of the chip.
     index: usize,
     number: String,
@@ -39,12 +39,12 @@ pub struct AskedPlace {
     /// The rule and where the file would go.
     line: String,
     /// Only a longer list is ticked.
-    pub ticked: bool,
+    ticked: bool,
 }
 
 impl Question {
     pub fn new(session: &Session, relative: PathBuf, places: &[RowPlace], lang: Language) -> Self {
-        let places = places
+        let asked_places = places
             .iter()
             .map(|place| {
                 let index = session.target_index(&place.target).unwrap_or(usize::MAX);
@@ -71,7 +71,7 @@ impl Question {
             .collect();
         Self {
             relative,
-            places,
+            places: asked_places,
             marked: 0,
         }
     }

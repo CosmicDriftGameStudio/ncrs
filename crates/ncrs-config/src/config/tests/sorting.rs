@@ -479,11 +479,17 @@ fn the_copy_is_made_once_and_never_overwritten() {
     assert_eq!(std::fs::read_to_string(backup_of(&path)).unwrap(), original);
 
     let second = tempfile::tempdir().unwrap();
-    let path = config_in(&second, &legacy_config(&second));
-    std::fs::write(backup_of(&path), "earlier copy").unwrap();
-    upsert_sort_source_with_home(&path, &source_at(&paths(&second).0, &[]), None, None).unwrap();
+    let second_path = config_in(&second, &legacy_config(&second));
+    std::fs::write(backup_of(&second_path), "earlier copy").unwrap();
+    upsert_sort_source_with_home(
+        &second_path,
+        &source_at(&paths(&second).0, &[]),
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(
-        std::fs::read_to_string(backup_of(&path)).unwrap(),
+        std::fs::read_to_string(backup_of(&second_path)).unwrap(),
         "earlier copy"
     );
 }
@@ -513,7 +519,7 @@ fn a_link_to_nothing_is_no_copy_and_is_not_written_through() {
 #[cfg(unix)]
 #[test]
 fn the_copy_has_the_permissions_of_the_config() {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::PermissionsExt as _;
     let base = tempfile::tempdir().unwrap();
     let path = config_in(&base, &legacy_config(&base));
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();

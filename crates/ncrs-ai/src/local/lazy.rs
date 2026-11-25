@@ -350,7 +350,7 @@ mod tests {
             question: None,
             previous_search: None,
         };
-        assert!(model.understand(&turn).is_err());
+        model.understand(&turn).unwrap_err();
         assert_eq!(workers_of(&shared), 1);
         drop(model);
         LazyLocalModel::shutdown_all();

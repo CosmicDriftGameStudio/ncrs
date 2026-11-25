@@ -174,7 +174,7 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
         MenuTarget::File { path, .. } => file_views::menu_entries(state, path)
             .into_iter()
             .enumerate()
-            .map(|(index, entry)| file_menu::row(menu, index, entry, ctx))
+            .map(|(index, file_entry)| file_menu::row(menu, index, file_entry, ctx))
             .collect(),
         MenuTarget::Conflict(path) => {
             let conflict = state

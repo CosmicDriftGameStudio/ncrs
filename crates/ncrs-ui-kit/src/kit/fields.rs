@@ -244,13 +244,12 @@ pub fn labelled_checkbox<'a, M: Clone + 'a>(
 const COUNTER_ROOM: f32 = 56.0;
 
 /// A single-line field with `counter` ("12/72") written at its right end, in
-/// the warning color while `over` is set, and the frame of keyboard focus while
-/// `has_focus`. The counter only tells; it takes no input and blocks nothing.
+/// the warning color while `over` is set. The counter only tells; it takes no
+/// input and blocks nothing.
 pub fn counted_text_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
     (counter, over): (String, bool),
-    has_focus: bool,
     id: impl Into<iced::widget::Id>,
     on_input: Option<impl Fn(String) -> M + 'a>,
     on_submit: M,
@@ -270,7 +269,7 @@ pub fn counted_text_field<'a, M: Clone + 'a>(
         Look::Counted,
         palette,
     );
-    let counted = iced::widget::stack![
+    iced::widget::stack![
         field,
         iced::widget::container(
             iced::widget::text(counter)
@@ -283,8 +282,8 @@ pub fn counted_text_field<'a, M: Clone + 'a>(
         .padding([0.0, spacing::L])
         .align_x(iced::alignment::Horizontal::Right)
         .align_y(iced::alignment::Vertical::Center),
-    ];
-    super::focused(counted, has_focus, palette)
+    ]
+    .into()
 }
 
 /// A field for a longer text that wraps and takes lines, set in the monospace

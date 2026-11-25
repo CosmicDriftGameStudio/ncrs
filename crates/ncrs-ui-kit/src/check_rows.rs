@@ -33,7 +33,7 @@ const GROUP_INDENT: f32 = 18.0;
 /// How many ignored files are named; the rest is a number.
 const NAMED_FILES: usize = 2;
 
-/// `.env, local.toml and 3 more`
+/// `.env, local.toml and 3 more`.
 pub fn named_files(files: &[String], lang: Language) -> String {
     let shown: Vec<&str> = files.iter().take(NAMED_FILES).map(String::as_str).collect();
     let names = shown.join(", ");
@@ -155,22 +155,22 @@ pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<M>, palette: &Palette) -> Ele
             .clip(true),
     ]
     .align_y(alignment::Vertical::Center);
-    if let Some(reason) = reason {
+    if let Some(shown_reason) = reason {
         name_line = name_line.push(
-            container(line(reason, font_size::SMALL, reason_ink))
+            container(line(shown_reason, font_size::SMALL, reason_ink))
                 .width(REASON_WIDTH)
                 .align_x(alignment::Horizontal::Right)
                 .clip(true),
         );
     }
     let second = match (failure, item.detail) {
-        (Some(failure), _) => {
+        (Some(problem), _) => {
             let ink = if item.cursor { text_ink } else { palette.error };
-            Some((failure, ink))
+            Some((problem, ink))
         }
         (None, Some(place)) => {
-            let place = ellipsize_middle(&place, DETAIL_CHARS);
-            Some((format!("\u{25a2} {place}"), dim_ink))
+            let shown_place = ellipsize_middle(&place, DETAIL_CHARS);
+            Some((format!("\u{25a2} {shown_place}"), dim_ink))
         }
         (None, None) => None,
     };

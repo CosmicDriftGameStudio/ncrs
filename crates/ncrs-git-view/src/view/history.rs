@@ -35,10 +35,10 @@ fn entry_row<'a>(
     let columns = state.columns_in_view(ctx.columns);
     let commit = &entry.commit;
     let chips = entry.old_path.as_ref().map(|old| {
-        let old = fit_middle(old, RENAME_ROOM, font_size::SMALL);
+        let old_name = fit_middle(old, RENAME_ROOM, font_size::SMALL);
         let note = fill_template(
             ctx.lang.text(Msg::GitViewHistoryRenamed),
-            &[("{old}", &old)],
+            &[("{old}", &old_name)],
         );
         (note, RefChipKind::Tag)
     });

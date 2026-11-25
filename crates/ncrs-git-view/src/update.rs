@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use iced::widget::operation;
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::Task;
-use ncrs_git::{ChangedFile, DiffTarget};
+use ncrs_git::{ChangedFile, CommitDetail, DiffTarget, FileDiff, Log, RefsOverview};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::page_scroll::scroll_page_by;
@@ -76,103 +76,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
 
 fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
     match message {
-        Message::RefsLoaded(generation, result) => {
-            if !state.loads.refs.is_current(generation) {
-                return quiet(Task::none());
-            }
-            match *result {
-                Ok(overview) => {
-                    state.overview = Some(overview);
-                    handlers::refresh_sync(state, ctx);
-                    state.sidebar_cursor = state
-                        .sidebar_cursor
-                        .min(state.sidebar_items().len().saturating_sub(1));
-                    quiet(ensure_detail(state))
-                }
-                Err(reason) => failed(state, ctx, &reason),
-            }
-        }
-        Message::LogLoaded(generation, result) => {
-            if !state.loads.log.is_current(generation) {
-                return quiet(Task::none());
-            }
-            match *result {
-                Ok(log) => {
-                    let cursor_sha = state
-                        .commit_at(state.commit_cursor)
-                        .map(|commit| commit.id.clone());
-                    state.log = Some(log);
-                    if let Some(row) = cursor_sha.and_then(|sha| state.row_of_commit(&sha)) {
-                        state.commit_cursor = row;
-                    }
-                    state.close_menu_if_stale();
-                    let jump = match state.pending_jump.take() {
-                        Some(sha) => navigate::jump_to(state, sha),
-                        None => Task::none(),
-                    };
-                    quiet(Task::batch([ensure_detail(state), jump]))
-                }
-                Err(reason) => failed(state, ctx, &reason),
-            }
-        }
-        Message::DetailLoaded(generation, result) => {
-            if !state.loads.detail.is_current(generation) {
-                return quiet(Task::none());
-            }
-            match *result {
-                Ok(info) => {
-                    let sha = info.id.clone();
-                    state.file_cursor = 0;
-                    state.detail = Some(Detail {
-                        subject: Subject::Commit(info.id.clone()),
-                        files: info.files.clone(),
-                        info: Some(info),
-                    });
-                    state.close_menu_if_stale();
-                    quiet(load::containing(state, sha))
-                }
-                Err(reason) => failed(state, ctx, &reason),
-            }
-        }
-        Message::WorkingLoaded(generation, result) => {
-            if !state.loads.detail.is_current(generation) {
-                return quiet(Task::none());
-            }
-            match result {
-                Ok(files) => {
-                    state.file_cursor = 0;
-                    state.detail = Some(Detail {
-                        subject: Subject::Working,
-                        info: None,
-                        files,
-                    });
-                    state.close_menu_if_stale();
-                    quiet(Task::none())
-                }
-                Err(reason) => failed(state, ctx, &reason),
-            }
-        }
-        Message::DiffLoaded(generation, result) => {
-            if !state.loads.diff.is_current(generation) {
-                return quiet(Task::none());
-            }
-            match *result {
-                Ok(diff) => {
-                    if let Some(shown) = state.diff.as_mut() {
-                        shown.diff = Some(diff);
-                        shown.hunk = 0;
-                    }
-                    quiet(operation::scroll_to(
-                        DIFF_ID,
-                        AbsoluteOffset {
-                            x: None,
-                            y: Some(0.0),
-                        },
-                    ))
-                }
-                Err(reason) => failed(state, ctx, &reason),
-            }
-        }
+        Message::RefsLoaded(generation, result) => refs_loaded(state, ctx, generation, *result),
+        Message::LogLoaded(generation, result) => log_loaded(state, ctx, generation, *result),
+        Message::DetailLoaded(generation, result) => detail_loaded(state, ctx, generation, *result),
+        Message::WorkingLoaded(generation, result) => working_loaded(state, ctx, generation, result),
+        Message::DiffLoaded(generation, result) => diff_loaded(state, ctx, generation, *result),
         Message::FilterChanged(filter) => {
             state.filter = filter;
             state.limit = PAGE;
@@ -204,24 +112,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.area = Area::Detail;
             quiet(Task::none())
         }
-        Message::FilePressed(index) => {
-            state.area = Area::Detail;
-            state.file_cursor = index;
-            file_views::close_blame(state);
-            if state.diff_has_own_list() {
-                if let Some(shown) = state
-                    .diff
-                    .as_mut()
-                    .filter(|shown| index < shown.files.len())
-                {
-                    shown.file = index;
-                    shown.diff = None;
-                    shown.hunk = 0;
-                }
-                return quiet(reload_diff(state));
-            }
-            quiet(open_diff(state, index))
-        }
+        Message::FilePressed(index) => file_pressed(state, index),
         Message::ToggleFold(fold) => (Task::none(), toggle_fold(state, fold)),
         Message::ResizePressed(column) => {
             state.column_drag = Some(ColumnDrag {
@@ -344,26 +235,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.close();
             (Task::none(), Some(Action::Close))
         }
-        Message::OpenMenu(target) => {
-            if let MenuTarget::Commit(sha) = &target {
-                let Some(row) = state.row_of_commit(sha) else {
-                    return quiet(Task::none());
-                };
-                state.area = Area::Commits;
-                state.commit_cursor = row;
-            }
-            if let MenuTarget::File { path, .. } = &target {
-                state.area = Area::Detail;
-                let mut listed = state.files_in_detail().iter();
-                if let Some(index) = listed.position(|file| file.path == *path) {
-                    state.file_cursor = index;
-                }
-            }
-            state.actions.menu = Some(OpenMenu::new(target));
-            file_views::start_menu_on_first_enabled(state);
-            state.close_menu_if_stale();
-            quiet(Task::none())
-        }
+        Message::OpenMenu(target) => open_menu(state, target),
         Message::OpenMenuKey => {
             let target = match state.area {
                 Area::Commits if state.list_is_covered() => file_views::menu_of_current(state),
@@ -393,7 +265,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::BlamePressed(_)
         | Message::BlameScrolled(_)
         | Message::FileMenu(_)) => file_views::handle(state, file, ctx),
-        Message::Cleanup(message) => crate::cleanup::update(state, message),
+        Message::Cleanup(request) => crate::cleanup::update(state, request),
         Message::ConfirmDialog if matches!(state.actions.dialog, Some(Dialog::Tag(_))) => {
             commit_menu::handle(state, Message::CreateTag, ctx)
         }
@@ -499,6 +371,173 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::ChipPressed(_)
         | Message::ContainingLoaded(..)) => navigate::handle(state, moved, ctx),
     }
+}
+
+fn refs_loaded(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    result: Result<RefsOverview, String>,
+) -> Outcome {
+    if !state.loads.refs.is_current(generation) {
+        return quiet(Task::none());
+    }
+    match result {
+        Ok(overview) => {
+            state.overview = Some(overview);
+            handlers::refresh_sync(state, ctx);
+            state.sidebar_cursor = state
+                .sidebar_cursor
+                .min(state.sidebar_items().len().saturating_sub(1));
+            quiet(ensure_detail(state))
+        }
+        Err(reason) => failed(state, ctx, &reason),
+    }
+}
+
+fn log_loaded(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    result: Result<Log, String>,
+) -> Outcome {
+    if !state.loads.log.is_current(generation) {
+        return quiet(Task::none());
+    }
+    match result {
+        Ok(log) => {
+            let cursor_sha = state
+                .commit_at(state.commit_cursor)
+                .map(|commit| commit.id.clone());
+            state.log = Some(log);
+            if let Some(row) = cursor_sha.and_then(|sha| state.row_of_commit(&sha)) {
+                state.commit_cursor = row;
+            }
+            state.close_menu_if_stale();
+            let jump = match state.pending_jump.take() {
+                Some(sha) => navigate::jump_to(state, sha),
+                None => Task::none(),
+            };
+            quiet(Task::batch([ensure_detail(state), jump]))
+        }
+        Err(reason) => failed(state, ctx, &reason),
+    }
+}
+
+fn detail_loaded(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    result: Result<CommitDetail, String>,
+) -> Outcome {
+    if !state.loads.detail.is_current(generation) {
+        return quiet(Task::none());
+    }
+    match result {
+        Ok(info) => {
+            let sha = info.id.clone();
+            state.file_cursor = 0;
+            state.detail = Some(Detail {
+                subject: Subject::Commit(info.id.clone()),
+                files: info.files.clone(),
+                info: Some(info),
+            });
+            state.close_menu_if_stale();
+            quiet(load::containing(state, sha))
+        }
+        Err(reason) => failed(state, ctx, &reason),
+    }
+}
+
+fn working_loaded(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    result: Result<Vec<ChangedFile>, String>,
+) -> Outcome {
+    if !state.loads.detail.is_current(generation) {
+        return quiet(Task::none());
+    }
+    match result {
+        Ok(files) => {
+            state.file_cursor = 0;
+            state.detail = Some(Detail {
+                subject: Subject::Working,
+                info: None,
+                files,
+            });
+            state.close_menu_if_stale();
+            quiet(Task::none())
+        }
+        Err(reason) => failed(state, ctx, &reason),
+    }
+}
+
+fn diff_loaded(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    result: Result<FileDiff, String>,
+) -> Outcome {
+    if !state.loads.diff.is_current(generation) {
+        return quiet(Task::none());
+    }
+    match result {
+        Ok(diff) => {
+            if let Some(shown) = state.diff.as_mut() {
+                shown.diff = Some(diff);
+                shown.hunk = 0;
+            }
+            quiet(operation::scroll_to(
+                DIFF_ID,
+                AbsoluteOffset {
+                    x: None,
+                    y: Some(0.0),
+                },
+            ))
+        }
+        Err(reason) => failed(state, ctx, &reason),
+    }
+}
+
+fn file_pressed(state: &mut State, index: usize) -> Outcome {
+    state.area = Area::Detail;
+    state.file_cursor = index;
+    file_views::close_blame(state);
+    if state.diff_has_own_list() {
+        if let Some(shown) = state
+            .diff
+            .as_mut()
+            .filter(|shown| index < shown.files.len())
+        {
+            shown.file = index;
+            shown.diff = None;
+            shown.hunk = 0;
+        }
+        return quiet(reload_diff(state));
+    }
+    quiet(open_diff(state, index))
+}
+
+fn open_menu(state: &mut State, target: MenuTarget) -> Outcome {
+    if let MenuTarget::Commit(sha) = &target {
+        let Some(row) = state.row_of_commit(sha) else {
+            return quiet(Task::none());
+        };
+        state.area = Area::Commits;
+        state.commit_cursor = row;
+    }
+    if let MenuTarget::File { path, .. } = &target {
+        state.area = Area::Detail;
+        let mut listed = state.files_in_detail().iter();
+        if let Some(index) = listed.position(|file| file.path == *path) {
+            state.file_cursor = index;
+        }
+    }
+    state.actions.menu = Some(OpenMenu::new(target));
+    file_views::start_menu_on_first_enabled(state);
+    state.close_menu_if_stale();
+    quiet(Task::none())
 }
 
 pub fn failed(state: &mut State, ctx: &Ctx, reason: &str) -> Outcome {
@@ -755,8 +794,8 @@ pub fn reload_diff(state: &mut State) -> Task<Message> {
     };
     let ignore_whitespace = shown.ignore_whitespace;
     if let Subject::Compare { from, to } = &shown.subject {
-        let (ends, file) = ((from.clone(), to.clone()), file.clone());
-        return load::compare_diff(state, ends, &file, ignore_whitespace);
+        let (ends, compared) = ((from.clone(), to.clone()), file.clone());
+        return load::compare_diff(state, ends, &compared, ignore_whitespace);
     }
     let target = target_of(&shown.subject, file);
     load::file_diff(state, target, ignore_whitespace)

@@ -187,8 +187,8 @@ fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<Path
 /// A source that is no longer watched loses its backlog at once, so it is taken
 /// stock of anew even when it is switched on again outside this session.
 fn switch_watching(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
-    let sources = |filing: &Filing| -> Vec<SortSource> {
-        filing
+    let sources = |settings: &Filing| -> Vec<SortSource> {
+        settings
             .sources
             .iter()
             .map(|entry| entry.source.clone())
@@ -201,11 +201,11 @@ fn switch_watching(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<
         .filing
         .as_ref()
         .and_then(|module| module.sorting_access(Arc::clone(&ctx.trash.0)));
-    let (false, Some(access)) = (switched_off.is_empty(), access) else {
+    let (false, Some(sorting_access)) = (switched_off.is_empty(), access) else {
         return Task::none();
     };
     Task::future(tokio::task::spawn_blocking(move || {
-        forget_backlog(&access, &switched_off)
+        forget_backlog(&sorting_access, &switched_off)
     }))
     .discard()
 }

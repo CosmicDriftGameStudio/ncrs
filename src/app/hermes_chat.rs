@@ -217,11 +217,11 @@ impl App {
                 self.suggest_rules_for(&folder, pattern)
             }
             ncrs_hermes_chat::Action::OpenSortDialog { folder } => {
-                let folder = folder.or_else(|| {
+                let sorted_folder = folder.or_else(|| {
                     let panel = self.active_panel();
                     (panel.remote().is_none() && !panel.is_virtual()).then(|| panel.path.clone())
                 });
-                self.open_once_dialog(folder)
+                self.open_once_dialog(sorted_folder)
             }
             ncrs_hermes_chat::Action::OpenRuleForm => {
                 let target = self

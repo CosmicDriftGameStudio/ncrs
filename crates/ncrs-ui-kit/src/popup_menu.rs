@@ -68,7 +68,7 @@ fn menu_item_toned<'a, M: Clone + 'a>(
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(MENU_ITEM_HEIGHT)
         .width(Length::Fill);
-    let item = if danger {
+    let styled_item = if danger {
         let plain = theme::menu_item(palette, is_selected);
         let error = palette.error;
         item.style(move |theme, status| {
@@ -82,8 +82,8 @@ fn menu_item_toned<'a, M: Clone + 'a>(
         item.style(theme::menu_item(palette, is_selected))
     };
     match (enabled, on_hover) {
-        (true, Some(hover)) => Element::from(mouse_area(item).on_enter(hover)),
-        _ => item.into(),
+        (true, Some(hover)) => Element::from(mouse_area(styled_item).on_enter(hover)),
+        _ => styled_item.into(),
     }
 }
 

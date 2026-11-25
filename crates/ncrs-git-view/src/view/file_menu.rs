@@ -50,19 +50,19 @@ fn facts_height(state: &State, ctx: ViewCtx<'_>) -> f32 {
         .detail
         .as_ref()
         .and_then(|detail| detail.info.as_ref());
-    let Some(info) = info else {
+    let Some(commit_info) = info else {
         return text("", font_size::ROW);
     };
-    let has_committer = info.committer != info.author || info.committer_time != info.author_time;
+    let has_committer = commit_info.committer != commit_info.author || commit_info.committer_time != commit_info.author_time;
     let has_branches = state
         .containing
         .as_ref()
-        .is_some_and(|(id, labels)| *id == info.id && !labels.is_empty());
+        .is_some_and(|(id, labels)| *id == commit_info.id && !labels.is_empty());
     let facts = 2
         + usize::from(has_committer)
-        + usize::from(!info.parents.is_empty())
+        + usize::from(!commit_info.parents.is_empty())
         + usize::from(has_branches);
-    let mut lines = info.message.lines();
+    let mut lines = commit_info.message.lines();
     let title = text(lines.next().unwrap_or_default(), font_size::ROW);
     let body: f32 = lines
         .filter(|line| !line.trim().is_empty())

@@ -234,12 +234,13 @@ mod ui_tests {
         let count = 3 + repo_index * 2;
         Scan {
             list: CleanupList {
-                branches: (0..count)
-                    .map(|index| {
-                        branch(
-                            &format!("feature/step-{repo_index}-{index}"),
-                            reasons[index % 2],
-                        )
+                branches: reasons
+                    .into_iter()
+                    .cycle()
+                    .take(count)
+                    .enumerate()
+                    .map(|(index, reason)| {
+                        branch(&format!("feature/step-{repo_index}-{index}"), reason)
                     })
                     .collect(),
                 worktrees: Vec::new(),

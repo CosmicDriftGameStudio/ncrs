@@ -273,7 +273,10 @@ impl WordIndex {
         found.sort_by(|left, right| {
             let share = |entry: &(&str, usize, usize)| {
                 // Compared as fractions of the same denominator.
-                entry.2.saturating_mul(1000) / others.len().max(1)
+                entry
+                    .2
+                    .saturating_mul(1000)
+                    .div_euclid(others.len().max(1))
             };
             share(left)
                 .cmp(&share(right))

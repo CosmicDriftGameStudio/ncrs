@@ -54,7 +54,10 @@ pub enum RunError {
 impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Source(err) => write!(f, "the source cannot be read: {err:?}"),
+            Self::Source(err) => {
+                let cause = format!("{err:?}");
+                write!(f, "the source cannot be read: {cause}")
+            }
             Self::Waiting(targets) => {
                 let names: Vec<String> = targets
                     .iter()
@@ -287,7 +290,7 @@ impl Job<'_> {
             path: entry.path.clone(),
             places,
         };
-        if let Some(own) = known.filter(|known| !known.duplicate && report.is_done()) {
+        if let Some(own) = known.filter(|found| !found.duplicate && report.is_done()) {
             self.access
                 .with_index(|index| close_question(index, own.document))?;
         }
@@ -305,20 +308,20 @@ impl Job<'_> {
                 Some(found) if found.hash == entry.hash => Some(found),
                 _ => index.document_by_hash(&entry.hash).map_err(text)?,
             };
-            let Some(document) = document else {
+            let Some(known_document) = document else {
                 return Ok(None);
             };
-            let mut duplicate = document.path != entry.path;
-            if duplicate && !document.path.exists() {
+            let mut duplicate = known_document.path != entry.path;
+            if duplicate && !known_document.path.exists() {
                 if let Some(stamp) = stamp_at(&entry.path) {
                     index
-                        .set_document_path(document.id, &entry.path, stamp)
+                        .set_document_path(known_document.id, &entry.path, stamp)
                         .map_err(text)?;
                     duplicate = false;
                 }
             }
             Ok(Some(Known {
-                document: document.id,
+                document: known_document.id,
                 duplicate,
             }))
         })

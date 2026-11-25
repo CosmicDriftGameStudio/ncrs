@@ -90,7 +90,7 @@ pub fn with_read_folders(
     home: Option<&Path>,
 ) -> Result<String, FilingWriteError> {
     let config = parse_config(source, path, home).map_err(FilingWriteError::Config)?;
-    let locations = if sorting_is_in_file(&config.modules.filing) {
+    let locations_to_write = if sorting_is_in_file(&config.modules.filing) {
         folders_of_their_own(&config, locations, home)
     } else {
         locations.to_vec()
@@ -100,7 +100,7 @@ pub fn with_read_folders(
         .ok_or_else(|| not_a_table(path, "modules"))?;
     let filing =
         sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
-    set_locations(filing, &locations)?;
+    set_locations(filing, &locations_to_write)?;
     Ok(document.to_string())
 }
 

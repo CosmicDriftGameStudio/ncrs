@@ -240,11 +240,11 @@ fn back_up(target: &Path) -> Result<(), FilingWriteError> {
     }
     let mut partial = backup.as_os_str().to_owned();
     partial.push(".partial");
-    let partial = PathBuf::from(partial);
-    copy_anew(target, &partial)
-        .and_then(|()| std::fs::rename(&partial, &backup))
+    let partial_path = PathBuf::from(partial);
+    copy_anew(target, &partial_path)
+        .and_then(|()| std::fs::rename(&partial_path, &backup))
         .map_err(|err| {
-            let _what_is_left = std::fs::remove_file(&partial);
+            let _what_is_left = std::fs::remove_file(&partial_path);
             io_error(&backup)(err)
         })
 }
@@ -285,7 +285,8 @@ fn take_list(
         }
         Some(item) => item
             .into_array_of_tables()
-            .map_err(|_| not_a_table(path, key)),
+            .ok()
+            .ok_or_else(|| not_a_table(path, key)),
     }
 }
 

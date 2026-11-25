@@ -293,21 +293,23 @@ impl PathFilter {
         exclude: &str,
         case_sensitive: bool,
     ) -> Result<Self, SearchError> {
-        let include = parse_patterns(include, true, cfg!(windows));
-        let exclude = parse_patterns(exclude, false, cfg!(windows));
+        let include_patterns = parse_patterns(include, true, cfg!(windows));
+        let exclude_patterns = parse_patterns(exclude, false, cfg!(windows));
         Ok(Self {
             root,
-            include: if include.is_empty() {
+            include: if include_patterns.is_empty() {
                 None
             } else {
-                Some(build_glob_set(include.iter(), case_sensitive)?)
+                Some(build_glob_set(include_patterns.iter(), case_sensitive)?)
             },
             exclude: build_glob_set(
-                exclude.iter().filter(|pattern| !pattern.dirs_only),
+                exclude_patterns
+                    .iter()
+                    .filter(|pattern| !pattern.dirs_only),
                 case_sensitive,
             )?,
             exclude_dirs: build_glob_set(
-                exclude.iter().filter(|pattern| pattern.dirs_only),
+                exclude_patterns.iter().filter(|pattern| pattern.dirs_only),
                 case_sensitive,
             )?,
             case_sensitive,

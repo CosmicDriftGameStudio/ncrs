@@ -13,7 +13,7 @@ mod git_cli;
 use git_cli::{read, repo, write, Repo};
 use ncrs_git::{ConflictChoice, HunkSide, IntegrateOutcome};
 
-const FIVE_MIB_OF_LINES: usize = 5 * 1024 * 1024 / 8;
+const FIVE_MIB_OF_LINES: usize = usize::div_euclid(5 * 1024 * 1024, 8);
 
 fn large(first: &str, last: &str) -> String {
     let middle = "0123456\n".repeat(FIVE_MIB_OF_LINES);
@@ -28,10 +28,13 @@ fn large_conflict() -> Repo {
     repo.commit_file("c.txt", &large("top", "F"), "feature side");
     repo.git.checkout("main").unwrap();
     repo.commit_file("c.txt", &large("top", "M"), "main side");
-    assert!(matches!(
-        repo.git.merge("feature").unwrap(),
-        IntegrateOutcome::Conflicts(_)
-    ));
+    assert!(
+        matches!(
+            repo.git.merge("feature").unwrap(),
+            IntegrateOutcome::Conflicts(_)
+        ),
+        "the merge stops at the conflict"
+    );
     repo
 }
 

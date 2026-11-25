@@ -10,10 +10,10 @@ pub fn file_name_with_extension(name: &str, extension: Option<&str>) -> String {
         _ => name,
     };
     match extension
-        .map(|extension| extension.trim_start_matches('.'))
-        .filter(|extension| !extension.is_empty())
+        .map(|ending| ending.trim_start_matches('.'))
+        .filter(|ending| !ending.is_empty())
     {
-        Some(extension) => format!("{stem}.{extension}"),
+        Some(ending) => format!("{stem}.{ending}"),
         None => stem.to_owned(),
     }
 }

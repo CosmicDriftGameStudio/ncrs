@@ -154,7 +154,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
             session.trash_dupes =
                 !session.trash_dupes && !session.copy_only() && session.trash_can_restore;
         }
-        message => return edit(session, message, ctx),
+        other => return edit(session, other, ctx),
     }
     nothing()
 }
@@ -211,9 +211,9 @@ fn edit(session: &mut Session, message: Message, ctx: &Ctx) -> Step {
                 return only(change(session, question.relative, Change::Stay, ctx));
             }
         }
-        message => {
+        other => {
             if let Some(question) = session.question.as_mut() {
-                move_in_question(question, &message);
+                move_in_question(question, &other);
             }
         }
     }
@@ -245,7 +245,7 @@ fn planned(
         Ok(decided) => *decided,
         Err(reason) => {
             // A stopped plan has no reason.
-            session.error = Some(reason).filter(|reason| !reason.is_empty());
+            session.error = Some(reason).filter(|problem| !problem.is_empty());
             return Task::none();
         }
     };
@@ -390,7 +390,7 @@ fn submit_rename(session: &mut Session, ctx: &Ctx) -> Task<Message> {
     session.renaming = None;
     session.error = None;
     match place {
-        Some((from, place)) => change(session, from, Change::Places(vec![place]), ctx),
+        Some((from, new_place)) => change(session, from, Change::Places(vec![new_place]), ctx),
         None => Task::none(),
     }
 }
@@ -412,7 +412,9 @@ fn pick_folder(session: &Session) -> Step {
     let start = current.or_else(|| targets.next().map(|target| target.path.clone()));
     (
         Task::none(),
-        start.map(|start| Action::PickFolder { start }),
+        start.map(|first_folder| Action::PickFolder {
+            start: first_folder,
+        }),
     )
 }
 
@@ -431,11 +433,11 @@ fn folder_picked(session: &mut Session, folder: Option<PathBuf>, ctx: &Ctx) -> T
     let Some(picked) = folder else {
         return Task::none();
     };
-    let picked = canonical_path(&picked).unwrap_or(picked);
+    let real_folder = canonical_path(&picked).unwrap_or(picked);
     let Some(row) = session.selected_row() else {
         return Task::none();
     };
-    let Some((target, below)) = target_of(session, &picked) else {
+    let Some((target, below)) = target_of(session, &real_folder) else {
         session.error = Some(ctx.lang.text(Msg::FilingViewErrorOutside).to_owned());
         return Task::none();
     };

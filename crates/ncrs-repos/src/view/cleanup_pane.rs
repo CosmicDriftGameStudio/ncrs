@@ -172,7 +172,7 @@ fn group<'a>(cleanup: &Cleanup, repo: &Path, ctx: ViewCtx<'a>) -> Element<'a, Me
         }
         let stays = cleanup
             .scan(repo)
-            .map_or(&[][..], |scan| &scan.list.kept[..]);
+            .map_or(&[][..], |scan| &*scan.list.kept);
         for kept in stays.iter().filter(|kept| kept.is_worktree) {
             let name = Path::new(&kept.name).file_name().map_or_else(
                 || kept.name.clone(),
@@ -365,7 +365,7 @@ fn remote_option<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message
             } else {
                 Check::Off
             },
-            ready.then(|| Message::Cleanup(CleanupMessage::ToggleRemote)),
+            ready.then_some(Message::Cleanup(CleanupMessage::ToggleRemote)),
             ctx.palette,
         ),
         text_cell,

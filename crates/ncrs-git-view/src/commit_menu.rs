@@ -198,11 +198,11 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 return quiet(Task::none());
             }
             match *files {
-                Ok(files) => {
+                Ok(differing) => {
                     state.file_cursor = 0;
                     state.diff = Some(DiffState {
                         subject,
-                        files,
+                        files: differing,
                         file: 0,
                         diff: None,
                         unified: false,

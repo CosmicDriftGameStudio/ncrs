@@ -59,9 +59,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     for line in trouble(session, ctx) {
         page = page.push(plan_side_line(error_line(line, ctx.palette)));
     }
-    let page = page.push(footer(session, ctx.lang, ctx.palette));
+    let page_with_footer = page.push(footer(session, ctx.lang, ctx.palette));
     match &session.question {
-        Some(question) => stack![page, question_dialog(question, ctx)].into(),
-        None => page.into(),
+        Some(question) => stack![page_with_footer, question_dialog(question, ctx)].into(),
+        None => page_with_footer.into(),
     }
 }

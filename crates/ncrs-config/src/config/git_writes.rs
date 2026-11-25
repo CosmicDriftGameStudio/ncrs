@@ -41,6 +41,6 @@ mod tests {
 
     #[test]
     fn an_unknown_key_in_the_section_is_refused() {
-        assert!(from_text("[git]\nspeed = 3\n").is_err());
+        from_text("[git]\nspeed = 3\n").unwrap_err();
     }
 }

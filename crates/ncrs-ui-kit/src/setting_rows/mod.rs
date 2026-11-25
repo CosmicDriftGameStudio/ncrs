@@ -408,7 +408,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         palette: &Palette,
     ) -> Self {
         let arrow = if open { "▾" } else { "▸" };
-        let lead = Row::new()
+        let arrow_and_lead = Row::new()
             .push(status_text(arrow.to_owned(), palette.text))
             .push(lead)
             .spacing(spacing::M)
@@ -424,7 +424,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             ..Self::text(label, description, build(None))
         }
         .with_buttons(presses, build)
-        .with_leading(lead.into())
+        .with_leading(arrow_and_lead.into())
         .with_label_action(on_toggle)
         .with_quiet_label()
     }
@@ -613,9 +613,9 @@ fn heading_row<'a, M: Clone + 'a>(
         .size(font_size::HEADER)
         .color(palette.text)
         .wrapping(Wrapping::None);
-    let note = text(note).size(font_size::SMALL).color(palette.dim_text);
+    let note_text = text(note).size(font_size::SMALL).color(palette.dim_text);
     iced::widget::column![
-        row![name, container(note).width(Length::Fill), control]
+        row![name, container(note_text).width(Length::Fill), control]
             .spacing(spacing::M)
             .height(size::BUTTON + 2.0 * spacing::XS)
             .align_y(alignment::Vertical::Center),

@@ -94,9 +94,9 @@ impl Watching {
                 .map(|source| source.path.clone())
                 .collect()
         };
-        let (before, after) = (watched(before), watched(after));
-        self.switched_on.extend(after.difference(&before).cloned());
-        before.difference(&after).cloned().collect()
+        let (watched_before, watched_after) = (watched(before), watched(after));
+        self.switched_on.extend(watched_after.difference(&watched_before).cloned());
+        watched_before.difference(&watched_after).cloned().collect()
     }
 
     pub fn is_switched_on(&self, source: &Path) -> bool {
@@ -461,10 +461,10 @@ mod tests {
         assert_eq!(due[0].0.path, PathBuf::from("/other"));
         watching.finish(&Ok(Vec::new()));
 
-        let due = watching.take_due(&sources, never_busy);
-        assert_eq!(due.len(), 1);
-        assert_eq!(due[0].0.path, PathBuf::from("/in"));
-        assert_eq!(due[0].1, WatchedFiles::All);
+        let due_later = watching.take_due(&sources, never_busy);
+        assert_eq!(due_later.len(), 1);
+        assert_eq!(due_later[0].0.path, PathBuf::from("/in"));
+        assert_eq!(due_later[0].1, WatchedFiles::All);
     }
 
     #[test]

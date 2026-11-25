@@ -21,7 +21,7 @@ mod ui_tests {
     use iced_test::Simulator;
     use ncrs_config::config::{Filing, SourceSetting, TargetSetting};
     use ncrs_config::file_list_tags::FileListTags;
-    use ncrs_config::palette::{Palette, ThemePreset};
+    use ncrs_config::palette::ThemePreset;
     use ncrs_core::facts::{RunDay, RunFacts};
     use ncrs_filing::rules_work::{ListedRule, RulesLoad};
     use ncrs_hermes_ui::rules_page::RulesPage;
@@ -126,16 +126,16 @@ mod ui_tests {
     fn rules() -> RulesPage {
         use ConditionKind::{Iban, Kind, Recipient, Sender, TaxId, Word};
         let all = |list: &[(ConditionKind, &str)]| {
-            let list = list
+            let conditions = list
                 .iter()
                 .map(|(kind, value)| Condition::new(*kind, *value));
-            RuleConditions::all_of(list.collect())
+            RuleConditions::all_of(conditions.collect())
         };
         let either = |list: &[(ConditionKind, &str)]| {
-            let list = list
+            let conditions = list
                 .iter()
                 .map(|(kind, value)| Condition::new(*kind, *value));
-            RuleConditions::any_of(list.collect())
+            RuleConditions::any_of(conditions.collect())
         };
         let firm = (Recipient, "Beispiel AG");
         let rows = [
@@ -235,15 +235,15 @@ mod ui_tests {
                     confirmed: true,
                     enabled: true,
                 };
-                let target = id(target);
+                let target_id = id(target);
                 ListedRule {
                     rule: Rule {
                         id: index
-                            .create_rule_in(&spec, RuleOrigin::Hand, &target)
+                            .create_rule_in(&spec, RuleOrigin::Hand, &target_id)
                             .unwrap(),
                         position: i64::try_from(at).unwrap() + 1,
                         origin: RuleOrigin::Hand,
-                        target,
+                        target: target_id,
                         spec,
                     },
                     global_index: at,
@@ -330,7 +330,7 @@ mod ui_tests {
         lang: Language,
         look: impl FnOnce(Simulator<'_, Message, iced::Theme>) -> T,
     ) -> T {
-        let palette: Palette = ThemePreset::Cosmic.palette();
+        let palette = ThemePreset::Cosmic.palette();
         let tags = FileListTags::default();
         let ctx = ViewCtx {
             lang,

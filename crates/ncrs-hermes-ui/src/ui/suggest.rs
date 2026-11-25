@@ -92,8 +92,8 @@ pub fn dialog<'a>(
         lang,
         palette,
     );
-    if let Some(subtitle) = subtitle {
-        frame = frame.subtitle(subtitle);
+    if let Some(subject_line) = subtitle {
+        frame = frame.subtitle(subject_line);
     }
     frame
         .buttons(frame_buttons)

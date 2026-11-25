@@ -92,8 +92,8 @@ impl AiStep {
         .map_err(|err| err.to_string())?;
         Ok(document
             .filter(|found| is_open_for_fields(item.location.mode, found.status))
-            .map(|document| Subject {
-                document,
+            .map(|open_document| Subject {
+                document: open_document,
                 kinds,
                 origins,
             }))

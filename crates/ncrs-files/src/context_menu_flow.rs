@@ -237,7 +237,7 @@ impl Panels {
             !in_archive && !on_server && facts.hermes.action_enabled(action)
         };
         let cursor = facts.hermes.cursor.unwrap_or_default();
-        let hermes = facts.hermes.ready.then(|| HermesMenu {
+        let hermes = facts.hermes.ready.then_some(HermesMenu {
             excluded: cursor.excluded,
             is_source: cursor.is_source,
             is_target: cursor.is_target,

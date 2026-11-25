@@ -218,7 +218,7 @@ fn try_rule(
         return Ok(None);
     };
     let mut also = Vec::new();
-    let mut filed = 1usize;
+    let mut filed: usize = 1;
     for other in &material.docs {
         if other.hash == doc.hash {
             continue;
@@ -243,5 +243,5 @@ fn try_rule(
     };
     Ok(first_new(access, target, vec![(suggested, Vec::new())], 0)
         .map_err(SuggestError::Index)?
-        .map(|(suggested, _)| (suggested, also)))
+        .map(|(not_dismissed, _)| (not_dismissed, also)))
 }

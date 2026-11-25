@@ -110,7 +110,7 @@ fn item_row<'a>(
             None,
         ),
     };
-    let Some(branch) = branch else {
+    let Some(offered_branch) = branch else {
         return column![].into();
     };
     let ready = dialog.phase == Phase::Ready;
@@ -121,10 +121,10 @@ fn item_row<'a>(
             } else {
                 Check::Off
             },
-            name: branch.name.clone(),
+            name: offered_branch.name.clone(),
             detail: worktree
                 .map(|found| worktree_detail(&found.path, &found.ignored_files, ctx.lang)),
-            reason: offer_text(dialog, branch, worktree.is_some(), ctx.lang),
+            reason: offer_text(dialog, offered_branch, worktree.is_some(), ctx.lang),
             worktree: worktree.is_some(),
             kept: false,
             cursor: dialog.cursor == index,

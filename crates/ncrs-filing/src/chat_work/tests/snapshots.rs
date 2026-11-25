@@ -20,8 +20,8 @@ fn while_a_run_holds_the_index<T>(setup: &Setup, ask: impl FnOnce(&ChatAccess) -
 fn the_ui_gets_no_answer_instead_of_waiting_while_a_run_holds_the_index() {
     let setup = Setup::new();
 
-    assert!(while_a_run_holds_the_index(&setup, ChatAccess::try_kinds).is_err());
-    assert!(setup.access.try_kinds().is_ok());
+    while_a_run_holds_the_index(&setup, ChatAccess::try_kinds).unwrap_err();
+    setup.access.try_kinds().unwrap();
 }
 
 #[test]
@@ -41,5 +41,5 @@ fn kinds_from_before_a_write_are_not_shown_while_the_index_is_busy() {
 
     setup.access.snapshots.forget();
 
-    assert!(while_a_run_holds_the_index(&setup, ChatAccess::try_kinds).is_err());
+    while_a_run_holds_the_index(&setup, ChatAccess::try_kinds).unwrap_err();
 }

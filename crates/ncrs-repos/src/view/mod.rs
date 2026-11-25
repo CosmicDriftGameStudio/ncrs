@@ -169,8 +169,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(run) = state.run() {
         page = page.push(log::view(run, ctx));
     }
-    let page = page.width(Length::Fill).height(Length::Fill);
-    let full_page = column![page, status_bar(state, ctx)].height(Length::Fill);
+    let filled_page = page.width(Length::Fill).height(Length::Fill);
+    let full_page = column![filled_page, status_bar(state, ctx)].height(Length::Fill);
     if let Some(draft) = state.clone_draft() {
         stack![full_page, scrim(clone::dialog(draft, ctx))].into()
     } else if state.menu_open() {

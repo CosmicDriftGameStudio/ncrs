@@ -200,8 +200,8 @@ fn dominant_pattern(docs: &[Doc], group: &[usize]) -> Option<String> {
     learn_archive(&archive)
         .into_iter()
         .filter(|learned| learned.pattern.is_some())
-        .max_by_key(|learned| learned.documents)
-        .and_then(|learned| learned.pattern)
+        .max_by_key(|learned| learned.documents)?
+        .pattern
 }
 
 /// One model call: the levels that wrote the paths of the folder. `None` when
@@ -265,7 +265,7 @@ fn accepted_for(
         let takes_most_of_another = taken_of_others.iter().any(|(other, count)| {
             groups
                 .get(*other)
-                .is_some_and(|group| count * 2 > group.docs.len())
+                .is_some_and(|other_group| count * 2 > other_group.docs.len())
         });
         let complete = own * 100 >= group.docs.len() * MIN_SHARE_IN_GROUP_PERCENT;
         let Some(example) = tried.example.as_ref() else {

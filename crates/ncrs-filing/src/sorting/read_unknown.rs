@@ -93,10 +93,10 @@ pub fn find(
         }
         by_stamp(index, path, stamp).map(Some)
     })?;
-    let Some(by_stamp) = by_stamp else {
+    let Some(document_by_stamp) = by_stamp else {
         return Ok(Found::Nothing);
     };
-    let known = match by_stamp {
+    let known = match document_by_stamp {
         Some(document) => Some(document),
         None => {
             let hash = match hash_path(path) {

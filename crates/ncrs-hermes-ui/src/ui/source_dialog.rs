@@ -236,11 +236,11 @@ pub fn view<'a>(
     } else {
         folder_name(&folder)
     };
-    let frame = match subject {
-        Some(folder) => frame.subtitle(folder),
+    let titled_frame = match subject {
+        Some(subject_name) => frame.subtitle(subject_name),
         None => frame,
     };
-    frame
+    titled_frame
         .buttons(vec![cancel, action])
         .on_close(send(SortingMessage::Cancel))
         .hints(KeyHints {

@@ -123,9 +123,9 @@ fn the_git_actions_are_listed_with_their_keys_while_a_git_tab_offers_them() {
     let without_key = commands.iter().filter(|(_, key)| key.is_empty()).count();
     assert_eq!(without_key, 3);
     for (label, shortcut) in commands {
-        let shortcut = Some(shortcut).filter(|key| !key.is_empty());
+        let listed_shortcut = Some(shortcut).filter(|key| !key.is_empty());
         assert!(
-            entries.contains(&(label.clone(), shortcut)),
+            entries.contains(&(label.clone(), listed_shortcut)),
             "{label} is missing"
         );
     }

@@ -454,8 +454,8 @@ fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
             ),
         };
     }
-    let acting = state.actions.sync.is_some() && !state.filter_focused;
-    if acting && state.area == Area::Sidebar {
+    let can_act = state.actions.sync.is_some() && !state.filter_focused;
+    if can_act && state.area == Area::Sidebar {
         return fill_template(
             ctx.lang.text(Msg::GitViewStatusSidebarActions),
             &[

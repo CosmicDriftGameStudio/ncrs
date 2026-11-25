@@ -56,13 +56,13 @@ pub fn special_folders_of<'a>(
     sources: impl IntoIterator<Item = &'a Path>,
     home: &Path,
 ) -> Vec<(PathBuf, SpecialFolder)> {
-    let targets = targets
+    let target_folders = targets
         .into_iter()
         .map(|path| (path.to_path_buf(), SpecialFolder::WriteFolder));
-    let sources = sources
+    let source_folders = sources
         .into_iter()
         .map(|path| (path.to_path_buf(), SpecialFolder::ReadFolder));
-    targets.chain(sources).chain(system_folders(home)).collect()
+    target_folders.chain(source_folders).chain(system_folders(home)).collect()
 }
 
 /// What `folders` say about `path`. The first entry for a path wins, so a

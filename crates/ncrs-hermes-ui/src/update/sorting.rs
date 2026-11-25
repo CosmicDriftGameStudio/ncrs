@@ -54,7 +54,7 @@ pub fn load(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
             .map(|setting| source_state(setting, access.as_ref()))
             .collect();
         let runs = match &access {
-            Some(access) => access
+            Some(sorting_access) => sorting_access
                 .recent_runs(RUNS_LISTED_AT_MOST)?
                 .iter()
                 .map(|run| run_facts(run, now))
@@ -424,8 +424,8 @@ fn save(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     };
     let draft = dialog.clone();
     let home = ctx.home.to_path_buf();
-    if let Some(dialog) = hermes.source_dialog.as_mut() {
-        dialog.saving = true;
+    if let Some(saving_dialog) = hermes.source_dialog.as_mut() {
+        saving_dialog.saving = true;
     }
     write_task(move || {
         let mut source = draft.source(&home);

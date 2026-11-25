@@ -50,7 +50,7 @@ impl SourceWait {
     fn from_error(source: &SortSource, err: ReadError) -> Self {
         match err {
             ReadError::Gone if source.own_volume == Some(true) => Self::NotMounted,
-            err => Self::Folder(err),
+            other => Self::Folder(other),
         }
     }
 }
@@ -108,7 +108,8 @@ pub fn watch_with<P: Progress>(
         Err(err) => return Ok(waiting(err)),
     };
     let is_busy = busy_source.is_some_and(|busy| {
-        busy == source.path || ncrs_intake::canonical_path(busy).is_ok_and(|busy| busy == root)
+        busy == source.path
+            || ncrs_intake::canonical_path(busy).is_ok_and(|canonical_busy| canonical_busy == root)
     });
     if is_busy {
         return Ok(WatchedReport::Skipped(WatchedSkip::Busy));
@@ -168,13 +169,13 @@ pub fn watch_with<P: Progress>(
             Step::Leave => {}
         }
     }
-    let request = RunRequest {
+    let run_request = RunRequest {
         name: name.to_owned(),
         source: source.clone(),
         entries,
         transfer: source.transfer,
     };
-    match run_as(access, &request, BatchKind::Filing, progress) {
+    match run_as(access, &run_request, BatchKind::Filing, progress) {
         Ok(run) => Ok(WatchedReport::Done { run, asked }),
         Err(RunError::Waiting(targets)) => Ok(WatchedReport::Waiting(targets)),
         Err(RunError::Source(err)) => Ok(waiting(err)),

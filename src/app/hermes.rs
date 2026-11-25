@@ -288,13 +288,13 @@ impl App {
         start_in: Option<PathBuf>,
         picked: fn(Option<PathBuf>) -> Message,
     ) -> Task<Message> {
-        let start_in = start_in.unwrap_or_else(|| self.home.clone());
+        let first_folder = start_in.unwrap_or_else(|| self.home.clone());
         let sandbox = self
             .sandbox
             .grants_dir
             .clone()
             .map(|dir| (dir, self.sandbox.grant));
-        (self.pick_folder)(&start_in)
+        (self.pick_folder)(&first_folder)
             .then(move |folder| folder_chosen(folder, sandbox.clone(), picked))
     }
 

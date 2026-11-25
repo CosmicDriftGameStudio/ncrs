@@ -48,12 +48,12 @@ pub fn rows(
         };
         let key = match (is_default, letter) {
             _ if reason.is_some() => reason.map(|why| ctx.lang.text(why).to_owned()),
-            (true, Some(letter)) => Some(format!(
-                "{} \u{b7} {letter}",
+            (true, Some(menu_letter)) => Some(format!(
+                "{} \u{b7} {menu_letter}",
                 ctx.lang.text(Msg::GitViewMenuDefaultMark)
             )),
             (true, None) => Some(ctx.lang.text(Msg::GitViewMenuDefaultMark).to_owned()),
-            (false, letter) => letter,
+            (false, menu_letter) => menu_letter,
         };
         rows.push(MenuRow::Entry(PopupEntry {
             label: ctx.lang.text(label_of(action)).to_owned(),

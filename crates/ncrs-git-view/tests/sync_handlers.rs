@@ -218,8 +218,10 @@ fn every_pull_way_is_a_command() {
 #[test]
 fn the_quiet_fetch_waits_until_the_user_has_synced_here_once() {
     let ctx = Ctx::new(Language::English);
-    let mut state = State::default();
-    state.root = Some(std::path::PathBuf::from("/nowhere/repository"));
+    let mut state = State {
+        root: Some(std::path::PathBuf::from("/nowhere/repository")),
+        ..State::default()
+    };
     let _ = update(&mut state, Message::BackgroundFetch, &ctx);
     assert!(
         !state.actions.background_fetch,

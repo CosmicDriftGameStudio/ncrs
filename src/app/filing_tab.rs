@@ -69,7 +69,7 @@ impl App {
                 ncrs_hermes_ui::open_rule_form(hermes, target, document, Some(&path), ctx)
             }),
             Ask::SuggestRule { source, path } => {
-                let Some(source) = self
+                let Some(shown_source) = self
                     .filing_source()
                     .filter(|shown| shown.path == source)
                     .cloned()
@@ -77,7 +77,7 @@ impl App {
                     return Task::none();
                 };
                 self.run_hermes_flow(|hermes, ctx| {
-                    ncrs_hermes_ui::open_suggest_rule(hermes, source, path, ctx)
+                    ncrs_hermes_ui::open_suggest_rule(hermes, shown_source, path, ctx)
                 })
             }
             Ask::Filed { .. } => self.reload_panels(),

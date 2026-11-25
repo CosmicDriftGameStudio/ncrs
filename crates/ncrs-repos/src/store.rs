@@ -73,7 +73,7 @@ impl ScanStamp {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default = "first_version")]
-    version: u32,
+    pub version: u32,
     /// The scan of `~` ran once; from then on only on request.
     #[serde(default)]
     pub home_scanned: bool,

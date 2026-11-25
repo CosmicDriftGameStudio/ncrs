@@ -465,11 +465,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let mut folders: HashMap<(OsString, u64), BTreeSet<PathBuf>> = HashMap::new();
         for relative in relative_files(&self.original) {
             let size = std::fs::metadata(self.original.join(&relative)).map(|meta| meta.len());
-            if let (Some(name), Ok(size), Some(folder)) =
+            if let (Some(name), Ok(bytes), Some(folder)) =
                 (relative.file_name(), size, relative.parent())
             {
                 folders
-                    .entry((name.to_owned(), size))
+                    .entry((name.to_owned(), bytes))
                     .or_default()
                     .insert(folder.to_path_buf());
             }
@@ -488,7 +488,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 .file_name()
                 .and_then(|name| folders.get(&(name.to_owned(), size)));
             match (belongs, place.relative.parent()) {
-                (Some(belongs), Some(folder)) if belongs.contains(folder) => right += 1,
+                (Some(original_folders), Some(folder)) if original_folders.contains(folder) => right += 1,
                 (Some(_), _) => wrong += 1,
                 (None, _) => unknown += 1,
             }

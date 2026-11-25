@@ -71,6 +71,6 @@ mod tests {
             assert_eq!(TargetId::new(invalid), None, "{invalid}");
         }
         assert_eq!(TargetId::main(), "main".parse().unwrap());
-        assert!("A".parse::<TargetId>().is_err());
+        "A".parse::<TargetId>().unwrap_err();
     }
 }

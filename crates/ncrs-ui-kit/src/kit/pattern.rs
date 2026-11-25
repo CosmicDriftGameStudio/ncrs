@@ -31,7 +31,7 @@ pub fn token_row<'a, M: Clone + 'a>(
         .align_y(alignment::Vertical::Center);
     token_buttons(tokens, palette)
         .into_iter()
-        .fold(line, |line, token| line.push(token))
+        .fold(line, |so_far, token| so_far.push(token))
 }
 
 impl<M> std::fmt::Debug for PatternField<'_, '_, M> {

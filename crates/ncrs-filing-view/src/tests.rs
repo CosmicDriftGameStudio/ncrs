@@ -462,9 +462,9 @@ fn a_copying_source_copies_on_enter_and_moves_when_asked() {
     let key = Key::Named(Named::Enter);
     let message = filing_key(&key, Modifiers::empty(), key_facts(&state)).unwrap();
     assert!(matches!(message, Message::File(LocationTransfer::Copy)));
-    let message = filing_key(&key, Modifiers::SHIFT, key_facts(&state)).unwrap();
-    assert!(matches!(message, Message::File(LocationTransfer::Move)));
-    let (_dropped_run, _) = update(&mut state, message, &setup.ctx());
+    let shifted_message = filing_key(&key, Modifiers::SHIFT, key_facts(&state)).unwrap();
+    assert!(matches!(shifted_message, Message::File(LocationTransfer::Move)));
+    let (_dropped_run, _) = update(&mut state, shifted_message, &setup.ctx());
     assert!(session(&state).running.is_some());
 }
 
@@ -476,11 +476,11 @@ fn folders_that_only_lead_to_one_other_share_its_row() {
     let ctx = setup.ctx();
     let mut state = setup.planned();
     let place = |folder: &str| {
-        let folder = folder.split('/').collect::<PathBuf>();
-        Change::Places(vec![(id("t1"), folder.join("x.txt"))])
+        let folder_path = folder.split('/').collect::<PathBuf>();
+        Change::Places(vec![(id("t1"), folder_path.join("x.txt"))])
     };
-    let rows = |state: &State| -> Vec<(String, usize)> {
-        tree_items(session(state), &id("t1"))
+    let rows = |planned_state: &State| -> Vec<(String, usize)> {
+        tree_items(session(planned_state), &id("t1"))
             .into_iter()
             .filter_map(|item| match item {
                 Item::Folder { label, depth, .. } => Some((label.replace('\\', "/"), depth)),
@@ -498,8 +498,8 @@ fn folders_that_only_lead_to_one_other_share_its_row() {
         .insert(PathBuf::from("b.txt"), place("Bank/North/2026"));
     assert_eq!(rows(&state), [row("", 0), row("Bank/North/2026", 1)]);
 
-    let shown = state.session.as_mut().unwrap();
-    shown
+    let reassigned = state.session.as_mut().unwrap();
+    reassigned
         .changes
         .insert(PathBuf::from("b.txt"), place("Bank/North/2025"));
     assert_eq!(
@@ -515,9 +515,9 @@ fn folders_that_only_lead_to_one_other_share_its_row() {
     send(&mut state, Message::ToggleFolder(id("t1"), folder), &ctx);
     assert_eq!(rows(&state), [row("", 0), row("Bank/North", 1)]);
 
-    let shown = state.session.as_mut().unwrap();
-    shown.closed_folders.clear();
-    shown.changes.insert(PathBuf::from("b.txt"), place("Bank"));
+    let reopened = state.session.as_mut().unwrap();
+    reopened.closed_folders.clear();
+    reopened.changes.insert(PathBuf::from("b.txt"), place("Bank"));
     assert_eq!(
         rows(&state),
         [row("", 0), row("Bank", 1), row("North/2026", 2)]
@@ -728,9 +728,9 @@ fn the_links_reach_the_app() {
         "{action:?}"
     );
     send(&mut state, Message::LinkNext, &ctx);
-    let action = send(&mut state, Message::PressMarkedLink, &ctx);
+    let suggest_action = send(&mut state, Message::PressMarkedLink, &ctx);
     assert_eq!(
-        action,
+        suggest_action,
         Some(Action::SuggestRule {
             source: setup.path("Inbox"),
             path
@@ -748,8 +748,8 @@ fn a_tree_per_target_shows_only_the_folders_that_get_something() {
     fs::create_dir_all(setup.path("Documents/Empty")).unwrap();
     let ctx = setup.ctx();
     let mut state = setup.planned();
-    let folders = |state: &State, target: &str| -> Vec<(PathBuf, usize)> {
-        tree_items(session(state), &id(target))
+    let folders = |planned_state: &State, target: &str| -> Vec<(PathBuf, usize)> {
+        tree_items(session(planned_state), &id(target))
             .into_iter()
             .filter_map(|item| match item {
                 Item::Folder {
@@ -797,11 +797,11 @@ fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
 
     send(&mut state, Message::Ask(PathBuf::from("both.txt")), &ctx);
     let (_dropped_answer, _) = update(&mut state, Message::QuestionAnswer(vec![1]), &ctx);
-    let shown = session(&state);
-    assert!(shown.answering.contains(Path::new("both.txt")));
-    assert!(shown.changes.is_empty());
+    let answering = session(&state);
+    assert!(answering.answering.contains(Path::new("both.txt")));
+    assert!(answering.changes.is_empty());
 
-    let document = shown.row(Path::new("both.txt")).unwrap().document.unwrap();
+    let document = answering.row(Path::new("both.txt")).unwrap().document.unwrap();
     let chosen = Change::Places(vec![in_target("t2", "Letters", "B1.txt")]);
     let answer = carry_answer(
         &setup.access,
@@ -812,7 +812,7 @@ fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
         LANG,
     )
     .unwrap();
-    let message = Message::Answered(shown.id, PathBuf::from("both.txt"), Ok(Box::new(answer)));
+    let message = Message::Answered(answering.id, PathBuf::from("both.txt"), Ok(Box::new(answer)));
     let action = send(&mut state, message, &ctx);
     assert!(setup.path("Company/Letters/B1.txt").exists());
     assert!(matches!(action, Some(Action::Filed { filed: 1, .. })));

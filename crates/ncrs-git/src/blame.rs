@@ -83,8 +83,8 @@ pub fn blame(
         .find_commit(suspect)
         .and_then(|commit| commit.tree())
         .map_err(GitError::read)?;
-    let path = path_as_in_tree(&repository, &tree, path);
-    let refused = refusal(&repository, &tree, &path)?;
+    let tree_path = path_as_in_tree(&repository, &tree, path);
+    let refused = refusal(&repository, &tree, &tree_path)?;
     if refused != BlameLimit::None {
         return Ok(Blame {
             refused,
@@ -94,7 +94,7 @@ pub fn blame(
     check_stop(stop)?;
     let outcome = repository
         .blame_file(
-            BStr::new(path.as_str()),
+            BStr::new(tree_path.as_str()),
             suspect,
             gix::repository::blame_file::Options {
                 rewrites: Some(gix::diff::Rewrites::default()),

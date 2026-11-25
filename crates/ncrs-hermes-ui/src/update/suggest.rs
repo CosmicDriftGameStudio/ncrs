@@ -112,13 +112,13 @@ fn start(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
         .as_ref()
         .and_then(|module| module.sorting_access(Arc::clone(&ctx.trash.0)));
     let opening = access.is_none() && index_is_opening(hermes);
-    if let Some(state) = hermes.suggest.as_mut() {
-        state.waits_for_index = opening;
+    if let Some(starting) = hermes.suggest.as_mut() {
+        starting.waits_for_index = opening;
         if access.is_none() && !opening {
-            state.failed(SuggestError::Index(INDEX_NOT_OPEN.to_owned()));
+            starting.failed(SuggestError::Index(INDEX_NOT_OPEN.to_owned()));
         }
     }
-    let Some(access) = access else {
+    let Some(sorting_access) = access else {
         return Task::none();
     };
     let model_of = model_of(hermes);
@@ -128,7 +128,7 @@ fn start(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
             let asked = model.as_deref();
             let found = match subject {
                 SuggestFor::Target(target) => sorting::suggest_scheme(
-                    &access,
+                    &sorting_access,
                     asked,
                     &target,
                     wish.as_deref(),
@@ -137,7 +137,7 @@ fn start(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
                 )
                 .map(Found::Target),
                 SuggestFor::File { source, path } => {
-                    sorting::suggest_rule_for(&access, asked, &source, &path, Some(&stop))
+                    sorting::suggest_rule_for(&sorting_access, asked, &source, &path, Some(&stop))
                         .map(|found| Found::File(Box::new(found)))
                 }
             };
@@ -296,8 +296,8 @@ fn edit(hermes: &mut Hermes, at: usize) -> Task<Message> {
         .rules
         .get_or_insert_with(RulesPage::new)
         .open_form(form);
-    if let Some(state) = hermes.suggest.as_mut() {
-        state.editing = Some(Editing {
+    if let Some(edited_state) = hermes.suggest.as_mut() {
+        edited_state.editing = Some(Editing {
             at,
             rules_before: None,
         });

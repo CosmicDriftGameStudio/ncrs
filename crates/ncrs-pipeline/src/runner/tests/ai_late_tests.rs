@@ -183,7 +183,7 @@ fn a_document_is_asked_once_per_version_even_when_nothing_was_found_and_after_a_
     let fixture = IndexFixture::new();
     let provider = found_nothing();
 
-    let first = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as _, 1)
+    let first = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as Arc<dyn Provider>, 1)
         .wait_for("asked", |snapshot| {
             is_idle(snapshot) && snapshot.steps[3].unchanged == 1
         });
@@ -195,7 +195,7 @@ fn a_document_is_asked_once_per_version_even_when_nothing_was_found_and_after_a_
         AI_READ_VERSION
     );
 
-    let second = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as _, 1)
+    let second = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as Arc<dyn Provider>, 1)
         .wait_for("scanned again", |snapshot| {
             is_idle(snapshot) && snapshot.steps[0].unchanged == 1
         });
@@ -249,14 +249,13 @@ fn a_field_a_person_sets_while_the_model_runs_is_kept() {
     let runner = start_with_ai(&fixture, &inbox, provider, 1);
     started.recv_timeout(HANG_GUARD).unwrap();
     let id = document_ids(&fixture, &inbox)[0];
-    {
-        let mut index = fixture.index.lock().unwrap();
-        let mut fields = index.document(id).unwrap().unwrap().fields;
-        fields.sender = Some("Own Choice".to_owned());
-        index
-            .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
-            .unwrap();
-    }
+    let mut index = fixture.index.lock().unwrap();
+    let mut fields = index.document(id).unwrap().unwrap().fields;
+    fields.sender = Some("Own Choice".to_owned());
+    index
+        .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
+        .unwrap();
+    drop(index);
     drop(gate);
 
     runner.wait_for("asked", |snapshot| {
@@ -281,18 +280,17 @@ fn a_file_replaced_while_the_model_runs_gets_no_answer_meant_for_the_old_bytes()
     let runner = start_with_ai(&fixture, &inbox, provider, 1);
     started.recv_timeout(HANG_GUARD).unwrap();
     let id = document_ids(&fixture, &inbox)[0];
-    {
-        // The index now holds other bytes under the document, as a replaced
-        // file would leave it.
-        let mut index = fixture.index.lock().unwrap();
-        let stamp = ncrs_index::FileStamp {
-            size: 11,
-            mtime: UNIX_EPOCH,
-        };
-        index
-            .replace_document_content(id, &ncrs_index::ContentHash([7; 32]), stamp)
-            .unwrap();
-    }
+    // The index now holds other bytes under the document, as a replaced
+    // file would leave it.
+    let mut index = fixture.index.lock().unwrap();
+    let stamp = ncrs_index::FileStamp {
+        size: 11,
+        mtime: UNIX_EPOCH,
+    };
+    index
+        .replace_document_content(id, &ncrs_index::ContentHash([7; 32]), stamp)
+        .unwrap();
+    drop(index);
     drop(gate);
 
     runner.wait_for("asked", |snapshot| {

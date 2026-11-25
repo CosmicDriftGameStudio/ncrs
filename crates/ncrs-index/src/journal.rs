@@ -728,9 +728,10 @@ mod tests {
     #[test]
     fn the_batches_of_a_run_are_found_from_its_first() {
         let (_dir, index) = encrypted_index();
-        let batches: Vec<_> = (0..3)
-            .map(|_| index.begin_batch(BatchKind::Hermes).unwrap())
-            .collect();
+        let batches: Vec<_> =
+            std::iter::repeat_with(|| index.begin_batch(BatchKind::Hermes).unwrap())
+                .take(3)
+                .collect();
         index.join_run(batches[0], batches[0]).unwrap();
         index.join_run(batches[2], batches[0]).unwrap();
 

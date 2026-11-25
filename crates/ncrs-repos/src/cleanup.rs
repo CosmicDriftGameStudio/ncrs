@@ -422,8 +422,8 @@ impl Cleanup {
     /// What happened to an entry: `None` while nothing was deleted, else its
     /// result, with the reason git gave when it failed.
     pub fn result_of(&self, item: &Item) -> Option<Result<(), String>> {
-        let report = self.reports.get(&item.pick.repo)?;
-        let report = match report {
+        let outcome = self.reports.get(&item.pick.repo)?;
+        let report = match outcome {
             Ok(report) => report,
             Err(reason) => return Some(Err(reason.clone())),
         };
@@ -938,9 +938,13 @@ mod tests {
         let mut scan = cleanup.scan(&repo).unwrap().clone();
         scan.list.worktrees[0].ignored_files = vec![".env".to_owned()];
         let repos = BTreeMap::from([(repo.clone(), RepoState::Scanned(Box::new(scan)))]);
-        let cleanup = Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos);
-        assert_eq!(cleanup.ticked(), (2, 1));
-        assert!(cleanup.plan_for(&repo).unwrap().worktrees.is_empty());
+        let with_ignored = Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos);
+        assert_eq!(with_ignored.ticked(), (2, 1));
+        assert!(with_ignored
+            .plan_for(&repo)
+            .unwrap()
+            .worktrees
+            .is_empty());
     }
 
     #[test]

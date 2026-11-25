@@ -100,7 +100,7 @@ pub fn carry_out(
         let root =
             canonical_path(&request.source.path).unwrap_or_else(|_| request.source.path.clone());
         match access.trash_duplicates(&duplicates.name, &root, &duplicates.items) {
-            Ok(report) => carried.trashed = report.trashed,
+            Ok(trash_report) => carried.trashed = trash_report.trashed,
             Err(reason) => carried.trash_problem = Some(reason),
         }
     }

@@ -38,7 +38,7 @@ pub fn request_hermes_counts(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message
         tokio::task::spawn_blocking(move || {
             let questions = access
                 .ok_or_else(|| INDEX_NOT_OPEN.to_owned())
-                .and_then(|access| questions_of(&sources, &access));
+                .and_then(|sorting_access| questions_of(&sources, &sorting_access));
             (reader.read(), questions)
         }),
         |joined| {

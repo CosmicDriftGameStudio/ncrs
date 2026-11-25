@@ -80,7 +80,7 @@ async fn the_inbox_speaks_only_when_something_was_handed_over() {
         scratch.path().to_path_buf()
     )));
     let nothing = tokio::time::timeout(std::time::Duration::from_millis(1200), looks.next()).await;
-    assert!(nothing.is_err());
+    nothing.unwrap_err();
     ncrs_handoff::send(scratch.path(), &[Request::Open(folder.clone())]).unwrap();
     let Some(Message::HandedOver(found)) = looks.next().await else {
         panic!("the request was not found");

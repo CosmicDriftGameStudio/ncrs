@@ -111,24 +111,25 @@ mod ui_tests {
 
     fn by_rule(index: usize, rules: &[(RuleId, String)]) -> Place {
         let month = index % 12 + 1;
+        let rule = rules[index % 4].0;
         match index % 4 {
             0 => place(
-                rules[0].0,
+                rule,
                 "documents",
                 format!("Bank/Beispielbank/2026/2026{month:02}28_Kontoauszug_{index:03}.pdf"),
             ),
             1 => place(
-                rules[1].0,
+                rule,
                 "documents",
                 format!("Versicherung/Muster AG/2026{month:02}10_Police_{index:03}.pdf"),
             ),
             2 => place(
-                rules[2].0,
+                rule,
                 "company",
                 format!("Eingang/2026/{month:02}/2026{month:02}03_Company A_{index:03}.pdf"),
             ),
             _ => place(
-                rules[3].0,
+                rule,
                 "documents",
                 format!("Gehalt/Company A/2026/2026{month:02}_{index:03}.pdf"),
             ),

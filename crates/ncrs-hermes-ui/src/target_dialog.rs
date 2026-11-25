@@ -87,7 +87,7 @@ pub struct TargetDialog {
     /// What opens once a new target is saved.
     pub then_suggest: Option<SuggestAfter>,
     /// Counts the looks at the disk, so an old answer is dropped.
-    checking: u64,
+    pub checking: u64,
 }
 
 /// The proposals for the target the dialog adds.
@@ -96,7 +96,7 @@ pub struct SuggestAfter {
     /// The pattern the user asked for.
     pub wish: Option<String>,
     /// The targets there were when the dialog opened.
-    known: Vec<TargetId>,
+    pub known: Vec<TargetId>,
 }
 
 impl SuggestAfter {

@@ -160,8 +160,8 @@ impl RulesAccess {
             } => index.create_rule_in(&spec, origin, &target).map(Some),
             RuleSave::Update(id, spec, target) => {
                 index.update_rule(id, &spec)?;
-                if let Some(target) = target {
-                    index.set_rule_target(id, &target)?;
+                if let Some(new_target) = target {
+                    index.set_rule_target(id, &new_target)?;
                 }
                 Ok(Some(id))
             }
@@ -169,8 +169,8 @@ impl RulesAccess {
                 if !index.confirm_suggested_rule(id, &spec)? {
                     return Ok(None);
                 }
-                if let Some(target) = target {
-                    index.set_rule_target(id, &target)?;
+                if let Some(new_target) = target {
+                    index.set_rule_target(id, &new_target)?;
                 }
                 Ok(Some(id))
             }

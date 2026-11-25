@@ -118,7 +118,7 @@ fn the_shown_tip_of_a_remote_branch_is_the_lease_of_its_delete() {
     repo.git.create_branch("busy", "main", false).unwrap();
     repo.git.push_branch("busy", None).unwrap();
     let overview = ncrs_git::refs(repo.path(), &std::sync::Arc::default()).unwrap();
-    let shown = overview.remote_tips.get("origin/busy").unwrap();
+    let shown = &overview.remote_tips["origin/busy"];
 
     let other = clone_of(&origin);
     other.sh(&["checkout", "-q", "busy"]);

@@ -328,11 +328,11 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
-    let message = match crate::clone::update(state, message, ctx) {
+    let list_message = match crate::clone::update(state, message, ctx) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
-    match message {
+    match list_message {
         Message::Up => move_cursor(state, -1),
         Message::Down => move_cursor(state, 1),
         Message::PageUp => move_cursor(state, -PAGE_ROWS),
@@ -472,7 +472,7 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         }
         Message::CleanableRead(path, count) => {
             match count {
-                Some(count) => state.cleanable.insert(path, count),
+                Some(branches) => state.cleanable.insert(path, branches),
                 None => state.cleanable.remove(&path),
             };
             quiet(Task::none())

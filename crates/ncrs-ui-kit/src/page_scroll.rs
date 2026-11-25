@@ -67,8 +67,8 @@ impl RowWindow {
     fn built(self) -> std::ops::Range<usize> {
         let visible = (self.height / self.row_height).ceil() as usize;
         let top = (self.offset.max(0.0) / self.row_height) as usize;
-        let top = top.min(self.count.saturating_sub(visible));
-        top.saturating_sub(ROWS_AROUND)..(top + visible + ROWS_AROUND).min(self.count)
+        let top_row = top.min(self.count.saturating_sub(visible));
+        top_row.saturating_sub(ROWS_AROUND)..(top_row + visible + ROWS_AROUND).min(self.count)
     }
 }
 

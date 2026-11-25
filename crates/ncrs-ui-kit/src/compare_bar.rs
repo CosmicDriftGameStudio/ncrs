@@ -32,14 +32,17 @@ pub fn compare_bar<'a, M: Clone + 'a>(
     ]
     .spacing(HINT_GAP)
     .align_y(alignment::Vertical::Center);
-    let line = container(line)
+    let padded_line = container(line)
         .padding([0.0, ROW_PADDING_X])
         .width(Length::Fill)
         .height(Length::Fill)
         .clip(true)
         .align_y(alignment::Vertical::Center);
     bar(
-        column![line, theme::horizontal_rule(palette.border_inactive)],
+        column![
+            padded_line,
+            theme::horizontal_rule(palette.border_inactive)
+        ],
         palette,
     )
 }

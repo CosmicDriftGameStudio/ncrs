@@ -214,7 +214,7 @@ impl Shortcut {
         let named = |held: Modifiers, named: Named| Some((held, Key::Named(named)));
         match self {
             // Picked by the letters of the Pull menu and by F1 only.
-            Self::PullFastForward | Self::PullMerge | Self::PullRebase => return None,
+            Self::PullFastForward | Self::PullMerge | Self::PullRebase => None,
             Self::Fetch => letter(shifted, "e"),
             Self::Pull => letter(shifted, "l"),
             Self::Push => letter(shifted, "u"),

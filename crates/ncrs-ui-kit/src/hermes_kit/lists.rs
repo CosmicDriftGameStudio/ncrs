@@ -141,12 +141,12 @@ pub fn target_check_row<'a, M: Clone + 'a>(
         .height(ROW_ONE_LINE)
         .padding([0.0, GAP_XS])
         .align_y(alignment::Vertical::Center);
-    let row = if target.marked {
+    let framed_row = if target.marked {
         row.style(theme::focused_setting(palette))
     } else {
         row
     };
-    let area = mouse_area(row);
+    let area = mouse_area(framed_row);
     match target.on_toggle {
         Some(message) => area.on_press(message).into(),
         None => area.into(),
@@ -191,24 +191,24 @@ pub fn target_place_row<'a, M: Clone + 'a>(
         line = line.push(kit::checkbox(state, None, palette));
         on_toggle = Some(toggle);
     }
-    let line = line
+    let place_line = line
         .push(target_chip(place.index, place.label, palette))
         .push(small(
             format::fit_middle(place.line, room.max(0.0), TEXT_SMALL),
             ink,
         ));
-    let row = container(line)
+    let row = container(place_line)
         .width(Length::Fill)
         .height(ROW_ONE_LINE)
         .padding([0.0, GAP_XS])
         .align_y(alignment::Vertical::Center)
         .clip(true);
-    let row = if place.marked {
+    let framed_row = if place.marked {
         row.style(theme::focused_setting(palette))
     } else {
         row
     };
-    let area = mouse_area(row);
+    let area = mouse_area(framed_row);
     match on_toggle {
         Some(message) => area.on_press(message).into(),
         None => area.into(),

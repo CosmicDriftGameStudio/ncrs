@@ -690,5 +690,5 @@ fn a_filter_built_from_the_globs_alone_matches_the_one_compiled_from_a_query() {
     }
     assert!(direct.admits_file(Path::new("/data/x/y/b.pdf")));
     assert!(!direct.admits_file(Path::new("/data/Old/c.pdf")));
-    assert!(PathFilter::new(PathBuf::from("/data"), "[", "", false).is_err());
+    PathFilter::new(PathBuf::from("/data"), "[", "", false).unwrap_err();
 }

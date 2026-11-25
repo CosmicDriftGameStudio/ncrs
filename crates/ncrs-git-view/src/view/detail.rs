@@ -125,7 +125,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 };
                 let trail_room: f32 = trail
                     .iter()
-                    .map(|(count, _)| estimated_width(count, font_size::SMALL) + spacing::XS)
+                    .map(|(figure, _)| estimated_width(figure, font_size::SMALL) + spacing::XS)
                     .sum();
                 let room = width
                     - 2.0 * LIST_INSET
@@ -247,7 +247,7 @@ fn facts<'a>(state: &'a State, info: &'a CommitDetail, ctx: ViewCtx<'a>) -> Elem
                 .map(|label| (label.name.clone(), chip_kind(label.kind)))
                 .collect(),
         );
-        let wrapped = Row::with_children(
+        let chip_row = Row::with_children(
             chips
                 .into_iter()
                 .map(|(label, kind)| ref_chip(label, kind, palette)),
@@ -256,7 +256,7 @@ fn facts<'a>(state: &'a State, info: &'a CommitDetail, ctx: ViewCtx<'a>) -> Elem
         .wrap();
         rows = rows.push(fact_row(
             lang.text(Msg::GitViewDetailBranches),
-            wrapped.into(),
+            chip_row.into(),
             palette,
         ));
     }

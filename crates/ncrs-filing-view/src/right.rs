@@ -51,8 +51,8 @@ fn folder_trail(
         .iter()
         .find(|(id, _)| is_root && id == target)
         .map(|(_, reason)| {
-            let reason = ctx.lang.text(wait_reason(*reason));
-            (reason.to_owned(), open_color(ctx.palette))
+            let reason_text = ctx.lang.text(wait_reason(*reason));
+            (reason_text.to_owned(), open_color(ctx.palette))
         });
     let new = (new_files > 0).then(|| (format!("+{new_files}"), ctx.palette.success));
     waiting.into_iter().chain(new).collect()
@@ -189,7 +189,7 @@ fn header<'a>(session: &Session, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         let label = format!("{} {}", session.target_number(&target.id), target.name);
         line = line.push(target_chip(index, &label, ctx.palette));
     }
-    let line = line
+    let filled_line = line
         .push(Space::new().width(Length::Fill))
         .push(checkbox(
             if session.only_new {
@@ -206,7 +206,7 @@ fn header<'a>(session: &Session, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         ))
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
-    plan_side_line(line.into())
+    plan_side_line(filled_line.into())
 }
 
 pub fn right<'a>(session: &'a Session, half_width: f32, ctx: ViewCtx<'_>) -> Element<'a, Message> {

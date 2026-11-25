@@ -264,7 +264,7 @@ fn worktree_row_of<'a>(
         0.0
     };
     let beside = WORKTREE_FIXED_ROOM + name_room + WORKTREE_TRAIL_ROOM + merged_room;
-    let branch_name = fit_end(
+    let shown_name = fit_end(
         &branch_name,
         (label_budget(width, 0, "") - WORKTREE_FIXED_ROOM - WORKTREE_TRAIL_ROOM - merged_room)
             .max(0.0),
@@ -272,7 +272,7 @@ fn worktree_row_of<'a>(
     );
     let room = label_budget(width, 0, "") - beside;
     // A folder that would shrink to a few letters says nothing: leave it out.
-    let folder = if room < estimated_text_width(FOLDER_MIN_CHARS, font_size::BODY) {
+    let shown_folder = if room < estimated_text_width(FOLDER_MIN_CHARS, font_size::BODY) {
         String::new()
     } else {
         fit_middle(&folder, room, font_size::BODY)
@@ -280,8 +280,8 @@ fn worktree_row_of<'a>(
     worktree_line(
         WorktreeLine {
             state,
-            branch: branch_name,
-            folder,
+            branch: shown_name,
+            folder: shown_folder,
             ahead: worktree.upstream_ahead,
             behind: worktree.upstream_behind,
             changes: u32::try_from(worktree.wip).unwrap_or(u32::MAX),

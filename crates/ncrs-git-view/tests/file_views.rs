@@ -250,9 +250,9 @@ async fn an_answer_that_comes_after_escape_is_dropped() {
     send(&mut state, Message::BlameLoaded(late, Box::new(Ok(empty)))).await;
     assert_eq!(state.blame, before);
 
-    let (late, _) = state.loads.history.begin();
+    let (late_history, _) = state.loads.history.begin();
     send(&mut state, Message::OpenHistory("new.txt".to_owned())).await;
-    let answer = Message::HistoryLoaded(late, Box::new(Ok(FileHistory::default())));
+    let answer = Message::HistoryLoaded(late_history, Box::new(Ok(FileHistory::default())));
     send(&mut state, answer).await;
     assert_eq!(summaries(&state).len(), 3);
 }

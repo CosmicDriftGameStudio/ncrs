@@ -81,18 +81,18 @@ pub fn source_state(setting: &SourceSetting, access: Option<&SortingAccess>) -> 
             _ => SourceState::Unreadable,
         };
     }
-    let Some(access) = access else {
+    let Some(sorting_access) = access else {
         return SourceState::Ready { questions: 0 };
     };
     let target_waits = source
         .targets
         .iter()
-        .any(|id| matches!(access.target_state(id), TargetState::Waiting(reason) if reason != WaitReason::Unconfirmed));
+        .any(|id| matches!(sorting_access.target_state(id), TargetState::Waiting(reason) if reason != WaitReason::Unconfirmed));
     if target_waits {
         return SourceState::TargetWaiting;
     }
     SourceState::Ready {
-        questions: question_count(access, source).unwrap_or(0),
+        questions: question_count(sorting_access, source).unwrap_or(0),
     }
 }
 
@@ -175,11 +175,11 @@ pub fn own_volume_to_save(
 
 /// A typed path: a leading `~` stands for the home folder.
 pub fn typed_path(text: &str, home: &Path) -> PathBuf {
-    let text = text.trim();
-    match text.strip_prefix("~/") {
+    let trimmed = text.trim();
+    match trimmed.strip_prefix("~/") {
         Some(rest) => home.join(rest),
-        None if text == "~" => home.to_path_buf(),
-        None => PathBuf::from(text),
+        None if trimmed == "~" => home.to_path_buf(),
+        None => PathBuf::from(trimmed),
     }
 }
 

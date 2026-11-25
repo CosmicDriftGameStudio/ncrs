@@ -137,10 +137,7 @@ pub fn reset_loss(root: PathBuf, sha: String) -> Task<Message> {
     let asked = sha.clone();
     Task::perform(
         async move {
-            tokio::task::spawn_blocking(move || {
-                Git::open(&root).and_then(|git| git.reset_loss(&sha))
-            })
-            .await
+            tokio::task::spawn_blocking(move || Git::open(&root)?.reset_loss(&sha)).await
         },
         move |joined| {
             Message::ResetLossLoaded(

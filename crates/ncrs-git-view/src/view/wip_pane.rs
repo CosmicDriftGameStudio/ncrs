@@ -39,8 +39,8 @@ fn file_rows<'a>(
         let lit = active && local.selected == Some((side, index));
         let mut add = |label: &str, message: Message, tone: Tone| {
             labels.push(label.to_owned());
-            let tone = if lit { Tone::OnAccent } else { tone };
-            actions.push(small_button(label, Some(message), tone, palette));
+            let shown_tone = if lit { Tone::OnAccent } else { tone };
+            actions.push(small_button(label, Some(message), shown_tone, palette));
         };
         match side {
             ChangeSide::Unstaged => {

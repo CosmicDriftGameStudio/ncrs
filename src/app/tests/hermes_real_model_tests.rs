@@ -308,8 +308,8 @@ fn with_model_the_app_suggests_rules_for_a_folder_opened_by_a_sentence() {
         panic!("no rule suggestions: {action:?}");
     };
     assert!(folder.ends_with(AREA), "{}", folder.display());
-    let pattern = pattern.expect("the confirmed order");
-    assert!(!pattern.contains("//"), "{pattern}");
+    let confirmed_pattern = pattern.expect("the confirmed order");
+    assert!(!confirmed_pattern.contains("//"), "{confirmed_pattern}");
     let stored = slot.lock().unwrap().as_ref().unwrap().rules().unwrap();
     assert!(stored.is_empty(), "the chat saves no rule: {stored:?}");
 

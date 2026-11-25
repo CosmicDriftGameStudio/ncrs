@@ -70,7 +70,7 @@ impl App {
         if self.quitting || (dir.is_none() && !cfg!(target_os = "macos")) {
             return Subscription::none();
         }
-        Subscription::run_with(dir, |dir| found_in(dir.clone()))
+        Subscription::run_with(dir, |inbox| found_in(inbox.clone()))
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as

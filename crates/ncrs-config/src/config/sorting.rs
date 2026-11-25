@@ -253,10 +253,10 @@ fn sorting_of_locations(listed: &[FilingLocation]) -> Sorting {
         } else {
             TargetId::new(&format!("t{}", index + 1))
         };
-        let Some(id) = id else { continue };
+        let Some(target_id) = id else { continue };
         sorting.targets.push(TargetSetting {
             target: SortTarget {
-                id,
+                id: target_id,
                 name: folder_name(&location.path),
                 path: location.path.clone(),
                 own_volume: None,
@@ -298,53 +298,53 @@ fn sorting_of_locations(listed: &[FilingLocation]) -> Sorting {
 /// watched source in a target: the later one is paused, the earlier one works.
 fn pause_what_breaks_the_rules(sorting: &mut Sorting) {
     for later in 0..sorting.targets.len() {
-        let reason = {
-            let (before, rest) = sorting.targets.split_at(later);
-            let current = &rest[0];
-            if current.paused.is_some() {
-                None
-            } else if before
-                .iter()
-                .any(|earlier| earlier.target.id == current.target.id)
-            {
-                Some(PauseReason::DuplicateId)
-            } else if before.iter().any(|earlier| {
-                earlier.paused.is_none() && same_folder(&earlier.target.path, &current.target.path)
-            }) {
-                Some(PauseReason::SamePath)
-            } else {
-                None
-            }
+        let (before, rest) = sorting.targets.split_at_mut(later);
+        let Some(current) = rest.first_mut() else {
+            continue;
+        };
+        let reason = if current.paused.is_some() {
+            None
+        } else if before
+            .iter()
+            .any(|earlier| earlier.target.id == current.target.id)
+        {
+            Some(PauseReason::DuplicateId)
+        } else if before.iter().any(|earlier| {
+            earlier.paused.is_none() && same_folder(&earlier.target.path, &current.target.path)
+        }) {
+            Some(PauseReason::SamePath)
+        } else {
+            None
         };
         if reason.is_some() {
-            sorting.targets[later].paused = reason;
+            current.paused = reason;
         }
     }
     for later in 0..sorting.sources.len() {
-        let reason = {
-            let (before, rest) = sorting.sources.split_at(later);
-            let current = &rest[0];
-            if current.paused.is_some() {
-                None
-            } else if before.iter().any(|earlier| {
-                earlier.paused.is_none() && same_folder(&earlier.source.path, &current.source.path)
-            }) {
-                Some(PauseReason::SamePath)
-            } else if current.source.watch {
-                sorting
-                    .targets
-                    .iter()
-                    .find(|target| {
-                        !matches!(target.paused, Some(PauseReason::UnusablePath(_)))
-                            && lies_within(&current.source.path, &target.target.path)
-                    })
-                    .map(|target| PauseReason::WatchedInTarget(target.target.id.clone()))
-            } else {
-                None
-            }
+        let (before, rest) = sorting.sources.split_at_mut(later);
+        let Some(current) = rest.first_mut() else {
+            continue;
+        };
+        let reason = if current.paused.is_some() {
+            None
+        } else if before.iter().any(|earlier| {
+            earlier.paused.is_none() && same_folder(&earlier.source.path, &current.source.path)
+        }) {
+            Some(PauseReason::SamePath)
+        } else if current.source.watch {
+            sorting
+                .targets
+                .iter()
+                .find(|target| {
+                    !matches!(target.paused, Some(PauseReason::UnusablePath(_)))
+                        && lies_within(&current.source.path, &target.target.path)
+                })
+                .map(|target| PauseReason::WatchedInTarget(target.target.id.clone()))
+        } else {
+            None
         };
         if reason.is_some() {
-            sorting.sources[later].paused = reason;
+            current.paused = reason;
         }
     }
 }

@@ -53,7 +53,10 @@ pub enum PlanError {
 impl fmt::Display for PlanError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Source(err) => write!(f, "the source cannot be read: {err:?}"),
+            Self::Source(err) => {
+                let cause = format!("{err:?}");
+                write!(f, "the source cannot be read: {cause}")
+            }
             Self::Filter(reason) | Self::Index(reason) => f.write_str(reason),
             Self::Stopped => f.write_str("stopped"),
         }
@@ -240,8 +243,8 @@ fn plan_over(
         progress.done.fetch_add(1, Ordering::Relaxed);
         row
     });
-    let rows = rows.into_iter().collect::<Result<Vec<_>, _>>()?;
-    let mut drafts: Vec<Draft> = rows.into_iter().flatten().collect();
+    let decided_rows = rows.into_iter().collect::<Result<Vec<_>, _>>()?;
+    let mut drafts: Vec<Draft> = decided_rows.into_iter().flatten().collect();
     decider.settle_names(&mut drafts);
     Ok(SortPlan {
         waiting: access.waiting(&request.source.targets),
@@ -485,9 +488,16 @@ impl<'a> Decider<'a> {
                 None,
             ),
             Decision::BadName { target, rule } => (RowState::BadName { target, rule }, None),
-            Decision::AlreadyThere { target, path } => {
-                (RowState::AlreadyThere { target, path }, None)
-            }
+            Decision::AlreadyThere {
+                target,
+                path: known_path,
+            } => (
+                RowState::AlreadyThere {
+                    target,
+                    path: known_path,
+                },
+                None,
+            ),
         }
     }
 
@@ -559,7 +569,10 @@ impl<'a> Decider<'a> {
             }
         }
         match (open.len(), there) {
-            (0, Some((target, path))) => RowState::AlreadyThere { target, path },
+            (0, Some((target, held_at))) => RowState::AlreadyThere {
+                target,
+                path: held_at,
+            },
             (0, None) => RowState::NoRule,
             (1, _) => RowState::Place(open.remove(0)),
             _ => RowState::Several(open),

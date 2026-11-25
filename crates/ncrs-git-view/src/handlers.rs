@@ -832,7 +832,7 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
     sync_handlers::end_of_job(state);
     let Finished { job, result } = finished;
     let mut removed_folders: Vec<PathBuf> = Vec::new();
-    let result = match result {
+    let outcome = match result {
         Ok(Done::ForcePlan(plan)) => return sync_handlers::ask_force_push(state, plan),
         Ok(Done::CleanupScan { list, fetch_error }) => {
             cleanup::scanned(state, list, fetch_error);
@@ -848,7 +848,7 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
         }
         other => other,
     };
-    match result {
+    match outcome {
         Ok(Done::CommittedButNotPushed { undo, error }) => {
             if undo.is_some() {
                 state.actions.undo = undo;
@@ -879,7 +879,7 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
         }
     }
     refresh_sync(state, ctx);
-    let folders = (!removed_folders.is_empty()).then(|| Action::WorktreesRemoved(removed_folders));
+    let folders = (!removed_folders.is_empty()).then_some(Action::WorktreesRemoved(removed_folders));
     (load::everything(state), folders)
 }
 

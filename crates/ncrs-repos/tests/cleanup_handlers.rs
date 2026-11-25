@@ -125,9 +125,9 @@ fn enter_confirms_the_plans_and_escape_closes_the_pane() {
     fixture.send(Message::Escape);
     assert!(fixture.state.cleanup.is_some(), "no close while deleting");
 
-    let mut fixture = ready();
-    fixture.send(Message::Escape);
-    assert!(fixture.state.cleanup.is_none());
+    let mut unconfirmed = ready();
+    unconfirmed.send(Message::Escape);
+    assert!(unconfirmed.state.cleanup.is_none());
 }
 
 #[test]

@@ -83,7 +83,7 @@ pub struct RuleForm {
     /// What the form described when it was opened; set by `started`.
     pub initial: Option<RuleSpec>,
     /// The target the form was opened with; set by `started`.
-    initial_destination: Option<TargetId>,
+    pub initial_destination: Option<TargetId>,
     /// The index refused the rule; the technical detail stays English.
     pub failure: Option<String>,
     /// The documents the rule as it stands in the form would match.
@@ -146,8 +146,8 @@ impl RuleForm {
     /// one given, or empty.
     pub fn from_document(prefill: RulePrefill, kinds: &Kinds, text: Option<&str>) -> Self {
         let found: Vec<Condition> = match text {
-            Some(text) => {
-                let lowered = text.to_lowercase();
+            Some(document_text) => {
+                let lowered = document_text.to_lowercase();
                 [prefill.sender.trim(), prefill.kind.trim()]
                     .into_iter()
                     .filter(|word| !word.is_empty() && lowered.contains(&word.to_lowercase()))

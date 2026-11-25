@@ -103,7 +103,7 @@ pub fn middle(state: &State) -> Middle {
         return Middle::Conflict;
     }
     let local = state.actions.local.as_ref();
-    if state.changes_shown() && local.is_some_and(|local| local.diff_open) {
+    if state.changes_shown() && local.is_some_and(|changes| changes.diff_open) {
         return Middle::LocalDiff;
     }
     Middle::Commits

@@ -88,7 +88,7 @@ impl Setup {
             from: path,
             to: to
                 .split('/')
-                .fold(self.archive(), |path, part| path.join(part)),
+                .fold(self.archive(), |folder, part| folder.join(part)),
             document_id: None,
             duplicate: false,
         }

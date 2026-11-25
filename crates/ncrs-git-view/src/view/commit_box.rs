@@ -54,14 +54,17 @@ pub fn view<'a>(local: &'a LocalChanges, has_keys: bool, ctx: ViewCtx<'a>) -> El
     };
     let mut form = column![
         key_intercept_pressed(
-            counted_text_field(
-                lang.text(Msg::GitViewCommitTitlePlaceholder),
-                &local.title,
-                (counter, length > TITLE_LIMIT),
+            focused(
+                counted_text_field(
+                    lang.text(Msg::GitViewCommitTitlePlaceholder),
+                    &local.title,
+                    (counter, length > TITLE_LIMIT),
+                    TITLE_ID,
+                    Some(Message::CommitTitleChanged),
+                    Message::Commit,
+                    palette,
+                ),
                 ring(WipFocus::Title),
-                TITLE_ID,
-                Some(Message::CommitTitleChanged),
-                Message::Commit,
                 palette,
             ),
             resolve,

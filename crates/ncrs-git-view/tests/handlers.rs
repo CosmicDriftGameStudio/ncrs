@@ -901,9 +901,9 @@ async fn comparing_with_the_working_copy_lists_the_differences() {
     let paths: Vec<_> = shown.files.iter().map(|file| file.path.as_str()).collect();
     assert_eq!(paths, ["a.txt", "b.txt"]);
     send(&mut state, Message::FilePressed(1)).await;
-    let shown = state.diff.as_ref().unwrap();
-    assert_eq!(shown.file, 1);
-    assert!(shown.diff.is_some());
+    let after_press = state.diff.as_ref().unwrap();
+    assert_eq!(after_press.file, 1);
+    assert!(after_press.diff.is_some());
 }
 
 #[tokio::test]

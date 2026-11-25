@@ -38,7 +38,7 @@ pub fn cleanable(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
     )
 }
 
-fn scan_blocking(path: &PathBuf, stop: &Arc<AtomicBool>) -> Result<Scan, String> {
+fn scan_blocking(path: &Path, stop: &Arc<AtomicBool>) -> Result<Scan, String> {
     let git = Git::open_unattended(path).map_err(|error| error_line(&error))?;
     let tips_before = remote_tips(path, stop).unwrap_or_default();
     let fetch_error = git.fetch(None).err().map(|error| error_line(&error));

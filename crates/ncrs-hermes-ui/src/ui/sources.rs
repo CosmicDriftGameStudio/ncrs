@@ -113,7 +113,7 @@ fn source_row<'a>(
     )
 }
 
-/// "[*.pdf] → [T1 Documents] [T2 Firm]"
+/// "[*.pdf] → [T1 Documents] [T2 Firm]".
 fn route<'a>(setting: &SourceSetting, filing: &Filing, palette: &Palette) -> Element<'a, Message> {
     let source = &setting.source;
     let mut line = Row::new()

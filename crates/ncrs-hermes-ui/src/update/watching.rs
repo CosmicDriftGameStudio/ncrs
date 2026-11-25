@@ -51,7 +51,7 @@ pub fn run_watching(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action
     if due.is_empty() {
         return;
     }
-    let due: Vec<_> = due
+    let due_sources: Vec<_> = due
         .into_iter()
         .map(|(source, files)| {
             let is_switched_on = hermes.watching.is_switched_on(&source.path);
@@ -71,7 +71,7 @@ pub fn run_watching(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action
                     let mut progress = ncrs_fs::transfer::Reporting::new(&progress_tx);
                     Ok::<_, String>(file_watched(
                         &access,
-                        &due,
+                        &due_sources,
                         busy_source.as_deref(),
                         &template,
                         &mut progress,
@@ -112,14 +112,14 @@ fn roots_of(sources: &[SortSource]) -> Vec<WatchedRoots> {
 }
 
 fn is_source_of(folder: Option<&Path>, source: &SortSource) -> bool {
-    let Some(folder) = folder else {
+    let Some(busy_folder) = folder else {
         return false;
     };
-    folder == source.path
-        || canonical_path(folder)
+    busy_folder == source.path
+        || canonical_path(busy_folder)
             .ok()
             .zip(canonical_path(&source.path).ok())
-            .is_some_and(|(folder, root)| folder == root)
+            .is_some_and(|(busy_root, root)| busy_root == root)
 }
 
 fn file_watched<P: Progress>(

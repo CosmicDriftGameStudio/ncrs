@@ -308,12 +308,10 @@ pub fn update(state: &mut State, message: CleanupMessage) -> Outcome {
         CleanupMessage::Down => move_cursor(dialog, true),
         CleanupMessage::Space => match dialog.line_at_cursor() {
             Some(Line::Item(pick)) => dialog.toggle(pick),
-            Some(Line::Remote) => {
-                if dialog.phase == Phase::Ready {
-                    dialog.delete_remote = !dialog.delete_remote;
-                }
+            Some(Line::Remote) if dialog.phase == Phase::Ready => {
+                dialog.delete_remote = !dialog.delete_remote;
             }
-            None => {}
+            Some(Line::Remote) | None => {}
         },
         CleanupMessage::Fold(open) => dialog.keep_open = open,
         CleanupMessage::Tab(_) => {

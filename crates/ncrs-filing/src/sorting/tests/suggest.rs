@@ -20,7 +20,7 @@ fn filed_target(setup: &Setup) {
         ("Schule", "elternbrief", "Zeugnis"),
         ("Kita", "kitavertrag", "Vertrag"),
     ] {
-        for day in 1..=3u32 {
+        for day in 1..=3 {
             setup.write(
                 &format!("T1/{folder}/2026/2026070{day}_{kind}.txt"),
                 &format!("{word} gemeinsame Nachricht Nummer{day}"),
@@ -30,7 +30,7 @@ fn filed_target(setup: &Setup) {
     let source = setup.source("T1", &["t1"]);
     setup.plan(&source);
     for (folder, kind) in [("Schule", "Zeugnis"), ("Kita", "Vertrag")] {
-        for day in 1..=3u32 {
+        for day in 1..=3 {
             let path = setup.path(&format!("T1/{folder}/2026/2026070{day}_{kind}.txt"));
             setup.set_fields(&path, &fields(kind, day), FieldOrigin::Manual);
         }
@@ -128,7 +128,7 @@ fn a_folder_without_a_word_its_documents_share_gets_no_rule() {
     }
     let source = setup.source("T1", &["t1"]);
     setup.plan(&source);
-    for day in 1..=3u32 {
+    for day in 1..=3 {
         let path = setup.path(&format!("T1/Misc/2026/2026070{day}_Brief.txt"));
         setup.set_fields(&path, &fields("Brief", day), FieldOrigin::Manual);
     }
@@ -159,10 +159,10 @@ fn the_model_is_asked_once_per_group_and_not_again_after_it_failed() {
 
     let failing = ScriptedChatModel::new(LocalModelStatus::NotLoadedYet, []);
     failing.push_levels(Err(AiError::Model("down")));
-    let suggestions = scheme(&setup, Some(&failing), 0);
+    let without_model = scheme(&setup, Some(&failing), 0);
     assert_eq!(failing.recognized().len(), 1);
-    assert!(matches!(suggestions.model, ModelNote::Failed(_)));
-    assert_eq!(names(&suggestions), ["Kita", "Schule"]);
+    assert!(matches!(without_model.model, ModelNote::Failed(_)));
+    assert_eq!(names(&without_model), ["Kita", "Schule"]);
 }
 
 #[test]

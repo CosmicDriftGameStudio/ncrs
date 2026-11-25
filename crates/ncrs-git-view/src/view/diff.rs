@@ -90,7 +90,7 @@ fn sides(state: &State, shown: &DiffState, ctx: ViewCtx<'_>) -> String {
         Subject::Working => ("HEAD".to_owned(), working()),
         Subject::Commit(sha) => {
             let commit = commit_of_diff(state, shown);
-            let parent = commit.and_then(|commit| commit.parent);
+            let parent = commit.and_then(|line| line.parent);
             (parent.unwrap_or_else(|| NO_SIDE.to_owned()), short(sha))
         }
         Subject::Compare { from, to } => (short(from), to.as_deref().map_or_else(working, short)),
@@ -119,8 +119,8 @@ fn toolbar_rows<'a>(
     };
     let subject = match compare_ends(&shown.subject) {
         Some((from, to)) => {
-            let to = to.unwrap_or_else(|| ctx.lang.text(Msg::GitViewCompareWorking).to_owned());
-            Some(format!("{from} \u{2192} {to}"))
+            let to_side = to.unwrap_or_else(|| ctx.lang.text(Msg::GitViewCompareWorking).to_owned());
+            Some(format!("{from} \u{2192} {to_side}"))
         }
         None => commit_of_diff(state, shown).map(|commit| {
             if narrow {
@@ -271,9 +271,9 @@ pub fn lines<'a>(
 
 /// "{file} · +a −b" for the status bar, counted from the diff that is read.
 pub fn summary(path: &str, diff: Option<&FileDiff>, ctx: ViewCtx<'_>) -> Option<String> {
-    let diff = diff?;
+    let shown = diff?;
     let count = |kind: RowKind| {
-        let rows = diff.hunks.iter().flat_map(|hunk| &hunk.rows);
+        let rows = shown.hunks.iter().flat_map(|hunk| &hunk.rows);
         rows.filter(|row| row.kind == kind).count().to_string()
     };
     Some(fill_template(

@@ -120,7 +120,10 @@ fn decide_case(case: &Case, source: &SortSource, per_target: &[(&str, Vec<RuleSp
     let entries: Vec<TargetRules<'_>> = targets
         .iter()
         .zip(&rules)
-        .map(|(target, rules)| TargetRules { target, rules })
+        .map(|(target, target_rules)| TargetRules {
+            target,
+            rules: target_rules,
+        })
         .collect();
     let kinds = Kinds::built_in(KindLanguage::English);
     let words = Words {
@@ -256,7 +259,7 @@ fn a_missing_value_for_one_target_is_not_hidden_by_the_other_target() {
     ];
     assert!(matches!(
         decide_case(&numberless, &source(&["t1", "t2"]), &both),
-        Decision::MissingValue { target, rule: _, field: Field::Number } if target == id("t1")
+        Decision::MissingValue { target, field: Field::Number, .. } if target == id("t1")
     ));
 }
 

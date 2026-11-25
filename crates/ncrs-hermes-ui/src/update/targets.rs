@@ -89,7 +89,7 @@ pub fn update(
         TargetsMessage::AnswerQuestion => {
             let answer = answer_of(hermes.target_removal.as_ref());
             return match answer {
-                Some(answer) => update(hermes, answer, ctx, actions),
+                Some(reply) => update(hermes, reply, ctx, actions),
                 None => Task::none(),
             };
         }
@@ -166,14 +166,14 @@ pub fn load_states(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
         .filing
         .as_ref()
         .and_then(|module| module.sorting_access(std::sync::Arc::clone(&ctx.trash.0)));
-    let Some(access) = access else {
+    let Some(sorting_access) = access else {
         return Task::none();
     };
     Task::perform(
         tokio::task::spawn_blocking(move || {
             ids.into_iter()
                 .map(|id| {
-                    let state = access.target_state(&id);
+                    let state = sorting_access.target_state(&id);
                     (id, state)
                 })
                 .collect::<Vec<_>>()
@@ -206,7 +206,7 @@ fn check_confirm(
         .filing
         .as_ref()
         .and_then(|module| module.sorting_access(std::sync::Arc::clone(&ctx.trash.0)));
-    let Some(access) = access else {
+    let Some(sorting_access) = access else {
         actions.push(Action::ShowError(ncrs_core::INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -218,7 +218,7 @@ fn check_confirm(
             let own_volume = is_on_own_volume(&target.path);
             ConfirmCheck {
                 own_volume,
-                gone: access.all_gone_below(&target.path),
+                gone: sorting_access.all_gone_below(&target.path),
                 target,
             }
         }),
@@ -292,11 +292,11 @@ fn write_confirmed(
     };
     Task::perform(
         tokio::task::spawn_blocking(move || {
-            let own_volume = own_volume
+            let confirmed_volume = own_volume
                 .or_else(|| is_on_own_volume(&target.path))
                 .unwrap_or(false);
             let confirmed = SortTarget {
-                own_volume: Some(own_volume),
+                own_volume: Some(confirmed_volume),
                 ..target
             };
             upsert_sort_target(&config_path, &confirmed).map(|config| config.filing)
@@ -361,8 +361,8 @@ fn save(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
             .find(|setting| setting.target.id == *id)?;
         Some((setting.target.path.clone(), setting.target.own_volume))
     });
-    if let Some(dialog) = hermes.target_dialog.as_mut() {
-        dialog.saving = true;
+    if let Some(saving_dialog) = hermes.target_dialog.as_mut() {
+        saving_dialog.saving = true;
     }
     Task::perform(
         tokio::task::spawn_blocking(move || {
@@ -377,7 +377,7 @@ fn save(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
                     .map(|(_, config)| config),
                 Some(id) => upsert_sort_target(&config_path, &draft.target(id, folder, own_volume)),
             };
-            config.map(|config| config.filing)
+            config.map(|saved_config| saved_config.filing)
         }),
         |joined| {
             targets(TargetsMessage::Written(Box::new(
@@ -491,7 +491,7 @@ fn confirm_remove(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
                 .and_then(|()| remove_sort_target(&config_path, &id))
                 .map(|config| config.filing);
             let rules_failure = match (&filing, access) {
-                (Ok(_), Some(access)) => access.delete_rules_of(&id).err(),
+                (Ok(_), Some(rules_access)) => rules_access.delete_rules_of(&id).err(),
                 (Ok(_), None) => Some(ncrs_core::INDEX_NOT_OPEN.to_owned()),
                 (Err(_), _) => None,
             };

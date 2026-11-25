@@ -20,7 +20,7 @@ mod ui_tests {
     use iced_test::Simulator;
     use ncrs_config::config::{Filing, SourceSetting, TargetSetting};
     use ncrs_config::file_list_tags::FileListTags;
-    use ncrs_config::palette::{Palette, ThemePreset};
+    use ncrs_config::palette::ThemePreset;
     use ncrs_filing::rules_work::{ListedRule, RulesLoad, SortTry, SortTryRow, SortTryState};
     use ncrs_filing::sorting::{TargetState, WaitReason};
     use ncrs_hermes_ui::condition_editor::ConditionEdit;
@@ -100,8 +100,8 @@ mod ui_tests {
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
         let spec = rule_spec("probe", "probe");
-        (0..count)
-            .map(|_| index.create_rule(&spec).unwrap())
+        std::iter::repeat_with(|| index.create_rule(&spec).unwrap())
+            .take(count)
             .collect()
     }
 
@@ -122,16 +122,16 @@ mod ui_tests {
 
     /// Eight rules in the first target, three in the second, none in the third.
     fn listed_rules() -> Vec<ListedRule> {
-        let layout = [("documents", 8_usize), ("company", 3)];
+        let layout = [("documents", 8usize), ("company", 3)];
         let ids = rule_ids(layout.iter().map(|(_, count)| count).sum());
-        let mut ids = ids.into_iter();
+        let mut unused_ids = ids.into_iter();
         let mut rules = Vec::new();
         for (target_name, count) in layout {
             for at in 0..count {
                 let global_index = rules.len();
                 rules.push(ListedRule {
                     rule: Rule {
-                        id: ids.next().unwrap(),
+                        id: unused_ids.next().unwrap(),
                         position: i64::try_from(global_index).unwrap() + 1,
                         origin: RuleOrigin::Hand,
                         target: id(target_name),
@@ -211,7 +211,7 @@ mod ui_tests {
     }
 
     fn picture_in(hermes: &Hermes, lang: Language, name: &str) {
-        let palette: Palette = ThemePreset::Cosmic.palette();
+        let palette = ThemePreset::Cosmic.palette();
         let tags = FileListTags::default();
         let ctx = ViewCtx {
             lang,
