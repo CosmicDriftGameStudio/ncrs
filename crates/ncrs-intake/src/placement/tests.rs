@@ -854,3 +854,86 @@ fn a_lease_naming_the_rent_account_is_not_placed_with_the_statements_of_that_acc
     assert!(statement.is_sure());
     assert_eq!(statement.folder, Path::new("Bank/dkb"));
 }
+
+/// Statements of one bank, 2023 laid out flat, the other years in `Konto`.
+fn statements_with_a_different_2023(per_year: u8) -> Vec<PlanFile> {
+    let layout = [
+        ("Bank/DB/2023", 2023, 0),
+        ("Bank/DB/2024/Konto", 2024, 1),
+        ("Bank/DB/2021/Konto", 2021, 2),
+    ];
+    let mut documents = Vec::new();
+    for (folder, year, slot) in layout {
+        let seeds = slot * 10 + 1..slot * 10 + 1 + per_year;
+        documents.extend(filed(
+            folder,
+            seeds,
+            &dated("Deutsche Bank AG", "bank_statement", year),
+            None,
+        ));
+    }
+    documents
+}
+
+fn place_named_in(documents: &[PlanFile], document: &DocumentFields, file_name: &str) -> Placement {
+    NeighbourIndex::new(documents, &no_own(), &ordered())
+        .place_named(document, None, Some(file_name))
+        .unwrap()
+}
+
+#[test]
+fn a_dated_document_goes_to_the_folder_its_year_uses_when_the_years_are_laid_out_differently() {
+    let documents = statements_with_a_different_2023(4);
+    let sender = "Deutsche Bank AG";
+
+    let in_2024 = place_named_in(
+        &documents,
+        &dated(sender, "bank_statement", 2024),
+        "Kontoauszug_1EUR_2024-03-28_KK_1.pdf",
+    );
+    let in_2023 = place_named_in(
+        &documents,
+        &dated(sender, "bank_statement", 2023),
+        "Kontoauszug_1EUR_2023-03-28_KK_1.pdf",
+    );
+    let in_2025 = place_named_in(
+        &documents,
+        &dated(sender, "bank_statement", 2025),
+        "Kontoauszug_1EUR_2025-03-28_KK_1.pdf",
+    );
+
+    assert_eq!(in_2024.folder, Path::new("Bank/DB/2024/Konto"));
+    assert!(in_2024.is_sure());
+    assert_eq!(in_2024.pattern, None);
+    assert_eq!(in_2023.folder, Path::new("Bank/DB/2023"));
+    assert_eq!(in_2025.folder, Path::new("Bank/DB"));
+}
+
+#[test]
+fn a_file_name_dated_in_another_year_than_the_letter_is_not_narrowed() {
+    for per_year in [4, 3] {
+        let documents = statements_with_a_different_2023(per_year);
+
+        let placement = place_named_in(
+            &documents,
+            &dated("Deutsche Bank AG", "bank_statement", 2024),
+            "Saldenmitteilung_1EUR_2023-12-31_SAPCML_1.pdf",
+        );
+
+        assert_eq!(placement.folder, Path::new("Bank/DB"));
+    }
+}
+
+#[test]
+fn a_dated_document_is_narrowed_with_three_files_per_year_too() {
+    let documents = statements_with_a_different_2023(3);
+
+    let placement = place_named_in(
+        &documents,
+        &dated("Deutsche Bank AG", "bank_statement", 2024),
+        "Kontoauszug_1EUR_2024-03-28_KK_1.pdf",
+    );
+
+    assert_eq!(placement.folder, Path::new("Bank/DB/2024/Konto"));
+    assert!(placement.is_sure());
+}

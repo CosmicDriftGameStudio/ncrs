@@ -854,6 +854,56 @@ fn a_location_set_to_continuous_after_the_start_takes_its_next_file_as_a_candida
 }
 
 #[test]
+fn a_location_added_after_the_start_is_scanned_and_files_by_itself() {
+    let first_dir = TempDir::new().unwrap();
+    let second_dir = TempDir::new().unwrap();
+    let first = location(&first_dir, LocationMode::Inbox);
+    let second = Location {
+        continuous: true,
+        ..location(&second_dir, LocationMode::Inbox)
+    };
+    put(&first, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
+        "Reminder 12 from Agency B".to_owned(),
+    ))));
+    let runner = Runner::start(
+        settings(workers(2)),
+        fixture.steps_reading(chain),
+        vec![first],
+        stepping_clock(),
+    );
+    let before = runner.wait_for("the first file reviewed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done >= 1
+    });
+    let arrived = put(&second, "reminder.pdf", REMINDER);
+
+    runner.add_location(second.clone());
+
+    runner.wait_for("the file of the new location passed", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[3].done > before.steps[3].done
+    });
+    assert_eq!(
+        runner.take_continuous_candidates(&|root| root == second.path),
+        [ContinuousCandidate {
+            location: second.path.clone(),
+            path: arrived.clone(),
+        }]
+    );
+    assert!(runner.rescan_around(&arrived));
+    assert!(runner.process_again(&arrived));
+
+    // No scan is asked for: the watcher of the added location sees the file.
+    let settled = runner.wait_for("the rescan settled", is_idle);
+    put(&second, "invoice.pdf", INVOICE);
+    runner.wait_for("the file the watcher saw passed", |snapshot| {
+        is_idle(snapshot)
+            && snapshot.steps[0].done + snapshot.steps[0].unchanged
+                > settled.steps[0].done + settled.steps[0].unchanged
+    });
+}
+
+#[test]
 fn a_file_the_background_filing_took_once_is_not_offered_again_by_a_rescan() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);

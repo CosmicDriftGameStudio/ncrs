@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
+use ncrs_config::config::LocationTransfer;
 use ncrs_hermes_chat::{ChipReply, Step};
 use ncrs_i18n::Msg;
 
@@ -117,15 +118,25 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             Ok("copy") => {
                 self.copy_planned_files();
                 if let Some(new_files) = env_path("NCRS_EVAL_CONTINUOUS") {
-                    self.continuous_after_copy(&new_files);
+                    self.continuous_after_tab_run(&new_files, LocationTransfer::Copy);
                 }
             }
-            Ok("move") => self.move_planned_files(false),
+            Ok("move") => {
+                self.move_planned_files(false);
+                if let Some(new_files) = env_path("NCRS_EVAL_CONTINUOUS") {
+                    self.continuous_after_tab_run(&new_files, LocationTransfer::Move);
+                }
+            }
             Ok("move-sure") => self.move_planned_files(true),
             _ => {}
         }
-        if continuous && std::env::var("NCRS_EVAL_FILE").as_deref() != Ok("copy") {
-            println!("NCRS_EVAL_CONTINUOUS needs NCRS_EVAL_FILE=copy, nothing ran");
+        if continuous
+            && !matches!(
+                std::env::var("NCRS_EVAL_FILE").as_deref(),
+                Ok("copy" | "move")
+            )
+        {
+            println!("NCRS_EVAL_CONTINUOUS needs NCRS_EVAL_FILE=copy or move, nothing ran");
         }
     }
 

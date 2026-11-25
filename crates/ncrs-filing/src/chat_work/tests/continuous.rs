@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
-use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleSpec};
+use ncrs_index::{Condition, ConditionKind, DocumentStatus, RuleConditions, RuleSpec};
 
 use super::live::index_known;
 use super::picks::RecordingModel;
 use super::*;
-use crate::chat_work::{file_new, plan_listed, ContinuousReport};
+use crate::chat_work::{file_new, open_in, plan_listed, ContinuousReport};
 
 fn rule_for(text: &str, folder: &str) -> RuleSpec {
     RuleSpec {
@@ -235,4 +235,99 @@ fn new_documents_without_review_under_a_root_are_found_for_a_restart() {
     let found = crate::chat_work::open_in(&setup.access, std::slice::from_ref(&root)).unwrap();
 
     assert_eq!(found, [(root.clone(), at("a.pdf"))]);
+}
+
+fn index_inbox_file(setup: &Setup, relative: &str) -> ncrs_index::DocumentId {
+    let path = setup.dir.path().join(relative);
+    let mut guard = setup.access.slot.lock().unwrap();
+    let index = guard.as_mut().unwrap();
+    let id = index
+        .insert_document(&ncrs_index::NewDocument {
+            hash: hash_path(&path).unwrap(),
+            path: path.clone(),
+            source: ncrs_index::DocumentSource::Inbox,
+            received_at: chrono::Utc::now(),
+            stamp: Some(super::reading::stamp_of_file(&path)),
+        })
+        .unwrap();
+    index
+        .set_document_text(id, &fs::read_to_string(&path).unwrap())
+        .unwrap();
+    id
+}
+
+#[test]
+fn a_moved_document_and_its_undo_keep_file_and_index_together() {
+    let setup = setup_with_rule();
+    let inbox = setup.dir.path().join("inbox");
+    let archive = setup.dir.path().join("archive");
+    let id = index_inbox_file(&setup, "inbox/one.txt");
+
+    let report = file_all(&setup, &all_files(), Transfer::Move);
+
+    assert_eq!(report.filed, 2);
+    let filed = setup
+        .access
+        .with_index(|index| Ok(index.document(id).unwrap().unwrap()))
+        .unwrap();
+    assert_eq!(filed.path, archive.join("Zeta/one.txt"));
+    assert_eq!(filed.status, DocumentStatus::Filed);
+    assert!(archive.join("Zeta/one.txt").exists() && !inbox.join("one.txt").exists());
+
+    let runs = setup.access.recent_runs(5).unwrap();
+    let ChatResult::Undone(undone) = setup.access.run(ChatWork::Undo {
+        batch: runs[0].summary.batch,
+    }) else {
+        panic!("not an undo result");
+    };
+
+    assert_eq!(undone.unwrap().undone, 2);
+    assert_eq!(
+        fs::read_to_string(inbox.join("one.txt")).unwrap(),
+        "Zeta contract number one"
+    );
+    assert!(!archive.join("Zeta").exists());
+    let back = setup
+        .access
+        .with_index(|index| {
+            Ok((
+                index.document(id).unwrap().unwrap(),
+                index.open_review_of(id).unwrap().is_some(),
+            ))
+        })
+        .unwrap();
+    assert_eq!(back.0.path, inbox.join("one.txt"));
+    assert_eq!(
+        back.0.stamp,
+        Some(super::reading::stamp_of_file(&inbox.join("one.txt")))
+    );
+    assert_eq!(back.0.status, DocumentStatus::InReview);
+    assert!(back.1);
+    assert!(setup.access.recent_runs(5).unwrap().is_empty());
+    assert!(open_in(&setup.access, &[inbox]).unwrap().is_empty());
+}
+
+#[test]
+fn a_folder_that_is_copied_refuses_a_run_that_moves() {
+    let setup = setup_with_rule();
+    let model = RecordingModel {
+        declines: true,
+        ..RecordingModel::default()
+    };
+    let access = setup
+        .access
+        .clone()
+        .with_copy_roots(vec![setup.dir.path().join("inbox")]);
+
+    let result = file_new(
+        &access,
+        &setup.dir.path().join("inbox"),
+        &setup.dir.path().join("archive"),
+        &all_files(),
+        Transfer::Move,
+        &model,
+        "inbox filed continuously".to_owned(),
+    );
+
+    assert!(result.unwrap_err().contains("copied, not moved"));
 }

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use ncrs_index::{
     BatchId, BatchKind, ContentHash, DocumentId, DocumentStatus, FileStamp, Index, IndexError,
-    JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
+    JournalItem, JournalState, NewJournalItem, ReviewReason, SourceRoot, Transfer,
 };
 use ncrs_intake::{has_symlink_ancestor_under, hash_path, stays_below, IntakeError};
 
@@ -742,7 +742,8 @@ pub struct UndoReport {
 /// Moves the batch back, last item first. `roots` are the locations the batch
 /// may have worked in. An item goes back only when the
 /// file at its target still has the planned content and its old place is free;
-/// the rest is left and journaled as `undo_skipped`. Then the folders the run
+/// the rest is left and journaled as `undo_skipped`; a later undo tries those
+/// again, and the batch counts as undone only when none is left. Then the folders the run
 /// created are removed if they are empty, deepest first.
 pub fn undo(index: &Index, batch: BatchId, roots: &[PathBuf]) -> Result<UndoReport, ExecuteError> {
     undo_with_trash(index, batch, roots, None)
@@ -772,11 +773,11 @@ pub fn undo_with_trash(
     for item in items
         .iter()
         .rev()
-        .filter(|item| item.state == JournalState::Moved)
+        .filter(|item| matches!(item.state, JournalState::Moved | JournalState::UndoSkipped))
     {
         let undone = match transfer {
             Transfer::Move => undo_item(index, item, &all_roots)?,
-            Transfer::Copy => undo_copy_item(item, &all_roots),
+            Transfer::Copy => undo_copy_item(index, item, &all_roots)?,
             Transfer::Trash => trash::undo_trash_item(item, trash, &all_roots),
         };
         match undone {
@@ -801,30 +802,60 @@ pub fn undo_with_trash(
         // Fails when the folder is not empty, which is what keeps it.
         let _best_effort = fs::remove_dir(&folder);
     }
-    index.mark_batch_undone(batch)?;
+    if report.left == 0 {
+        index.mark_batch_undone(batch)?;
+    }
     Ok(report)
 }
 
 /// A copy comes out only while it is still the planned content and the file it
 /// was copied from is still there with that content too.
-fn undo_copy_item(item: &JournalItem, roots: &[PathBuf]) -> Option<SkipReason> {
+fn undo_copy_item(
+    index: &Index,
+    item: &JournalItem,
+    roots: &[PathBuf],
+) -> Result<Option<SkipReason>, ExecuteError> {
     if let Some(reason) = leaves_its_location(roots, item) {
-        return Some(reason);
+        return Ok(Some(reason));
     }
     match hash_path(&item.to) {
         Ok(hash) if hash == item.hash => {}
-        Ok(_) => return Some(SkipReason::SourceChanged),
-        Err(err) if is_not_found(&err) => return Some(SkipReason::SourceMissing),
-        Err(err) => return Some(SkipReason::Failed(err.to_string())),
+        Ok(_) => return Ok(Some(SkipReason::SourceChanged)),
+        Err(err) if is_not_found(&err) => return Ok(Some(SkipReason::SourceMissing)),
+        Err(err) => return Ok(Some(SkipReason::Failed(err.to_string()))),
     }
     if !has_hash(&item.from, item.hash) {
-        return Some(SkipReason::Failed(
+        return Ok(Some(SkipReason::Failed(
             "the original is gone or changed".to_owned(),
-        ));
+        )));
     }
-    fs::remove_file(&item.to)
-        .err()
-        .map(|err| SkipReason::Failed(err.to_string()))
+    if let Err(err) = fs::remove_file(&item.to) {
+        return Ok(Some(SkipReason::Failed(err.to_string())));
+    }
+    ask_again_about_filed_document(index, item)?;
+    Ok(None)
+}
+
+/// A document whose file is put back is no longer filed. The file stays where
+/// it is until someone decides: an open review entry keeps the pipeline from
+/// filing it again by itself.
+fn ask_again_about_filed_document(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
+    let (Some(id), false) = (item.document_id, item.duplicate) else {
+        return Ok(());
+    };
+    let filed = index
+        .document(id)?
+        .is_some_and(|document| document.status == DocumentStatus::Filed);
+    if !filed {
+        return Ok(());
+    }
+    match index.add_review_shared(id, ReviewReason::NoMatchingRule) {
+        Ok(_) => Ok(()),
+        Err(IndexError::ReviewAlreadyOpen(_)) => {
+            Ok(index.set_document_status(id, DocumentStatus::InReview)?)
+        }
+        Err(other) => Err(other.into()),
+    }
 }
 
 /// A link between a location and one of the item's two places could lead out
@@ -883,6 +914,7 @@ fn undo_item(
             &item.to,
             &item.from,
         )?;
+        ask_again_about_filed_document(index, item)?;
         return Ok(None);
     }
     if let Some(parent) = item.from.parent() {
@@ -900,6 +932,7 @@ fn undo_item(
         &item.to,
         &item.from,
     )?;
+    ask_again_about_filed_document(index, item)?;
     Ok(None)
 }
 

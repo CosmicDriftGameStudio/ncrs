@@ -92,8 +92,8 @@ pub fn run_continuous(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Acti
 }
 
 /// The write folder and the folders that file by themselves. The flag and the
-/// transfer come from the saved config: the module keeps the ones it was
-/// built with until the next start, and "continuous" must work at once.
+/// transfer come from the saved config, also for a location the module only
+/// learns at the next start.
 fn target_and_folders(
     module: &FilingModule,
     saved: &[ncrs_config::config::FilingLocation],
@@ -423,6 +423,101 @@ mod tests {
         );
 
         assert!(started_job(&mut scene));
+    }
+
+    fn inbox_with(transfer: LocationTransfer) -> impl FnOnce(&Path, &Path) -> Vec<FilingLocation> {
+        move |inbox, archive| {
+            let mut locations = inbox_and_archive(inbox, archive);
+            locations[0].transfer = transfer;
+            locations
+        }
+    }
+
+    fn module_copies_from_inbox(scene: &Scene) -> bool {
+        let bin = scene.dir.path().join("bin");
+        let trash = Arc::new(JournaledTrash::new(
+            scene.dir.path().join("trash.toml"),
+            FolderBackend(bin),
+        ));
+        scene
+            .hermes
+            .filing
+            .as_ref()
+            .unwrap()
+            .chat_access(trash)
+            .unwrap()
+            .copies_from(&scene.dir.path().join("inbox"))
+    }
+
+    /// The task of the background look-up cannot be driven here: its answer is
+    /// resolved on this thread and handed to the handler the message reaches.
+    fn save_again(scene: &mut Scene) {
+        let saved = scene.hermes.filing_config.clone();
+        let to_resolve = scene
+            .hermes
+            .filing
+            .as_ref()
+            .and_then(|module| module.configured_with_new(&saved.locations));
+        drop(
+            super::super::lifecycle::keep_running_module_with_saved_transfers(
+                &mut scene.hermes,
+                saved,
+            ),
+        );
+        if let Some(configured) = to_resolve {
+            super::super::lifecycle::take_up_resolved_locations(
+                &mut scene.hermes,
+                ncrs_filing::filing::resolve_locations(&configured),
+            );
+        }
+    }
+
+    #[test]
+    fn a_folder_saved_as_moved_is_no_longer_copied_by_the_running_module() {
+        let mut scene = scene(
+            inbox_with(LocationTransfer::Copy),
+            inbox_with(LocationTransfer::Move),
+        );
+        assert!(module_copies_from_inbox(&scene));
+
+        save_again(&mut scene);
+
+        assert!(!module_copies_from_inbox(&scene));
+    }
+
+    #[test]
+    fn a_folder_saved_as_copied_is_copied_by_the_running_module_at_once() {
+        let mut scene = scene(
+            inbox_with(LocationTransfer::Move),
+            inbox_with(LocationTransfer::Copy),
+        );
+        assert!(!module_copies_from_inbox(&scene));
+
+        save_again(&mut scene);
+
+        assert!(module_copies_from_inbox(&scene));
+    }
+
+    #[test]
+    fn a_folder_saved_after_the_start_is_known_to_module_and_runner_at_once() {
+        let mut scene = scene(
+            |inbox, _| vec![configured(inbox, LocationMode::Inbox, false, false)],
+            inbox_and_archive,
+        );
+
+        save_again(&mut scene);
+
+        let archive = scene
+            .hermes
+            .filing
+            .as_ref()
+            .unwrap()
+            .reachable_locations()
+            .find(|location| location.mode == LocationMode::Archive)
+            .map(|location| location.path.clone())
+            .unwrap();
+        let runner = scene.hermes.live_pipeline().unwrap();
+        assert!(runner.rescan_around(&archive.join("new.pdf")));
     }
 
     fn candidate(root: &str, file: &str) -> ContinuousCandidate {

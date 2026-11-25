@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use ncrs_config::config::LocationTransfer;
+use ncrs_index::{BatchId, BatchKind, DocumentStatus};
 
 use super::archive::{self, Arrivals};
 use super::drive;
 use super::probe::{files_in, wait_quiet_and, World};
 use crate::e2e_tests::acceptance_v160::Live;
 use crate::e2e_tests::Session;
+use crate::messages::{Message, SettingsMessage};
 
 pub fn run<P: Live>(world: &World, session: &mut Session<P>) -> Arrivals {
     let task = session.runtime.enter(|| {
@@ -134,4 +136,71 @@ fn check_identical_scans(world: &World, scans: &[(PathBuf, PathBuf)]) {
             "{scan:?} is in the activity"
         );
     }
+}
+
+/// The runs the folder made are put back from the settings page: the files
+/// lie in the inbox again, the index does not call them filed, and nothing
+/// files them a second time.
+pub fn undo_and_check<P: Live>(world: &World, session: &mut Session<P>, arrivals: &Arrivals) {
+    let batches: Vec<BatchId> = {
+        let index = world.index();
+        [BatchKind::Hermes, BatchKind::Filing]
+            .into_iter()
+            .flat_map(|kind| index.undoable_batches(kind, 50).unwrap())
+            .filter(|batch| {
+                index
+                    .journal_items(*batch)
+                    .unwrap()
+                    .iter()
+                    .any(|item| arrivals.by_rule.iter().any(|(from, _)| *from == item.from))
+            })
+            .collect()
+    };
+    assert!(
+        !batches.is_empty(),
+        "no run of the continuous filing to undo"
+    );
+    for batch in batches {
+        session.send(Message::Settings(SettingsMessage::UndoRun(batch.number())));
+        assert!(
+            wait_quiet_and(session, Duration::from_secs(60), |_| true),
+            "the pipeline did not settle after the undo"
+        );
+    }
+    let index = world.index();
+    for (from, target) in &arrivals.by_rule {
+        assert!(
+            from.is_file() && !target.exists(),
+            "not put back: {from:?} <- {target:?}"
+        );
+        let document = index
+            .document_by_path(from)
+            .unwrap()
+            .unwrap_or_else(|| panic!("{from:?} is no document after the undo"));
+        assert_ne!(
+            document.status,
+            DocumentStatus::Filed,
+            "{from:?} still counts as filed"
+        );
+        assert!(
+            drive::journal_moved(world, from).is_none(),
+            "{from:?} is still a moved item"
+        );
+    }
+    drop(index);
+    // The put-back files are not filed a second time by the watcher.
+    let quiet = wait_quiet_and(session, Duration::from_secs(10), |_| true);
+    assert!(quiet && arrivals.by_rule.iter().all(|(from, _)| from.is_file()));
+    let index_after_quiet = world.index();
+    let again = [BatchKind::Hermes, BatchKind::Filing]
+        .into_iter()
+        .flat_map(|kind| index_after_quiet.undoable_batches(kind, 50).unwrap())
+        .any(|batch| {
+            index_after_quiet
+                .journal_items(batch)
+                .unwrap()
+                .iter()
+                .any(|item| arrivals.by_rule.iter().any(|(from, _)| *from == item.from))
+        });
+    assert!(!again, "the put-back files were filed again");
 }

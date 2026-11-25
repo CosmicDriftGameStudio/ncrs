@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use ncrs_config::config::LocationTransfer;
-use ncrs_index::{BatchId, BatchKind, InMemoryKeyStore, Index, JournalState};
+use ncrs_index::{BatchId, BatchKind, DocumentStatus, InMemoryKeyStore, Index, JournalState};
 use ncrs_intake::LocationMode;
 
+use super::quiet_window::QuietWindow;
 use super::scratch::copy_tree;
 use super::tidy_flows::relative_files;
 use super::{all, expect, Check, Protocol, READ_LIMIT};
@@ -58,7 +59,12 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
 
     fn hermes_batches(&self) -> Vec<BatchId> {
         self.open_index()
-            .and_then(|index| index.undoable_batches(BatchKind::Hermes, 50).ok())
+            .map(|index| {
+                [BatchKind::Hermes, BatchKind::Filing]
+                    .into_iter()
+                    .flat_map(|kind| index.undoable_batches(kind, 50).unwrap_or_default())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -113,7 +119,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let mut last_tick = Instant::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
-        let mut idle_since: Option<Instant> = None;
+        let mut window = QuietWindow::default();
         let mut status_shot = false;
         let mut last_status = Instant::now();
         let mut reports_seen = 0;
@@ -136,6 +142,13 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 );
             }
             if last_tick.elapsed() >= Duration::from_secs(1) {
+                // Looked at before the next tick: what the last one started,
+                // such as the counts read every fifth tick, has had a second
+                // to report back.
+                let quiet = self.app().pipeline_is_idle_for_test() && self.session.in_flight == 0;
+                if window.look(Instant::now(), quiet, quiet_for(self)) {
+                    return window.since();
+                }
                 self.deliver(Message::FilingStatus(FilingStatusMessage::Tick));
                 last_tick = Instant::now();
             }
@@ -143,15 +156,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             if !status_shot && !self.background_reports.is_empty() {
                 status_shot = true;
                 self.shot_wide("continuous-status");
-            }
-            let quiet = self.app().pipeline_is_idle_for_test() && self.session.in_flight == 0;
-            idle_since = if quiet {
-                idle_since.or_else(|| Some(Instant::now()))
-            } else {
-                None
-            };
-            if idle_since.is_some_and(|since| since.elapsed() >= quiet_for(self)) {
-                return idle_since;
             }
         }
         None
@@ -253,9 +257,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         images
     }
 
-    /// Runs after the copy of `NCRS_EVAL_FILE=copy`: the source files by
+    /// Runs after the copy or move of `NCRS_EVAL_FILE=copy|move`: the source files by
     /// itself.
-    pub fn continuous_after_copy(&mut self, new_files: &Path) {
+    pub fn continuous_after_tab_run(&mut self, new_files: &Path, expected: LocationTransfer) {
         let started = Instant::now();
         let downloads = self.downloads.clone();
         let same_folder = |path: &Path| {
@@ -269,7 +273,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 same_folder(&location.path)
                     && location.continuous
                     && location.mode == LocationMode::Inbox
-                    && location.transfer == LocationTransfer::Copy
+                    && location.transfer == expected
             })
         });
         let on_the_source = self
@@ -299,7 +303,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         println!("[{}] continuous setting: {setting}", self.language.code());
         let setting_check = expect(
             switched_on,
-            format!("the source is no continuous Inbox with Copy: {setting}"),
+            format!("the source is no continuous Inbox with {expected:?}: {setting}"),
         );
 
         let new_names = relative_files(new_files);
@@ -425,6 +429,29 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 ),
             ));
         }
+        let still_filed: Vec<String> = self
+            .open_index()
+            .map(|index| {
+                runs.iter()
+                    .flat_map(|(_, run)| run.filed.iter())
+                    .filter(|(from, _)| {
+                        index
+                            .document_by_path(from)
+                            .ok()
+                            .flatten()
+                            .is_none_or(|document| document.status == DocumentStatus::Filed)
+                    })
+                    .map(|(from, _)| from.display().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        undo_checks.push(expect(
+            still_filed.is_empty(),
+            format!(
+                "after undo the index has no document, or a filed one, for: {}",
+                still_filed.join(", ")
+            ),
+        ));
         let source_after = relative_files(&self.downloads);
         undo_checks.push(expect(
             source_after == source_with_new,

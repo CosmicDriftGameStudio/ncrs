@@ -385,30 +385,23 @@ fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf
     match &entry.outcome {
         TrialOutcome::AlreadyThere { at } => LiveState::AlreadyThere { at: at.clone() },
         _ if without_text => LiveState::Unreadable,
-        TrialOutcome::Filed { to } => {
-            let folder = parent_of(to);
-            let name = name_in(&folder, entry, file_name_of(to), taken);
-            LiveState::Filed {
-                folder,
-                name,
-                unsure: !entry.placed_by.is_none_or(PlacedBy::is_sure),
-            }
-        }
+        TrialOutcome::Filed { to } => LiveState::Filed {
+            folder: parent_of(to),
+            name: file_name_of(to),
+            unsure: !entry.placed_by.is_none_or(PlacedBy::is_sure),
+        },
         TrialOutcome::Unsure {
             choices,
             file_names,
             ..
         } => match (choices.first(), file_names.first()) {
-            (Some(folder), Some(name)) => {
-                unsure(folder.clone(), name_in(folder, entry, name.clone(), taken))
+            (Some(folder), Some(_)) => {
+                unsure(folder.clone(), free_name_in(folder, &entry.name, taken))
             }
             _ => LiveState::NoFolder,
         },
         TrialOutcome::Stays(StayReason::NoPattern) => match &entry.neighbour {
-            Some(folder) => unsure(
-                folder.clone(),
-                name_in(folder, entry, entry.name.clone(), taken),
-            ),
+            Some(folder) => unsure(folder.clone(), free_name_in(folder, &entry.name, taken)),
             None => LiveState::NoFolder,
         },
         TrialOutcome::Stays(StayReason::NameTaken) => match &entry.wanted {
@@ -422,50 +415,11 @@ fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf
     }
 }
 
-/// A name from the document's fields, "2020-04-04 Alfa Rechnung.pdf": the
-/// date, the sender and the kind, whichever are known, with the extension of
-/// `original`. `None` without a date and without a sender: the scan name
-/// stays then.
-fn proposed_name(entry: &TrialEntry, original: &str) -> Option<String> {
-    let fields = &entry.fields;
-    let date = fields.date.map(|date| date.format("%Y-%m-%d").to_string());
-    let sender = fields
-        .sender
-        .as_deref()
-        .and_then(ncrs_intake::sanitise_value);
-    if date.is_none() && sender.is_none() {
-        return None;
-    }
-    let kind = entry
-        .kind_word
-        .as_deref()
-        .and_then(ncrs_intake::sanitise_value);
-    let stem = [date, sender, kind]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" ");
-    Some(match Path::new(original).extension() {
-        Some(extension) => format!("{stem}.{}", extension.to_string_lossy()),
-        None => stem,
-    })
-}
-
-/// The planned name of a file that would keep its source name: the name the
-/// fields give instead, numbered when the folder already has it.
-fn name_in(
-    folder: &Path,
-    entry: &TrialEntry,
-    planned: String,
-    taken: &mut BTreeSet<PathBuf>,
-) -> String {
-    if planned != entry.name {
-        return planned;
-    }
-    match proposed_name(entry, &planned) {
-        Some(name) => file_name_of(&numbered_name(&folder.join(name), taken)),
-        None => planned,
-    }
+/// The name of a file without a place of its own: its source name, numbered
+/// when the folder already has it. Never a name from the fields, the detected
+/// kind or sender can be wrong.
+fn free_name_in(folder: &Path, name: &str, taken: &mut BTreeSet<PathBuf>) -> String {
+    file_name_of(&numbered_name(&folder.join(name), taken))
 }
 
 fn parent_of(path: &Path) -> PathBuf {

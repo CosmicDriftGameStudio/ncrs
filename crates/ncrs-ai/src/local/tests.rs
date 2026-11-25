@@ -1,7 +1,6 @@
 use std::fs;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::time::SystemTime;
 
 use crate::chat::ChatModel as _;
@@ -22,28 +21,26 @@ pub fn models_dir() -> PathBuf {
     )
 }
 
-/// Loaded once: a second copy would cost the memory of the model again.
-pub fn model() -> &'static LocalModel {
-    static MODEL: OnceLock<LocalModel> = OnceLock::new();
-    MODEL.get_or_init(|| {
-        let path = models_dir().join(LOCAL_MODEL.name);
-        assert!(
-            path.is_file(),
-            "{} is missing; run `bash scripts/fetch-ai-model.sh target/ai-models` \
-             or set {MODELS_DIR_VARIABLE} to the folder with the model",
-            path.display()
-        );
-        LocalModel::load(
-            LocalModelConfig {
-                path,
-                threads: NonZeroU32::new(4).unwrap(),
-                context_tokens: NonZeroU32::new(2048).unwrap(),
-                stop: Default::default(),
-            },
-            &LOCAL_MODEL,
-        )
-        .unwrap_or_else(|err| panic!("{err}"))
-    })
+/// One model per call, owned by the test: a model in a static is never
+/// dropped, and the GPU backend aborts a process that ends with a model loaded.
+pub fn model() -> LocalModel {
+    let path = models_dir().join(LOCAL_MODEL.name);
+    assert!(
+        path.is_file(),
+        "{} is missing; run `bash scripts/fetch-ai-model.sh target/ai-models` \
+         or set {MODELS_DIR_VARIABLE} to the folder with the model",
+        path.display()
+    );
+    LocalModel::load(
+        LocalModelConfig {
+            path,
+            threads: NonZeroU32::new(4).unwrap(),
+            context_tokens: NonZeroU32::new(2048).unwrap(),
+            stop: Default::default(),
+        },
+        &LOCAL_MODEL,
+    )
+    .unwrap_or_else(|err| panic!("{err}"))
 }
 
 fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {

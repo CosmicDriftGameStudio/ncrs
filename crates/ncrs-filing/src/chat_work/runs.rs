@@ -306,7 +306,7 @@ fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String
         .journal_items(batch)
         .map_err(|err| err.to_string())?
         .into_iter()
-        .filter(|item| item.state == JournalState::Moved)
+        .filter(|item| matches!(item.state, JournalState::Moved | JournalState::UndoSkipped))
         .collect();
     let target_folder = info.target_root.as_ref().map(|root| root.given.clone());
     let examples = target_folder

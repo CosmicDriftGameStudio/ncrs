@@ -22,6 +22,7 @@ mod snapshot;
 use candidates::Candidates;
 pub use candidates::ContinuousCandidate;
 use gone::GoneQueue;
+use handle::forward_watch_events;
 use snapshot::ChangeLog;
 pub use snapshot::{
     Busy, ChangeOutcome, ChangedPath, ErrorEntry, RunnerState, Settings, Snapshot, StepSnapshot,
@@ -396,6 +397,8 @@ struct Shared {
     changed: Condvar,
     steps: Vec<Box<dyn Step>>,
     locations: Vec<Location>,
+    /// Locations that came after the start, see `Runner::add_location`.
+    added_locations: Mutex<Vec<Location>>,
     clock: Arc<dyn Clock>,
     settings: Settings,
 }
@@ -597,7 +600,7 @@ impl Shared {
             if !state.paused {
                 if let (Some(every), Some(next)) = (self.settings.rescan_every, state.next_rescan) {
                     if now >= next {
-                        for location in &self.locations {
+                        for location in &self.all_locations() {
                             state.queue_scan(location);
                         }
                         state.next_rescan = now.checked_add(every);
@@ -675,11 +678,7 @@ impl Shared {
     fn on_watch_event(&self, event: WatchEvent) {
         match event {
             WatchEvent::File(path) => {
-                let Some(location) = self
-                    .locations
-                    .iter()
-                    .find(|location| path.starts_with(&location.path))
-                else {
+                let Some(location) = self.location_of(&path) else {
                     return;
                 };
                 let fingerprint = Fingerprint::of(&path);
@@ -695,18 +694,14 @@ impl Shared {
                     !state.stopping
                         && state.watcher.is_some()
                         && !state.is_repeated_report(&path, fingerprint)
-                        && state.queue_arrival(location, &path, fingerprint)
+                        && state.queue_arrival(&location, &path, fingerprint)
                 });
                 if queued {
                     self.work_ready.notify_one();
                 }
             }
             WatchEvent::Gone(path) => {
-                let Some(location) = self
-                    .locations
-                    .iter()
-                    .find(|location| path.starts_with(&location.path))
-                else {
+                let Some(location) = self.location_of(&path) else {
                     return;
                 };
                 let due = Instant::now().checked_add(self.settings.gone_settle_after);
@@ -717,7 +712,7 @@ impl Shared {
                     }
                     state
                         .gone
-                        .add(path, location, due.unwrap_or_else(Instant::now));
+                        .add(path, &location, due.unwrap_or_else(Instant::now));
                     true
                 });
                 if queued {
@@ -726,17 +721,14 @@ impl Shared {
             }
             WatchEvent::Error { location, message } => {
                 let at = self.clock.now();
-                let affected_location = self
-                    .locations
-                    .iter()
-                    .find(|candidate| location.starts_with(&candidate.path));
+                let affected_location = self.location_of(&location);
                 self.update(|state| {
                     if state.stopping {
                         return;
                     }
                     state.push_error(location.clone(), Task::Watch, message, at);
                     if let Some(found) = affected_location {
-                        state.queue_scan(found);
+                        state.queue_scan(&found);
                     }
                 });
                 self.work_ready.notify_one();
@@ -938,12 +930,9 @@ impl State {
 }
 
 fn run_start(shared: &Arc<Shared>) {
-    let weak: Weak<Shared> = Arc::downgrade(shared);
-    let (watcher, failed) = LocationWatcher::start_forwarding(&shared.locations, move |event| {
-        if let Some(alive) = weak.upgrade() {
-            alive.on_watch_event(event);
-        }
-    });
+    let locations = shared.all_locations();
+    let (watcher, failed) =
+        LocationWatcher::start_forwarding(&locations, forward_watch_events(shared));
     let at = shared.clock.now();
     let unused_watcher = shared.update(|state| {
         for (location, err) in failed {
@@ -953,8 +942,12 @@ fn run_start(shared: &Arc<Shared>) {
             return Some(watcher);
         }
         state.watcher = Some(watcher);
-        for location in &shared.locations {
-            state.queue_scan(location);
+        // A location added while the watcher was being built was not in it.
+        for location in shared.all_locations() {
+            if !locations.contains(&location) {
+                state.watch_added(&location, forward_watch_events(shared), at);
+            }
+            state.queue_scan(&location);
         }
         None
     });

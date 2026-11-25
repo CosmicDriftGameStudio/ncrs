@@ -158,18 +158,9 @@ fn classify_maps_every_row_of_the_table() {
             at: PathBuf::from("Alfa/b2.pdf")
         }
     );
-    assert_eq!(
-        state_of(&plan, "c.pdf"),
-        filed("Alfa/2022", "Alfa AG.pdf", false)
-    );
-    assert_eq!(
-        state_of(&plan, "d.pdf"),
-        filed("First", "d first.pdf", true)
-    );
-    assert_eq!(
-        state_of(&plan, "e.pdf"),
-        filed("Neighbour", "Alfa AG.pdf", true)
-    );
+    assert_eq!(state_of(&plan, "c.pdf"), filed("Alfa/2022", "c.pdf", false));
+    assert_eq!(state_of(&plan, "d.pdf"), filed("First", "d.pdf", true));
+    assert_eq!(state_of(&plan, "e.pdf"), filed("Neighbour", "e.pdf", true));
     assert_eq!(state_of(&plan, "f.pdf"), filed("Alfa", "f (3).pdf", true));
     assert_eq!(state_of(&plan, "g.pdf"), LiveState::NoFolder);
     assert_eq!(state_of(&plan, "h.pdf"), LiveState::NoFolder);
@@ -207,18 +198,9 @@ fn a_place_from_the_layout_alone_is_unsure_one_from_a_rule_or_neighbours_is_not(
         &source,
     );
 
-    assert_eq!(
-        state_of(&plan, "a.pdf"),
-        filed("Bank1", "Alfa AG.pdf", false)
-    );
-    assert_eq!(
-        state_of(&plan, "b.pdf"),
-        filed("Bank2", "Alfa AG.pdf", false)
-    );
-    assert_eq!(
-        state_of(&plan, "c.pdf"),
-        filed("Bank3", "Alfa AG.pdf", true)
-    );
+    assert_eq!(state_of(&plan, "a.pdf"), filed("Bank1", "a.pdf", false));
+    assert_eq!(state_of(&plan, "b.pdf"), filed("Bank2", "b.pdf", false));
+    assert_eq!(state_of(&plan, "c.pdf"), filed("Bank3", "c.pdf", true));
 }
 
 #[test]
@@ -649,77 +631,195 @@ fn the_run_holds_only_the_filed_files_with_their_overridden_names_and_folders() 
     assert!(run.inside.is_empty());
 }
 
-fn scan_named(
+const DKB_SELL: &str = "Verkauf_-_WKN_HAFX4V_-_Wertpapierabrechnung.pdf";
+const BALANCE_NOTICE: &str = "Saldenmitteilung_706014687835EUR_2023-12-31_SAPCML_1.pdf";
+
+fn with_outcome(
     name: &str,
-    sender: Option<&str>,
-    kind: Option<&str>,
-    day: Option<u32>,
+    fields: DocumentFields,
+    outcome: TrialOutcome,
+    placed_by: Option<PlacedBy>,
 ) -> TrialEntry {
     TrialEntry {
-        fields: DocumentFields {
-            sender: sender.map(str::to_owned),
-            kind: kind.map(str::to_owned),
-            date: day.and_then(|of_april| chrono::NaiveDate::from_ymd_opt(2020, 4, of_april)),
-            ..DocumentFields::default()
-        },
-        outcome: TrialOutcome::Filed {
-            to: PathBuf::from("Bank/2020").join(name),
-        },
-        ..staying(name, sender, kind)
+        fields,
+        outcome,
+        placed_by,
+        ..staying(name, None, None)
     }
 }
 
-#[test]
-fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
-    let plan = plan_of(vec![
-        scan_named("2020092_001.pdf", Some("Alfa"), Some("Rechnung"), Some(4)),
-        scan_named("2020092_002.pdf", Some("Alfa"), Some("Rechnung"), Some(4)),
-        scan_named("2020092_003.pdf", Some("Alfa"), None, None),
-        scan_named("2020092_004.pdf", None, Some("Rechnung"), None),
-        TrialEntry {
-            outcome: TrialOutcome::Unsure {
-                choices: vec![PathBuf::from("Bank/2020")],
-                file_names: vec!["2020092_005.pdf".to_owned()],
-                kind_label: None,
-            },
-            ..scan_named("2020092_005.pdf", Some("Alfa"), Some("Rechnung"), Some(4))
-        },
-    ]);
+fn dkb_fields() -> DocumentFields {
+    DocumentFields {
+        sender: Some("10919 Berlin".to_owned()),
+        kind: Some("Beleg".to_owned()),
+        date: chrono::NaiveDate::from_ymd_opt(2019, 12, 13),
+        ..DocumentFields::default()
+    }
+}
+
+fn unsure_in(folder: &str, offered_name: &str) -> TrialOutcome {
+    TrialOutcome::Unsure {
+        choices: vec![PathBuf::from(folder)],
+        file_names: vec![offered_name.to_owned()],
+        kind_label: None,
+    }
+}
+
+fn classify_named(entries: Vec<TrialEntry>, taken: &[&str]) -> LivePlan {
     let source = reading(
         "/inbox",
-        [
-            "2020092_001.pdf",
-            "2020092_002.pdf",
-            "2020092_003.pdf",
-            "2020092_004.pdf",
-            "2020092_005.pdf",
-        ]
-        .iter()
-        .zip(1..)
-        .map(|(name, seed)| readable(name, seed))
-        .collect(),
+        entries
+            .iter()
+            .zip(1..)
+            .map(|(entry, seed)| readable(&entry.name, seed))
+            .collect(),
     );
-    let live = classify(&plan, &source);
+    let mut plan = plan_of(entries);
+    plan.taken = taken.iter().map(PathBuf::from).collect();
+    classify(&plan, &source)
+}
+
+#[test]
+fn a_file_without_a_name_pattern_keeps_its_name_and_a_pattern_name_stays() {
+    let mut no_pattern = with_outcome(
+        "c.pdf",
+        dkb_fields(),
+        TrialOutcome::Stays(StayReason::NoPattern),
+        None,
+    );
+    no_pattern.neighbour = Some(PathBuf::from("Bank/dkb"));
+    let live = classify_named(
+        vec![
+            with_outcome(
+                DKB_SELL,
+                dkb_fields(),
+                TrialOutcome::Filed {
+                    to: PathBuf::from("Bank/dkb").join(DKB_SELL),
+                },
+                Some(PlacedBy::ModelAndNeighbours),
+            ),
+            with_outcome("b.pdf", dkb_fields(), unsure_in("Bank/dkb", "b.pdf"), None),
+            no_pattern,
+            with_outcome(
+                "d.pdf",
+                dkb_fields(),
+                unsure_in("Bank/dkb", "2019-12-13_Abrechnung.pdf"),
+                None,
+            ),
+            with_outcome(
+                "scan.pdf",
+                dkb_fields(),
+                unsure_in("Bank/dkb", "x.pdf"),
+                None,
+            ),
+        ],
+        &["Bank/dkb/scan.pdf"],
+    );
 
     assert_eq!(
-        state_of(&live, "2020092_001.pdf"),
-        filed("Bank/2020", "2020-04-04 Alfa Rechnung.pdf", false)
+        state_of(&live, DKB_SELL),
+        filed("Bank/dkb", DKB_SELL, false)
+    );
+    assert_eq!(state_of(&live, "b.pdf"), filed("Bank/dkb", "b.pdf", true));
+    assert_eq!(state_of(&live, "c.pdf"), filed("Bank/dkb", "c.pdf", true));
+    assert_eq!(state_of(&live, "d.pdf"), filed("Bank/dkb", "d.pdf", true));
+    assert_eq!(
+        state_of(&live, "scan.pdf"),
+        filed("Bank/dkb", "scan (2).pdf", true)
+    );
+}
+
+#[test]
+fn a_dkb_sale_keeps_its_name_whether_it_is_sure_or_unsure() {
+    let mut no_pattern = with_outcome(
+        "Verkauf_2.pdf",
+        dkb_fields(),
+        TrialOutcome::Stays(StayReason::NoPattern),
+        None,
+    );
+    no_pattern.neighbour = Some(PathBuf::from("Bank/dkb"));
+    let live = classify_named(
+        vec![
+            with_outcome(
+                DKB_SELL,
+                dkb_fields(),
+                TrialOutcome::Filed {
+                    to: PathBuf::from("Bank/dkb").join(DKB_SELL),
+                },
+                Some(PlacedBy::Neighbours),
+            ),
+            no_pattern,
+        ],
+        &[],
+    );
+
+    assert_eq!(
+        state_of(&live, DKB_SELL),
+        filed("Bank/dkb", DKB_SELL, false)
     );
     assert_eq!(
-        state_of(&live, "2020092_002.pdf"),
-        filed("Bank/2020", "2020-04-04 Alfa Rechnung (2).pdf", false)
+        state_of(&live, "Verkauf_2.pdf"),
+        filed("Bank/dkb", "Verkauf_2.pdf", true)
+    );
+}
+
+#[test]
+fn a_file_with_only_a_date_is_never_named_after_the_date() {
+    let only_date = DocumentFields {
+        date: chrono::NaiveDate::from_ymd_opt(2024, 4, 30),
+        ..DocumentFields::default()
+    };
+    let mut no_pattern = with_outcome(
+        "scan_1.pdf",
+        only_date.clone(),
+        TrialOutcome::Stays(StayReason::NoPattern),
+        None,
+    );
+    no_pattern.neighbour = Some(PathBuf::from("Post"));
+    let live = classify_named(
+        vec![
+            no_pattern,
+            with_outcome(
+                "scan_2.pdf",
+                only_date,
+                unsure_in("Post", "scan_2.pdf"),
+                None,
+            ),
+        ],
+        &[],
+    );
+
+    assert_eq!(
+        state_of(&live, "scan_1.pdf"),
+        filed("Post", "scan_1.pdf", true)
     );
     assert_eq!(
-        state_of(&live, "2020092_003.pdf"),
-        filed("Bank/2020", "Alfa.pdf", false)
+        state_of(&live, "scan_2.pdf"),
+        filed("Post", "scan_2.pdf", true)
     );
-    assert_eq!(
-        state_of(&live, "2020092_004.pdf"),
-        filed("Bank/2020", "2020092_004.pdf", false)
+}
+
+#[test]
+fn an_unsure_balance_notice_is_not_renamed_after_its_kind() {
+    let fields = DocumentFields {
+        sender: Some("Deutsche Bank AG".to_owned()),
+        kind: Some("bank_statement".to_owned()),
+        date: chrono::NaiveDate::from_ymd_opt(2024, 1, 25),
+        ..DocumentFields::default()
+    };
+    let live = classify_named(
+        vec![with_outcome(
+            BALANCE_NOTICE,
+            fields,
+            unsure_in("Bank/Deutsche Bank", "2024-01-25_Kontoauszug.pdf"),
+            None,
+        )],
+        &[],
     );
+
     assert_eq!(
-        state_of(&live, "2020092_005.pdf"),
-        filed("Bank/2020", "2020-04-04 Alfa Rechnung (3).pdf", true)
+        state_of(&live, BALANCE_NOTICE),
+        filed("Bank/Deutsche Bank", BALANCE_NOTICE, true)
     );
 }
 

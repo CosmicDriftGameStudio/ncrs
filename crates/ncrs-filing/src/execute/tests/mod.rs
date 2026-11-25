@@ -287,6 +287,66 @@ fn undo_leaves_a_file_that_changed_or_whose_old_place_is_taken() {
     );
 }
 
+#[test]
+fn a_partial_undo_keeps_the_batch_so_that_a_second_undo_takes_the_rest_back() {
+    let setup = Setup::new();
+    let first = setup.document("a/1.pdf", "one");
+    let second = setup.document("b/2.pdf", "two");
+    let report = setup.run(&[first.clone(), second.clone()]);
+    let away = setup.root.join("away.pdf");
+    fs::rename(&second.to, &away).unwrap();
+    let roots = [setup.root.clone()];
+
+    let partial = undo(&setup.index, report.batch, &roots).unwrap();
+
+    assert_eq!(partial, UndoReport { undone: 1, left: 1 });
+    assert_eq!(
+        setup
+            .index
+            .undoable_batches(BatchKind::Reorganisation, 5)
+            .unwrap(),
+        [report.batch]
+    );
+
+    // The first undo removed the folders that were empty by then.
+    fs::create_dir_all(second.to.parent().unwrap()).unwrap();
+    fs::rename(&away, &second.to).unwrap();
+    let rest = undo(&setup.index, report.batch, &roots).unwrap();
+
+    assert_eq!(rest, UndoReport { undone: 1, left: 0 });
+    assert_eq!(fs::read_to_string(&second.from).unwrap(), "two");
+    assert_eq!(setup.states(report.batch), [JournalState::Undone; 2]);
+    assert!(setup
+        .index
+        .undoable_batches(BatchKind::Reorganisation, 5)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn undoing_a_move_puts_a_filed_document_back_into_review() {
+    let setup = Setup::new();
+    let item = setup.document("a.pdf", "alpha");
+    let id = item.document_id.unwrap();
+    let report = setup.run(std::slice::from_ref(&item));
+    setup
+        .index
+        .set_document_status(id, DocumentStatus::Filed)
+        .unwrap();
+
+    undo(
+        &setup.index,
+        report.batch,
+        std::slice::from_ref(&setup.root),
+    )
+    .unwrap();
+
+    let document = setup.index.document(id).unwrap().unwrap();
+    assert_eq!(document.path, item.from);
+    assert_eq!(document.status, DocumentStatus::InReview);
+    assert!(setup.index.open_review_of(id).unwrap().is_some());
+}
+
 /// A pending item as an interrupted run leaves it.
 fn pending(setup: &Setup, item: &ExecutionItem) -> (BatchId, u32) {
     let batch = setup.index.begin_batch(BatchKind::Reorganisation).unwrap();

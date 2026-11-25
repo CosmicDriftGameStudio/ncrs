@@ -66,6 +66,9 @@ pub enum FilingStatusMessage {
     ProcessAllAgain,
     /// The documents of locations removed from the settings left the index.
     LocationsForgotten(Result<(), String>),
+    /// The folders saved after the start, looked up in the background; empty
+    /// when that failed.
+    LocationsResolved(Vec<ncrs_filing::filing::ResolvedLocation>),
 }
 
 /// What the background reads for the Hermes column answer with.

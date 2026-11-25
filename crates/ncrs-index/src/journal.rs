@@ -442,7 +442,8 @@ impl Index {
             "SELECT id FROM execution_batch b
              WHERE kind = ?1 AND undone_at IS NULL
                  AND EXISTS (SELECT 1 FROM execution_item i
-                             WHERE i.batch_id = b.id AND i.state = 'moved')
+                             WHERE i.batch_id = b.id
+                                 AND i.state IN ('moved', 'undo_skipped'))
              ORDER BY id DESC LIMIT ?2",
         )?;
         let found = statement

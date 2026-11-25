@@ -9,12 +9,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
+use chrono::Datelike as _;
 use ncrs_index::{
     compile_bounded_regex, DocumentFields, Field, KindCatalog, SenderAliasKind, SubtreePattern,
 };
 use regex::Regex;
 
-use crate::archive_profile::{learn_archive, subtree_per_document, ArchiveDocument};
+use crate::archive_profile::{
+    date_in_file_stem, learn_archive, subtree_per_document, year_of, ArchiveDocument,
+};
 use crate::field_detection::OwnNames;
 use crate::filing_plan::missing_field;
 use crate::reorganisation::PlanFile;
@@ -274,6 +277,22 @@ impl NeighbourIndex {
     /// Where similar documents lie, or `None` when none are similar enough to
     /// say anything.
     pub fn place(&self, fields: &DocumentFields, text: Option<&str>) -> Option<Placement> {
+        self.place_named(fields, text, None)
+    }
+
+    /// Like `place`, with the name of the file: a document whose year has
+    /// neighbours of its own lying deeper is placed in their folder, unless the
+    /// name states another year than the letter.
+    pub fn place_named(
+        &self,
+        fields: &DocumentFields,
+        text: Option<&str>,
+        file_name: Option<&str>,
+    ) -> Option<Placement> {
+        let narrow_year = fields
+            .date
+            .map(|date| date.year())
+            .filter(|year| name_allows_year(file_name, *year));
         let features = features_of(text, &self.own_ibans, &self.own_tax_ids);
         let sender_key = fields.sender.as_deref().and_then(SenderKey::of);
         let same_sender = |neighbour: &&Neighbour| {
@@ -305,7 +324,7 @@ impl NeighbourIndex {
                 label: number.label.to_owned(),
                 value: number.value.clone(),
             };
-            let placement = self.settle(signal, &group, fields);
+            let placement = self.settle(signal, &group, fields, narrow_year);
             if placement.is_sure() || !ACCOUNT_LABELS.contains(&number.label) {
                 return Some(placement);
             }
@@ -317,7 +336,7 @@ impl NeighbourIndex {
             .map(|iban| self.similar(|neighbour| neighbour.features.ibans.contains(iban)))
             .max_by_key(Vec::len);
         if let Some(group) = with_iban.filter(|group| group.len() >= MIN_IBAN_NEIGHBOURS) {
-            let placement = self.settle(Signal::SameIban, &group, fields);
+            let placement = self.settle(Signal::SameIban, &group, fields, narrow_year);
             // An account also stands on what others write to its holder, like
             // the rent account in a lease: a document of another sender and
             // kind than the account's documents is not placed by it alone.
@@ -334,14 +353,14 @@ impl NeighbourIndex {
         let of_sender = self.similar(|neighbour| same_sender(&neighbour));
         let of_kind: Vec<&Neighbour> = of_sender.iter().copied().filter(same_kind).collect();
         if of_kind.len() >= MIN_SENDER_NEIGHBOURS {
-            return Some(self.settle(Signal::SameSenderAndKind, &of_kind, fields));
+            return Some(self.settle(Signal::SameSenderAndKind, &of_kind, fields, narrow_year));
         }
         if of_sender.len() >= MIN_SENDER_NEIGHBOURS {
-            let placement = self.settle(Signal::SameSender, &of_sender, fields);
+            let placement = self.settle(Signal::SameSender, &of_sender, fields, narrow_year);
             if placement.is_sure() || of_kind.len() < MIN_NARROWED_NEIGHBOURS {
                 return Some(placement);
             }
-            let narrowed = self.settle(Signal::SameSenderAndKind, &of_kind, fields);
+            let narrowed = self.settle(Signal::SameSenderAndKind, &of_kind, fields, narrow_year);
             return Some(if narrowed.is_sure() {
                 narrowed
             } else {
@@ -374,7 +393,13 @@ impl NeighbourIndex {
             .collect()
     }
 
-    fn settle(&self, signal: Signal, group: &[&Neighbour], fields: &DocumentFields) -> Placement {
+    fn settle(
+        &self,
+        signal: Signal,
+        group: &[&Neighbour],
+        fields: &DocumentFields,
+        narrow_year: Option<i32>,
+    ) -> Placement {
         let similar = count(group.len());
         let Some(folder) = shared_folder(group) else {
             let (folder, agreeing, runner_up) = busiest_folders(group);
@@ -397,6 +422,20 @@ impl NeighbourIndex {
         let pattern = self
             .followed_pattern(&agreeing)
             .filter(|_| self.kind_allows_pattern(&signal, fields, &agreeing));
+        if let Some((deeper, same_year)) =
+            narrow_to_year(&folder, &agreeing, narrow_year).filter(|_| pattern.is_none())
+        {
+            return Placement {
+                folder: deeper,
+                signal,
+                agreeing: count(same_year.len()),
+                similar: count(same_year.len()),
+                pattern: None,
+                missing: None,
+                runner_up: None,
+                candidates: Vec::new(),
+            };
+        }
         let missing = pattern
             .as_deref()
             .and_then(|followed| missing_field(followed, fields));
@@ -530,6 +569,42 @@ fn features_of(
             .filter(|iban| !own_ibans.contains(iban))
             .collect(),
     }
+}
+
+/// The year a file name states may not differ from the letter's: a balance
+/// notice of December 31st arrives in January.
+fn name_allows_year(file_name: Option<&str>, year: i32) -> bool {
+    file_name
+        .and_then(|name| Path::new(name).file_stem())
+        .and_then(|stem| stem.to_str())
+        .and_then(date_in_file_stem)
+        .is_none_or(|date| date.year() == year)
+}
+
+fn lies_in_year(folder: &Path, year: i32) -> bool {
+    folder
+        .components()
+        .any(|part| part.as_os_str().to_str().and_then(year_of) == Some(year))
+}
+
+/// The folder below `folder` that the neighbours of `year` share, with those
+/// neighbours, when there are enough of them.
+fn narrow_to_year<'a>(
+    folder: &Path,
+    agreeing: &[&'a Neighbour],
+    narrow_year: Option<i32>,
+) -> Option<(PathBuf, Vec<&'a Neighbour>)> {
+    let year = narrow_year?;
+    let same_year: Vec<&Neighbour> = agreeing
+        .iter()
+        .copied()
+        .filter(|neighbour| lies_in_year(&neighbour.folder, year))
+        .collect();
+    if same_year.len() < MIN_NARROWED_NEIGHBOURS {
+        return None;
+    }
+    let deeper = shared_folder(&same_year)?;
+    (deeper != folder && deeper.starts_with(folder)).then_some((deeper, same_year))
 }
 
 /// The deepest folder that holds at least 80 percent of the documents, itself

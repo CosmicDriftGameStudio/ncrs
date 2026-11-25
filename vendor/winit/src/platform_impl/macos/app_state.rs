@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::mem;
 use std::path::PathBuf;
 use std::rc::Weak;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -78,6 +79,13 @@ declare_class!(
 
     // NCRS-PATCH: Finder "Open With", `open -a` and a drop on the Dock icon.
     unsafe impl ApplicationDelegate {
+        // NCRS-PATCH: see `QUIT_REQUESTED`. 0 is NSTerminateCancel.
+        #[method(applicationShouldTerminate:)]
+        fn app_should_terminate(&self, _sender: &NSApplication) -> usize {
+            QUIT_REQUESTED.store(true, Ordering::Release);
+            0
+        }
+
         #[method(application:openFiles:)]
         fn app_open_files(&self, sender: &NSApplication, filenames: &NSArray<NSString>) {
             let mut opened = OPENED_PATHS.lock().unwrap_or_else(|p| p.into_inner());
@@ -89,6 +97,21 @@ declare_class!(
         }
     }
 );
+
+// NCRS-PATCH: "Quit" in the Dock menu and the quit Apple event end the process
+// through `terminate:`, which calls `exit()` with the AI model still loaded;
+// the Metal backend then asserts in its static destructor. The request is
+// handed to the app instead, which frees the model and ends the event loop
+// (that stops the application and never goes through `terminate:` again).
+
+/// Whether a quit came in through `terminate:` and the app has not seen it.
+static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Whether the system asked the app to quit (Dock menu, `osascript`) since
+/// the last call.
+pub(crate) fn take_quit_request() -> bool {
+    QUIT_REQUESTED.swap(false, Ordering::AcqRel)
+}
 
 /// The paths the system asked the app to open, not yet taken.
 static OPENED_PATHS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());

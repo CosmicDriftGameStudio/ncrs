@@ -540,3 +540,80 @@ fn a_model_pick_of_the_folder_the_neighbours_are_sure_of_keeps_the_name() {
     );
     assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
 }
+
+#[test]
+fn a_folder_without_a_name_pattern_keeps_the_incoming_name_in_the_live_plan() {
+    let source = delta_new_file();
+    let sure = trial_with_model_pick(&source, &delta_without_a_name_pattern(), Some("Bank/Delta"));
+    let deeper = trial_with_model_pick(
+        &source,
+        &delta_without_a_name_pattern(),
+        Some("Bank/Delta/Alt"),
+    );
+
+    assert_eq!(
+        classify(&sure, &source).files[0].state,
+        LiveState::Filed {
+            folder: PathBuf::from("Bank/Delta"),
+            name: "new.pdf".to_owned(),
+            unsure: false,
+        }
+    );
+    assert_eq!(
+        classify(&deeper, &source).files[0].state,
+        LiveState::Filed {
+            folder: PathBuf::from("Bank/Delta/Alt"),
+            name: "new.pdf".to_owned(),
+            unsure: true,
+        }
+    );
+}
+
+/// Three statements of Delta Bank in `Bank/DB/2023` and three in
+/// `Bank/DB/2024/Konto`: the years are laid out differently.
+fn delta_with_years_laid_out_differently() -> FolderReading {
+    let files = [
+        ("Bank/DB/2023/a1.pdf", 10, 2023),
+        ("Bank/DB/2023/a2.pdf", 11, 2023),
+        ("Bank/DB/2023/a3.pdf", 12, 2023),
+        ("Bank/DB/2024/Konto/b1.pdf", 13, 2024),
+        ("Bank/DB/2024/Konto/b2.pdf", 14, 2024),
+        ("Bank/DB/2024/Konto/b3.pdf", 15, 2024),
+    ]
+    .into_iter()
+    .map(|(path, seed, year)| plan_file(path, seed, Some("Delta Bank"), date(year, 3, 1)))
+    .collect();
+    reading("/archive", files)
+}
+
+#[test]
+fn a_model_pick_of_the_year_folder_the_neighbours_of_that_year_lie_in_is_sure() {
+    let mut file = plan_file("new.pdf", 100, Some("Delta Bank"), date(2024, 7, 4));
+    file.text = Some("Delta Bank statement".to_owned());
+    let source = reading("/inbox", vec![file]);
+
+    let plan = trial_with_model_pick(
+        &source,
+        &delta_with_years_laid_out_differently(),
+        Some("Bank/DB/Konto"),
+    );
+
+    let entry = &plan.entries[0];
+    assert_eq!(
+        entry.outcome,
+        TrialOutcome::Filed {
+            to: PathBuf::from("Bank/DB/2024/Konto/new.pdf")
+        },
+        "{:?}",
+        entry.outcome
+    );
+    assert_eq!(entry.placed_by, Some(PlacedBy::ModelAndNeighbours));
+    assert_eq!(
+        classify(&plan, &source).files[0].state,
+        LiveState::Filed {
+            folder: PathBuf::from("Bank/DB/2024/Konto"),
+            name: "new.pdf".to_owned(),
+            unsure: false,
+        }
+    );
+}

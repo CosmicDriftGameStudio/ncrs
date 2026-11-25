@@ -164,6 +164,10 @@ fn filing_status_step(
             }
             Task::none()
         }
+        FilingStatusMessage::LocationsResolved(resolved) => {
+            super::lifecycle::take_up_resolved_locations(hermes, resolved);
+            Task::none()
+        }
         FilingStatusMessage::LocationsForgotten(result) => {
             if let Err(reason) = result {
                 actions.push(Action::ShowError(reason));

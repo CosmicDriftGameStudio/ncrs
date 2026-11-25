@@ -16,7 +16,16 @@ impl Index {
         document: DocumentId,
         why: ReviewReason,
     ) -> Result<ReviewEntryId, IndexError> {
-        let tx = self.conn_mut().transaction()?;
+        self.add_review_shared(document, why)
+    }
+
+    /// `add_review` for a caller that holds the index shared only.
+    pub fn add_review_shared(
+        &self,
+        document: DocumentId,
+        why: ReviewReason,
+    ) -> Result<ReviewEntryId, IndexError> {
+        let tx = self.connection().unchecked_transaction()?;
         require_document(&tx, document)?;
         let already_open = tx
             .query_row(

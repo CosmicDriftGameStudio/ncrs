@@ -2174,9 +2174,9 @@
     },
     {
       "key": "filing_setup.saved_next_start",
-      "context": "Notice in the title bar after saving the filing setup while Hermes already runs on configured folders: the new folders apply from the next start of ncrs.",
-      "en": "Saved. Hermes uses the new folders from the next start of ncrs.",
-      "de": "Gespeichert. Hermes nimmt die neuen Ordner ab dem nächsten Start von ncrs."
+      "context": "Notice in the title bar after saving the filing setup while Hermes already runs on configured folders: new read folders and the copy or move choice apply at once, a removed folder or a changed folder type applies from the next start of ncrs.",
+      "en": "Saved. New folders and copy or move apply now; removed or changed folders from the next start of ncrs.",
+      "de": "Gespeichert. Neue Ordner und Kopieren/Verschieben gelten sofort; entfernte oder geänderte Ordner ab dem nächsten Start von ncrs."
     },
     {
       "key": "action.fetch_theme",

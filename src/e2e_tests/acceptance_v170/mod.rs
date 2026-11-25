@@ -90,4 +90,7 @@ fn acceptance_v170() {
 
     flow_activity::run(&world, &mut session);
     step("flow 5 activity");
+
+    flow_continuous::undo_and_check(&world, &mut session, &arrivals);
+    step("flow 6 undo of the continuous filing");
 }

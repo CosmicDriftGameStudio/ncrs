@@ -91,7 +91,6 @@ pub(in crate::chat_work::tests) fn staying(
         from: PathBuf::from("/inbox").join(name),
         name: name.to_owned(),
         hash: ContentHash([7; 32]),
-        kind_word: kind.map(str::to_owned),
         fields: DocumentFields {
             sender: sender.map(str::to_owned),
             kind: kind.map(str::to_owned),

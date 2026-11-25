@@ -24,6 +24,16 @@ added from the app would be too late for a launch with a file. Winit has no
 event for it; upstream 0.30 only offers a custom delegate, which would replace
 winit's own.
 
+## Quit from the Dock (macOS)
+
+The same delegate answers `applicationShouldTerminate:` with `NSTerminateCancel`
+and sets a flag that `winit::platform::macos::take_quit_request()` hands out.
+ncrs polls it with the opened paths and quits through its own path, which frees
+the local model first. Without it the Dock's "Quit" and `quit app "ncrs"` end
+the process with `exit()` while the model still holds Metal buffers, and
+llama.cpp aborts in `ggml_metal_rsets_free`. `iced::exit` stops the run loop
+directly and does not come back through `terminate:`.
+
 ## Trimmed targets
 
 `Cargo.toml` has the dependency sections for `cfg(target_family = "wasm")`

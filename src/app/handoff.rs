@@ -24,6 +24,16 @@ fn collect(data_dir: Option<&Path>) -> Vec<Request> {
     requests
 }
 
+/// Whether the system asked to quit through the Dock menu or an Apple event,
+/// which skips the window's close button and the menu: the app ends through
+/// `Message::Quit` so the model is freed first.
+fn quit_asked() -> bool {
+    #[cfg(target_os = "macos")]
+    return winit::platform::macos::take_quit_request();
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
 impl App {
     /// The inbox folder: next to the session state, so only the first ncrs of
     /// a data folder has one (a second one has no state path).
@@ -36,7 +46,7 @@ impl App {
 
     /// Whether the poll runs at all.
     pub(in crate::app) fn takes_handoffs(&self) -> bool {
-        self.state_path.is_some() && !self.quitting
+        (cfg!(target_os = "macos") || self.state_path.is_some()) && !self.quitting
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as
@@ -45,12 +55,20 @@ impl App {
         let data_dir = self.handoff_dir();
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || collect(data_dir.as_deref()))
+                tokio::task::spawn_blocking(move || (collect(data_dir.as_deref()), quit_asked()))
                     .await
                     .unwrap_or_default()
             },
-            Message::HandedOver,
+            std::convert::identity,
         )
+        .then(|(requests, quit)| {
+            let handed_over = Task::done(Message::HandedOver(requests));
+            if quit {
+                handed_over.chain(Task::done(Message::Quit))
+            } else {
+                handed_over
+            }
+        })
     }
 
     /// Opens the last request in the active panel and brings the window to

@@ -7,7 +7,9 @@ use std::sync::Arc;
 use iced::widget::operation;
 use iced::Task;
 use ncrs_config::config::{Filing, FilingLocation};
-use ncrs_filing::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work};
+use ncrs_filing::filing::{
+    resolve_locations, FilingMessage, FilingModule, LocationStatus, Phase, ResolvedLocation, Work,
+};
 use ncrs_i18n::{fill_template, Msg};
 
 use super::filing_job::{run_filing, run_filing_work, run_filing_work_after};
@@ -111,14 +113,56 @@ pub fn apply_saved_filing(
             .as_ref()
             .is_none_or(|module| !module.has_configured_locations() && module.can_be_replaced());
     if !replaceable {
-        hermes.filing_config = filing;
-        super::continuous::sync_continuous_roots(hermes);
-        return (SavedFilingApplies::AtNextStart, forget);
+        let resolving = keep_running_module_with_saved_transfers(hermes, filing);
+        return (
+            SavedFilingApplies::AtNextStart,
+            Task::batch([forget, resolving]),
+        );
     }
     (
         SavedFilingApplies::Now,
         Task::batch([forget, replace_module(hermes, &filing, ctx)]),
     )
+}
+
+/// Copy or move and the continuous flag of the folders the module has take
+/// effect with the next job, and a new folder is watched and scanned at once.
+/// A removed one or a changed mode waits for the next start.
+/// The new folders are looked up on disk in the background: a dead mount can
+/// hang that, and the answer comes as `LocationsResolved`.
+pub(in crate::update) fn keep_running_module_with_saved_transfers(
+    hermes: &mut Hermes,
+    filing: Filing,
+) -> Task<Message> {
+    let to_resolve = hermes.filing.as_mut().and_then(|module| {
+        module.adopt_saved_transfers(&filing.locations);
+        module.configured_with_new(&filing.locations)
+    });
+    hermes.filing_config = filing;
+    super::continuous::sync_continuous_roots(hermes);
+    let Some(configured) = to_resolve else {
+        return Task::none();
+    };
+    Task::future(async move {
+        let resolved = tokio::task::spawn_blocking(move || resolve_locations(&configured))
+            .await
+            .unwrap_or_default();
+        Message::FilingStatus(FilingStatusMessage::LocationsResolved(resolved))
+    })
+}
+
+/// The runner and the module take up the locations that came after the start.
+pub fn take_up_resolved_locations(hermes: &mut Hermes, resolved: Vec<ResolvedLocation>) {
+    let Some(module) = hermes.filing.as_mut() else {
+        return;
+    };
+    let usable = module.take_resolved_locations(resolved);
+    if let Some(runner) = hermes.live_pipeline() {
+        for location in usable {
+            runner.add_location(location);
+        }
+    }
+    super::continuous::sync_continuous_roots(hermes);
 }
 
 /// The locations of the old list that the new one no longer has, without

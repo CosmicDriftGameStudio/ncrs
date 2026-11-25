@@ -153,6 +153,65 @@ impl FilingModule {
             .collect()
     }
 
+    /// Takes copy or move and the continuous flag of the saved entries for the
+    /// locations this module already has, so the next job copies or moves as
+    /// saved. A saved location the module does not have is left to the next
+    /// start.
+    pub fn adopt_saved_transfers(&mut self, saved: &[FilingLocation]) {
+        for entry in &mut self.locations {
+            if let Some(chosen) = saved
+                .iter()
+                .find(|candidate| candidate.path == entry.configured.path)
+            {
+                entry.configured.transfer = chosen.transfer;
+                entry.configured.continuous = chosen.continuous;
+            }
+        }
+    }
+
+    /// What `resolve_locations` is to look up for the saved locations the
+    /// module did not start with: the ones it has plus the new ones, so the
+    /// overlap check sees all. `None` when nothing is new or the module is
+    /// not ready.
+    pub fn configured_with_new(&self, saved: &[FilingLocation]) -> Option<Vec<FilingLocation>> {
+        if !self.chat_ready() {
+            return None;
+        }
+        let mut all: Vec<FilingLocation> = self
+            .locations
+            .iter()
+            .map(|entry| entry.configured.clone())
+            .collect();
+        let known = all.len();
+        for entry in saved {
+            if !all.iter().any(|have| have.path == entry.path) {
+                all.push(entry.clone());
+            }
+        }
+        (all.len() > known).then_some(all)
+    }
+
+    /// Takes the entries of `resolve_locations` for locations the module does
+    /// not have; the others keep their state. Returns the ones the pipeline
+    /// can watch.
+    pub fn take_resolved_locations(&mut self, resolved: Vec<ResolvedLocation>) -> Vec<Location> {
+        let mut usable = Vec::new();
+        for entry in resolved {
+            if self
+                .locations
+                .iter()
+                .any(|have| have.configured.path == entry.configured.path)
+            {
+                continue;
+            }
+            if let LocationStatus::Ready(location) = &entry.status {
+                usable.push(location.clone());
+            }
+            self.locations.push(entry);
+        }
+        usable
+    }
+
     fn target_root(&self) -> Option<PathBuf> {
         if !matches!(self.phase, Phase::Ready) {
             return None;

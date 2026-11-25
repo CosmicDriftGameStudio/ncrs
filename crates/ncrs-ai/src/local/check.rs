@@ -32,7 +32,15 @@ pub struct LocalCheck {
     pub sentence_times: Vec<Duration>,
 }
 
+/// The model is freed before this returns, also on an error: the caller ends
+/// the process, and the GPU backend aborts one that ends with a model loaded.
 pub fn check_local_model(models_dir: &Path) -> Result<LocalCheck, AiError> {
+    let checked = run_check(models_dir);
+    LazyLocalModel::shutdown_all();
+    checked
+}
+
+fn run_check(models_dir: &Path) -> Result<LocalCheck, AiError> {
     backend()?;
     let devices = list_llama_ggml_backend_devices()
         .into_iter()

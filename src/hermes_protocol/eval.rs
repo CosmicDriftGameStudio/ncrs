@@ -16,11 +16,12 @@
 //! `NCRS_EVAL_TIDY=1` then tidies the source in the chat, with screenshots in `out`.
 //! `NCRS_EVAL_FILE=copy|move` then files the plan in the tab and undoes it.
 //! `NCRS_EVAL_CONTINUOUS=<folder with new files>` (with `NCRS_EVAL_TIDY=1` and
-//! `NCRS_EVAL_FILE=copy`) answers "Always" in the chat instead of "Once", so the
+//! `NCRS_EVAL_FILE=copy` or `move`) answers "Always" in the chat instead of "Once", so the
 //! source files by itself afterwards, copies the folder into the scratch copy
 //! of the source, waits (`NCRS_PROTOCOL_AI_WAIT_SECS`) for the background run,
 //! prints what it filed and the review entries before and after, takes the
-//! pictures for the acceptance (1740x1130) and undoes the run.
+//! pictures for the acceptance (1740x1130) and undoes the run; after the undo
+//! the index must not call the put-back files filed.
 //! `NCRS_EVAL_QUIT_AFTER_SECS=<n>` quits n seconds into the reading instead and
 //! prints how long the quit and the end of the app took.
 
@@ -106,6 +107,8 @@ fn brother_eval_read() {
         println!("quit returned after {} s", started.elapsed().as_secs_f32());
         let drop_started = Instant::now();
         drop(run);
+        #[cfg(feature = "local-ai")]
+        ncrs_ai::LazyLocalModel::shutdown_all();
         println!(
             "the app ended after another {} s",
             drop_started.elapsed().as_secs_f32()
@@ -117,8 +120,9 @@ fn brother_eval_read() {
         run.flow_5_tidy();
     }
     drop(run);
-    // The background folder picks may still hold the model; a process that
-    // ends with it loaded makes the GPU backend abort.
+    // The background folder picks may still hold the model, even after the
+    // run is dropped; a process that ends with it loaded makes the GPU backend
+    // abort.
     #[cfg(feature = "local-ai")]
     ncrs_ai::LazyLocalModel::shutdown_all();
     println!("NCRS_EVAL_SCRATCH={}", kept.display());

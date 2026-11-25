@@ -535,3 +535,10 @@ pub enum OptionAsAlt {
 pub fn take_opened_paths() -> Vec<std::path::PathBuf> {
     crate::platform_impl::take_opened_paths()
 }
+
+/// NCRS-PATCH: whether the system asked the app to quit (Dock menu "Quit",
+/// the quit Apple event) since the last call. The quit itself is cancelled;
+/// the app ends its event loop when it is ready.
+pub fn take_quit_request() -> bool {
+    crate::platform_impl::take_quit_request()
+}

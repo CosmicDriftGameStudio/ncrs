@@ -50,6 +50,7 @@ use crate::messages::{Message, SettingsMessage};
 mod continuous_flow;
 mod eval;
 mod free_sentences;
+mod quiet_window;
 pub mod real_start;
 mod scratch;
 pub mod thread;

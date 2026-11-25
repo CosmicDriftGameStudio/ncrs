@@ -74,8 +74,6 @@ pub struct TrialEntry {
     pub name: String,
     pub hash: ContentHash,
     pub fields: DocumentFields,
-    /// The kind as a word of the user's language, as typed when unknown.
-    pub kind_word: Option<String>,
     pub outcome: TrialOutcome,
     /// Relative to the target: the folder the neighbours pointed to, where
     /// there was one.
@@ -232,11 +230,6 @@ pub fn trial(
             from: source.root.join(&file.relative_path),
             name,
             hash: file.hash,
-            kind_word: file
-                .fields
-                .kind
-                .as_deref()
-                .map(|kind| kinds.kind_word(kind).into_owned()),
             fields: file.fields.clone(),
             outcome: decided.outcome,
             neighbour: decided.neighbour,
@@ -371,7 +364,10 @@ fn decide(
         let to = with_extension_of(filing.relative_path, name);
         return Decided::filed_or_taken(to, PlacedBy::Rule, taken);
     }
-    let Some(placement) = ctx.neighbours.place(&file.fields, file.text.as_deref()) else {
+    let Some(placement) =
+        ctx.neighbours
+            .place_named(&file.fields, file.text.as_deref(), Some(name))
+    else {
         let Some(levels) = ctx.layout else {
             return Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
         };
