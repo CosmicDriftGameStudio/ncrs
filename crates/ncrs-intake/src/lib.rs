@@ -32,6 +32,7 @@ mod rule_suggestions;
 mod sanitise;
 mod scan;
 mod sender_detection;
+mod sorting;
 mod stability;
 mod structure;
 mod take_in;
@@ -81,8 +82,15 @@ pub use reorganisation::{
     duplicate_copies, plan_reorganisation, DuplicateCopy, PlanFile, ReorganisationInput,
 };
 pub use reorganisation_plan::{location_documents, location_structure};
-pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
+pub use rule_check::{
+    condition_problem, pattern_problem, rule_problem, ConditionProblem, PatternProblem,
+    RuleProblem,
+};
 pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
+pub use sorting::{
+    decide, file_name_with_extension, Decision, OnNoText, OnSeveralTargets, Place, SortSource,
+    SortTarget, LocationTransfer, Subject, TargetRules, TextState, Words,
+};
 pub use scan::{
     scan_location, settle_gone_path, settle_location, walk_location, Found, ScanReport,
     MAX_REPORTED_ERRORS,

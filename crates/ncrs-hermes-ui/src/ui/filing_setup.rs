@@ -47,12 +47,6 @@ fn rule_text(
             .unwrap_or_default()
     };
     match violation {
-        FilingRuleViolation::SecondTarget { .. } => {
-            lang.text(Msg::FilingSetupRuleSecondTarget).to_owned()
-        }
-        FilingRuleViolation::InboxAsTarget { .. } => {
-            lang.text(Msg::FilingSetupRuleInboxTarget).to_owned()
-        }
         FilingRuleViolation::Overlap { earlier, later } => fill_template(
             lang.text(Msg::FilingSetupRuleOverlap),
             &[

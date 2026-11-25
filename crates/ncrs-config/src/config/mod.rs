@@ -23,6 +23,7 @@ pub use ncrs_fs::{
     OpenPrograms, OpenRule, OpenWith, ProgramLine, ProgramLineProblem,
 };
 use ncrs_index::{iban_is_valid, CustomKind, KindCatalog, KindSkip};
+pub use ncrs_intake::LocationTransfer;
 use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
@@ -248,6 +249,8 @@ mod paths;
 mod resolving;
 mod sections;
 mod setting_writes;
+mod sorting;
+mod sorting_writes;
 mod write_support;
 mod writing;
 
@@ -264,13 +267,24 @@ pub use self::paths::{
     use_data_dir,
 };
 use self::resolving::*;
+use self::sorting::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
     ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,
     HermesSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue,
-    LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection,
+    LocationEntry, LocationModeName, ModulesSection, ServerEntry, ServerSection, TransferName,
     ThemeEntry, ThemeSection, VscodeWarning,
+};
+pub use self::sorting::{
+    resolve_sorting, same_folder, PauseReason, SourceEntry, SourceSetting, Sorting, TargetEntry,
+    TargetSetting, IMAGE_EXCLUDE,
+};
+pub use self::sorting_writes::{
+    add_sort_target, add_sort_target_with_home, load_filing_settings, remove_sort_source,
+    remove_sort_source_with_home, remove_sort_target, remove_sort_target_with_home,
+    upsert_sort_source, upsert_sort_source_with_home, upsert_sort_target,
+    upsert_sort_target_with_home, BACKUP_SUFFIX,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,

@@ -371,6 +371,9 @@ fn a_module_that_is_off_opens_and_creates_nothing() {
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
         first_run: false,
+        targets: Vec::new(),
+        sources: Vec::new(),
+        dropped_entries: Vec::new(),
     };
 
     assert!(FilingModule::start(&off, Some(db.clone()), shared(&store)).is_none());

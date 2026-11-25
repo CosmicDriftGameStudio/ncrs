@@ -718,9 +718,6 @@ fn ai_errors_name_the_exact_line() {
 fn filing_errors_name_the_exact_line() {
     let base = tempfile::tempdir().unwrap();
     let at = |name: &str| quoted(&base.path().join(name));
-    let archive = |name: &str| location(&at(name), "mode = \"archive\"\ntarget = true");
-    let plain_archive = |name: &str| location(&at(name), "mode = \"archive\"");
-    let with_slash = quoted(&base.path().join("archive-a").join(""));
     let cases: Vec<(&str, String, &str)> = vec![
         (
             "relative path",
@@ -761,54 +758,6 @@ fn filing_errors_name_the_exact_line() {
             "[modules.filing]\nenabled = true\nnope = 1\n".to_owned(),
             "nope",
         ),
-        (
-            "target on an inbox",
-            filing_text(
-                true,
-                &[
-                    archive("archive-a"),
-                    location(&at("inbox"), "mode = \"inbox\"\ntarget = true"),
-                ],
-            ),
-            "target = true",
-        ),
-        (
-            "two targets",
-            filing_text(true, &[archive("archive-a"), archive("archive-b")]),
-            "target = true",
-        ),
-        (
-            "nested locations",
-            filing_text(
-                true,
-                &[archive("archive-a"), plain_archive("archive-a/inside")],
-            ),
-            "inside",
-        ),
-        (
-            "outer after inner",
-            filing_text(
-                true,
-                &[archive("archive-a/inside"), plain_archive("archive-a")],
-            ),
-            "archive-a'",
-        ),
-        (
-            "the same folder twice",
-            filing_text(true, &[archive("archive-a"), plain_archive("archive-a")]),
-            "archive-a'",
-        ),
-        (
-            "the same folder twice with a trailing slash",
-            filing_text(
-                true,
-                &[
-                    archive("archive-a"),
-                    location(&with_slash, "mode = \"archive\""),
-                ],
-            ),
-            "archive-a",
-        ),
     ];
     for (name, text, marker) in &cases {
         let (found, reason) = filing_error(text, None);
@@ -847,10 +796,6 @@ fn filing_reasons_say_what_is_wrong() {
         (
             filing_text(true, &[location(&path, "mode = \"outbox\"")]),
             "archive",
-        ),
-        (
-            filing_text(true, &[location(&path, "mode = \"inbox\"\ntarget = true")]),
-            "inbox cannot be the target",
         ),
     ];
     for (text, expected) in cases {

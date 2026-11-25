@@ -28,8 +28,11 @@ mod review;
 mod rule_suggestions;
 mod rules;
 mod saved_queries;
+#[cfg(test)]
+mod rule_target_tests;
 mod search_index;
 mod sender_aliases;
+mod source_backlog;
 mod tags;
 #[cfg(test)]
 mod test_support;
@@ -57,7 +60,7 @@ pub use model::{
     NoActionReason, PlanItem, PlanOutcome, QuerySpec, ReviewEntry, ReviewEntryId, ReviewReason,
     Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion, SavedQuery,
     SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind, SenderAliasState, SenderAliases,
-    StatusCounts, SubtreePattern,
+    StatusCounts, SubtreePattern, TargetId,
 };
 pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;

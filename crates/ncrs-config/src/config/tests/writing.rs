@@ -181,17 +181,6 @@ fn an_invalid_choice_is_rejected_before_writing() {
     let cases = [
         (
             vec![
-                chosen(&folders.archive, LocationMode::Archive, false, true),
-                chosen(&folders.target, LocationMode::Archive, false, true),
-            ],
-            FilingRuleViolation::SecondTarget { index: 1 },
-        ),
-        (
-            vec![chosen(&folders.inbox, LocationMode::Inbox, false, true)],
-            FilingRuleViolation::InboxAsTarget { index: 0 },
-        ),
-        (
-            vec![
                 chosen(&folders.target, LocationMode::Archive, false, true),
                 chosen(&nested, LocationMode::Inbox, false, false),
             ],

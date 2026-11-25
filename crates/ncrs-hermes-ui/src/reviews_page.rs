@@ -32,7 +32,12 @@ pub enum Question {
 impl Question {
     pub fn of(reason: ReviewReason) -> Self {
         match reason {
-            ReviewReason::NoMatchingRule => Self::NoRule,
+            // The reasons of the new sorting have no question of their own here;
+            // this page goes with the old filing path.
+            ReviewReason::NoMatchingRule
+            | ReviewReason::NoText
+            | ReviewReason::SeveralTargets
+            | ReviewReason::Undone => Self::NoRule,
             ReviewReason::UnconfirmedRule => Self::RuleUnconfirmed,
             ReviewReason::TargetExists => Self::TargetTaken,
             ReviewReason::MissingField(Field::Date) => Self::Date,

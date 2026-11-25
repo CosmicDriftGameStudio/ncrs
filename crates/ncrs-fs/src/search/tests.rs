@@ -670,3 +670,25 @@ fn only_the_macos_root_leaves_its_file_system() {
         !cfg!(target_os = "macos")
     );
 }
+
+#[test]
+fn a_filter_built_from_the_globs_alone_matches_the_one_compiled_from_a_query() {
+    let direct = PathFilter::new(PathBuf::from("/data"), "*.pdf", "Old/;*.tmp", false).unwrap();
+    let compiled = paths_of("*.pdf", "Old/;*.tmp");
+    for path in [
+        "/data/a.PDF",
+        "/data/x/y/b.pdf",
+        "/data/Old/c.pdf",
+        "/data/d.txt",
+        "/data/e.pdf.tmp",
+    ] {
+        assert_eq!(
+            direct.admits_file(Path::new(path)),
+            compiled.admits_file(Path::new(path)),
+            "{path}"
+        );
+    }
+    assert!(direct.admits_file(Path::new("/data/x/y/b.pdf")));
+    assert!(!direct.admits_file(Path::new("/data/Old/c.pdf")));
+    assert!(PathFilter::new(PathBuf::from("/data"), "[", "", false).is_err());
+}

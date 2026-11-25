@@ -39,6 +39,9 @@ pub fn resolve_filing(
         enabled: switch.unwrap_or(!first_run),
         first_run,
         locations: Vec::new(),
+        targets: Vec::new(),
+        sources: Vec::new(),
+        dropped_entries: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
         ai,
         default_pattern: section
@@ -52,11 +55,8 @@ pub fn resolve_filing(
         own_ibans: OwnDetail::Ibans.entries_in(section),
         own_tax_ids: OwnDetail::TaxIds.entries_in(section),
     };
-    let Some(listed) = &section.locations else {
-        return Ok(filing);
-    };
-    let entries = listed.get_ref();
-    for entry in entries {
+    if let Some(listed) = &section.locations {
+        for entry in listed.get_ref() {
         let path_error = |reason: String| FilingError {
             span: entry.path.span(),
             reason,
@@ -69,46 +69,18 @@ pub fn resolve_filing(
             mode: LocationMode::from(*entry.mode.get_ref()),
             images: entry.images,
             is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
-            transfer: entry.transfer.unwrap_or_default(),
+            transfer: entry.transfer.map(LocationTransfer::from).unwrap_or_default(),
             continuous: entry.continuous,
         });
     }
-    check_filing_rules(&filing.locations).map_err(|violation| {
-        let target_flag_span = |index: usize| {
-            entries
-                .get(index)
-                .and_then(|entry| entry.target.as_ref())
-                .map_or_else(|| listed.span(), Spanned::span)
-        };
-        let path_of = |index: usize| {
-            filing
-                .locations
-                .get(index)
-                .map(|location| location.path.display().to_string())
-                .unwrap_or_default()
-        };
-        match violation {
-            FilingRuleViolation::InboxAsTarget { index } => FilingError {
-                span: target_flag_span(index),
-                reason: "an inbox cannot be the target, set `target = true` on an archive"
-                    .to_owned(),
-            },
-            FilingRuleViolation::SecondTarget { index } => FilingError {
-                span: target_flag_span(index),
-                reason: "only one location can have `target = true`".to_owned(),
-            },
-            FilingRuleViolation::Overlap { earlier, later } => FilingError {
-                span: entries
-                    .get(later)
-                    .map_or_else(|| listed.span(), |entry| entry.path.span()),
-                reason: format!(
-                    "{} and {} overlap, a location cannot be the same folder as another or lie inside it",
-                    path_of(earlier),
-                    path_of(later)
-                ),
-            },
-        }
-    })?;
+    }
+    let sorting = resolve_sorting(section, &filing.locations, home);
+    if sorting_is_in_file(section) {
+        filing.locations = locations_of_sorting(&sorting, &filing.locations);
+    }
+    filing.targets = sorting.targets;
+    filing.sources = sorting.sources;
+    filing.dropped_entries = sorting.dropped;
     Ok(filing)
 }
 

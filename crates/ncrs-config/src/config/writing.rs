@@ -1,14 +1,9 @@
 use super::*;
 
 /// A rule a list of filing locations breaks. Indices point into that list.
+// Goes with the old filing path: the new sources and targets pause instead
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilingRuleViolation {
-    InboxAsTarget {
-        index: usize,
-    },
-    SecondTarget {
-        index: usize,
-    },
     /// Same folder, or one inside the other.
     Overlap {
         earlier: usize,
@@ -20,19 +15,6 @@ pub enum FilingRuleViolation {
 /// alike. Paths are compared as they are: the config compares the spelling,
 /// the setup canonical paths.
 pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRuleViolation> {
-    let mut target_seen = false;
-    for (index, location) in locations.iter().enumerate() {
-        if !location.is_target {
-            continue;
-        }
-        if location.mode == LocationMode::Inbox {
-            return Err(FilingRuleViolation::InboxAsTarget { index });
-        }
-        if target_seen {
-            return Err(FilingRuleViolation::SecondTarget { index });
-        }
-        target_seen = true;
-    }
     for (later, later_location) in locations.iter().enumerate() {
         let overlapping = locations.iter().take(later).position(|earlier_location| {
             lies_within(&later_location.path, &earlier_location.path)
@@ -47,7 +29,7 @@ pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRule
 
 /// `Path::starts_with`, except that on macOS and Windows, whose default
 /// volumes ignore case, `~/Archive` and `~/archive` are the same folder.
-fn lies_within(path: &Path, base: &Path) -> bool {
+pub fn lies_within(path: &Path, base: &Path) -> bool {
     let mut components = path.components();
     base.components().all(|wanted| {
         components.next().is_some_and(|component| {

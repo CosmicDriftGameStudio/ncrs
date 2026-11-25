@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{DocumentFields, Kinds, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases};
+use ncrs_index::{
+    DocumentFields, Kinds, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases, TargetId,
+};
 use ncrs_intake::{plan, render_pattern_in, rule_problem, PlanInput, Planning};
 
 use super::matrix::{archive_kinds, fixtures, Case, Expected, Fixture};
@@ -16,6 +18,7 @@ fn single_rule(spec: &RuleSpec) -> Rule {
         id: RuleId::unused_in(&[]),
         position: 1,
         origin: RuleOrigin::Hand,
+        target: TargetId::main(),
         spec: spec.clone(),
     }
 }

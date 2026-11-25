@@ -6,12 +6,14 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 use crate::condition_store::{read_conditions, replace_conditions, require_compilable_regexes};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec};
+use crate::model::{
+    corrupt, Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec, TargetId,
+};
 use crate::names::{name_id, optional_kind_id, NameTable};
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name,
-        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin, r.name
+        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin, r.name, r.target
     FROM rule r
     LEFT JOIN document_kind k ON k.id = r.kind_id";
 
@@ -28,6 +30,7 @@ struct RuleRow {
     position: i64,
     origin: String,
     name: Option<String>,
+    target: String,
 }
 
 impl RuleRow {
@@ -45,6 +48,7 @@ impl RuleRow {
             position: row.get(9)?,
             origin: row.get(10)?,
             name: row.get(11)?,
+            target: row.get(12)?,
         })
     }
 
@@ -53,6 +57,8 @@ impl RuleRow {
             id: RuleId::new(self.id),
             position: self.position,
             origin: RuleOrigin::parse(&self.origin)?,
+            target: TargetId::new(&self.target)
+                .ok_or_else(|| corrupt("rule.target", &self.target))?,
             spec: RuleSpec {
                 name: self.name,
                 conditions: RuleConditions {
@@ -105,14 +111,26 @@ fn replace_rule_tags(
 }
 
 impl Index {
+    /// A rule of the main target.
     pub fn create_rule(&mut self, spec: &RuleSpec) -> Result<RuleId, IndexError> {
-        self.create_rule_from(spec, RuleOrigin::Hand)
+        self.create_rule_in(spec, RuleOrigin::Hand, &TargetId::main())
     }
 
+    /// A rule of the main target.
     pub fn create_rule_from(
         &mut self,
         spec: &RuleSpec,
         origin: RuleOrigin,
+    ) -> Result<RuleId, IndexError> {
+        self.create_rule_in(spec, origin, &TargetId::main())
+    }
+
+    /// Appended to the order of all rules, so last among those of `target`.
+    pub fn create_rule_in(
+        &mut self,
+        spec: &RuleSpec,
+        origin: RuleOrigin,
+        target: &TargetId,
     ) -> Result<RuleId, IndexError> {
         require_condition(spec)?;
         let kinds = Arc::clone(self.kinds());
@@ -120,8 +138,8 @@ impl Index {
         let kind_id = optional_kind_id(&tx, &kinds, spec.kind.as_deref())?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, filing_pattern, confirmed, enabled, origin, name, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                 kind_id, filing_pattern, confirmed, enabled, origin, name, target, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
                 spec.conditions.combinator.as_str(),
@@ -137,6 +155,7 @@ impl Index {
                     .as_deref()
                     .map(str::trim)
                     .filter(|name| !name.is_empty()),
+                target.as_str(),
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
@@ -163,13 +182,26 @@ impl Index {
         row.into_rule(list, tags).map(Some)
     }
 
-    /// In evaluation order: by position, then id.
+    /// Of all targets, in evaluation order: by position, then id.
     pub fn rules(&self) -> Result<Vec<Rule>, IndexError> {
+        self.rules_where("", [])
+    }
+
+    /// The rules of one target, in evaluation order.
+    pub fn rules_of(&self, target: &TargetId) -> Result<Vec<Rule>, IndexError> {
+        self.rules_where("WHERE r.target = ?1", [target.as_str()])
+    }
+
+    fn rules_where(
+        &self,
+        filter: &str,
+        values: impl rusqlite::Params,
+    ) -> Result<Vec<Rule>, IndexError> {
         let mut statement = self
             .connection()
-            .prepare(&format!("{RULE_COLUMNS} ORDER BY r.position, r.id"))?;
+            .prepare(&format!("{RULE_COLUMNS} {filter} ORDER BY r.position, r.id"))?;
         let rows = statement
-            .query_map([], RuleRow::read)?
+            .query_map(values, RuleRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
         rows.into_iter()
             .map(|row| {
@@ -188,13 +220,24 @@ impl Index {
         spec: &RuleSpec,
         origin: RuleOrigin,
     ) -> Result<RuleSaved, IndexError> {
-        match self.rule_replaced_by(spec)? {
+        self.save_rule_in(spec, origin, &TargetId::main())
+    }
+
+    /// `save_rule_from` within one target: a rule of the same name in another
+    /// target is left alone.
+    pub fn save_rule_in(
+        &mut self,
+        spec: &RuleSpec,
+        origin: RuleOrigin,
+        target: &TargetId,
+    ) -> Result<RuleSaved, IndexError> {
+        match self.rule_replaced_in(spec, target)? {
             Some(id) => {
                 self.update_rule_with_origin(id, spec, Some(origin))?;
                 Ok(RuleSaved::Changed)
             }
             None => {
-                self.create_rule_from(spec, origin)?;
+                self.create_rule_in(spec, origin, target)?;
                 Ok(RuleSaved::Added)
             }
         }
@@ -204,6 +247,15 @@ impl Index {
     /// same name. Not the same conditions: two folders of one sender share
     /// them, and each keeps its own rule.
     pub fn rule_replaced_by(&self, spec: &RuleSpec) -> Result<Option<RuleId>, IndexError> {
+        self.rule_replaced_in(spec, &TargetId::main())
+    }
+
+    /// `rule_replaced_by` among the rules of `target`.
+    pub fn rule_replaced_in(
+        &self,
+        spec: &RuleSpec,
+        target: &TargetId,
+    ) -> Result<Option<RuleId>, IndexError> {
         let Some(name) = spec
             .name
             .as_deref()
@@ -213,7 +265,7 @@ impl Index {
             return Ok(None);
         };
         Ok(self
-            .rules()?
+            .rules_of(target)?
             .into_iter()
             .find(|rule| rule.spec.name.as_deref() == Some(name))
             .map(|rule| rule.id))
@@ -264,23 +316,32 @@ impl Index {
         Ok(())
     }
 
-    /// Moves a rule to `to_index` of the ordered list (clamped to the end) and
-    /// renumbers all positions from 1.
+    /// Moves a rule to `to_index` of the ordered list of its target (clamped
+    /// to the end). The rules of the target trade the positions they held, so
+    /// the order of the other targets does not change.
     pub fn move_rule(&mut self, id: RuleId, to_index: usize) -> Result<(), IndexError> {
         let tx = self.conn_mut().transaction()?;
-        let mut ids = tx
-            .prepare("SELECT id FROM rule ORDER BY position, id")?
-            .query_map([], |row| row.get::<_, i64>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let target: String = tx
+            .query_row("SELECT target FROM rule WHERE id = ?1", [id.get()], |row| {
+                row.get(0)
+            })
+            .optional()?
+            .ok_or(IndexError::RuleNotFound(id))?;
+        let (mut ids, slots): (Vec<i64>, Vec<i64>) = tx
+            .prepare("SELECT id, position FROM rule WHERE target = ?1 ORDER BY position, id")?
+            .query_map([&target], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .unzip();
         let Some(from) = ids.iter().position(|&existing| existing == id.get()) else {
             return Err(IndexError::RuleNotFound(id));
         };
         ids.remove(from);
         ids.insert(to_index.min(ids.len()), id.get());
-        for (index, rule_id) in ids.iter().enumerate() {
+        for (rule_id, slot) in ids.iter().zip(slots) {
             tx.execute(
                 "UPDATE rule SET position = ?2 WHERE id = ?1",
-                params![rule_id, i64::try_from(index + 1).unwrap_or(i64::MAX)],
+                params![rule_id, slot],
             )?;
         }
         tx.commit()?;
@@ -319,6 +380,29 @@ impl Index {
             .connection()
             .execute("DELETE FROM rule WHERE id = ?1", [id.get()])?;
         Ok(changed > 0)
+    }
+
+    /// Hands the rules of `from` to `to`, keeping their order; how many moved.
+    pub fn move_rules_to_target(
+        &mut self,
+        from: &TargetId,
+        to: &TargetId,
+    ) -> Result<usize, IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let moved = tx.execute(
+            "UPDATE rule SET target = ?2 WHERE target = ?1",
+            [from.as_str(), to.as_str()],
+        )?;
+        tx.commit()?;
+        Ok(moved)
+    }
+
+    /// Deletes every rule of `target` with what hangs on it; how many went.
+    pub fn delete_rules_of(&mut self, target: &TargetId) -> Result<usize, IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let deleted = tx.execute("DELETE FROM rule WHERE target = ?1", [target.as_str()])?;
+        tx.commit()?;
+        Ok(deleted)
     }
 
     fn rule_conditions(&self, id: i64) -> Result<Vec<Condition>, IndexError> {
@@ -431,6 +515,7 @@ mod tests {
                 id: first_id,
                 position: 1,
                 origin: RuleOrigin::Hand,
+                target: TargetId::main(),
                 spec: first.clone()
             })
         );
@@ -441,12 +526,14 @@ mod tests {
                     id: first_id,
                     position: 1,
                     origin: RuleOrigin::Hand,
+                    target: TargetId::main(),
                     spec: first
                 },
                 Rule {
                     id: second_id,
                     position: 2,
                     origin: RuleOrigin::Hand,
+                    target: TargetId::main(),
                     spec: second
                 },
             ]

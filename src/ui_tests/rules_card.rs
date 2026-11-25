@@ -28,6 +28,7 @@ fn listed(
             id: rule_id(usize::try_from(id).unwrap()),
             position: id,
             origin,
+            target: ncrs_index::TargetId::main(),
             spec: RuleSpec {
                 name: None,
                 conditions,

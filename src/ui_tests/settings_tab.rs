@@ -37,6 +37,9 @@ fn hermes_config() -> Filing {
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
         first_run: false,
+        targets: Vec::new(),
+        sources: Vec::new(),
+        dropped_entries: Vec::new(),
     }
 }
 

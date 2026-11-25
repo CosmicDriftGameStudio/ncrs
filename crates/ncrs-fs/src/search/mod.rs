@@ -277,24 +277,40 @@ impl PathFilter {
     /// The filter of the file names and the excluded paths of `query`, to
     /// apply to paths that did not come from the walk.
     pub fn compile(query: &SearchQuery) -> Result<Self, SearchError> {
-        let include = parse_patterns(&query.include, true, cfg!(windows));
-        let exclude = parse_patterns(&query.exclude, false, cfg!(windows));
+        Self::new(
+            query.root.clone(),
+            &query.include,
+            &query.exclude,
+            query.case_sensitive,
+        )
+    }
+
+    /// The filter of the globs `include` and `exclude` (`;` separated, as in
+    /// the search dialog) below `root`.
+    pub fn new(
+        root: PathBuf,
+        include: &str,
+        exclude: &str,
+        case_sensitive: bool,
+    ) -> Result<Self, SearchError> {
+        let include = parse_patterns(include, true, cfg!(windows));
+        let exclude = parse_patterns(exclude, false, cfg!(windows));
         Ok(Self {
-            root: query.root.clone(),
+            root,
             include: if include.is_empty() {
                 None
             } else {
-                Some(build_glob_set(include.iter(), query.case_sensitive)?)
+                Some(build_glob_set(include.iter(), case_sensitive)?)
             },
             exclude: build_glob_set(
                 exclude.iter().filter(|pattern| !pattern.dirs_only),
-                query.case_sensitive,
+                case_sensitive,
             )?,
             exclude_dirs: build_glob_set(
                 exclude.iter().filter(|pattern| pattern.dirs_only),
-                query.case_sensitive,
+                case_sensitive,
             )?,
-            case_sensitive: query.case_sensitive,
+            case_sensitive,
         })
     }
 }

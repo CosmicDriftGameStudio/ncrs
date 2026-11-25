@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     ContentHash, DocumentFields, DocumentId, Field, Index, IndexError, KindLanguage, Kinds,
-    ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases,
+    ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases, TargetId,
 };
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
@@ -424,6 +424,7 @@ fn with_candidate(
         id,
         position,
         origin: RuleOrigin::Hand,
+        target: TargetId::main(),
         spec,
     });
     (rules, id)

@@ -14,6 +14,9 @@ pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) 
                 TextState::Read => Msg::ReviewListReasonNoRule,
             })
             .to_owned(),
+        ReviewReason::NoText => lang.text(Msg::ReviewListReasonNoTextRecognised).to_owned(),
+        ReviewReason::SeveralTargets => lang.text(Msg::ReviewListReasonSeveralTargets).to_owned(),
+        ReviewReason::Undone => lang.text(Msg::ReviewListReasonUndone).to_owned(),
         ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
         ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
         ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field, lang),

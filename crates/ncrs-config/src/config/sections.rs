@@ -234,6 +234,16 @@ pub struct FilingSection {
     /// Keeps the position of the whole array for the "no target" error.
     #[serde(default)]
     pub locations: Option<Spanned<Vec<LocationEntry>>>,
+    /// `Some` even for an empty list: once `sources` or `targets` is in the
+    /// file, `locations` no longer says anything about them.
+    #[serde(default)]
+    pub targets: Option<Spanned<Vec<TargetEntry>>>,
+    #[serde(default)]
+    pub sources: Option<Spanned<Vec<SourceEntry>>>,
+    /// The number the next `t<n>` target id starts from; ids of deleted
+    /// targets are never handed out again.
+    #[serde(default)]
+    pub next_target: Option<u32>,
     #[serde(default)]
     pub load: Option<Spanned<LoadValue>>,
     /// Keeps the position of the table for an error about a missing key.
@@ -407,18 +417,26 @@ pub struct LocationEntry {
     #[serde(default)]
     pub target: Option<Spanned<bool>>,
     #[serde(default)]
-    pub transfer: Option<LocationTransfer>,
+    pub transfer: Option<TransferName>,
     #[serde(default)]
     pub continuous: bool,
 }
 
-/// What Hermes does with a file it takes from a read folder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+/// The spelling of `transfer` in a location; `load` maps it to `LocationTransfer`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum LocationTransfer {
+pub enum TransferName {
     Copy,
-    #[default]
     Move,
+}
+
+impl From<TransferName> for LocationTransfer {
+    fn from(name: TransferName) -> Self {
+        match name {
+            TransferName::Copy => Self::Copy,
+            TransferName::Move => Self::Move,
+        }
+    }
 }
 
 /// The spelling of a mode in the file; `load` maps it to `LocationMode`.
@@ -445,7 +463,16 @@ pub struct Filing {
     /// The config says nothing at all about filing: Hermes has never been
     /// switched on or off, so the first run turns it on.
     pub first_run: bool,
+    /// The folders as the old filing path sees them. Goes with the old filing
+    /// path: derived from `targets` and `sources` once those are in the file.
     pub locations: Vec<FilingLocation>,
+    /// Where files are put, in the order of the file.
+    pub targets: Vec<TargetSetting>,
+    /// Folders files are taken from, in the order of the file.
+    pub sources: Vec<SourceSetting>,
+    /// Target entries that could not be used at all (no valid id), each with
+    /// the reason.
+    pub dropped_entries: Vec<String>,
     /// How many workers the pipeline may use; counts above the core count are
     /// capped when the pipeline starts.
     pub load: Load,
@@ -474,6 +501,9 @@ impl Default for Filing {
             enabled: false,
             first_run: true,
             locations: Vec::new(),
+            targets: Vec::new(),
+            sources: Vec::new(),
+            dropped_entries: Vec::new(),
             load: Load::default(),
             ai: AiSetting::default(),
             default_pattern: None,
@@ -486,6 +516,7 @@ impl Default for Filing {
 
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
 /// disk: whether the folder exists is for the module to find out when it starts.
+// Goes with the old filing path
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilingLocation {
     pub path: PathBuf,

@@ -350,13 +350,14 @@ mod tests {
     use crate::condition_editor::ConditionEdit;
     use crate::filing_pieces::{FolderField, TargetEdit};
     use crate::rules_page::fixtures::rule_id;
-    use ncrs_index::KindLanguage;
+    use ncrs_index::{KindLanguage, TargetId};
 
     fn stored_rule() -> Rule {
         Rule {
             id: rule_id(1),
             position: 1,
             origin: RuleOrigin::Suggestion,
+            target: TargetId::main(),
             spec: RuleSpec {
                 name: Some("Rent".to_owned()),
                 conditions: RuleConditions::any_of(vec![

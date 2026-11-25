@@ -172,7 +172,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, search: &SearchText) -> bool 
     conditions_hold(&spec.conditions, input, search)
 }
 
-fn conditions_hold(
+pub(crate) fn conditions_hold(
     conditions: &RuleConditions,
     input: &PlanInput<'_>,
     search: &SearchText,
@@ -241,7 +241,7 @@ fn condition_outcome(
 /// The known fields, completed from the rule and from the text. Kind and tags
 /// are the rule's; number, date and amount are read from the text where the
 /// rule says how.
-fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
+pub(crate) fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     let mut fields = input.fields.clone();
     if fields.sender.is_none() {
         fields.sender = spec.conditions.required_sender().map(str::to_owned);
@@ -639,7 +639,9 @@ impl Pattern {
         });
         let is_device =
             matches!(tokens.as_slice(), [Token::Literal(literal)] if is_device_name(literal));
-        (!only_dots && plain && !is_device).then_some(tokens)
+        let lost_ending = matches!(tokens.last(), Some(Token::Literal(literal)) if has_lost_ending(literal));
+        let is_home = matches!(tokens.as_slice(), [Token::Literal(literal)] if literal == "~");
+        (!only_dots && plain && !is_device && !lost_ending && !is_home).then_some(tokens)
     }
 
     /// The components that are folders: all of them when the file name is made
@@ -816,6 +818,16 @@ fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
         render_tokens(&tokens, fields, true, None)
     })
 }
+
+/// Windows drops a dot or space at the end of a name, so the folder would not
+/// be the one the pattern says. Elsewhere `Company Inc.` is a folder like any
+/// other.
+pub(crate) fn has_lost_ending(segment: &str) -> bool {
+    cfg!(windows) && segment.ends_with(['.', ' '])
+}
+
+mod strict;
+pub(crate) use strict::{render_strict, Unrenderable};
 
 #[cfg(test)]
 mod tests;

@@ -5,6 +5,7 @@ use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{
     Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
+    TargetId,
 };
 
 impl Index {
@@ -18,13 +19,24 @@ impl Index {
         spec: &RuleSpec,
         evidence: RuleEvidence,
     ) -> Result<RuleSuggestion, IndexError> {
+        self.suggest_rule_in(spec, evidence, &TargetId::main())
+    }
+
+    /// `suggest_rule` for one target: only its rules count as the same, and
+    /// only what was discarded for it is not proposed again.
+    pub fn suggest_rule_in(
+        &mut self,
+        spec: &RuleSpec,
+        evidence: RuleEvidence,
+        target: &TargetId,
+    ) -> Result<RuleSuggestion, IndexError> {
         let single = spec.conditions.single_condition();
         let existing = match single {
-            Some(condition) => self.same_condition_and_target(spec, condition)?,
+            Some(condition) => self.same_condition_and_target(spec, condition, target)?,
             None => None,
         };
         let discarded = match single {
-            Some(condition) if existing.is_none() => self.was_discarded(condition, spec)?,
+            Some(condition) if existing.is_none() => self.was_discarded(condition, spec, target)?,
             _ => false,
         };
         if discarded {
@@ -41,7 +53,7 @@ impl Index {
                     confirmed: false,
                     ..spec.clone()
                 };
-                let id = self.create_rule_from(&unconfirmed, RuleOrigin::Suggestion)?;
+                let id = self.create_rule_in(&unconfirmed, RuleOrigin::Suggestion, target)?;
                 self.store_rule_evidence(id, &evidence)?;
                 Ok(RuleSuggestion::Created(id))
             }
@@ -117,7 +129,7 @@ impl Index {
                     .map(|kind| self.kinds().kind_key(kind))
             || rule.spec.filing_pattern != confirmed.filing_pattern;
         if changed {
-            self.remember_discarded(&rule.spec)?;
+            self.remember_discarded(&rule.spec, &rule.target)?;
         }
         Ok(true)
     }
@@ -129,7 +141,7 @@ impl Index {
         let Some(rule) = self.rule(id)? else {
             return Ok(false);
         };
-        if rule.spec.confirmed || !self.remember_discarded(&rule.spec)? {
+        if rule.spec.confirmed || !self.remember_discarded(&rule.spec, &rule.target)? {
             return Ok(false);
         }
         // The evidence goes with the rule (ON DELETE CASCADE).
@@ -137,35 +149,42 @@ impl Index {
     }
 
     /// `false` when the rule has no single condition to remember.
-    fn remember_discarded(&self, spec: &RuleSpec) -> Result<bool, IndexError> {
+    fn remember_discarded(&self, spec: &RuleSpec, target: &TargetId) -> Result<bool, IndexError> {
         let Some(condition) = spec.conditions.single_condition() else {
             return Ok(false);
         };
         self.connection().execute(
             "INSERT OR IGNORE INTO discarded_rule_suggestion
-                 (match_text, condition_kind, kind, filing_pattern, discarded_at)
-             VALUES (lower(?1), ?2, lower(?3), ?4, ?5)",
+                 (match_text, condition_kind, kind, filing_pattern, discarded_at, target)
+             VALUES (lower(?1), ?2, lower(?3), ?4, ?5, ?6)",
             params![
                 condition.value,
                 discard_class(condition.kind),
                 spec.kind.as_deref().map(|kind| self.kinds().kind_key(kind)),
                 spec.filing_pattern,
-                Utc::now().timestamp()
+                Utc::now().timestamp(),
+                target.as_str()
             ],
         )?;
         Ok(true)
     }
 
-    fn was_discarded(&self, condition: &Condition, spec: &RuleSpec) -> Result<bool, IndexError> {
+    fn was_discarded(
+        &self,
+        condition: &Condition,
+        spec: &RuleSpec,
+        target: &TargetId,
+    ) -> Result<bool, IndexError> {
         let found = self.connection().query_row(
             "SELECT EXISTS (SELECT 1 FROM discarded_rule_suggestion
                  WHERE match_text = lower(?1) AND condition_kind = ?2
-                     AND kind = lower(?3) AND filing_pattern = ?4)",
+                     AND kind = lower(?3) AND filing_pattern = ?4 AND target = ?5)",
             params![
                 condition.value,
                 discard_class(condition.kind),
                 spec.kind.as_deref().map(|kind| self.kinds().kind_key(kind)),
-                spec.filing_pattern
+                spec.filing_pattern,
+                target.as_str()
             ],
             |row| row.get(0),
         )?;
@@ -177,6 +196,7 @@ impl Index {
         &self,
         spec: &RuleSpec,
         text_condition: &Condition,
+        target: &TargetId,
     ) -> Result<Option<(RuleId, bool)>, IndexError> {
         let Some(kind) = spec.kind.as_deref() else {
             return Ok(None);
@@ -189,13 +209,14 @@ impl Index {
              JOIN rule_condition c ON c.rule_id = r.id
              WHERE (SELECT count(*) FROM rule_condition WHERE rule_id = r.id) = 1
                  AND c.negated = 0 AND c.kind = ? AND lower(c.value) = lower(?)
-                 AND r.filing_pattern = ? AND k.name_key IN ({marks})
+                 AND r.filing_pattern = ? AND r.target = ? AND k.name_key IN ({marks})
              ORDER BY r.confirmed DESC, r.id LIMIT 1"
         );
         let fixed = [
             text_condition.kind.as_str().to_owned(),
             text_condition.value.clone(),
             spec.filing_pattern.clone(),
+            target.as_str().to_owned(),
         ];
         let found = self
             .connection()

@@ -3,7 +3,7 @@
 
 use ncrs_index::{compile_bounded_regex, iban_is_valid, Condition, ConditionKind, RuleSpec};
 
-use crate::filing_plan::pattern_is_valid;
+use crate::filing_plan::{has_lost_ending, pattern_is_valid};
 
 /// What is wrong with one condition.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,8 +53,42 @@ pub fn rule_problem(spec: &RuleSpec) -> Option<RuleProblem> {
         return Some(RuleProblem::NoFilingTarget);
     }
     let empty_segment = spec.filing_pattern.contains("//");
-    (empty_segment || !pattern_is_valid(&spec.filing_pattern))
+    (empty_segment || pattern_problem(&spec.filing_pattern).is_some())
         .then_some(RuleProblem::InvalidPattern)
+}
+
+/// Why a filing pattern is refused, for a form that wants to say more than
+/// "invalid".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatternProblem {
+    /// A segment that is only `~`: a shell reads it as the home folder.
+    HomeFolder,
+    /// Windows only: a segment ends in a dot or a space.
+    LostEnding,
+    /// Anything else the parser refuses.
+    Unreadable,
+}
+
+/// The first problem of the pattern, `None` for one that can be rendered.
+pub fn pattern_problem(source: &str) -> Option<PatternProblem> {
+    let unified = source.replace('\\', "/");
+    let segments = || {
+        unified
+            .strip_suffix('/')
+            .unwrap_or(&unified)
+            .split('/')
+            .collect::<Vec<_>>()
+    };
+    if segments().contains(&"~") {
+        return Some(PatternProblem::HomeFolder);
+    }
+    let lost_ending = |segment: &&str| {
+        !segment.trim_matches(['.', ' ']).is_empty() && has_lost_ending(segment)
+    };
+    if segments().iter().any(lost_ending) {
+        return Some(PatternProblem::LostEnding);
+    }
+    (!pattern_is_valid(source)).then_some(PatternProblem::Unreadable)
 }
 
 /// The multi-line message of the regex crate names the reason on its last
@@ -166,5 +200,73 @@ mod tests {
             Some(RuleProblem::InvalidPattern)
         );
         assert_eq!(rule_problem(&spec(vec![sender("Alfa")], "Bank/")), None);
+    }
+}
+
+#[cfg(test)]
+mod pattern_tests {
+    use super::*;
+
+    #[test]
+    fn every_kind_of_pattern_gets_its_verdict() {
+        use PatternProblem::{HomeFolder, LostEnding, Unreadable};
+        let on_windows = cfg!(windows).then_some(LostEnding);
+        let cases: [(&str, Option<PatternProblem>); 29] = [
+            (
+                "Bank/{sender}/{year}/{year}{month}{day}_{kind}_{number}.pdf",
+                None,
+            ),
+            ("{year}/{sender}", None),
+            ("{year} {month} {day} {date} {sender} {recipient} {number} {kind}", None),
+            ("{folder}/{name}", None),
+            ("a\\b", None),
+            ("x/", None),
+            ("Nr. {number}", None),
+            ("{year}/v1.2_{number}", None),
+            ("CON.{year}", None),
+            ("a/~b", None),
+            ("{Year}", Some(Unreadable)),
+            ("{amount}", Some(Unreadable)),
+            ("{x}", Some(Unreadable)),
+            ("{", Some(Unreadable)),
+            ("/a", Some(Unreadable)),
+            ("a//b", Some(Unreadable)),
+            (".", Some(Unreadable)),
+            ("..", Some(Unreadable)),
+            ("", Some(Unreadable)),
+            ("C:\\a", Some(Unreadable)),
+            ("a<b", Some(Unreadable)),
+            ("CON", Some(Unreadable)),
+            ("nul.pdf", Some(Unreadable)),
+            ("Firma GmbH./x", on_windows),
+            ("Bank /x", on_windows),
+            (" x", None),
+            ("{sender}.", on_windows),
+            ("~/Dokumente/x", Some(HomeFolder)),
+            ("{year}/~", Some(HomeFolder)),
+        ];
+        for (pattern, expected) in cases {
+            assert_eq!(pattern_problem(pattern), expected, "{pattern:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_pattern_is_an_invalid_pattern_of_the_rule() {
+        let rule = RuleSpec {
+            name: None,
+            conditions: ncrs_index::RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Sender,
+                "Alfa",
+            )]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: None,
+            tags: std::collections::BTreeSet::new(),
+            filing_pattern: "~/Dokumente/x".to_owned(),
+            confirmed: true,
+            enabled: true,
+        };
+        assert_eq!(rule_problem(&rule), Some(RuleProblem::InvalidPattern));
     }
 }

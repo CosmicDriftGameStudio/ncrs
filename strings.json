@@ -2095,22 +2095,10 @@
       "de": "Dateien fehlen"
     },
     {
-      "key": "filing_setup.rule_second_target",
-      "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "Only one folder can be the target folder.",
-      "de": "Nur ein Ordner kann der Zielordner sein."
-    },
-    {
       "key": "filing_setup.rule_broken",
       "context": "Reason in a failed-write message when a rule of the folder list is broken by a change that should not touch the folder list. Takes the place of the reason of filing_setup.write_failed.",
       "en": "the folder list breaks a rule",
       "de": "die Ordnerliste verstößt gegen eine Regel"
-    },
-    {
-      "key": "filing_setup.rule_inbox_target",
-      "context": "Rule message in the filing setup card: a read folder folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "A read folder cannot be the target folder.",
-      "de": "Ein Lesen-Ordner kann nicht der Zielordner sein."
     },
     {
       "key": "filing_setup.rule_overlap",
@@ -2723,6 +2711,24 @@
       "context": "Review reason in the review list: no text could be read from the document, so no rule could match.",
       "en": "No text read",
       "de": "Kein Text gelesen"
+    },
+    {
+      "key": "review_list.reason_no_text_recognised",
+      "context": "Review reason in the review list: the file is on hold because no text was recognised in it and its source is set to ask in that case.",
+      "en": "No text recognised",
+      "de": "Kein Text erkannt"
+    },
+    {
+      "key": "review_list.reason_several_targets",
+      "context": "Review reason in the review list: the file fits the rules of more than one target and its source is set to ask in that case.",
+      "en": "Fits several targets",
+      "de": "Passt in mehrere Ziele"
+    },
+    {
+      "key": "review_list.reason_undone",
+      "context": "Review reason in the review list: the user took the filing of this file back, so it waits for a new decision.",
+      "en": "Undone",
+      "de": "Rückgängig gemacht"
     },
     {
       "key": "review_list.reason_unconfirmed",

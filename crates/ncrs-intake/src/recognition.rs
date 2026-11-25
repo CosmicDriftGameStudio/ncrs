@@ -424,7 +424,10 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
             // `plan` gives no other reason; the later steps set them.
             ReviewReason::UnconfirmedRule
             | ReviewReason::TargetExists
-            | ReviewReason::LowConfidence(_) => PlanningOutcome::UnconfirmedRule,
+            | ReviewReason::LowConfidence(_)
+            | ReviewReason::NoText
+            | ReviewReason::SeveralTargets
+            | ReviewReason::Undone => PlanningOutcome::UnconfirmedRule,
         },
     }
 }
