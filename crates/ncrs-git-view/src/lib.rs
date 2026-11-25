@@ -3,6 +3,7 @@
 
 pub mod action;
 pub mod actions;
+pub mod cleanup;
 pub mod credentials;
 pub mod ctx;
 pub mod commit_menu;
@@ -27,6 +28,7 @@ pub mod view;
 mod wip;
 
 pub use action::Action;
+pub use cleanup::CleanupMessage;
 pub use ctx::{Ctx, ViewCtx};
 pub use git_keys::{GitKeys, GitKeysError, KeyOverride};
 pub use keys::{commit_field_key, git_view_key, KeyContext};

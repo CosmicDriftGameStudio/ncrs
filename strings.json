@@ -14912,21 +14912,27 @@
     },
     {
       "key": "repos.cleanup_keep_title",
-      "context": "Title of the shut Keep section of the clean-up pane of the Repos tab: what is never offered. {count} entries.",
-      "en": "Stays · {count}",
-      "de": "Bleibt · {count}"
+      "context": "Title of the shut Keep section of the clean-up pane of the Repos tab: what is never offered. The number of entries stands beside it.",
+      "en": "Stays · never offered",
+      "de": "Bleibt · wird nie angeboten"
     },
     {
       "key": "repos.cleanable_note",
       "context": "Quiet line under the list of the Repos tab that explains the Cleanable column.",
-      "en": "Cleanable counts merged branches and worktrees as of the last fetch.",
-      "de": "Aufräumbar zählt gemergte Branches und Worktrees nach dem letzten Holen."
+      "en": "Cleanable counts branches and worktrees already merged into the default branch. Branches merged on the server show up once Clean up has fetched.",
+      "de": "Aufräumbar zählt Branches und Worktrees, die schon im Standard-Branch sind. Auf dem Server gemergte Branches kommen dazu, sobald Aufräumen geholt hat."
     },
     {
       "key": "repos.toolbar_cleanup",
       "context": "Button in the bar of the bulk actions of the Repos tab: opens the pane that deletes merged branches and worktrees. The dots say that a pane asks first.",
       "en": "Clean up…",
       "de": "Aufräumen…"
+    },
+    {
+      "key": "repos.command_undo_cleanup",
+      "context": "Entry of the command list while the Repos tab is shown: takes the last clean-up back, brings the deleted branches back. Only works while the clean-up pane is open.",
+      "en": "Undo the clean-up",
+      "de": "Aufräumen rückgängig machen"
     },
     {
       "key": "repos.command_cleanup",
@@ -15025,6 +15031,18 @@
       "de": "Rückgängig holt gelöschte Branches zurück, solange der Tab offen ist."
     },
     {
+      "key": "repos.cleanup_cancel",
+      "context": "Button in the clean-up pane of the Repos tab that leaves without deleting anything; the key name Esc follows it, so it stays short.",
+      "en": "Cancel  Esc",
+      "de": "Abbrechen  Esc"
+    },
+    {
+      "key": "repos.cleanup_run_note",
+      "context": "Quiet line under the buttons of the clean-up pane in the Repos tab: the deletes report like the bulk actions do, one result per repository.",
+      "en": "Runs like the bulk actions: a result per repo.",
+      "de": "Läuft wie die Sammelaktion: Ergebnis je Repo."
+    },
+    {
       "key": "repos.cleanup_confirm",
       "context": "Red button of the clean-up pane of the Repos tab: deletes what is ticked. {count} branches and worktrees in {repos} repositories.",
       "en": "Delete {count} in {repos} repos",
@@ -15039,8 +15057,8 @@
     {
       "key": "repos.cleanup_hint",
       "context": "Status bar hint while the clean-up pane of the Repos tab is open: the keys that work in it.",
-      "en": "Up/Down choose · Space tick · Left/Right shut/open repo · Enter deletes · Esc closes",
-      "de": "Hoch/Runter wählen · Leertaste Haken · Links/Rechts Repo zu/auf · Enter löscht · Esc schließt"
+      "en": "Up/Down choose · Space tick · Left/Right shut/open repo · Tab list/clean-up · Enter deletes · Esc closes",
+      "de": "Hoch/Runter wählen · Leertaste Haken · Links/Rechts Repo zu/auf · Tab Liste/Aufräumen · Enter löscht · Esc schließt"
     },
     {
       "key": "repos.cleanup_row_deleted",
@@ -15295,6 +15313,36 @@
       "de": "Push-Optionen"
     },
     {
+      "key": "git_view.command_pull_merge",
+      "context": "Git tab, command list (F1): pull and join the fetched commits with a merge.",
+      "en": "Pull with merge",
+      "de": "Pull mit Merge"
+    },
+    {
+      "key": "git_view.command_pull_rebase",
+      "context": "Git tab, command list (F1): pull and put the local commits on top of the fetched ones (rebase).",
+      "en": "Pull with rebase",
+      "de": "Pull mit Rebase"
+    },
+    {
+      "key": "git_view.command_pull_fast_forward",
+      "context": "Git tab, command list (F1): pull only when the branch can simply move forward, no merge commit.",
+      "en": "Pull, fast-forward only",
+      "de": "Pull, nur vorspulen"
+    },
+    {
+      "key": "git_view.force_blocked_detached",
+      "context": "Git tab, Push menu: why Force push with lease is greyed out. HEAD is not on a branch. Short, shown at the right of the entry.",
+      "en": "no branch",
+      "de": "kein Branch"
+    },
+    {
+      "key": "git_view.force_blocked_no_upstream",
+      "context": "Git tab, Push menu: why Force push with lease is greyed out. The branch has no upstream yet. Short, shown at the right of the entry.",
+      "en": "no upstream",
+      "de": "kein Upstream"
+    },
+    {
       "key": "git_view.command_force_push",
       "context": "Git tab, command list (F1): force push with lease; it asks before anything is sent.",
       "en": "Force push with lease",
@@ -15343,10 +15391,34 @@
       "de": "Holen"
     },
     {
-      "key": "git_view.credentials_title",
-      "context": "Git tab, title of the dialog in which Git asks for a user name, a password, a passphrase or a yes or no during a pull, push or fetch.",
-      "en": "Git asks for a login",
-      "de": "Git fragt nach einer Anmeldung"
+      "key": "git_view.credentials_title_text",
+      "context": "Git tab, title of the dialog in which Git asks for a user name during a pull, push or fetch.",
+      "en": "Git asks for a user name",
+      "de": "Git fragt nach einem Benutzernamen"
+    },
+    {
+      "key": "git_view.credentials_title_secret",
+      "context": "Git tab, title of the dialog in which Git asks for a password or the passphrase of a key during a pull, push or fetch.",
+      "en": "Git asks for a password",
+      "de": "Git fragt nach einem Passwort"
+    },
+    {
+      "key": "git_view.credentials_title_confirm",
+      "context": "Git tab, title of the dialog in which Git or ssh asks a yes or no question, for example whether to trust an unknown server.",
+      "en": "Git asks for a confirmation",
+      "de": "Git fragt nach einer Bestätigung"
+    },
+    {
+      "key": "git_view.credentials_field_text",
+      "context": "Git tab, label above the field of the login dialog where the user name is typed.",
+      "en": "User name",
+      "de": "Benutzername"
+    },
+    {
+      "key": "git_view.credentials_field_secret",
+      "context": "Git tab, label above the masked field of the login dialog where the password or passphrase is typed.",
+      "en": "Password or passphrase",
+      "de": "Passwort oder Passphrase"
     },
     {
       "key": "git_view.credentials_ask",
@@ -15791,6 +15863,102 @@
       "context": "Entry of the command list and of the shortcut table: the commit each line of the file under the cursor comes from.",
       "en": "Git blame",
       "de": "Git-Blame"
+    },
+    {
+      "key": "git_view.toolbar_cleanup",
+      "context": "Git tab, header button that opens the clean-up of merged branches and worktrees; {count} is how many could go.",
+      "en": "Clean up {count}",
+      "de": "Aufräumen {count}"
+    },
+    {
+      "key": "git_view.command_cleanup",
+      "context": "Git tab, tooltip of the clean-up button and entry of the command list: deletes merged branches and worktrees of this repository after a tick each.",
+      "en": "Clean up merged branches and worktrees…",
+      "de": "Gemergte Branches und Worktrees aufräumen…"
+    },
+    {
+      "key": "git_view.cleanup_title",
+      "context": "Git tab, title of the clean-up dialog; {name} is the repository.",
+      "en": "Clean up · {name}",
+      "de": "Aufräumen · {name}"
+    },
+    {
+      "key": "git_view.cleanup_fetching",
+      "context": "Git tab, clean-up dialog while it fetches from the remote before it lists anything.",
+      "en": "Fetching… (fetch --prune)",
+      "de": "Holt … (fetch --prune)"
+    },
+    {
+      "key": "git_view.cleanup_fetch_failed",
+      "context": "Git tab, clean-up dialog: the fetch did not work, the list shows the state of the last fetch; {reason} is git's message.",
+      "en": "Fetch failed, showing the state of the last fetch ({reason})",
+      "de": "Holen fehlgeschlagen, Stand des letzten Holens ({reason})"
+    },
+    {
+      "key": "git_view.cleanup_nothing",
+      "context": "Git tab, clean-up dialog when no branch or worktree can go.",
+      "en": "Nothing to clean up.",
+      "de": "Nichts zum Aufräumen."
+    },
+    {
+      "key": "git_view.cleanup_summary",
+      "context": "Git tab, clean-up dialog, line over the list: what is offered.",
+      "en": "Can go: branches {branches}, worktrees {worktrees}. Nothing is deleted without a tick.",
+      "de": "Kann weg: Branches {branches}, Worktrees {worktrees}. Ohne Haken wird nichts gelöscht."
+    },
+    {
+      "key": "git_view.cleanup_confirm",
+      "context": "Git tab, clean-up dialog, button that deletes what is ticked; {count} is how many.",
+      "en": "Delete {count}",
+      "de": "{count} löschen"
+    },
+    {
+      "key": "git_view.cleanup_deleting",
+      "context": "Git tab, clean-up dialog while the deletion runs.",
+      "en": "Deleting…",
+      "de": "Löscht …"
+    },
+    {
+      "key": "git_view.cleanup_close",
+      "context": "Git tab, clean-up dialog, button that closes it after the deletion.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "git_view.status_cleanup",
+      "context": "Git tab, hint line while the clean-up dialog is open.",
+      "en": "↑↓ choose · Space tick · ←→ shut/open what stays · Tab remote branches · Enter delete · Esc close",
+      "de": "↑↓ wählen · Leertaste Haken · ←→ Bleibt zu/auf · Tab Remote-Branches · Enter löscht · Esc schließt"
+    },
+    {
+      "key": "git_view.branch_merged",
+      "context": "Git tab, mark at the right of a local branch whose commits are all in the default branch.",
+      "en": "✓ merged",
+      "de": "✓ gemergt"
+    },
+    {
+      "key": "git_view.legend_merged",
+      "context": "Git tab, line under the branch list that explains the merged mark.",
+      "en": "✓ merged: everything is in the default branch; Clean up can delete it.",
+      "de": "✓ gemergt: alles ist im Standard-Branch; Aufräumen kann es löschen."
+    },
+    {
+      "key": "git_view.menu_remove_worktree",
+      "context": "Git tab, context menu of a worktree in the left list: deletes its folder after a question.",
+      "en": "Delete worktree…",
+      "de": "Worktree löschen…"
+    },
+    {
+      "key": "git_view.ask_remove_worktree_title",
+      "context": "Git tab, title of the question before a worktree folder is deleted.",
+      "en": "Delete worktree?",
+      "de": "Worktree löschen?"
+    },
+    {
+      "key": "git_view.ask_remove_worktree_text",
+      "context": "Git tab, question before a worktree folder is deleted; {name} is the folder. Git refuses a folder with local changes; the branch stays.",
+      "en": "The folder {name} is deleted. The branch stays. Git refuses if the folder has local changes.",
+      "de": "Der Ordner {name} wird gelöscht. Der Branch bleibt. Git lehnt ab, wenn der Ordner lokale Änderungen hat."
     }
   ]
 }

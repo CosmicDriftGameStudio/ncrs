@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use git_cli::{clone_of, repo, sh, with_origin, write, Repo};
 use ncrs_git::{
-    cleanup_list, refs, remote_tips, CleanupList, CleanupPlan, CleanupReason, CleanupTarget,
-    KeepReason,
+    cleanup_list, refs, remote_state, remote_tips, ActionError, CleanupList, CleanupPlan, CleanupReason, CleanupTarget,
+    KeepReason, RemoteState,
 };
 use tempfile::TempDir;
 
@@ -25,7 +25,8 @@ fn go() -> Arc<AtomicBool> {
 }
 
 fn scan(repo: &Repo, tips: &BTreeMap<String, String>) -> CleanupList {
-    cleanup_list(&refs(repo.path(), &go()).unwrap(), tips)
+    let state = remote_state(repo.path(), true, &AtomicBool::new(false)).unwrap();
+    cleanup_list(&refs(repo.path(), &go()).unwrap(), tips, &state)
 }
 
 fn tips_of(repo: &Repo) -> BTreeMap<String, String> {
@@ -332,7 +333,106 @@ fn a_shallow_clone_does_not_turn_unmerged_branches_into_merged_ones() {
         .find(|branch| branch.name == "feat")
         .unwrap();
     assert!(!feat.merged);
-    assert!(cleanup_list(&overview, &BTreeMap::new())
+    assert!(cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default())
         .branches
         .is_empty());
+}
+
+/// `feat` merged into main and pushed, so it is offered as `InDefault`.
+fn merged_and_pushed() -> (TempDir, Repo) {
+    let (origin, repo) = with_pushed_feature();
+    repo.sh(&["merge", "-q", "feat"]);
+    repo.sh(&["push", "-q"]);
+    (origin, repo)
+}
+
+fn clean_with_remote(repo: &Repo, list: CleanupList) -> ncrs_git::CleanupReport {
+    repo.git
+        .clean_up(&CleanupPlan {
+            branches: list.branches,
+            delete_remote: true,
+            ..CleanupPlan::default()
+        })
+        .unwrap()
+}
+
+fn remote_has(origin: &TempDir, name: &str) -> bool {
+    sh(origin.path(), &["branch"]).contains(name)
+}
+
+#[test]
+fn the_remote_branch_is_offered_for_deletion_only_with_its_scanned_tip() {
+    let (_origin, repo) = merged_and_pushed();
+    let list = scan(&repo, &tips_of(&repo));
+    assert_eq!(
+        list.branches[0].remote_tip,
+        Some(repo.sh(&["rev-parse", "origin/feat"]))
+    );
+}
+
+#[test]
+fn an_upstream_with_another_name_keeps_the_remote_branch() {
+    let (origin, repo) = merged_and_pushed();
+    repo.sh(&["push", "-q", "origin", "feat:other"]);
+    repo.sh(&["branch", "-q", "--set-upstream-to=origin/other", "feat"]);
+    repo.git.fetch(None).unwrap();
+    let list = scan(&repo, &tips_of(&repo));
+    assert_eq!(list.branches[0].remote_tip, None);
+    let report = clean_with_remote(&repo, list);
+    assert!(report.all_done(), "{report:?}");
+    assert!(remote_has(&origin, "other"));
+}
+
+#[test]
+fn a_remote_branch_with_an_extra_commit_stays() {
+    let (origin, repo) = merged_and_pushed();
+    let other = clone_of(&origin);
+    other.sh(&["checkout", "-q", "feat"]);
+    other.commit_file("more.txt", "m\n", "after the merge");
+    other.sh(&["push", "-q", "origin", "feat"]);
+    repo.git.fetch(None).unwrap();
+    let list = scan(&repo, &tips_of(&repo));
+    assert_eq!(list.branches[0].remote_tip, None);
+    let report = clean_with_remote(&repo, list);
+    assert!(report.all_done(), "{report:?}");
+    assert!(remote_has(&origin, "feat"));
+}
+
+#[test]
+fn a_remote_branch_that_is_the_upstream_of_a_second_branch_stays() {
+    let (origin, repo) = merged_and_pushed();
+    repo.sh(&["branch", "-q", "second", "feat"]);
+    repo.sh(&["branch", "-q", "--set-upstream-to=origin/feat", "second"]);
+    let list = scan(&repo, &tips_of(&repo));
+    assert!(list.branches.iter().all(|row| row.remote_tip.is_none()));
+    let report = clean_with_remote(&repo, list);
+    assert!(report.all_done(), "{report:?}");
+    assert!(remote_has(&origin, "feat"));
+}
+
+#[test]
+fn nothing_goes_from_the_remote_when_the_fetch_did_not_work() {
+    let (_origin, repo) = merged_and_pushed();
+    let state = remote_state(repo.path(), false, &AtomicBool::new(false)).unwrap();
+    let list = cleanup_list(&refs(repo.path(), &go()).unwrap(), &tips_of(&repo), &state);
+    assert_eq!(list.branches[0].remote_tip, None);
+}
+
+#[test]
+fn a_remote_branch_that_moved_between_the_scan_and_the_delete_stays() {
+    let (origin, repo) = merged_and_pushed();
+    let list = scan(&repo, &tips_of(&repo));
+    let other = clone_of(&origin);
+    other.sh(&["checkout", "-q", "feat"]);
+    other.commit_file("late.txt", "l\n", "pushed after the scan");
+    other.sh(&["push", "-q", "origin", "feat"]);
+
+    let report = clean_with_remote(&repo, list);
+    let remote_row = report
+        .rows
+        .iter()
+        .find(|row| row.target == CleanupTarget::RemoteBranch("origin/feat".to_string()))
+        .unwrap();
+    assert_eq!(remote_row.result, Err(ActionError::LeaseRejected));
+    assert!(remote_has(&origin, "feat"));
 }

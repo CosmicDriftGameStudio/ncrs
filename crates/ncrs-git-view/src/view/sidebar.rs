@@ -1,11 +1,12 @@
 //! The left side: local and remote branches, tags, stashes and worktrees,
 //! each group under a section head.
 
-use iced::widget::column;
+use iced::widget::{column, container};
 use iced::Element;
 use ncrs_git::{BranchInfo, WorktreeInfo};
-use ncrs_i18n::Msg;
+use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::action_rows::context_area;
+use ncrs_ui_kit::kit::dim;
 use ncrs_ui_kit::format::{estimated_text_width, estimated_width, fit_end, fit_middle};
 use ncrs_ui_kit::git_lines::{worktree_line, WorktreeLine, WorktreeState};
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
@@ -74,7 +75,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             }
             if let (SidebarItem::Worktree(which), Some(overview)) = (item, &state.overview) {
                 if let Some(worktree) = overview.worktrees.get(which) {
-                    return worktree_row_of(worktree, chosen, index, width, ctx);
+                    let row = worktree_row_of(worktree, chosen, index, width, ctx);
+                    return match menu_target_of(state, item) {
+                        Some(target) => context_area(row, Message::OpenMenu(target)),
+                        None => row,
+                    };
                 }
             }
             let (depth, open, label, trail) = match item {
@@ -84,7 +89,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     (1, Some(!folded), format!("{name} ({count})"), String::new())
                 }
                 other => {
-                    let (label, trail) = child_label(state, other);
+                    let (label, trail) = child_label(state, other, ctx.lang);
                     (
                         if matches!(other, SidebarItem::Remote(_)) {
                             2
@@ -124,7 +129,14 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 None => row,
             }
         });
-    tree_scroll(SIDEBAR_ID, column(rows).into())
+    let mut tree = column(rows);
+    if !state.actions.cleanable.is_empty() {
+        tree = tree.push(
+            container(dim(ctx.lang.text(Msg::GitViewLegendMerged), ctx.palette))
+                .padding([spacing::M, spacing::L]),
+        );
+    }
+    tree_scroll(SIDEBAR_ID, tree.into())
 }
 
 fn is_current_branch(state: &State, item: SidebarItem) -> bool {
@@ -167,7 +179,7 @@ fn distance(branch: &BranchInfo) -> String {
 }
 
 /// The label of a leaf and what stands at the right of it.
-fn child_label(state: &State, item: SidebarItem) -> (String, String) {
+fn child_label(state: &State, item: SidebarItem, lang: Language) -> (String, String) {
     let Some(overview) = &state.overview else {
         return (String::new(), String::new());
     };
@@ -175,7 +187,20 @@ fn child_label(state: &State, item: SidebarItem) -> (String, String) {
         SidebarItem::Local(index) => overview
             .local
             .get(index)
-            .map(|branch| (branch.name.clone(), distance(branch)))
+            .map(|branch| {
+                let mark = state.actions.cleanable.contains(&branch.name);
+                let merged = if mark {
+                    lang.text(Msg::GitViewBranchMerged).to_owned()
+                } else {
+                    String::new()
+                };
+                let trail = [distance(branch), merged]
+                    .into_iter()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (branch.name.clone(), trail)
+            })
             .unwrap_or_default(),
         SidebarItem::Remote(index) => {
             let label = remote_groups(overview)

@@ -239,6 +239,12 @@ pub enum Prompts {
     Unattended,
 }
 
+/// The only transports an unattended call may use: no `ext::` command transport.
+const UNATTENDED_PROTOCOLS: &str = "https:http:ssh:git:file";
+/// `-c` settings of an unattended call: no command transport, and no
+/// background maintenance that a fetch would start (it runs the repository's
+/// own gc hooks).
+const UNATTENDED_SETTINGS: [&str; 3] = ["protocol.ext.allow=never", "maintenance.auto=false", "gc.auto=0"];
 /// How long an unattended call may take before its git is killed.
 const UNATTENDED_TIMEOUT: Duration = Duration::from_secs(300);
 /// What a killed git's pipes may still deliver; a child of git (ssh) can hold them open.
@@ -316,6 +322,19 @@ impl Git {
         &self.root
     }
 
+    /// The `-c` settings every call of this git gets besides the common ones.
+    fn extra_settings(&self) -> &'static [&'static str] {
+        match self.prompts {
+            Prompts::Unattended => &UNATTENDED_SETTINGS,
+            Prompts::Plain | Prompts::Ask { .. } => &[],
+        }
+    }
+
+    /// An unattended call does nothing but the one thing it was asked for.
+    pub(crate) fn is_unattended(&self) -> bool {
+        self.prompts == Prompts::Unattended
+    }
+
     fn apply_prompts(&self, command: &mut Command) {
         match self.prompts {
             Prompts::Plain => {}
@@ -337,6 +356,7 @@ impl Git {
             }
             Prompts::Unattended => {
                 command
+                    .env("GIT_ALLOW_PROTOCOL", UNATTENDED_PROTOCOLS)
                     .env("GIT_ASKPASS", "")
                     .env("SSH_ASKPASS_REQUIRE", "never")
                     .env("GCM_INTERACTIVE", "never")
@@ -355,6 +375,9 @@ impl Git {
             .arg(&self.root)
             // A repository from a download must not make every call start a watcher it names.
             .args(["-c", "core.fsmonitor=false"]);
+        for setting in self.extra_settings() {
+            command.args(["-c", setting]);
+        }
         self.apply_prompts(&mut command);
         if let Some(filters) = &self.reading_without {
             command
@@ -537,6 +560,27 @@ mod tests {
         assert!(value(&settings, "GIT_SSH_COMMAND")
             .is_some_and(|found| found.contains("BatchMode=yes")));
         assert!(!settings.contains_key("NCRS_ASKPASS"));
+    }
+
+    #[test]
+    fn an_unattended_call_allows_no_command_transport_and_no_maintenance() {
+        let settings = settings_of(Prompts::Unattended);
+        assert_eq!(
+            value(&settings, "GIT_ALLOW_PROTOCOL"),
+            Some("https:http:ssh:git:file")
+        );
+        let git = Git {
+            exe: PathBuf::from("git"),
+            root: PathBuf::from("."),
+            reading_without: None,
+            prompts: Prompts::Unattended,
+            timeout: None,
+        };
+        let given = git.extra_settings();
+        for wanted in ["protocol.ext.allow=never", "maintenance.auto=false", "gc.auto=0"] {
+            assert!(given.contains(&wanted), "{wanted}");
+        }
+        assert!(!settings_of(Prompts::Plain).contains_key("GIT_ALLOW_PROTOCOL"));
     }
 
     #[test]

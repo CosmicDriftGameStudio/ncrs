@@ -1,9 +1,9 @@
 //! What the actions ask of git: one blocking call each, run on the blocking pool.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ncrs_git::{
-    ActionError, CommitMessage, ConflictChoice, DiffHunk, ForcePushPlan, Git, PullStrategy,
+    ActionError, CleanupList, CleanupPlan, CleanupReport, CommitMessage, ConflictChoice, DiffHunk, ForcePushPlan, Git, PullStrategy,
     ResetMode, UndoRecord,
 };
 
@@ -111,6 +111,10 @@ pub enum Job {
     ForcePushWithLease(ForcePushPlan),
     /// Fetches without anyone asking: never prompts, never opens a window.
     BackgroundFetch,
+    /// Reads the remote tips, fetches without asking for a login, and sorts what can be cleaned up.
+    FetchForCleanup,
+    CleanUp(CleanupPlan),
+    RemoveWorktree(PathBuf),
 }
 
 /// What a job that worked leaves for the state.
@@ -120,6 +124,12 @@ pub enum Done {
     /// The way back, if the action has one.
     Undoable(Option<UndoRecord>),
     Undone,
+    CleanupScan {
+        list: CleanupList,
+        fetch_error: Option<String>,
+    },
+    Cleaned(CleanupReport),
+    WorktreeRemoved(PathBuf),
     /// What a force push would replace, for the question.
     ForcePlan(ForcePushPlan),
     /// Commit and push: the commit is made (and undoable), the push failed.
@@ -163,7 +173,7 @@ impl Job {
             }
             Self::Commit { .. } | Self::CommitAndPush { .. } => Operation::Commit,
             Self::Ignore { .. } => Operation::Stage,
-            Self::Fetch | Self::BackgroundFetch => Operation::Fetch,
+            Self::Fetch | Self::BackgroundFetch | Self::FetchForCleanup => Operation::Fetch,
             Self::Pull(_) => Operation::Pull,
             Self::Push
             | Self::PushBranch(_)
@@ -181,6 +191,8 @@ impl Job {
             | Self::DeleteBranch { .. }
             | Self::RenameBranch { .. }
             | Self::DeleteOnRemote { .. }
+            | Self::CleanUp(_)
+            | Self::RemoveWorktree(_)
             | Self::CheckoutDetached(_)
             | Self::CreateTag { .. }
             | Self::Reset { .. } => Operation::Branch,
@@ -241,7 +253,20 @@ impl Job {
                 }
             }
             Self::Ignore { pattern } => git.ignore_pattern(pattern).map(Done::Undoable),
-            Self::Fetch | Self::BackgroundFetch => git.fetch(None).map(|()| Done::Plain),
+            Self::Fetch => git.fetch(None).map(|()| Done::Plain),
+            // A repository whose own config names programs is only fetched
+            // when the user asks; the skip is silent (an error nobody shows).
+            Self::BackgroundFetch if git.repository_config_runs_commands() => {
+                Err(ActionError::Other {
+                    git_output: "the repository config runs commands".to_owned(),
+                })
+            }
+            Self::BackgroundFetch => git.fetch(None).map(|()| Done::Plain),
+            Self::FetchForCleanup => crate::cleanup::scan(git),
+            Self::CleanUp(plan) => git.clean_up(plan).map(Done::Cleaned),
+            Self::RemoveWorktree(path) => git
+                .remove_worktree(path)
+                .map(|()| Done::WorktreeRemoved(path.clone())),
             Self::PrepareForcePush => git.prepare_force_push().map(Done::ForcePlan),
             Self::ForcePushWithLease(plan) => {
                 git.force_push_with_lease(plan).map(|()| Done::Plain)
@@ -280,7 +305,7 @@ impl Job {
                 .map(|record| Done::Undoable(Some(record))),
             Self::RenameBranch { from, to } => git.rename_branch(from, to).map(|()| Done::Plain),
             Self::DeleteOnRemote { remote, branch } => git
-                .delete_remote_branch(remote, branch)
+                .delete_remote_branch(remote, branch, None)
                 .map(|()| Done::Plain),
             Self::StashDrop(sha) => git.stash_drop(sha).map(|()| Done::Plain),
             Self::Merge(name) => git.merge(name).map(|_| Done::Plain),
@@ -315,6 +340,10 @@ impl Job {
     }
 
     /// The job talks to a remote, which may ask for a login.
+    pub const fn talks_to_remote(&self) -> bool {
+        self.may_ask()
+    }
+
     const fn may_ask(&self) -> bool {
         matches!(
             self,
@@ -332,7 +361,7 @@ impl Job {
     /// need a login asks through `token`; a background fetch never asks.
     pub fn run_in(self, root: &Path, token: JobToken) -> Finished {
         let opened = match &self {
-            Self::BackgroundFetch => Git::open_unattended(root),
+            Self::BackgroundFetch | Self::FetchForCleanup => Git::open_unattended(root),
             job if job.may_ask() => Git::open_interactive(root, token.0),
             _ => Git::open(root),
         };

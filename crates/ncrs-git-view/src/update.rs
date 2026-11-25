@@ -389,6 +389,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::BlamePressed(_)
         | Message::BlameScrolled(_)
         | Message::FileMenu(_)) => file_views::handle(state, file, ctx),
+        Message::Cleanup(message) => crate::cleanup::update(state, message),
         Message::ConfirmDialog if matches!(state.actions.dialog, Some(Dialog::Tag(_))) => {
             commit_menu::handle(state, Message::CreateTag, ctx)
         }
@@ -412,7 +413,9 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::SyncMenuLetter(typed) => sync_handlers::letter(state, typed),
         Message::ForcePush => sync_handlers::force_push(state),
         Message::CredentialAsked(request) => sync_handlers::credential_asked(state, request),
-        Message::CredentialTyped(typed) => sync_handlers::credential_typed(state, typed),
+        Message::CredentialTyped(id, typed) => sync_handlers::credential_typed(state, id, typed),
+        Message::CredentialSend(id) => sync_handlers::send_credential(state, id),
+        Message::CredentialCancel(id) => sync_handlers::cancel_credential_of(state, id),
         Message::BackgroundFetch => sync_handlers::background_fetch(state),
         Message::Refresh => {
             state.problem = None;
@@ -570,6 +573,7 @@ fn fold_at_cursor(state: &mut State, collapse: bool) -> Option<Action> {
 pub fn menu_target_of(state: &State, item: SidebarItem) -> Option<MenuTarget> {
     match item {
         SidebarItem::Local(branch) => Some(MenuTarget::LocalBranch(branch)),
+        SidebarItem::Worktree(index) => Some(MenuTarget::Worktree(index)),
         SidebarItem::Remote(branch) => Some(MenuTarget::RemoteBranch(branch)),
         SidebarItem::Stash(stash) => state
             .actions
@@ -607,6 +611,16 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
         }
         if matches!(state.actions.dialog, Some(Dialog::Tag(_))) {
             return commit_menu::handle(state, Message::CreateTag, ctx);
+        }
+        // The field of a login question sends its own Enter with the id of the
+        // question; this one would also hit the next question after it.
+        if let Some(Dialog::Credential(ask)) = &state.actions.dialog {
+            return match ask.kind {
+                ncrs_git::askpass::PromptKind::Confirm => sync_handlers::credential_enter(state),
+                ncrs_git::askpass::PromptKind::Text | ncrs_git::askpass::PromptKind::Secret => {
+                    quiet(Task::none())
+                }
+            };
         }
         // A text field sends Enter as its own submit too; the second one finds nothing to do.
         let answer = if state.actions.dialog.is_some() {

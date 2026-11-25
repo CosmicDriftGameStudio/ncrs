@@ -122,6 +122,7 @@ pub enum Message {
     ToggleNewBranchCheckout,
     CreateBranch,
     CloseDialog,
+    Cleanup(crate::cleanup::CleanupMessage),
     /// Enter or the confirm button of a question or the rename dialog.
     ConfirmDialog,
     RenameNameChanged(String),
@@ -214,8 +215,12 @@ pub enum Message {
     ForcePush,
     /// Git asked for a login in a job of this tab.
     CredentialAsked(AskRequest),
-    /// The user typed in the field of the login dialog.
-    CredentialTyped(Secret),
+    /// The user typed in the field of the login dialog for question `id`.
+    CredentialTyped(u64, Secret),
+    /// The Send or Connect button of the login dialog for question `id`.
+    CredentialSend(u64),
+    /// The Cancel button of the login dialog for question `id`.
+    CredentialCancel(u64),
     /// The timer of the background fetch: the tab fetches if it is idle.
     BackgroundFetch,
 }

@@ -7,6 +7,7 @@ mod changes;
 mod commit_box;
 mod commit_menu;
 mod commits;
+mod cleanup;
 mod credentials;
 mod detail;
 mod diff;
@@ -376,6 +377,9 @@ fn drag_label<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message
 /// The keys of the focus; with the actions on, the keys of the actions too.
 fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
     let key = |shortcut: Shortcut| shortcut.label(ctx.keys);
+    if matches!(state.actions.dialog, Some(Dialog::Cleanup(_))) {
+        return ctx.lang.text(Msg::GitViewStatusCleanup).to_owned();
+    }
     if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
         return ctx.lang.text(Msg::GitViewStatusCredentials).to_owned();
     }

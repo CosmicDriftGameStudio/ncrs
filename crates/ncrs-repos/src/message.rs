@@ -23,6 +23,8 @@ pub enum Message {
     Up,
     Down,
     Left,
+    /// Tab: moves the keys between the list and the clean-up pane.
+    SwitchFocus,
     Right,
     ExtendUp,
     ExtendDown,
@@ -64,6 +66,8 @@ pub enum Message {
     SummaryRead(PathBuf, Box<Reading>),
     /// How many branches and worktrees a repository could lose; none when it could not be read.
     CleanableRead(PathBuf, Option<usize>),
+    /// The list was scrolled by the pointer; how far down, in pixels.
+    ListScrolled(f32),
     /// Every minute while the tab is shown: reads the visible repos again.
     Tick,
     // Bulk actions.

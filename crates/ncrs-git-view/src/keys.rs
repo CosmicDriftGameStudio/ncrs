@@ -19,6 +19,8 @@ pub struct KeyContext {
     /// A diff, a history or a blame lies over the commit list.
     pub list_covered: bool,
     pub dialog_open: bool,
+    /// The clean-up dialog is open: it has its own keys.
+    pub cleanup_open: bool,
     pub picker_open: bool,
     /// The menu behind Pull or Push is open: it takes the arrows, Enter and its letters.
     pub sync_menu_open: bool,
@@ -34,6 +36,9 @@ pub fn git_view_key(
     modifiers: Modifiers,
     context: KeyContext,
 ) -> Option<Message> {
+    if context.cleanup_open {
+        return cleanup_key(key, modifiers);
+    }
     if context.dialog_open {
         return (modifiers.is_empty() && key.as_ref() == Key::Named(Named::Enter))
             .then_some(Message::Enter);
@@ -92,6 +97,24 @@ pub fn git_view_key(
         Key::Character("p") if context.in_diff => Some(Message::PreviousHunk),
         _ => None,
     }
+}
+
+/// The clean-up dialog: arrows, Space, Tab and Enter. Esc is the app's.
+fn cleanup_key(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    use crate::cleanup::CleanupMessage as Clean;
+    let message = match (key.as_ref(), modifiers) {
+        (Key::Named(Named::Tab), m) if m == Modifiers::SHIFT => Clean::Tab(true),
+        (_, m) if !m.is_empty() => return None,
+        (Key::Named(Named::ArrowUp), _) => Clean::Up,
+        (Key::Named(Named::ArrowDown), _) => Clean::Down,
+        (Key::Named(Named::ArrowLeft), _) => Clean::Fold(false),
+        (Key::Named(Named::ArrowRight), _) => Clean::Fold(true),
+        (Key::Named(Named::Space), _) => Clean::Space,
+        (Key::Named(Named::Tab), _) => Clean::Tab(false),
+        (Key::Named(Named::Enter), _) => Clean::Confirm,
+        _ => return None,
+    };
+    Some(Message::Cleanup(message))
 }
 
 /// The open Pull or Push menu: arrows, Enter and the letter of an entry. Other

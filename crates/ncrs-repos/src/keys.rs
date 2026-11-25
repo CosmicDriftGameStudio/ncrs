@@ -124,6 +124,7 @@ pub fn repos_key(
         return match key.as_ref() {
             Key::Named(Named::ArrowUp) => Some(Message::ExtendUp),
             Key::Named(Named::ArrowDown) => Some(Message::ExtendDown),
+            Key::Named(Named::Tab) => Some(Message::SwitchFocus),
             _ => None,
         };
     }
@@ -134,6 +135,7 @@ pub fn repos_key(
         Key::Named(Named::ArrowUp) => Some(Message::Up),
         Key::Named(Named::ArrowDown) => Some(Message::Down),
         Key::Named(Named::ArrowLeft) => Some(Message::Left),
+        Key::Named(Named::Tab) => Some(Message::SwitchFocus),
         Key::Named(Named::ArrowRight) => Some(Message::Right),
         Key::Named(Named::PageUp) => Some(Message::PageUp),
         Key::Named(Named::PageDown) => Some(Message::PageDown),

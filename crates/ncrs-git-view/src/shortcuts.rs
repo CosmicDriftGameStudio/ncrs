@@ -12,7 +12,8 @@ use crate::commit_menu::CommitAction;
 use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
 use crate::picker::PickerKind;
-use crate::sync_menu::SyncKind;
+use crate::sync_menu::{SyncAction, SyncKind};
+use ncrs_git::PullStrategy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -22,6 +23,9 @@ pub enum Shortcut {
     PullMenu,
     PushMenu,
     ForcePush,
+    PullFastForward,
+    PullMerge,
+    PullRebase,
     Stash,
     Undo,
     Commit,
@@ -57,6 +61,7 @@ pub enum Shortcut {
     GoParent,
     ToggleTree,
     CherryPick,
+    CleanUp,
     FileHistory,
     Blame,
 }
@@ -69,6 +74,9 @@ impl Shortcut {
         Self::PullMenu,
         Self::PushMenu,
         Self::ForcePush,
+        Self::PullFastForward,
+        Self::PullMerge,
+        Self::PullRebase,
         Self::Stash,
         Self::Undo,
         Self::Commit,
@@ -104,6 +112,7 @@ impl Shortcut {
         Self::GoParent,
         Self::ToggleTree,
         Self::CherryPick,
+        Self::CleanUp,
         Self::FileHistory,
         Self::Blame,
     ];
@@ -117,6 +126,9 @@ impl Shortcut {
             Self::PullMenu => "pull_menu",
             Self::PushMenu => "push_menu",
             Self::ForcePush => "force_push",
+            Self::PullFastForward => "pull_fast_forward",
+            Self::PullMerge => "pull_merge",
+            Self::PullRebase => "pull_rebase",
             Self::Stash => "stash",
             Self::Undo => "undo",
             Self::Commit => "commit",
@@ -152,6 +164,7 @@ impl Shortcut {
             Self::GoParent => "parent",
             Self::ToggleTree => "toggle_tree",
             Self::CherryPick => "cherry_pick",
+            Self::CleanUp => "cleanup",
             Self::FileHistory => "file_history",
             Self::Blame => "blame",
         }
@@ -195,11 +208,13 @@ impl Shortcut {
     /// The key it ships with; `command` is what Cmd or Ctrl is on the
     /// platform. ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F,
     /// ⇧⌘B, ⇧⌘D, ⇧⌘H, ⌘K, ⌘,) stay free.
-    pub fn default_chord(self, command: Modifiers) -> Chord {
+    pub fn default_chord(self, command: Modifiers) -> Option<Chord> {
         let shifted = command | Modifiers::SHIFT;
-        let letter = |held: Modifiers, letter: &str| (held, Key::Character(letter.into()));
-        let named = |held: Modifiers, named: Named| (held, Key::Named(named));
+        let letter = |held: Modifiers, letter: &str| Some((held, Key::Character(letter.into())));
+        let named = |held: Modifiers, named: Named| Some((held, Key::Named(named)));
         match self {
+            // Picked by the letters of the Pull menu and by F1 only.
+            Self::PullFastForward | Self::PullMerge | Self::PullRebase => return None,
             Self::Fetch => letter(shifted, "e"),
             Self::Pull => letter(shifted, "l"),
             Self::Push => letter(shifted, "u"),
@@ -241,6 +256,7 @@ impl Shortcut {
             Self::GoParent => named(Modifiers::empty(), Named::Backspace),
             Self::ToggleTree => letter(Modifiers::empty(), "t"),
             Self::CherryPick => letter(command | Modifiers::ALT, "k"),
+            Self::CleanUp => letter(command | Modifiers::ALT, "a"),
             Self::FileHistory => letter(command, "y"),
             Self::Blame => letter(command, "i"),
         }
@@ -272,6 +288,9 @@ impl Shortcut {
             Self::PullMenu => Msg::GitViewCommandPullMenu,
             Self::PushMenu => Msg::GitViewCommandPushMenu,
             Self::ForcePush => Msg::GitViewCommandForcePush,
+            Self::PullFastForward => Msg::GitViewCommandPullFastForward,
+            Self::PullMerge => Msg::GitViewCommandPullMerge,
+            Self::PullRebase => Msg::GitViewCommandPullRebase,
             Self::Stash => Msg::GitViewToolbarStash,
             Self::Undo => Msg::GitViewCommandUndo,
             Self::Commit => Msg::GitViewCommandCommit,
@@ -304,6 +323,7 @@ impl Shortcut {
             Self::CopySha => Msg::GitViewCommandCopySha,
             Self::GoParent => Msg::GitViewCommandParent,
             Self::ToggleTree => Msg::GitViewCommandToggleTree,
+            Self::CleanUp => Msg::GitViewCommandCleanup,
             // The app lists the last two itself: they work over the panels too.
             Self::CherryPick | Self::FileHistory | Self::Blame => return None,
         })
@@ -317,6 +337,11 @@ impl Shortcut {
             Self::PullMenu => Message::OpenSyncMenu(SyncKind::Pull),
             Self::PushMenu => Message::OpenSyncMenu(SyncKind::Push),
             Self::ForcePush => Message::ForcePush,
+            Self::PullFastForward => {
+                Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::FastForwardOnly))
+            }
+            Self::PullMerge => Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::Merge)),
+            Self::PullRebase => Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::Rebase)),
             Self::Stash => Message::Stash,
             Self::Undo => Message::Undo,
             Self::Commit => Message::Commit,
@@ -352,6 +377,7 @@ impl Shortcut {
             Self::GoParent => Message::GoToParent,
             Self::ToggleTree => Message::ToggleTreeKey,
             Self::CherryPick => Message::CommitAction(CommitAction::CherryPick),
+            Self::CleanUp => Message::Cleanup(crate::cleanup::CleanupMessage::Open),
             Self::FileHistory => Message::HistoryKey,
             Self::Blame => Message::BlameKey,
         }
@@ -369,6 +395,7 @@ impl Shortcut {
             MenuAction::Push => Self::Push,
             MenuAction::StashApply => Self::StashApply,
             MenuAction::StashApplyAndDrop => Self::StashPop,
+            MenuAction::RemoveWorktree => Self::Delete,
         }
     }
 

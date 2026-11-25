@@ -6,6 +6,7 @@ use iced::widget::text_editor;
 use ncrs_git::askpass::AskRequest;
 use ncrs_git::{ChangedFile, FileDiff, ForcePushPlan, UndoRecord};
 
+use crate::cleanup::CleanupDialog;
 use crate::credentials::CredentialAsk;
 use crate::job::Job;
 use crate::sync_menu::SyncMenu;
@@ -114,6 +115,16 @@ pub struct SyncBar {
     pub behind: u32,
     /// What "undo" would take back, ready to show; `None`: nothing to undo.
     pub undo: Option<String>,
+    /// Why a force push is not offered; `None`: it is (or the branches are not read yet).
+    pub force_blocked: Option<ForceBlock>,
+}
+
+/// Why the checked-out branch cannot be force-pushed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForceBlock {
+    /// HEAD is not on a branch.
+    Detached,
+    NoUpstream,
 }
 
 /// What a menu is opened on.
@@ -133,6 +144,8 @@ pub enum MenuTarget {
     },
     /// The full SHA of the commit: its row moves when the list reloads.
     Commit(String),
+    /// A linked worktree of the sidebar, by its place in the overview.
+    Worktree(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,6 +162,7 @@ pub enum MenuAction {
     StashApply,
     StashApplyAndDrop,
     StashDrop,
+    RemoveWorktree,
 }
 
 /// The menu that is open: it hangs at the row of its target in the left list.
@@ -197,6 +211,9 @@ pub enum Question {
         remote: String,
         branch: String,
     },
+    RemoveWorktree {
+        path: std::path::PathBuf,
+    },
     DropStash {
         sha: String,
         message: String,
@@ -231,7 +248,10 @@ impl Question {
             | Self::DeleteBranch { .. }
             | Self::Ignore { .. }
             | Self::ResetHard { .. } => true,
-            Self::DeleteOnRemote { .. } | Self::DropStash { .. } | Self::ForcePush { .. } => false,
+            Self::DeleteOnRemote { .. }
+            | Self::DropStash { .. }
+            | Self::ForcePush { .. }
+            | Self::RemoveWorktree { .. } => false,
         }
     }
 
@@ -257,6 +277,7 @@ impl Question {
                 branch: branch.clone(),
             },
             Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
+            Self::RemoveWorktree { path } => Job::RemoveWorktree(path.clone()),
             Self::ForcePush { plan } => Job::ForcePushWithLease(plan.clone()),
             Self::Ignore {
                 path,
@@ -300,6 +321,8 @@ pub enum Dialog {
     Tag(TagDraft),
     /// Git asked for a user name, a password or a yes or no.
     Credential(CredentialAsk),
+    /// Merged branches and worktrees to delete.
+    Cleanup(Box<CleanupDialog>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -457,6 +480,11 @@ pub struct Actions {
     pub sync_menu: Option<SyncMenu>,
     /// A fetch nobody asked for is running: it sets no `busy` and shows nothing.
     pub background_fetch: bool,
+    /// The user started a fetch, pull or push in this repository during this run:
+    /// only then does the quiet fetch touch it.
+    pub deliberate_sync: bool,
+    /// Branches a clean-up would offer from what is known without a fetch; the sidebar marks them.
+    pub cleanable: Vec<String>,
     /// The job the user started while the background fetch ran; it starts after it.
     pub queued: Option<Job>,
     /// Questions of git that came while another one is on the screen.

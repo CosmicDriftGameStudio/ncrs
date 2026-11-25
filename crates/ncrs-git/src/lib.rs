@@ -42,8 +42,8 @@ pub use action_error::ActionError;
 pub use blame::{blame, Blame, BlameGroup, BlameLimit, BlameLine};
 pub use changes::ChangeLists;
 pub use cleanup::{
-    cleanup_list, remote_tips, CleanupBranch, CleanupList, CleanupPlan, CleanupReason,
-    CleanupReport, CleanupRow, CleanupTarget, CleanupWorktree, KeepReason, Kept,
+    cleanup_list, remote_state, remote_tips, CleanupBranch, CleanupList, CleanupPlan, CleanupReason,
+    CleanupReport, CleanupRow, CleanupTarget, CleanupWorktree, KeepReason, Kept, RemoteState,
 };
 pub use cli::{write_actions_available, Git, GitCli, WRITE_ACTIONS_ENABLED};
 pub use clone::clone;

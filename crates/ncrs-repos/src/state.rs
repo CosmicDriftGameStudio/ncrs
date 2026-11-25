@@ -132,6 +132,10 @@ pub struct State {
     pub failure: Option<String>,
     pub clone: Option<crate::clone::CloneDraft>,
     pub cleanup: Option<crate::cleanup::Cleanup>,
+    /// How far down the list is scrolled, for placing the menu.
+    pub list_scroll: f32,
+    /// Counts the openings of the clean-up pane.
+    pub cleanup_generation: u64,
     /// Branches and worktrees each repository could lose, as of the last read.
     pub cleanable: BTreeMap<PathBuf, usize>,
     pub stop: Arc<AtomicBool>,
@@ -158,6 +162,8 @@ impl State {
             failure: None,
             clone: None,
             cleanup: None,
+            cleanup_generation: 0,
+            list_scroll: 0.0,
             cleanable: BTreeMap::new(),
             stop: Arc::new(AtomicBool::new(false)),
         }

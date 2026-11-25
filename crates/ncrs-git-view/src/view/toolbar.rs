@@ -9,6 +9,7 @@ use ncrs_ui_kit::kit::{toolbar_button, Tone};
 use ncrs_ui_kit::split_button::split_button;
 use ncrs_ui_kit::theme::spacing;
 
+use crate::cleanup::CleanupMessage;
 use crate::actions::{MenuAction, Operation, SyncBar, Unavailable};
 use crate::ctx::ViewCtx;
 use crate::git_keys::GitKeys;
@@ -79,12 +80,18 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             palette,
         )
     };
+    let pull_tone = if sync.behind > 0 {
+        Tone::Primary
+    } else {
+        Tone::Secondary
+    };
     let split = |operation: Operation,
                  kind: SyncKind,
                  label: String,
                  what: Msg,
                  shortcut: Shortcut,
-                 message: Message| {
+                 message: Message,
+                 tone: Tone| {
         let enabled = locked_reason.is_none() && busy != Some(operation);
         let help = match locked_reason {
             Some(reason) => lang.text(reason).to_owned(),
@@ -94,14 +101,14 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             .actions
             .sync_menu
             .filter(|menu| menu.kind == kind)
-            .map(|menu| super::sync_menu::rows(&menu, ctx));
+            .map(|menu| super::sync_menu::rows(&menu, sync.force_blocked, ctx));
         split_button(
             &word(operation, label),
-            None,
             &help,
             enabled.then_some(message),
             enabled.then_some(Message::OpenSyncMenu(kind)),
             open,
+            tone,
             palette,
         )
     };
@@ -118,7 +125,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     };
     let undo_enabled =
         locked_reason.is_none() && sync.undo.is_some() && busy != Some(Operation::Undo);
-    row![
+    let mut bar = row![
         action(
             Some(Operation::Fetch),
             lang.text(Msg::GitViewToolbarFetch).to_owned(),
@@ -127,8 +134,24 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Message::Fetch,
             Tone::Secondary
         ),
-        split(Operation::Pull, SyncKind::Pull, pull_label, Msg::GitViewToolbarPull, Shortcut::Pull, Message::Pull),
-        split(Operation::Push, SyncKind::Push, push_label, Msg::GitViewToolbarPush, Shortcut::Push, Message::Push),
+        split(
+            Operation::Pull,
+            SyncKind::Pull,
+            pull_label,
+            Msg::GitViewToolbarPull,
+            Shortcut::Pull,
+            Message::Pull,
+            pull_tone
+        ),
+        split(
+            Operation::Push,
+            SyncKind::Push,
+            push_label,
+            Msg::GitViewToolbarPush,
+            Shortcut::Push,
+            Message::Push,
+            Tone::Secondary
+        ),
         action(
             None,
             lang.text(Msg::GitViewToolbarBranch).to_owned(),
@@ -158,6 +181,20 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ),
     ]
     .spacing(spacing::M)
-    .align_y(alignment::Vertical::Center)
-    .into()
+    .align_y(alignment::Vertical::Center);
+    let cleanable = state.actions.cleanable.len();
+    if cleanable > 0 {
+        bar = bar.push(action(
+            None,
+            fill_template(
+                lang.text(Msg::GitViewToolbarCleanup),
+                &[("{count}", &cleanable.to_string())],
+            ),
+            Msg::GitViewCommandCleanup,
+            Shortcut::CleanUp,
+            Message::Cleanup(CleanupMessage::Open),
+            Tone::Secondary,
+        ));
+    }
+    bar.into()
 }

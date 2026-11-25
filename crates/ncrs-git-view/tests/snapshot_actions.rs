@@ -20,8 +20,12 @@ mod ui_tests {
         BranchInfo, ChangeKind, ChangedFile, CommitDetail, DiffHunk, DiffRow, FileDiff, GraphRow,
         Log, LogCommit, RefKind, RefLabel, RefsOverview, RowKind, WorktreeInfo,
     };
+    use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
+    use ncrs_git::ForcePushPlan;
+    use ncrs_git_view::credentials::CredentialAsk;
+    use ncrs_git_view::sync_menu::{SyncKind, SyncMenu};
     use ncrs_git_view::actions::{
-        ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
+        ForceBlock, ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
         NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar, Unavailable,
     };
     use ncrs_git_view::panes::PaneDrag;
@@ -241,6 +245,60 @@ mod ui_tests {
         picture(&state, "tests/snapshots/git-rename-dialog-cosmic");
     }
 
+    fn with_sync_menu(kind: SyncKind, force_blocked: Option<ForceBlock>) -> State {
+        let mut state = repository();
+        on_commit(&mut state);
+        let mut bar = sync();
+        bar.force_blocked = force_blocked;
+        state.actions.sync = Some(bar);
+        state.actions.sync_menu = Some(SyncMenu::new(kind));
+        state
+    }
+
+    #[test]
+    fn pull_menu_picture() {
+        let state = with_sync_menu(SyncKind::Pull, None);
+        picture(&state, "tests/snapshots/git-pull-menu-cosmic");
+    }
+
+    #[test]
+    fn push_menu_picture() {
+        let state = with_sync_menu(SyncKind::Push, Some(ForceBlock::NoUpstream));
+        picture(&state, "tests/snapshots/git-push-menu-cosmic");
+    }
+
+    #[test]
+    fn force_push_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::ForcePush {
+            plan: ForcePushPlan {
+                remote: "origin".to_owned(),
+                branch: "feature/rechnungs-export".to_owned(),
+                target: "feature/rechnungs-export".to_owned(),
+                expected: "3f9c2d1".to_owned(),
+                lost: 3,
+                lost_titles: vec![
+                    "Kassenbuch: Abschluss pro Monat".to_owned(),
+                    "Fix Rundung der Mehrwertsteuer".to_owned(),
+                    "Merge branch 'main' into feature".to_owned(),
+                ],
+            },
+        }));
+        picture(&state, "tests/snapshots/git-ask-force-push-cosmic");
+    }
+
+    #[test]
+    fn credentials_password_picture() {
+        let mut ask = CredentialAsk::of(&AskRequest {
+            id: 1,
+            job: 1,
+            prompt: "Password for 'https://marc@git.example.test': ".to_owned(),
+            kind: PromptKind::Secret,
+        });
+        ask.typed = Secret::new("hunter2hunter2");
+        let state = with_dialog(Dialog::Credential(ask));
+        picture(&state, "tests/snapshots/git-credentials-password-cosmic");
+    }
+
     #[test]
     fn merge_conflicts_picture() {
         let mut state = repository();
@@ -348,6 +406,7 @@ mod ui_tests {
             ahead: 0,
             behind: 0,
             undo: None,
+            force_blocked: None,
         });
         if let Some(overview) = state.overview.as_mut() {
             for branch in &mut overview.local {

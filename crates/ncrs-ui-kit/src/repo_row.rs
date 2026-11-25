@@ -7,7 +7,7 @@ use iced::{alignment, Color, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::file_icon::git_branch_icon;
-use crate::git_state::{standing_chip, RunOutcome, Standing};
+use crate::git_state::{standing_chip, standing_chip_inked, RunOutcome, Standing};
 use crate::kit::{self, icon, Check, Icon, Tone};
 use crate::palette::Palette;
 use crate::theme::git::{self, faint};
@@ -24,6 +24,8 @@ pub struct RepoColumns {
     pub checkbox: f32,
     pub star: f32,
     pub name: f32,
+    /// Whether the folder is shown, in what room the others leave.
+    pub location: bool,
     pub branch: f32,
     pub standing: f32,
     pub changes: f32,
@@ -36,6 +38,7 @@ impl RepoColumns {
         checkbox: 36.0,
         star: 28.0,
         name: 260.0,
+        location: true,
         branch: 300.0,
         standing: 110.0,
         changes: 120.0,
@@ -180,7 +183,14 @@ pub fn repo_header_titled<'a, M: Clone + 'a>(
             fixed(columns.checkbox, kit::checkbox(all, on_toggle_all, palette)),
             fixed(columns.star, Space::new().into()),
             fixed(columns.name, title(Msg::RepoRowColumnName)),
-            cell(Length::Fill, title(Msg::RepoRowColumnLocation)),
+            cell(
+                Length::Fill,
+                if columns.location {
+                    title(Msg::RepoRowColumnLocation)
+                } else {
+                    Space::new().into()
+                },
+            ),
             fixed(columns.branch, title(Msg::RepoRowColumnBranch)),
             fixed(columns.standing, title(Msg::RepoRowColumnStanding)),
             fixed(columns.changes, title(Msg::RepoRowColumnChanges)),
@@ -253,7 +263,9 @@ pub fn repo_row<'a, M: Clone + 'a>(
         _ if item.unreachable => label(lang.text(Msg::RepoRowUnreachable).to_owned(), dim_ink),
         None => nothing(),
         Some(tag) => {
-            let ink = if tag.is_default {
+            let ink = if item.cursor {
+                palette.cursor_text
+            } else if tag.is_default {
                 dim_ink
             } else {
                 git::orange()
@@ -273,7 +285,12 @@ pub fn repo_row<'a, M: Clone + 'a>(
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center);
         for standing in standings {
-            line = line.push(standing_chip(standing, lang, palette, on_press.clone()));
+            let chip = if item.cursor {
+                standing_chip_inked(standing, lang, palette.cursor_text, on_press.clone())
+            } else {
+                standing_chip(standing, lang, palette, on_press.clone())
+            };
+            line = line.push(chip);
         }
         line.into()
     };
@@ -291,7 +308,14 @@ pub fn repo_row<'a, M: Clone + 'a>(
             fixed(columns.checkbox, checkbox),
             fixed(columns.star, star),
             fixed(columns.name, name),
-            cell(Length::Fill, label(item.location, dim_ink)),
+            cell(
+                Length::Fill,
+                if columns.location {
+                    label(item.location, dim_ink)
+                } else {
+                    nothing()
+                },
+            ),
             fixed(columns.branch, branch),
             fixed(columns.standing, standing),
             fixed(columns.changes, changes),

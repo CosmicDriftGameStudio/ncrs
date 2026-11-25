@@ -7,9 +7,9 @@ use iced::widget::{column, container, mouse_area};
 use iced::{Element, Length, Padding};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format::{date_text, local_time, DateFormat};
-use ncrs_ui_kit::git_state::outcome_mark;
+use ncrs_ui_kit::git_state::{outcome_mark, outcome_mark_inked};
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::page_scroll::page_scroll_padded;
+use ncrs_ui_kit::page_scroll::page_scroll_tracked_padded;
 use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::repo_row::{
     path_tail, repo_changes, repo_header_titled, repo_row, repo_standing, BranchTag, RepoColumns,
@@ -34,10 +34,19 @@ const LOCATION_CHARS: usize = 52;
 const RESULT_WIDTH: f32 = 440.0;
 
 /// The chips of "3 behind origin/main" and "11 local changes" need more than the standard widths.
-fn columns(is_run: bool) -> RepoColumns {
+/// Beside the clean-up there is only room for the branch and the standing.
+fn columns(state: &State) -> RepoColumns {
+    let is_run = state.run().is_some();
+    let beside_cleanup = state.cleanup.is_some();
     RepoColumns {
+        location: !beside_cleanup,
         standing: 250.0,
-        changes: 160.0,
+        changes: if beside_cleanup { 0.0 } else { 160.0 },
+        fetched: if beside_cleanup {
+            0.0
+        } else {
+            RepoColumns::STANDARD.fetched
+        },
         actions: if is_run {
             RESULT_WIDTH
         } else {
@@ -87,6 +96,7 @@ fn fetched_text(reading: Option<&Reading>, ctx: ViewCtx<'_>) -> String {
 }
 
 fn result_cell<'a>(
+    cursor: bool,
     path: &Path,
     state: &'a State,
     ctx: ViewCtx<'a>,
@@ -96,10 +106,20 @@ fn result_cell<'a>(
         Outcome::AlreadyCurrent | Outcome::Running => None,
         other => Some(log_text(other, ctx.lang)),
     };
-    let mut cell = iced::widget::row![outcome_mark(outcome.kind(), ctx.lang, ctx.palette)]
+    let mark = if cursor {
+        outcome_mark_inked(outcome.kind(), ctx.lang, ctx.palette.cursor_text)
+    } else {
+        outcome_mark(outcome.kind(), ctx.lang, ctx.palette)
+    };
+    let mut cell = iced::widget::row![mark]
         .spacing(spacing::M);
     if let Some(note) = detail {
-        cell = cell.push(page_line(note, font_size::SMALL, ctx.palette.dim_text));
+        let ink = if cursor {
+            ctx.palette.cursor_text
+        } else {
+            ctx.palette.dim_text
+        };
+        cell = cell.push(page_line(note, font_size::SMALL, ink));
     }
     Some(cell.into())
 }
@@ -138,10 +158,17 @@ fn one_row<'a>(
         ),
         None => (Vec::new(), Vec::new()),
     };
+    let list_has_keys = state.cleanup.as_ref().is_none_or(|cleanup| cleanup.list_focus);
+    let is_cursor = cursor == Some(&path) && list_has_keys;
+    let note_ink = if is_cursor {
+        ctx.palette.cursor_text
+    } else {
+        ctx.palette.text
+    };
     let actions = if is_run {
-        result_cell(&row.owner, state, ctx).filter(|_| !is_worktree)
+        result_cell(is_cursor, &row.owner, state, ctx).filter(|_| !is_worktree)
     } else if let Some(count) = cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable) {
-        Some(page_line(count.to_string(), font_size::BODY, ctx.palette.text))
+        Some(page_line(count.to_string(), font_size::BODY, note_ink))
     } else if unreachable {
         Some(kit::button(
             ctx.lang.text(Msg::ReposRemove),
@@ -152,7 +179,6 @@ fn one_row<'a>(
     } else {
         None
     };
-    let is_cursor = cursor == Some(&path) && state.cleanup.is_none();
     let item = RepoRow {
         name: name_of(&path),
         location: shortened(&path, ctx.home),
@@ -175,7 +201,7 @@ fn one_row<'a>(
         on_open: Some(Message::RowPressed(path.clone())),
         actions,
     };
-    let built = repo_row(item, columns(is_run), ctx.lang, ctx.palette);
+    let built = repo_row(item, columns(state), ctx.lang, ctx.palette);
     let framed = if is_cursor {
         container(built).id(FOCUSED_ROW_ID).into()
     } else {
@@ -231,7 +257,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let is_run = state.run().is_some();
     let cleanable_title = (!is_run).then(|| ctx.lang.text(Msg::ReposColumnCleanable));
     let header = container(repo_header_titled(
-        columns(is_run),
+        columns(state),
         ctx.lang,
         ctx.palette,
         all_checked(state),
@@ -260,7 +286,12 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     };
     column![
         header,
-        page_scroll_padded(LIST_ID, body, Padding::from([0.0, spacing::XXL])),
+        page_scroll_tracked_padded(
+            LIST_ID,
+            body,
+            Padding::from([0.0, spacing::XXL]),
+            Message::ListScrolled
+        ),
         footnote(is_run, ctx),
     ]
     .height(Length::Fill)

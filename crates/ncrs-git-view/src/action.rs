@@ -25,4 +25,6 @@ pub enum Action {
     PanesResized(PaneWidths),
     /// Show the repository at this folder in a Git tab of its own.
     OpenRepository(PathBuf),
+    /// These worktree folders were deleted: their tabs go and the lists read again.
+    WorktreesRemoved(Vec<PathBuf>),
 }

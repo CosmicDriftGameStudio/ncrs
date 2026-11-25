@@ -6,6 +6,8 @@
     reason = "this module takes a group of messages out of the big match in `update`; the rest never arrives here"
 )]
 
+use std::path::PathBuf;
+
 use iced::widget::{operation, text_editor};
 use iced::Task;
 use ncrs_git::{ActionError, ChangedFile, CommitMessage, ConflictChoice, DiffHunk, UndoSummary};
@@ -14,9 +16,10 @@ use ncrs_i18n::{fill_template, Language, Msg};
 use crate::action::Action;
 use crate::actions::{
     Actions, ChangeSide, Conflict, ConflictAction, Dialog, LocalChanges, MenuAction, MenuTarget,
-    MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
+    ForceBlock, MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
     WipFocus,
 };
+use crate::cleanup;
 use crate::ctx::Ctx;
 use crate::job::{Done, Finished, Job};
 use crate::load;
@@ -254,6 +257,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
 
 /// Starts `job` unless another one runs or there are no actions.
 pub fn start(state: &mut State, job: Job) -> Outcome {
+    state.actions.sync_menu = None;
     if state.actions.busy.is_some() || state.actions.unavailable.is_some() {
         return quiet(Task::none());
     }
@@ -266,6 +270,7 @@ pub fn start(state: &mut State, job: Job) -> Outcome {
     }
     state.actions.busy = Some(job.operation());
     state.actions.notice = None;
+    state.actions.deliberate_sync |= job.talks_to_remote();
     quiet(load::job(root, state.job_token, job))
 }
 
@@ -386,6 +391,7 @@ fn branch_of(state: &State, target: &MenuTarget) -> Option<String> {
         }
         MenuTarget::RemoteBranch(index) => overview.remote.get(*index).cloned(),
         MenuTarget::Stash(_)
+        | MenuTarget::Worktree(_)
         | MenuTarget::Conflict(_)
         | MenuTarget::File { .. }
         | MenuTarget::Commit(_) => None,
@@ -434,9 +440,18 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
     let target_action = match (action, &chosen) {
         (MenuAction::Delete, MenuTarget::RemoteBranch(_)) => MenuAction::DeleteOnRemote,
         (MenuAction::Delete, MenuTarget::Stash(_)) => MenuAction::StashDrop,
+        (MenuAction::Delete, MenuTarget::Worktree(_)) => MenuAction::RemoveWorktree,
         (other, _) => other,
     };
     let question = match (target_action, &chosen) {
+        (MenuAction::RemoveWorktree, MenuTarget::Worktree(index)) => state
+            .overview
+            .as_ref()
+            .and_then(|overview| overview.worktrees.get(*index))
+            .filter(|found| !found.is_main && !found.is_current)
+            .map(|found| Question::RemoveWorktree {
+                path: found.path.clone(),
+            }),
         (MenuAction::Delete, MenuTarget::LocalBranch(_)) => {
             branch.clone().map(|name| Question::DeleteBranch { name })
         }
@@ -513,7 +528,10 @@ pub fn ask(state: &mut State, question: Option<Question>) -> Outcome {
 fn confirm_dialog(state: &mut State) -> Outcome {
     // The job that asked is the busy one: the answer must get through.
     if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
-        return sync_handlers::send_credential(state);
+        return sync_handlers::credential_enter(state);
+    }
+    if matches!(state.actions.dialog, Some(Dialog::Cleanup(_))) {
+        return cleanup::update(state, cleanup::CleanupMessage::Confirm);
     }
     if state.actions.busy.is_some() {
         return quiet(Task::none());
@@ -530,7 +548,7 @@ fn confirm_dialog(state: &mut State) -> Outcome {
                 to,
             }
         }
-        Some(Dialog::Tag(_) | Dialog::Credential(_)) | None => return quiet(Task::none()),
+        Some(Dialog::Tag(_) | Dialog::Credential(_) | Dialog::Cleanup(_)) | None => return quiet(Task::none()),
     };
     start(state, job)
 }
@@ -710,11 +728,31 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
 
 /// Puts ahead, behind and the undo into the toolbar, once there is one.
 pub fn refresh_sync(state: &mut State, ctx: &Ctx) {
-    let (ahead, behind) = state
+    let current = state
         .overview
         .as_ref()
-        .and_then(|overview| overview.local.iter().find(|branch| branch.is_current))
+        .map(|overview| overview.local.iter().find(|branch| branch.is_current));
+    let (ahead, behind) = current
+        .flatten()
         .map_or((0, 0), |branch| (branch.ahead, branch.behind));
+    let force_blocked = match current {
+        Some(None) => Some(ForceBlock::Detached),
+        Some(Some(branch)) if !branch.has_upstream => Some(ForceBlock::NoUpstream),
+        _ => None,
+    };
+    state.actions.cleanable = state.overview.as_ref().map_or_else(Vec::new, |overview| {
+        let list = ncrs_git::cleanup_list(
+            overview,
+            &std::collections::BTreeMap::new(),
+            &ncrs_git::RemoteState::default(),
+        );
+        let worktree_branches = list.worktrees.iter().map(|found| &found.branch);
+        list.branches
+            .iter()
+            .chain(worktree_branches)
+            .map(|found| found.name.clone())
+            .collect()
+    });
     let undo = state
         .actions
         .undo
@@ -725,6 +763,7 @@ pub fn refresh_sync(state: &mut State, ctx: &Ctx) {
             ahead,
             behind,
             undo,
+            force_blocked,
         };
     }
 }
@@ -783,8 +822,21 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
     state.actions.busy = None;
     sync_handlers::end_of_job(state);
     let Finished { job, result } = finished;
+    let mut removed_folders: Vec<PathBuf> = Vec::new();
     let result = match result {
         Ok(Done::ForcePlan(plan)) => return sync_handlers::ask_force_push(state, plan),
+        Ok(Done::CleanupScan { list, fetch_error }) => {
+            cleanup::scanned(state, list, fetch_error);
+            Ok(Done::Plain)
+        }
+        Ok(Done::Cleaned(report)) => {
+            removed_folders = cleanup::cleaned(state, report);
+            Ok(Done::Plain)
+        }
+        Ok(Done::WorktreeRemoved(folder)) => {
+            removed_folders.push(folder);
+            Ok(Done::Plain)
+        }
         other => other,
     };
     match result {
@@ -802,15 +854,24 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
                 Done::Undoable(None)
                 | Done::Plain
                 | Done::ForcePlan(_)
+                | Done::CleanupScan { .. }
+                | Done::Cleaned(_)
+                | Done::WorktreeRemoved(_)
                 | Done::CommittedButNotPushed { .. } => {}
             }
             state.actions.retry = None;
             after_success(state, &job);
         }
-        Err(error) => report(state, ctx, job, error),
+        Err(error) => {
+            if cleanup::is_cleanup_job(&job) {
+                state.actions.dialog = None;
+            }
+            report(state, ctx, job, error);
+        }
     }
     refresh_sync(state, ctx);
-    quiet(load::everything(state))
+    let folders = (!removed_folders.is_empty()).then(|| Action::WorktreesRemoved(removed_folders));
+    (load::everything(state), folders)
 }
 
 fn after_success(state: &mut State, job: &Job) {

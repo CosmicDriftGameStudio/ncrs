@@ -61,6 +61,8 @@ pub struct Item {
     /// The folder of a worktree.
     pub folder: Option<PathBuf>,
     pub reason: OfferReason,
+    /// The remote branch (`origin/feat`) that goes with it when the box for the remote is ticked.
+    pub remote: Option<String>,
 }
 
 /// What reading one repository gave.
@@ -106,7 +108,7 @@ pub enum Line {
 pub enum CleanupMessage {
     Open,
     Close,
-    Scanned(PathBuf, Box<Result<Scan, String>>),
+    Scanned(u64, PathBuf, Box<Result<Scan, String>>),
     Toggle(Pick),
     ToggleGroup(PathBuf),
     FoldGroup(PathBuf),
@@ -114,9 +116,9 @@ pub enum CleanupMessage {
     ToggleKeep,
     ToggleRemote,
     Confirm,
-    Deleted(PathBuf, Box<Result<CleanupReport, String>>),
+    Deleted(u64, PathBuf, Box<Result<CleanupReport, String>>),
     Undo,
-    Undone(Vec<(PathBuf, Result<(), String>)>),
+    Undone(u64, Vec<(PathBuf, Result<(), String>)>),
     /// The left key: shuts the group the cursor is in.
     Shut,
     /// The right key: opens the group the cursor is on.
@@ -145,10 +147,21 @@ pub struct Cleanup {
     pub reports: BTreeMap<PathBuf, Result<CleanupReport, String>>,
     pub undos: Vec<(PathBuf, UndoRecord)>,
     pub undone: Option<Undone>,
+    /// The keys are on the list, not on the pane.
+    pub list_focus: bool,
+    /// Which opening of the pane this is; results of an earlier one are dropped.
+    pub generation: u64,
+    /// What Enter confirmed, per repository; the deletes run from exactly this.
+    pub plans: BTreeMap<PathBuf, CleanupPlan>,
 }
 
 impl Cleanup {
-    fn new(scope: Scope, order: Vec<PathBuf>, repos: BTreeMap<PathBuf, RepoState>) -> Self {
+    fn new(
+        generation: u64,
+        scope: Scope,
+        order: Vec<PathBuf>,
+        repos: BTreeMap<PathBuf, RepoState>,
+    ) -> Self {
         let queue = order
             .iter()
             .filter(|path| repos.get(*path) == Some(&RepoState::Waiting))
@@ -175,6 +188,9 @@ impl Cleanup {
             reports: BTreeMap::new(),
             undos: Vec::new(),
             undone: None,
+            list_focus: false,
+            generation,
+            plans: BTreeMap::new(),
         }
     }
 
@@ -198,6 +214,7 @@ impl Cleanup {
             name: found.branch.name.clone(),
             folder: Some(found.path.clone()),
             reason: OfferReason::WorktreeOnly,
+            remote: found.branch.remote_tip.as_ref().and(found.branch.upstream.clone()),
         });
         let branches = scan.list.branches.iter().map(|found| Item {
             pick: Pick {
@@ -210,6 +227,7 @@ impl Cleanup {
                 CleanupReason::InDefault => OfferReason::InDefault,
                 CleanupReason::UpstreamGone => OfferReason::Gone,
             },
+            remote: found.remote_tip.as_ref().and(found.upstream.clone()),
         });
         worktrees.chain(branches).collect()
     }
@@ -328,7 +346,7 @@ impl Cleanup {
                 .branches
                 .iter()
                 .chain(plan.worktrees.iter().map(|found| &found.branch));
-            for branch in branches.filter(|branch| branch.reason == CleanupReason::InDefault) {
+            for branch in branches.filter(|branch| branch.remote_tip.is_some()) {
                 if let Some(name) = &branch.upstream {
                     count += 1;
                     remote.get_or_insert_with(|| {
@@ -478,7 +496,8 @@ fn open(state: &mut State, ctx: &Ctx) -> Outcome {
     }
     state.menu = None;
     state.filter_focused = false;
-    state.cleanup = Some(Cleanup::new(scope, targets, repos));
+    state.cleanup_generation += 1;
+    state.cleanup = Some(Cleanup::new(state.cleanup_generation, scope, targets, repos));
     quiet(pump_scans(state, ctx))
 }
 
@@ -493,7 +512,7 @@ fn pump_scans(state: &mut State, ctx: &Ctx) -> Task<Message> {
         };
         cleanup.running += 1;
         cleanup.repos.insert(path.clone(), RepoState::Running);
-        started.push(cleanup_tasks::scan(path, Arc::clone(&state.stop)));
+        started.push(cleanup_tasks::scan(cleanup.generation, path, Arc::clone(&state.stop)));
     }
     Task::batch(started)
 }
@@ -507,17 +526,27 @@ fn pump_deletes(state: &mut State, ctx: &Ctx) -> Task<Message> {
         let Some(path) = cleanup.queue.pop_front() else {
             break;
         };
-        let Some(plan) = cleanup.plan_for(&path) else {
+        let Some(plan) = cleanup.plans.get(&path).cloned() else {
             continue;
         };
         cleanup.running += 1;
-        started.push(cleanup_tasks::delete(path, plan));
+        started.push(cleanup_tasks::delete(cleanup.generation, path, plan));
     }
     Task::batch(started)
 }
 
-fn scanned(state: &mut State, ctx: &Ctx, path: PathBuf, result: Result<Scan, String>) -> Outcome {
-    let Some(cleanup) = state.cleanup.as_mut() else {
+fn scanned(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    path: PathBuf,
+    result: Result<Scan, String>,
+) -> Outcome {
+    let Some(cleanup) = state.cleanup.as_mut().filter(|cleanup| {
+        cleanup.generation == generation
+            && cleanup.phase == Phase::Reading
+            && cleanup.repos.get(&path) == Some(&RepoState::Running)
+    }) else {
         return quiet(Task::none());
     };
     cleanup.running = cleanup.running.saturating_sub(1);
@@ -545,23 +574,34 @@ fn confirm(state: &mut State, ctx: &Ctx) -> Outcome {
         return quiet(Task::none());
     }
     cleanup.phase = Phase::Deleting;
-    let queue: VecDeque<PathBuf> = cleanup
+    let plans: BTreeMap<PathBuf, CleanupPlan> = cleanup
         .order
         .iter()
-        .filter(|path| cleanup.plan_for(path).is_some())
+        .filter_map(|path| Some((path.clone(), cleanup.plan_for(path)?)))
+        .collect();
+    cleanup.queue = cleanup
+        .order
+        .iter()
+        .filter(|path| plans.contains_key(*path))
         .cloned()
         .collect();
-    cleanup.queue = queue;
+    cleanup.plans = plans;
     quiet(pump_deletes(state, ctx))
 }
 
 fn deleted(
     state: &mut State,
     ctx: &Ctx,
+    generation: u64,
     path: PathBuf,
     result: Result<CleanupReport, String>,
 ) -> Outcome {
-    let Some(cleanup) = state.cleanup.as_mut() else {
+    let Some(cleanup) = state.cleanup.as_mut().filter(|cleanup| {
+        cleanup.generation == generation
+            && cleanup.phase == Phase::Deleting
+            && cleanup.plans.contains_key(&path)
+            && !cleanup.reports.contains_key(&path)
+    }) else {
         return quiet(Task::none());
     };
     cleanup.running = cleanup.running.saturating_sub(1);
@@ -597,11 +637,20 @@ fn undo(state: &State) -> Outcome {
     if cleanup.phase != Phase::Done || cleanup.undos.is_empty() {
         return quiet(Task::none());
     }
-    quiet(cleanup_tasks::undo(cleanup.undos.clone()))
+    quiet(cleanup_tasks::undo(cleanup.generation, cleanup.undos.clone()))
 }
 
-fn undone(state: &mut State, ctx: &Ctx, results: Vec<(PathBuf, Result<(), String>)>) -> Outcome {
-    let Some(cleanup) = state.cleanup.as_mut() else {
+fn undone(
+    state: &mut State,
+    ctx: &Ctx,
+    generation: u64,
+    results: Vec<(PathBuf, Result<(), String>)>,
+) -> Outcome {
+    let Some(cleanup) = state
+        .cleanup
+        .as_mut()
+        .filter(|cleanup| cleanup.generation == generation && cleanup.phase == Phase::Done)
+    else {
         return quiet(Task::none());
     };
     let mut outcome = Undone::default();
@@ -636,10 +685,22 @@ fn key(state: &mut State, message: Message, ctx: &Ctx) -> Result<Outcome, Messag
         return Err(message);
     }
     match message {
-        Message::Enter => return Ok(handle(state, CleanupMessage::Confirm, ctx)),
+        Message::SwitchFocus => {
+            if let Some(cleanup) = state.cleanup.as_mut() {
+                cleanup.list_focus = !cleanup.list_focus;
+            }
+            return Ok(quiet(Task::none()));
+        }
         Message::Escape if state.menu.is_none() => {
             return Ok(handle(state, CleanupMessage::Close, ctx))
         }
+        _ => {}
+    }
+    if state.cleanup.as_ref().is_some_and(|cleanup| cleanup.list_focus) {
+        return Err(message);
+    }
+    match message {
+        Message::Enter => return Ok(handle(state, CleanupMessage::Confirm, ctx)),
         Message::Left => return Ok(handle(state, CleanupMessage::Shut, ctx)),
         Message::Right => return Ok(handle(state, CleanupMessage::Expand, ctx)),
         _ => {}
@@ -710,7 +771,9 @@ fn handle(state: &mut State, message: CleanupMessage, ctx: &Ctx) -> Outcome {
             }
             quiet(Task::none())
         }
-        CleanupMessage::Scanned(path, result) => scanned(state, ctx, path, *result),
+        CleanupMessage::Scanned(generation, path, result) => {
+            scanned(state, ctx, generation, path, *result)
+        },
         CleanupMessage::Toggle(pick) => {
             if cleanup.phase == Phase::Ready {
                 cleanup.toggle(pick);
@@ -747,9 +810,11 @@ fn handle(state: &mut State, message: CleanupMessage, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         CleanupMessage::Confirm => confirm(state, ctx),
-        CleanupMessage::Deleted(path, result) => deleted(state, ctx, path, *result),
+        CleanupMessage::Deleted(generation, path, result) => {
+            deleted(state, ctx, generation, path, *result)
+        },
         CleanupMessage::Undo => undo(state),
-        CleanupMessage::Undone(results) => undone(state, ctx, results),
+        CleanupMessage::Undone(generation, results) => undone(state, ctx, generation, results),
         CleanupMessage::Shut => {
             if let Some(repo) = cleanup.group_of_cursor() {
                 cleanup.folded.insert(repo.clone());
@@ -779,6 +844,7 @@ mod tests {
             reason,
             upstream: upstream.map(str::to_owned),
             tip_time: 0,
+            remote_tip: upstream.filter(|_| reason == CleanupReason::InDefault).map(|_| "def".to_owned()),
         }
     }
 
@@ -801,7 +867,7 @@ mod tests {
             fetch_error: None,
         };
         let repos = BTreeMap::from([(repo.clone(), RepoState::Scanned(Box::new(scan)))]);
-        (Cleanup::new(Scope::Favourites(1), vec![repo.clone()], repos), repo)
+        (Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos), repo)
     }
 
     #[test]

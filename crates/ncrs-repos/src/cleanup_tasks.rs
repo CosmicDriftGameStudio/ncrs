@@ -6,7 +6,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use iced::Task;
-use ncrs_git::{cleanup_list, refs, remote_tips, CleanupPlan, Git, UndoRecord};
+use ncrs_git::{
+    cleanup_list, refs, remote_state, remote_tips, CleanupPlan, Git, RemoteState, UndoRecord,
+};
 
 use crate::bulk::error_line;
 use crate::cleanup::{CleanupMessage, Scan};
@@ -21,7 +23,7 @@ pub fn cleanable(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
             let to_read = path.clone();
             let count = tokio::task::spawn_blocking(move || {
                 let overview = refs(&to_read, &stop).ok()?;
-                Some(cleanup_list(&overview, &BTreeMap::new()).cleanable_count())
+                Some(cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default()).cleanable_count())
             })
             .await
             .ok()
@@ -37,14 +39,15 @@ fn scan_blocking(path: &PathBuf, stop: &Arc<AtomicBool>) -> Result<Scan, String>
     let tips_before = remote_tips(path, stop).unwrap_or_default();
     let fetch_error = git.fetch(None).err().map(|error| error_line(&error));
     let overview = refs(path, stop).map_err(|error| error.to_string())?;
+    let remote = remote_state(path, fetch_error.is_none(), stop).map_err(|error| error.to_string())?;
     Ok(Scan {
-        list: cleanup_list(&overview, &tips_before),
+        list: cleanup_list(&overview, &tips_before, &remote),
         default_branch: overview.main_branch,
         fetch_error,
     })
 }
 
-pub fn scan(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
+pub fn scan(generation: u64, path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
     Task::perform(
         async move {
             let to_scan = path.clone();
@@ -53,11 +56,11 @@ pub fn scan(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
                 .unwrap_or_else(|error| Err(error.to_string()));
             (path, result)
         },
-        |(root, result)| Message::Cleanup(CleanupMessage::Scanned(root, Box::new(result))),
+        move |(root, result)| Message::Cleanup(CleanupMessage::Scanned(generation, root, Box::new(result))),
     )
 }
 
-pub fn delete(path: PathBuf, plan: CleanupPlan) -> Task<Message> {
+pub fn delete(generation: u64, path: PathBuf, plan: CleanupPlan) -> Task<Message> {
     Task::perform(
         async move {
             let to_clean = path.clone();
@@ -70,11 +73,11 @@ pub fn delete(path: PathBuf, plan: CleanupPlan) -> Task<Message> {
             .unwrap_or_else(|error| Err(error.to_string()));
             (path, result)
         },
-        |(root, result)| Message::Cleanup(CleanupMessage::Deleted(root, Box::new(result))),
+        move |(root, result)| Message::Cleanup(CleanupMessage::Deleted(generation, root, Box::new(result))),
     )
 }
 
-pub fn undo(records: Vec<(PathBuf, UndoRecord)>) -> Task<Message> {
+pub fn undo(generation: u64, records: Vec<(PathBuf, UndoRecord)>) -> Task<Message> {
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
@@ -91,6 +94,6 @@ pub fn undo(records: Vec<(PathBuf, UndoRecord)>) -> Task<Message> {
             .await
             .unwrap_or_default()
         },
-        |results| Message::Cleanup(CleanupMessage::Undone(results)),
+        move |results| Message::Cleanup(CleanupMessage::Undone(generation, results)),
     )
 }

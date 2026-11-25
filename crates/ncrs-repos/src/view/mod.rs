@@ -11,7 +11,7 @@ use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
-use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
+use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, popup_menu_height, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, size};
 
 use crate::bulk::BulkAction;
@@ -26,8 +26,8 @@ use crate::state::State;
 const MENU_X: f32 = 280.0;
 /// The title, the bar of the actions, the rule and the column head above the list.
 const LIST_TOP: f32 = 32.0 + 1.0 + 32.0 + 22.0;
-/// What the menu needs below its top edge before it must move up.
-const MENU_HEIGHT: f32 = 300.0;
+/// The status bar and the note under the list.
+const BELOW_LIST: f32 = 22.0 + 30.0;
 
 /// The title of the tab.
 pub fn tab_title(ctx: ViewCtx<'_>) -> String {
@@ -161,22 +161,24 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(banner) = head::banner(state, ctx) {
         page = page.push(banner);
     }
-    page = page.push(list::view(state, ctx));
+    page = match &state.cleanup {
+        Some(cleanup) => page.push(row![
+            list::view(state, ctx),
+            cleanup_pane::view(cleanup, ctx)
+        ].height(Length::Fill)),
+        None => page.push(list::view(state, ctx)),
+    };
     if let Some(run) = state.run() {
         page = page.push(log::view(run, ctx));
     }
     let page = page.width(Length::Fill).height(Length::Fill);
-    let upper: Element<'a, Message> = match &state.cleanup {
-        Some(cleanup) => row![page, cleanup_pane::view(cleanup, ctx)]
-            .height(Length::Fill)
-            .into(),
-        None => page.into(),
-    };
-    let full_page = column![upper, status_bar(state, ctx)].height(Length::Fill);
+    let full_page = column![page, status_bar(state, ctx)].height(Length::Fill);
     if let Some(draft) = state.clone_draft() {
         stack![full_page, scrim(clone::dialog(draft, ctx))].into()
     } else if state.menu_open() {
-        let menu = popup_menu(menu_entries(state, ctx), menu_origin(state, ctx), palette);
+        let entries = menu_entries(state, ctx);
+        let origin = menu_origin(state, ctx, entries.len());
+        let menu = popup_menu(entries, origin, palette);
         stack![
             full_page,
             popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss)
@@ -186,21 +188,31 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         full_page.into()
     }
 }
-
-/// The menu opens at the row of the cursor, where the pointer went for a
-/// right click and where the keyboard is. The scroll position of the list is
-/// not known here, so a scrolled list puts it too low or too high.
-fn menu_origin(state: &State, ctx: ViewCtx<'_>) -> Point {
+/// The menu opens under the visible row of the cursor, and above it where it
+/// would run past the bottom of the window. The row is placed from the scroll
+/// of the list; a scroll the keyboard made is not reported, so the row is
+/// taken to be kept in view the way `row_into_view` does it.
+fn menu_origin(state: &State, ctx: ViewCtx<'_>, entries: usize) -> Point {
     let cursor = state.cursor();
-    let mut top = LIST_TOP;
+    let mut content_top = 0.0;
     'found: for group in state.groups() {
-        top += size::SECTION_HEAD;
+        content_top += size::SECTION_HEAD;
         for row in &group.rows {
             if Some(&row.path) == cursor.as_ref() {
                 break 'found;
             }
-            top += size::REPO_ROW;
+            content_top += size::REPO_ROW;
         }
     }
-    Point::new(MENU_X, top.min((ctx.window.height - MENU_HEIGHT).max(0.0)))
+    let viewport = (ctx.window.height - LIST_TOP - BELOW_LIST).max(size::REPO_ROW);
+    let in_view = (content_top - state.list_scroll).clamp(0.0, viewport - size::REPO_ROW);
+    let row_top = LIST_TOP + in_view;
+    let height = popup_menu_height(entries);
+    let below = row_top + size::REPO_ROW;
+    let y = if below + height > ctx.window.height {
+        (row_top - height).max(0.0)
+    } else {
+        below
+    };
+    Point::new(MENU_X, y)
 }

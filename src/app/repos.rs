@@ -104,16 +104,7 @@ impl App {
                 })
             }),
             Ask::WorktreeRemoved(folder) => {
-                let was_open = self.open_pages();
-                if let Some(state) = self
-                    .git_tabs
-                    .id_of(&folder)
-                    .and_then(|id| self.git_tabs.get_mut(id))
-                {
-                    state.close();
-                }
-                self.git_tabs.drop_closed();
-                self.follow_opened_pages(was_open);
+                self.worktree_removed(&folder);
                 Task::none()
             }
             Ask::RepoChanged(root) => {
@@ -128,6 +119,20 @@ impl App {
                 task.map(move |message| Message::GitView(id, message))
             }
         }
+    }
+
+    /// A worktree folder is gone: the Git tab that showed it goes too.
+    pub(in crate::app) fn worktree_removed(&mut self, folder: &std::path::Path) {
+        let was_open = self.open_pages();
+        if let Some(state) = self
+            .git_tabs
+            .id_of(folder)
+            .and_then(|id| self.git_tabs.get_mut(id))
+        {
+            state.close();
+        }
+        self.git_tabs.drop_closed();
+        self.follow_opened_pages(was_open);
     }
 
     /// The search of the Settings → Git page: reads the folders again.

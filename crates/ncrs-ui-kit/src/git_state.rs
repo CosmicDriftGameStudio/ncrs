@@ -99,7 +99,17 @@ pub fn standing_chip<'a, M: Clone + 'a>(
     palette: &Palette,
     on_press: Option<M>,
 ) -> Element<'a, M> {
-    let ink = standing.color(palette);
+    standing_chip_inked(standing, lang, standing.color(palette), on_press)
+}
+
+/// [`standing_chip`] in another ink: on the row of the cursor every chip takes
+/// the ink of the row, so none is lost on its fill.
+pub fn standing_chip_inked<'a, M: Clone + 'a>(
+    standing: &Standing,
+    lang: Language,
+    ink: Color,
+    on_press: Option<M>,
+) -> Element<'a, M> {
     let label = text(standing.text(lang))
         .size(font_size::SMALL)
         .wrapping(iced::widget::text::Wrapping::None);
@@ -177,7 +187,15 @@ pub fn outcome_mark<'a, M: 'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let ink = outcome.color(palette);
+    outcome_mark_inked(outcome, lang, outcome.color(palette))
+}
+
+/// [`outcome_mark`] in another ink, for the row of the cursor.
+pub fn outcome_mark_inked<'a, M: 'a>(
+    outcome: RunOutcome,
+    lang: Language,
+    ink: Color,
+) -> Element<'a, M> {
     row![
         icon(outcome.icon(), ink),
         text(outcome.label(lang)).size(font_size::SMALL).color(ink),

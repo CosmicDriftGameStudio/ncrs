@@ -236,6 +236,12 @@ impl App {
                 self.save_git_view(changed)
             }
             Ask::OpenRepository(root) => self.open_git_tab_at(root),
+            Ask::WorktreesRemoved(folders) => {
+                for folder in &folders {
+                    self.worktree_removed(folder);
+                }
+                Task::none()
+            }
             Ask::ColumnsResized(columns) => {
                 let changed = ncrs_config::git_view::GitViewSettings {
                     author_width: Some(columns.author),

@@ -1,7 +1,7 @@
 //! What lies over the Git tab: the context menus, the dialog for a new branch
 //! and the notice about a push or login that failed.
 
-use iced::widget::{column, stack};
+use iced::widget::{column, stack, Space};
 use iced::{Element, Point};
 use ncrs_git::PullStrategy;
 use ncrs_i18n::{fill_template, Msg};
@@ -160,6 +160,18 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
             MenuRow::Separator,
             entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true),
         ],
+        MenuTarget::Worktree(index) => {
+            let removable = state
+                .overview
+                .as_ref()
+                .and_then(|overview| overview.worktrees.get(*index))
+                .is_some_and(|found| !found.is_main && !found.is_current);
+            vec![entry(
+                text(Msg::GitViewMenuRemoveWorktree),
+                MenuAction::RemoveWorktree,
+                removable,
+            )]
+        }
         MenuTarget::File { path, .. } => file_views::menu_entries(state, path)
             .into_iter()
             .enumerate()
@@ -446,6 +458,14 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
         }
         Question::ResetHard { .. } => return super::commit_menu::reset_dialog(question, ctx),
         Question::ForcePush { plan } => return super::sync_menu::force_push_dialog(plan, ctx),
+        Question::RemoveWorktree { path } => (
+            Msg::GitViewAskRemoveWorktreeTitle,
+            fill_template(
+                lang.text(Msg::GitViewAskRemoveWorktreeText),
+                &[("{name}", &path.display().to_string())],
+            ),
+            Msg::GitViewAskDeleteButton,
+        ),
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(
@@ -690,6 +710,9 @@ pub fn over<'a>(
         Some(Dialog::Tag(draft)) => {
             return stack![page, scrim(super::commit_menu::tag_dialog(draft, ctx))].into();
         }
+        Some(Dialog::Cleanup(dialog)) => {
+            return stack![page, scrim(super::cleanup::cleanup_dialog(dialog, &state.name, ctx))].into();
+        }
         Some(Dialog::Credential(ask)) => {
             return stack![page, scrim(super::credentials::credential_dialog(ask, ctx))].into();
         }
@@ -697,6 +720,12 @@ pub fn over<'a>(
     }
     if let Some(open) = state.actions.menu.clone() {
         return stack![page, menu(state, open, ctx)].into();
+    }
+    if state.actions.sync_menu.is_some() {
+        // The header stays live: its buttons close the menu themselves.
+        let below_header = size::PICKER_HEADER + spacing::BORDER_WIDTH;
+        let catcher = popup_layer(Space::new().into(), Some(Message::CloseMenu), RightPress::Dismiss);
+        return stack![page, column![Space::new().height(below_header), catcher]].into();
     }
     page
 }

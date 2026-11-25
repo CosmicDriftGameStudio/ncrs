@@ -85,6 +85,9 @@ pub fn run_entry(state: &mut State, action: SyncAction) -> Outcome {
 /// Reads what the force push would replace; the question comes with the answer.
 pub fn force_push(state: &mut State) -> Outcome {
     state.actions.sync_menu = None;
+    if state.actions.sync.as_ref().is_some_and(|sync| sync.force_blocked.is_some()) {
+        return quiet(Task::none());
+    }
     start(state, Job::PrepareForcePush)
 }
 
@@ -103,9 +106,11 @@ pub fn credential_asked(state: &mut State, request: AskRequest) -> Outcome {
     quiet(Task::none())
 }
 
-pub fn credential_typed(state: &mut State, typed: Secret) -> Outcome {
+pub fn credential_typed(state: &mut State, id: u64, typed: Secret) -> Outcome {
     if let Some(Dialog::Credential(ask)) = state.actions.dialog.as_mut() {
-        ask.typed = typed;
+        if ask.id == id {
+            ask.typed = typed;
+        }
     }
     quiet(Task::none())
 }
@@ -117,12 +122,30 @@ fn show_next_credential(state: &mut State) {
     }
 }
 
-/// Enter or the button of the login dialog. An empty answer to a question for
-/// text stays: it is what a second Enter of the same key press would send.
-pub fn send_credential(state: &mut State) -> Outcome {
+/// Enter in the login dialog. A yes or no question (an unknown host key) is
+/// refused by Enter: it is the safe answer, "Connect" is the button's.
+pub fn credential_enter(state: &mut State) -> Outcome {
     let Some(Dialog::Credential(ask)) = state.actions.dialog.as_ref() else {
         return quiet(Task::none());
     };
+    if ask.kind == ncrs_git::askpass::PromptKind::Confirm {
+        cancel_credential(state);
+        return quiet(Task::none());
+    }
+    let id = ask.id;
+    send_credential(state, id)
+}
+
+/// The button of the login dialog for question `id`; a press meant for
+/// another question than the shown one is dropped. An empty answer to a
+/// question for text stays unsent.
+pub fn send_credential(state: &mut State, id: u64) -> Outcome {
+    let Some(Dialog::Credential(ask)) = state.actions.dialog.as_ref() else {
+        return quiet(Task::none());
+    };
+    if ask.id != id {
+        return quiet(Task::none());
+    }
     let is_text = ask.kind != ncrs_git::askpass::PromptKind::Confirm;
     if is_text && ask.typed.expose().is_empty() {
         return quiet(Task::none());
@@ -143,6 +166,14 @@ pub fn cancel_credential(state: &mut State) -> bool {
     true
 }
 
+/// The Cancel button for question `id`.
+pub fn cancel_credential_of(state: &mut State, id: u64) -> Outcome {
+    if matches!(&state.actions.dialog, Some(Dialog::Credential(ask)) if ask.id == id) {
+        cancel_credential(state);
+    }
+    quiet(Task::none())
+}
+
 /// The job that asked is over: nobody waits for an answer any more.
 pub fn end_of_job(state: &mut State) {
     if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
@@ -156,7 +187,8 @@ pub fn end_of_job(state: &mut State) {
 /// The timer of the background fetch. A tab that does something, shows a
 /// dialog or cannot write skips this round.
 pub fn background_fetch(state: &mut State) -> Outcome {
-    let idle = state.actions.busy.is_none()
+    let idle = state.actions.deliberate_sync
+        && state.actions.busy.is_none()
         && state.actions.unavailable.is_none()
         && !state.actions.background_fetch
         && !state.actions.dialog_open();

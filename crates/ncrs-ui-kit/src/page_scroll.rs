@@ -37,6 +37,18 @@ pub fn page_scroll_tracked<'a, M: 'a>(
         .into()
 }
 
+/// [`page_scroll_tracked`] with another margin around the content.
+pub fn page_scroll_tracked_padded<'a, M: 'a>(
+    id: &'static str,
+    content: Element<'a, M>,
+    padding: Padding,
+    on_scroll: impl Fn(f32) -> M + 'a,
+) -> Element<'a, M> {
+    page_scrollable(id, content, padding)
+        .on_scroll(move |viewport| on_scroll(viewport.absolute_offset().y))
+        .into()
+}
+
 /// Rows built above and below the ones in view.
 const ROWS_AROUND: usize = 24;
 

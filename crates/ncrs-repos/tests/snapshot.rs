@@ -20,8 +20,13 @@ mod ui_tests {
     use iced_test::Simulator;
     use ncrs_i18n::Language;
     use ncrs_repos::{
-        view, BulkAction, Executed, GroupKey, Message, Outcome, Reading, ReposKeys, SkipReason,
+        view, BulkAction, CleanupMessage, Executed, GroupKey, Message, Offer, Outcome, Pick, Reading,
+        ReposKeys, Scan, SkipReason,
         State, ViewCtx,
+    };
+    use ncrs_git::{
+        ActionError, CleanupBranch, CleanupList, CleanupReason, CleanupReport, CleanupRow,
+        CleanupTarget, KeepReason, Kept,
     };
     use ncrs_ui_kit::palette::ThemePreset;
     use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
@@ -209,6 +214,145 @@ mod ui_tests {
         assert!(matches_picture(
             &fixture.state,
             "tests/snapshots/repos-run-progress"
+        ));
+    }
+
+    const CLEANED: [&str; 6] = ["ncrs", "kumiko", "solon", "infra", "dotfiles", "blog"];
+
+    fn branch(name: &str, reason: CleanupReason) -> CleanupBranch {
+        CleanupBranch {
+            name: name.to_owned(),
+            sha: "abc".to_owned(),
+            reason,
+            upstream: Some(format!("origin/{name}")),
+            tip_time: 0,
+            remote_tip: (reason == CleanupReason::InDefault).then(|| "def".to_owned()),
+        }
+    }
+
+    fn offered(repo_index: usize) -> Scan {
+        let reasons = [CleanupReason::InDefault, CleanupReason::UpstreamGone];
+        let count = 3 + repo_index * 2;
+        Scan {
+            list: CleanupList {
+                branches: (0..count)
+                    .map(|index| {
+                        branch(
+                            &format!("feature/step-{repo_index}-{index}"),
+                            reasons[index % 2],
+                        )
+                    })
+                    .collect(),
+                worktrees: Vec::new(),
+                kept: vec![
+                    Kept {
+                        name: "wip/parser".to_owned(),
+                        is_worktree: false,
+                        why: KeepReason::Unpushed { commits: 3 },
+                    },
+                    Kept {
+                        name: "/Users/marc/code/ncrs/.wt/parser".to_owned(),
+                        is_worktree: true,
+                        why: KeepReason::WorktreeChanges { count: 3 },
+                    },
+                    Kept {
+                        name: "release/1.7".to_owned(),
+                        is_worktree: false,
+                        why: KeepReason::NotMerged,
+                    },
+                ],
+            },
+            default_branch: Some("main".to_owned()),
+            fetch_error: None,
+        }
+    }
+
+    fn cleanup_fixture() -> Fixture {
+        let mut fixture = crowded();
+        for name in CLEANED {
+            fixture.send(Message::RowToggled(repo(name)));
+        }
+        fixture.send(Message::Cleanup(CleanupMessage::Open));
+        fixture
+    }
+
+    fn pane_order(fixture: &Fixture) -> Vec<std::path::PathBuf> {
+        fixture.state.cleanup.as_ref().unwrap().order.clone()
+    }
+
+    /// Reads come back in the order they were started.
+    fn answer_reads(fixture: &mut Fixture, up_to: usize) {
+        let generation = fixture.state.cleanup_generation;
+        for (index, path) in pane_order(fixture).into_iter().enumerate().take(up_to) {
+            fixture.send(Message::Cleanup(CleanupMessage::Scanned(
+                generation,
+                path,
+                Box::new(Ok(offered(index))),
+            )));
+        }
+    }
+
+    #[test]
+    fn repos_cleanup_ready_with_mixed_ticks() {
+        let mut fixture = cleanup_fixture();
+        answer_reads(&mut fixture, 6);
+        fixture.send(Message::Cleanup(CleanupMessage::ToggleGroup(repo("kumiko"))));
+        let solon = pane_order(&fixture).iter().position(|path| *path == repo("solon")).unwrap();
+        for index in [1, 3] {
+            fixture.send(Message::Cleanup(CleanupMessage::Toggle(Pick {
+                repo: repo("solon"),
+                offer: Offer::Branch(format!("feature/step-{solon}-{index}")),
+            })));
+        }
+        fixture.send(Message::Cleanup(CleanupMessage::ToggleRemote));
+        assert!(matches_picture(
+            &fixture.state,
+            "tests/snapshots/repos-cleanup-ready"
+        ));
+    }
+
+    #[test]
+    fn repos_cleanup_while_fetching() {
+        let mut fixture = cleanup_fixture();
+        answer_reads(&mut fixture, 2);
+        assert!(matches_picture(
+            &fixture.state,
+            "tests/snapshots/repos-cleanup-fetching"
+        ));
+    }
+
+    #[test]
+    fn repos_cleanup_result_with_one_error() {
+        let mut fixture = cleanup_fixture();
+        answer_reads(&mut fixture, 6);
+        fixture.send(Message::Enter);
+        let generation = fixture.state.cleanup_generation;
+        for (index, path) in pane_order(&fixture).into_iter().enumerate() {
+            let rows = offered(index)
+                .list
+                .branches
+                .iter()
+                .enumerate()
+                .map(|(row, found)| CleanupRow {
+                    target: CleanupTarget::Branch(found.name.clone()),
+                    result: if index == 2 && row == 1 {
+                        Err(ActionError::Other {
+                            git_output: "branch changed since the scan".to_owned(),
+                        })
+                    } else {
+                        Ok(())
+                    },
+                })
+                .collect();
+            fixture.send(Message::Cleanup(CleanupMessage::Deleted(
+                generation,
+                path,
+                Box::new(Ok(CleanupReport { rows, undo: None })),
+            )));
+        }
+        assert!(matches_picture(
+            &fixture.state,
+            "tests/snapshots/repos-cleanup-result"
         ));
     }
 }

@@ -92,7 +92,7 @@ fn delete_a_branch_on_the_remote() {
     let (origin, repo) = with_origin();
     repo.git.create_branch("gone", "main", false).unwrap();
     repo.git.push_branch("gone", None).unwrap();
-    repo.git.delete_remote_branch("origin", "gone").unwrap();
+    repo.git.delete_remote_branch("origin", "gone", None).unwrap();
     assert_eq!(origin_branches(&origin), "main");
 }
 

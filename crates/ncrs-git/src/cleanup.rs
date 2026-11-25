@@ -5,7 +5,8 @@ use std::sync::atomic::AtomicBool;
 use crate::cli::Git;
 use crate::refname::plain_ref;
 use crate::refs::{BranchInfo, RefsOverview, WorktreeInfo};
-use crate::repo_access::{open, parse_id};
+use crate::repo_access::{default_branch, open, parse_id};
+use crate::status::count_commits_strict;
 use crate::undo::{RecreatedBranch, UndoAction, UndoRecord, UndoSummary};
 use crate::{ActionError, GitError};
 
@@ -53,6 +54,10 @@ pub struct CleanupBranch {
     pub reason: CleanupReason,
     pub upstream: Option<String>,
     pub tip_time: i64,
+    /// The tip of its remote-tracking branch when that one may be deleted on the
+    /// remote (see [`RemoteState`]); the delete only goes through while the
+    /// remote branch is still there.
+    pub remote_tip: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,13 +148,76 @@ pub fn remote_tips(root: &Path, stop: &AtomicBool) -> Result<BTreeMap<String, St
     Ok(tips)
 }
 
-fn candidate(branch: &BranchInfo, reason: CleanupReason) -> CleanupBranch {
+/// What the scan knows about the remote. Deleting a branch on the remote needs
+/// all of it, so `Default` (nothing known) never deletes there.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemoteState {
+    /// Fetching this repository worked in this run, so the tracking branches are current.
+    pub fetched: bool,
+    /// Tracking branches (`origin/feature`, with the tip) already inside the
+    /// remote's default branch.
+    pub in_default: BTreeMap<String, String>,
+}
+
+/// Reads the tracking branches that are fully inside the remote's default branch.
+/// Call it after the fetch and pass whether the fetch worked.
+pub fn remote_state(root: &Path, fetched: bool, stop: &AtomicBool) -> Result<RemoteState, GitError> {
+    let mut state = RemoteState {
+        fetched,
+        in_default: BTreeMap::new(),
+    };
+    if !fetched {
+        return Ok(state);
+    }
+    let repository = open(root)?;
+    let Some(hidden) = default_branch(&repository).and_then(|found| found.remote_tip) else {
+        return Ok(state);
+    };
+    for (name, tip) in remote_tips(root, stop)? {
+        let Ok(id) = parse_id(&tip) else { continue };
+        if count_commits_strict(&repository, id, hidden, stop)? == Some(0) {
+            state.in_default.insert(name, tip);
+        }
+    }
+    Ok(state)
+}
+
+/// The remote branch may go with the local one only when it is the same name,
+/// is not the default branch, is no other branch's upstream, and its tip is
+/// inside the default branch.
+fn remote_tip_to_delete(
+    branch: &BranchInfo,
+    overview: &RefsOverview,
+    remote: &RemoteState,
+) -> Option<String> {
+    let upstream = branch.upstream.as_deref()?;
+    let (_, short) = upstream.split_once('/')?;
+    let shared = overview
+        .local
+        .iter()
+        .any(|other| other.name != branch.name && other.upstream.as_deref() == Some(upstream));
+    if !remote.fetched
+        || short != branch.name
+        || overview.main_branch.as_deref() == Some(short)
+        || shared
+    {
+        return None;
+    }
+    remote.in_default.get(upstream).cloned()
+}
+
+fn candidate(
+    branch: &BranchInfo,
+    reason: CleanupReason,
+    remote_tip: Option<String>,
+) -> CleanupBranch {
     CleanupBranch {
         name: branch.name.clone(),
         sha: branch.tip.clone(),
         reason,
         upstream: branch.upstream.clone(),
         tip_time: branch.tip_time,
+        remote_tip,
     }
 }
 
@@ -157,6 +225,7 @@ fn judge_branch(
     branch: &BranchInfo,
     overview: &RefsOverview,
     remote_tips_before: &BTreeMap<String, String>,
+    remote: &RemoteState,
 ) -> Result<CleanupBranch, KeepReason> {
     if overview.main_branch.as_deref() == Some(branch.name.as_str()) {
         return Err(KeepReason::DefaultBranch);
@@ -170,7 +239,11 @@ fn judge_branch(
         return if untouched {
             Err(KeepReason::Empty)
         } else {
-            Ok(candidate(branch, CleanupReason::InDefault))
+            Ok(candidate(
+                branch,
+                CleanupReason::InDefault,
+                remote_tip_to_delete(branch, overview, remote),
+            ))
         };
     }
     if branch.upstream_gone {
@@ -179,7 +252,9 @@ fn judge_branch(
             .as_ref()
             .and_then(|name| remote_tips_before.get(name));
         return match known {
-            Some(tip) if *tip == branch.tip => Ok(candidate(branch, CleanupReason::UpstreamGone)),
+            Some(tip) if *tip == branch.tip => {
+                Ok(candidate(branch, CleanupReason::UpstreamGone, None))
+            }
             _ => Err(KeepReason::AfterLastPush),
         };
     }
@@ -200,6 +275,7 @@ fn judge_worktree(
     worktree: &WorktreeInfo,
     overview: &RefsOverview,
     remote_tips_before: &BTreeMap<String, String>,
+    remote: &RemoteState,
 ) -> Result<CleanupWorktree, KeepReason> {
     if worktree.is_main {
         return Err(KeepReason::MainWorktree);
@@ -227,7 +303,7 @@ fn judge_worktree(
         is_current: false,
         ..branch.clone()
     };
-    judge_branch(&seen_from_outside, overview, remote_tips_before).map(|judged| CleanupWorktree {
+    judge_branch(&seen_from_outside, overview, remote_tips_before, remote).map(|judged| CleanupWorktree {
         path: worktree.path.clone(),
         branch: judged,
     })
@@ -238,10 +314,11 @@ fn judge_worktree(
 pub fn cleanup_list(
     overview: &RefsOverview,
     remote_tips_before: &BTreeMap<String, String>,
+    remote: &RemoteState,
 ) -> CleanupList {
     let mut list = CleanupList::default();
     for worktree in overview.worktrees.iter().filter(|found| !found.is_main) {
-        match judge_worktree(worktree, overview, remote_tips_before) {
+        match judge_worktree(worktree, overview, remote_tips_before, remote) {
             Ok(row) => list.worktrees.push(row),
             Err(why) => list.kept.push(Kept {
                 name: worktree.path.display().to_string(),
@@ -271,7 +348,7 @@ pub fn cleanup_list(
             }
             continue;
         }
-        match judge_branch(branch, overview, remote_tips_before) {
+        match judge_branch(branch, overview, remote_tips_before, remote) {
             Ok(row) => list.branches.push(row),
             Err(why) => list.kept.push(Kept {
                 name: branch.name.clone(),
@@ -290,7 +367,7 @@ impl Git {
     pub fn clean_up(&self, plan: &CleanupPlan) -> Result<CleanupReport, ActionError> {
         let mut rows = Vec::new();
         let mut deleted: Vec<RecreatedBranch> = Vec::new();
-        let mut remote_deletes: Vec<(String, String)> = Vec::new();
+        let mut remote_deletes: Vec<(String, String, String)> = Vec::new();
         let mut doomed: Vec<&CleanupBranch> = Vec::new();
         for worktree in &plan.worktrees {
             let removed = self
@@ -308,10 +385,6 @@ impl Git {
         doomed.extend(plan.branches.iter());
         for branch in doomed {
             plain_ref(&branch.name)?;
-            // The settings go with the branch, so they are read first.
-            let remote_home = self
-                .branch_setting(&branch.name, "remote")
-                .zip(self.branch_setting(&branch.name, "merge"));
             let result = self.delete_scanned_branch(branch);
             if result.is_ok() {
                 let tracking_exists = branch.upstream.as_ref().filter(|name| {
@@ -323,10 +396,12 @@ impl Git {
                     ])
                     .is_some()
                 });
-                if plan.delete_remote && branch.reason == CleanupReason::InDefault {
-                    if let Some((remote, merge)) = remote_home {
-                        remote_deletes
-                            .push((remote, merge.trim_start_matches("refs/heads/").to_string()));
+                if plan.delete_remote {
+                    let target = branch.remote_tip.as_ref().zip(
+                        branch.upstream.as_deref().and_then(|name| name.split_once('/')),
+                    );
+                    if let Some((tip, (remote, name))) = target {
+                        remote_deletes.push((remote.to_string(), name.to_string(), tip.clone()));
                     }
                 }
                 deleted.push(RecreatedBranch {
@@ -340,10 +415,10 @@ impl Git {
                 result,
             });
         }
-        for (remote, branch) in remote_deletes {
+        for (remote, branch, tip) in remote_deletes {
             rows.push(CleanupRow {
                 target: CleanupTarget::RemoteBranch(format!("{remote}/{branch}")),
-                result: self.delete_remote_branch(&remote, &branch),
+                result: self.delete_remote_branch(&remote, &branch, Some(&tip)),
             });
         }
         let undo = (!deleted.is_empty()).then(|| UndoRecord {

@@ -440,6 +440,10 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(learn(state, root, Origin::Learned, ctx))
         }
+        Message::ListScrolled(offset) => {
+            state.list_scroll = offset;
+            quiet(Task::none())
+        }
         Message::CleanableRead(path, count) => {
             match count {
                 Some(count) => state.cleanable.insert(path, count),
@@ -506,7 +510,9 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         // Taken by `cleanup::update` above, and only while the pane is open.
-        Message::Left | Message::Right | Message::Cleanup(_) => quiet(Task::none()),
+        Message::Left | Message::Right | Message::SwitchFocus | Message::Cleanup(_) => {
+            quiet(Task::none())
+        }
         // Taken by `clone::update` above.
         Message::CloneOpen
         | Message::CloneUrlChanged(_)

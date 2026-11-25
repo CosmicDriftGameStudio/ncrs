@@ -420,5 +420,6 @@ pub(super) fn sync() -> SyncBar {
         ahead: 1,
         behind: 2,
         undo: Some("Commit „Fix Rundung der …“".to_owned()),
+        force_blocked: None,
     }
 }

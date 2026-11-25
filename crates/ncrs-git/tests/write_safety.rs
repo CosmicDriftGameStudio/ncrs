@@ -68,7 +68,7 @@ fn refs_that_read_as_options_do_nothing() {
             })
         );
         assert_eq!(
-            repo.git.delete_remote_branch(option, "x"),
+            repo.git.delete_remote_branch(option, "x", None),
             Err(ActionError::InvalidName {
                 name: option.to_string()
             })

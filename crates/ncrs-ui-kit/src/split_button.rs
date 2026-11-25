@@ -10,12 +10,15 @@ use crate::layout::MENU_PADDING;
 use crate::list_below::list_below_own_width;
 use crate::palette::Palette;
 use crate::popup_menu::{
-    menu_entry_colors, menu_item, menu_separator, MenuRow, PopupEntry, POPUP_MENU_WIDTH,
+    menu_entry_colors, menu_item, menu_separator, MenuRow, PopupEntry,
 };
 use crate::theme::{self, font_size, spacing};
 
 /// The label of the arrow half.
 const ARROW: &str = "\u{25be}";
+
+/// Room for a name and, beside it, why it cannot be chosen.
+const MENU_WIDTH: f32 = 360.0;
 
 /// The rows of the menu under the arrow, as a framed list.
 fn menu_list<'a, M: Clone + 'a>(rows: Vec<MenuRow<M>>, palette: &Palette) -> Element<'a, M> {
@@ -27,7 +30,7 @@ fn menu_list<'a, M: Clone + 'a>(rows: Vec<MenuRow<M>>, palette: &Palette) -> Ele
     });
     container(Column::with_children(items))
         .padding(MENU_PADDING)
-        .width(POPUP_MENU_WIDTH)
+        .width(MENU_WIDTH)
         .style(theme::menu(palette))
         .into()
 }
@@ -56,22 +59,22 @@ fn entry_row<'a, M: Clone + 'a>(entry: PopupEntry<M>, palette: &Palette) -> Elem
     )
 }
 
-/// The button (`label`, `key`, `tip`) and the arrow beside it, which has the same tip.
+/// The button (`label`, `tip`) and the arrow beside it, which has the same tip and `tone`.
 /// `menu` is the rows to show under them while the menu is open; `None` keeps
 /// it closed. A click outside the list is for the caller to catch: the list
 /// itself takes no outside clicks.
 pub fn split_button<'a, M: Clone + 'a>(
     label: &str,
-    key: Option<&str>,
     tip: &str,
     on_main: Option<M>,
     on_arrow: Option<M>,
     menu: Option<Vec<MenuRow<M>>>,
+    tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
     let halves = row![
-        toolbar_button(label, key, tip, on_main, Tone::Secondary, palette),
-        toolbar_button(ARROW, None, tip, on_arrow, Tone::Secondary, palette),
+        toolbar_button(label, None, tip, on_main, tone, palette),
+        toolbar_button(ARROW, None, tip, on_arrow, tone, palette),
     ]
     .spacing(spacing::BORDER_WIDTH);
     match menu {

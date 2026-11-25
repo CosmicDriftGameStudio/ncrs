@@ -3,14 +3,15 @@
 //! and reason, and the dimmed row of what stays and why.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, mouse_area, row, text, Space};
+use iced::widget::{button, column, container, mouse_area, row, text, Space};
 use iced::{alignment, Color, Element, Length};
 
 use crate::file_icon::git_branch_icon;
+use crate::format::ellipsize_middle;
 use crate::kit::{self, Check};
 use crate::palette::Palette;
 use crate::theme::git::{self, faint};
-use crate::theme::{font_size, size, spacing};
+use crate::theme::{self, font_size, size, spacing};
 use crate::APP_FONT_BOLD;
 
 /// A row with a second line (the folder of a worktree).
@@ -19,13 +20,24 @@ const TWO_LINES: f32 = 44.0;
 const TICK_CELL: f32 = 28.0;
 /// The cell of the branch symbol.
 const GLYPH_CELL: f32 = 18.0;
+/// What fits under the name in the narrowest list the rows are used in.
+const DETAIL_CHARS: usize = 52;
 /// The room of the reason, at the right of the name.
-const REASON_WIDTH: f32 = 210.0;
+const REASON_WIDTH: f32 = 240.0;
 /// What a row of a group is moved to the right of its head.
 const GROUP_INDENT: f32 = 18.0;
 
+/// What became of an entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowOutcome {
+    /// Stands in the place of the reason.
+    Done(String),
+    /// Gets a line of its own under the name.
+    Failed(String),
+}
+
 /// One entry of the list.
-pub struct CheckRow<'a, M> {
+pub struct CheckRow<M> {
     pub check: Check,
     pub name: String,
     /// A second line under the name: where a worktree lives.
@@ -40,11 +52,10 @@ pub struct CheckRow<'a, M> {
     pub cursor: bool,
     /// A click on the row ticks or unticks it.
     pub on_toggle: Option<M>,
-    /// What stands at the very right: the result of the row, say.
-    pub trailing: Option<Element<'a, M>>,
+    pub outcome: Option<RowOutcome>,
 }
 
-impl<M> std::fmt::Debug for CheckRow<'_, M> {
+impl<M> std::fmt::Debug for CheckRow<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CheckRow")
             .field("name", &self.name)
@@ -84,7 +95,7 @@ fn inks(palette: &Palette, cursor: bool) -> (Color, Color) {
     }
 }
 
-pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<'a, M>, palette: &Palette) -> Element<'a, M> {
+pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<M>, palette: &Palette) -> Element<'a, M> {
     let (text_ink, dim_ink) = inks(palette, item.cursor);
     let name_ink = if item.kept { faint(text_ink) } else { text_ink };
     let tick: Element<'a, M> = if item.kept {
@@ -97,37 +108,54 @@ pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<'a, M>, palette: &Palette) ->
     } else {
         Space::new().into()
     };
-    let name_line = row![
-        container(glyph).width(GLYPH_CELL),
-        line(item.name, font_size::BODY, name_ink)
-    ]
-    .align_y(alignment::Vertical::Center);
-    let mut names = column![name_line].spacing(spacing::XS);
-    let height = match item.detail {
-        Some(place) => {
-            names = names.push(row![
-                Space::new().width(GLYPH_CELL),
-                line(format!("\u{25a2} {place}"), font_size::SMALL, dim_ink),
-            ]);
-            TWO_LINES
-        }
-        None => size::CHECK_ROW,
+    let (reason, failure) = match item.outcome {
+        Some(RowOutcome::Done(done)) => (Some(done), None),
+        Some(RowOutcome::Failed(failure)) => (None, Some(failure)),
+        None => (Some(item.reason), None),
     };
     let reason_ink = if item.kept { faint(dim_ink) } else { dim_ink };
-    let mut cells = row![
+    let mut name_line = row![
+        container(glyph).width(GLYPH_CELL),
+        container(line(item.name, font_size::BODY, name_ink))
+            .width(Length::Fill)
+            .clip(true),
+    ]
+    .align_y(alignment::Vertical::Center);
+    if let Some(reason) = reason {
+        name_line = name_line.push(
+            container(line(reason, font_size::SMALL, reason_ink))
+                .width(REASON_WIDTH)
+                .align_x(alignment::Horizontal::Right)
+                .clip(true),
+        );
+    }
+    let second = match (failure, item.detail) {
+        (Some(failure), _) => {
+            let ink = if item.cursor { text_ink } else { palette.error };
+            Some((failure, ink))
+        }
+        (None, Some(place)) => {
+            let place = ellipsize_middle(&place, DETAIL_CHARS);
+            Some((format!("\u{25a2} {place}"), dim_ink))
+        }
+        (None, None) => None,
+    };
+    let mut lines = column![name_line].spacing(spacing::XS);
+    let mut height = size::CHECK_ROW;
+    if let Some((content, ink)) = second {
+        lines = lines.push(row![
+            Space::new().width(GLYPH_CELL),
+            line(content, font_size::SMALL, ink),
+        ]);
+        height = TWO_LINES;
+    }
+    let cells = row![
         Space::new().width(GROUP_INDENT),
         container(tick).width(TICK_CELL),
-        container(names).width(Length::Fill).clip(true),
-        container(line(item.reason, font_size::SMALL, reason_ink))
-            .width(REASON_WIDTH)
-            .align_x(alignment::Horizontal::Right)
-            .clip(true),
+        container(lines).width(Length::Fill).clip(true),
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    if let Some(extra) = item.trailing {
-        cells = cells.push(extra);
-    }
     let framed = container(cells)
         .padding([0.0, spacing::XL])
         .width(Length::Fill)
@@ -179,6 +207,18 @@ pub fn check_group_head<'a, M: Clone + 'a>(
     mouse_area(framed).on_press(head.on_toggle_open).into()
 }
 
+/// The "×" at the right of the head of a pane; without a message it is inert.
+pub fn close_cross<'a, M: Clone + 'a>(on_press: Option<M>, palette: &Palette) -> Element<'a, M> {
+    const SIDE: f32 = 22.0;
+    button(container(text("\u{d7}").size(font_size::TITLE)).center(Length::Fill))
+        .padding(0.0)
+        .width(SIDE)
+        .height(SIDE)
+        .on_press_maybe(on_press)
+        .style(theme::close_button(palette))
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,7 +238,7 @@ mod tests {
                         kept,
                         cursor,
                         on_toggle: Some(()),
-                        trailing: None,
+                        outcome: None,
                     },
                     &palette,
                 );

@@ -599,6 +599,12 @@ fn a_rejected_push_is_fixed_by_pulling_first() {
     flow.shoot("08-push-abgelehnt");
 
     flow.send(View::PullFirst);
+    assert_eq!(
+        flow.notice(),
+        Some(&Notice::NeedsPullStrategy),
+        "the default is fast-forward only, so diverged branches ask"
+    );
+    flow.send(View::PullWith(ncrs_git::PullStrategy::Merge));
     assert_eq!(flow.notice(), None);
     assert_eq!(flow.git(&["rev-list", "--count", "main..origin/main"]), "0");
     flow.press_shifted("u");

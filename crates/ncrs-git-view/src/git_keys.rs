@@ -40,7 +40,7 @@ impl GitKeys {
             table: ChordTable::new(
                 Shortcut::ALL
                     .iter()
-                    .map(|shortcut| vec![shortcut.default_chord(command)])
+                    .map(|shortcut| shortcut.default_chord(command).into_iter().collect())
                     .collect(),
             ),
         }
@@ -94,6 +94,9 @@ mod tests {
         for mac in [true, false] {
             let keys = GitKeys::defaults_for(mac);
             for (index, left) in Shortcut::ALL.iter().enumerate() {
+                if keys.chords(*left).is_empty() {
+                    continue;
+                }
                 for right in &Shortcut::ALL[index + 1..] {
                     assert_ne!(
                         keys.chords(*left),
@@ -139,7 +142,7 @@ mod tests {
             keys.pressed(&Key::Character("f".into()), held),
             Some(Shortcut::Fetch)
         );
-        let (default_held, default_key) = Shortcut::Fetch.default_chord(Modifiers::CTRL);
+        let (default_held, default_key) = Shortcut::Fetch.default_chord(Modifiers::CTRL).unwrap();
         assert_eq!(keys.pressed(&default_key, default_held), None);
         let expected = if cfg!(target_os = "macos") {
             "\u{2303}\u{2325}F"
@@ -165,7 +168,7 @@ mod tests {
 
     #[test]
     fn an_override_on_the_key_of_another_action_is_refused() {
-        let (held, key) = Shortcut::Pull.default_chord(Modifiers::CTRL);
+        let (held, key) = Shortcut::Pull.default_chord(Modifiers::CTRL).unwrap();
         let refused = GitKeys::with_overrides(
             &[KeyOverride {
                 action: "fetch".to_owned(),
@@ -200,8 +203,8 @@ mod tests {
 
     #[test]
     fn a_swap_of_two_actions_is_allowed() {
-        let (fetch_held, fetch_key) = Shortcut::Fetch.default_chord(Modifiers::CTRL);
-        let (pull_held, pull_key) = Shortcut::Pull.default_chord(Modifiers::CTRL);
+        let (fetch_held, fetch_key) = Shortcut::Fetch.default_chord(Modifiers::CTRL).unwrap();
+        let (pull_held, pull_key) = Shortcut::Pull.default_chord(Modifiers::CTRL).unwrap();
         let keys = GitKeys::with_overrides(
             &[
                 KeyOverride {

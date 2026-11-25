@@ -9,7 +9,7 @@ use iced::widget::{column, container, row, text, Space};
 use iced::{alignment, Element, Length, Padding};
 use ncrs_git::KeepReason;
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_ui_kit::check_rows::{check_group_head, check_row, CheckGroupHead, CheckRow};
+use ncrs_ui_kit::check_rows::{check_group_head, check_row, close_cross, CheckGroupHead, CheckRow, RowOutcome};
 use ncrs_ui_kit::format::time;
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
@@ -24,6 +24,7 @@ use crate::cleanup::{
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::rows::name_of;
+use crate::shortcuts::Shortcut;
 
 /// The width of the pane; the list keeps the rest of the window.
 pub const PANE_WIDTH: f32 = 560.0;
@@ -83,30 +84,22 @@ fn problem<'a>(content: String, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into()
 }
 
-fn result_cell<'a>(
+fn outcome(
     cleanup: &Cleanup,
     item: &Item,
-    ctx: ViewCtx<'a>,
-) -> Option<Element<'a, Message>> {
+    ctx: ViewCtx<'_>,
+) -> Option<RowOutcome> {
     Some(match cleanup.result_of(item)? {
-        Ok(()) => page_line(
-            ctx.lang.text(Msg::ReposCleanupRowDeleted),
-            font_size::SMALL,
-            ctx.palette.dim_text,
-        ),
-        Err(reason) => page_line(
-            fill_template(
+        Ok(()) => RowOutcome::Done(ctx.lang.text(Msg::ReposCleanupRowDeleted).to_owned()),
+        Err(reason) => RowOutcome::Failed(fill_template(
                 ctx.lang.text(Msg::GitCleanupRowFailed),
                 &[("{reason}", &reason)],
-            ),
-            font_size::SMALL,
-            ctx.palette.error,
-        ),
+            )),
     })
 }
 
 fn item_row<'a>(cleanup: &Cleanup, item: Item, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let cursor = cleanup.cursor_line() == Some(Line::Item(item.pick.clone()));
+    let cursor = !cleanup.list_focus && cleanup.cursor_line() == Some(Line::Item(item.pick.clone()));
     let ready = cleanup.phase == Phase::Ready;
     let built = check_row(
         CheckRow {
@@ -117,12 +110,15 @@ fn item_row<'a>(cleanup: &Cleanup, item: Item, ctx: ViewCtx<'a>) -> Element<'a, 
             },
             name: item.name.clone(),
             detail: item.folder.as_ref().map(|folder| folder.display().to_string()),
-            reason: offer_text(cleanup, &item, ctx.lang),
+            reason: match (&item.remote, cleanup.delete_remote) {
+                (Some(remote), true) => format!("{} + {remote}", offer_text(cleanup, &item, ctx.lang)),
+                _ => offer_text(cleanup, &item, ctx.lang),
+            },
             worktree: matches!(item.pick.offer, Offer::Worktree(_)),
             kept: false,
             cursor,
             on_toggle: ready.then(|| Message::Cleanup(CleanupMessage::Toggle(item.pick.clone()))),
-            trailing: result_cell(cleanup, &item, ctx),
+            outcome: outcome(cleanup, &item, ctx),
         },
         ctx.palette,
     );
@@ -158,7 +154,8 @@ fn group<'a>(cleanup: &Cleanup, repo: &Path, ctx: ViewCtx<'a>) -> Element<'a, Me
             count: items.len(),
             open,
             check: cleanup.group_check(repo),
-            cursor: cleanup.cursor_line() == Some(Line::Group(repo.to_path_buf())),
+            cursor: !cleanup.list_focus
+                && cleanup.cursor_line() == Some(Line::Group(repo.to_path_buf())),
             on_toggle_open: Message::Cleanup(CleanupMessage::FoldGroup(repo.to_path_buf())),
             on_toggle_check: Message::Cleanup(CleanupMessage::ToggleGroup(repo.to_path_buf())),
         },
@@ -168,6 +165,26 @@ fn group<'a>(cleanup: &Cleanup, repo: &Path, ctx: ViewCtx<'a>) -> Element<'a, Me
     if open {
         for item in items {
             body = body.push(item_row(cleanup, item, ctx));
+        }
+        let stays = cleanup.scan(repo).map_or(&[][..], |scan| &scan.list.kept[..]);
+        for kept in stays.iter().filter(|kept| kept.is_worktree) {
+            let name = Path::new(&kept.name)
+                .file_name()
+                .map_or_else(|| kept.name.clone(), |last| last.to_string_lossy().into_owned());
+            body = body.push(check_row(
+                CheckRow {
+                    check: Check::Off,
+                    name,
+                    detail: None,
+                    reason: keep_text(kept.why, ctx.lang),
+                    worktree: true,
+                    kept: true,
+                    cursor: false,
+                    on_toggle: None,
+                    outcome: None,
+                },
+                ctx.palette,
+            ));
         }
     }
     body.into()
@@ -183,13 +200,9 @@ fn keep_section<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Option<Element<'a, M
     if kept.is_empty() {
         return None;
     }
-    let title = fill_template(
-        ctx.lang.text(Msg::ReposCleanupKeepTitle),
-        &[("{count}", &kept.len().to_string())],
-    );
     let mut section = column![section_head(
         SectionHead {
-            title: &title,
+            title: ctx.lang.text(Msg::ReposCleanupKeepTitle),
             count: kept.len(),
             open: cleanup.keep_open,
             has_focus: false,
@@ -373,7 +386,11 @@ fn buttons<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     if cleanup.phase == Phase::Done {
         line = line.push(kit::button(
-            ctx.lang.text(Msg::ReposCleanupUndo),
+            &format!(
+                "{}  {}",
+                ctx.lang.text(Msg::ReposCleanupUndo),
+                ctx.keys.label(Shortcut::UndoCleanup)
+            ),
             can_undo.then_some(Message::Cleanup(CleanupMessage::Undo)),
             Tone::Secondary,
             ctx.palette,
@@ -381,7 +398,11 @@ fn buttons<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     line.push(Space::new().width(Length::Fill))
         .push(kit::button(
-            ctx.lang.text(Msg::DialogClose),
+            ctx.lang.text(if cleanup.phase == Phase::Done {
+                Msg::DialogClose
+            } else {
+                Msg::ReposCleanupCancel
+            }),
             (cleanup.phase != Phase::Deleting).then_some(Message::Cleanup(CleanupMessage::Close)),
             Tone::Secondary,
             ctx.palette,
@@ -419,7 +440,18 @@ pub fn view<'a>(cleanup: &'a Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> 
         notes = notes.push(warning);
     }
     let pane = column![
-        page_heading(&title, palette),
+        row![
+            page_heading(&title, palette),
+            dim(super::head::scope_text(cleanup.scope, ctx), ctx),
+            Space::new().width(Length::Fill),
+            close_cross(
+                (cleanup.phase != Phase::Deleting)
+                    .then_some(Message::Cleanup(CleanupMessage::Close)),
+                palette,
+            ),
+        ]
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center),
         dim(ctx.lang.text(Msg::ReposCleanupIntro).to_owned(), ctx),
         summary_line(cleanup, ctx),
         notes,
@@ -427,6 +459,7 @@ pub fn view<'a>(cleanup: &'a Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> 
         remote_option(cleanup, ctx),
         dim(ctx.lang.text(Msg::ReposCleanupUndoHint).to_owned(), ctx),
         buttons(cleanup, ctx),
+        dim(ctx.lang.text(Msg::ReposCleanupRunNote).to_owned(), ctx),
     ]
     .spacing(spacing::L)
     .padding(spacing::XL)
