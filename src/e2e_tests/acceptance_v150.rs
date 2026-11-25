@@ -368,8 +368,9 @@ fn process_again_asks_before_many_inbox_files() {
         world.data.path().join("config.toml"),
         format!(
             "version = 1\nlang = \"de\"\n[modules.filing]\nenabled = true\n\
-             [[modules.filing.locations]]\npath = {inbox:?}\nmode = \"inbox\"\n\
-             [[modules.filing.locations]]\npath = {target:?}\nmode = \"archive\"\ntarget = true\n\
+             [[modules.filing.targets]]\nid = \"main\"\npath = {target:?}\n\
+             [[modules.filing.sources]]\npath = {inbox:?}\ntargets = [\"main\"]\n\
+             when = \"watch\"\nfiles = \"move\"\n\
              [notes]\nfolder = {:?}\n",
             world.notes
         ),
