@@ -33,7 +33,8 @@ const LOCATION_CHARS: usize = 52;
 /// The last column of a run holds the result and needs more room.
 const RESULT_WIDTH: f32 = 440.0;
 
-/// The chips of "3 behind origin/main" and "11 local changes" need more than the standard widths.
+/// The chips of "3 behind origin/main" and "11 local changes" and the time "yesterday 17:01"
+/// need more than the standard widths.
 /// Beside the clean-up there is only room for the branch and the standing.
 fn columns(state: &State) -> RepoColumns {
     let is_run = state.run().is_some();
@@ -42,11 +43,7 @@ fn columns(state: &State) -> RepoColumns {
         location: !beside_cleanup,
         standing: 250.0,
         changes: if beside_cleanup { 0.0 } else { 160.0 },
-        fetched: if beside_cleanup {
-            0.0
-        } else {
-            RepoColumns::STANDARD.fetched
-        },
+        fetched: if beside_cleanup { 0.0 } else { 122.0 },
         actions: if is_run {
             RESULT_WIDTH
         } else {
@@ -206,7 +203,6 @@ fn one_row<'a>(
         on_toggle: (!is_worktree).then(|| Message::RowToggled(path.clone())),
         on_favourite: (!is_worktree).then(|| Message::FavouriteClicked(path.clone())),
         on_standing: is_run.then(|| Message::ShowDetails(path.clone())),
-        on_open: Some(Message::RowPressed(path.clone())),
         actions,
     };
     let built = repo_row(item, columns(state), ctx.lang, ctx.palette);
@@ -216,6 +212,7 @@ fn one_row<'a>(
         built
     };
     mouse_area(framed)
+        .on_press(Message::RowPressed(path.clone()))
         .on_enter(Message::Hovered(Some(path.clone())))
         .on_exit(Message::Hovered(None))
         .on_right_press(Message::OpenMenuAt(path.clone()))

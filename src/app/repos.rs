@@ -151,7 +151,7 @@ impl App {
     /// The search of the Settings → Git page: reads the folders again.
     pub(in crate::app) fn scan_repos(&mut self) -> Task<Message> {
         let opened = self.open_repos();
-        let scanned = self.update_repos(ncrs_repos::Message::ScanNow);
+        let scanned = self.update_repos(ncrs_repos::Message::Rescan);
         Task::batch([opened, scanned])
     }
 

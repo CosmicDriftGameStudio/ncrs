@@ -57,7 +57,10 @@ pub enum Message {
     FilterSubmitted,
     OnlyNeedingActionToggled,
     // The list.
+    /// Searches again, or stops the search that runs.
     ScanNow,
+    /// What the search looks at may have changed: it starts anew.
+    Rescan,
     Scanned(Box<ScanResult>),
     AddRepo,
     RepoPicked(PathBuf),

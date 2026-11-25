@@ -58,6 +58,18 @@ pub struct ReposSettings {
     pub concurrency: u8,
 }
 
+impl ReposSettings {
+    /// Whether a search with `other` would find the same.
+    pub fn searches_like(&self, other: &Self) -> bool {
+        let same_search = Self {
+            learn_from_panel: self.learn_from_panel,
+            concurrency: self.concurrency,
+            ..other.clone()
+        };
+        *self == same_search
+    }
+}
+
 /// What the search leaves out unless the file lists its own.
 pub fn default_skip() -> Vec<String> {
     let mut skip = vec!["node_modules".to_owned(), "target".to_owned()];

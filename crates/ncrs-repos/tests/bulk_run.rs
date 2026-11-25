@@ -12,7 +12,7 @@
 mod common;
 
 use common::{fixture, read, repo, summary, Fixture};
-use ncrs_repos::{BulkAction, Message, Outcome, Scope};
+use ncrs_repos::{BulkAction, MenuEntry, Message, Outcome, Scope};
 use ncrs_ui_kit::git_state::RunOutcome;
 
 const NAMES: [&str; 6] = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
@@ -53,6 +53,28 @@ fn marked_repos_win_over_the_favourites() {
     let run = fixture.state.run().unwrap();
     assert_eq!(run.scope(), Scope::Marked(1));
     assert_eq!(run.targets(), [repo("echo")]);
+}
+
+#[test]
+fn without_marks_and_favourites_the_row_of_the_cursor_is_meant() {
+    let mut fixture = behind_fixture(0);
+    fixture.send(Message::RowPressed(repo("delta")));
+    fixture.send(Message::Bulk(BulkAction::Fetch));
+    let run = fixture.state.run().unwrap();
+    assert_eq!(run.scope(), Scope::Row);
+    assert_eq!(run.targets(), [repo("delta")]);
+}
+
+#[test]
+fn the_menu_of_a_row_means_that_row_or_the_marks_it_is_one_of() {
+    for (row, scope) in [("delta", Scope::Row), ("echo", Scope::Marked(2))] {
+        let mut opened = behind_fixture(3);
+        opened.send(Message::RowToggled(repo("echo")));
+        opened.send(Message::RowToggled(repo("foxtrot")));
+        opened.send(Message::OpenMenuAt(repo(row)));
+        opened.send(Message::MenuPicked(MenuEntry::Bulk(BulkAction::Fetch)));
+        assert_eq!(opened.state.run().unwrap().scope(), scope, "{row}");
+    }
 }
 
 #[test]

@@ -34,6 +34,7 @@ pub use ctx::{Ctx, ViewCtx};
 pub use keys::{repos_key, KeyOverride, ReposKeys, ReposKeysError};
 pub use message::{MenuEntry, Message};
 pub use rows::GroupKey;
+pub use scan::ScanResult;
 pub use shortcuts::{commands, message_of_command, Shortcut};
 pub use state::{Run, Scope, State};
 pub use store::{Origin, Store, StoreError};

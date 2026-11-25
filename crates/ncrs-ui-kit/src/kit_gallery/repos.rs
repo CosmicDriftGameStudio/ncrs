@@ -222,7 +222,6 @@ fn list<'a>(lang: Language, palette: &Palette) -> Cell<'a> {
                 on_toggle: None,
                 on_favourite: None,
                 on_standing: None,
-                on_open: None,
                 actions: (place == 6).then(|| {
                     kit::button(
                         lang.text(ncrs_i18n::Msg::DialogClose),

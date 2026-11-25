@@ -14,17 +14,20 @@ use crate::rows::{self, Group, GroupKey, Row, RowKind, Shape};
 use crate::store::Store;
 use crate::summary::Reading;
 
-/// What a bulk action applies to (G17): the marked repos, else the favourites.
+/// What a bulk action applies to (G17): the marked repos, else the favourites,
+/// else the repository of one row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     Marked(usize),
     Favourites(usize),
+    Row,
 }
 
 impl Scope {
     pub const fn count(self) -> usize {
         match self {
             Self::Marked(count) | Self::Favourites(count) => count,
+            Self::Row => 1,
         }
     }
 }
@@ -125,6 +128,8 @@ pub struct State {
     pub open_roots: Vec<PathBuf>,
     /// The flag of the scan that runs; none when none does.
     pub scanning: Option<Arc<AtomicBool>>,
+    /// The scan that runs was stopped for a new one, which starts when it has ended.
+    pub scan_again: bool,
     pub read_queue: VecDeque<PathBuf>,
     pub reads_running: usize,
     /// When the reading of every repository was last started.
@@ -158,6 +163,7 @@ impl State {
             hovered: None,
             open_roots: Vec::new(),
             scanning: None,
+            scan_again: false,
             read_queue: VecDeque::new(),
             reads_running: 0,
             refreshed_at: None,
@@ -286,15 +292,37 @@ impl State {
             .collect()
     }
 
-    /// What a bulk action would run on: the marked repos, else the favourites.
+    /// What a bulk action would run on: the marked repos, else the favourites,
+    /// else the repository of the cursor.
     pub fn targets(&self) -> (Scope, Vec<PathBuf>) {
         let marked = self.marked_repos();
-        if marked.is_empty() {
-            let favourites = self.store.favourites();
-            (Scope::Favourites(favourites.len()), favourites)
-        } else {
-            (Scope::Marked(marked.len()), marked)
+        if !marked.is_empty() {
+            return (Scope::Marked(marked.len()), marked);
         }
+        let favourites = self.store.favourites();
+        if !favourites.is_empty() {
+            return (Scope::Favourites(favourites.len()), favourites);
+        }
+        let row = self.cursor().and_then(|path| self.owner_of(&path));
+        (Scope::Row, row.into_iter().collect())
+    }
+
+    /// What an action of the menu of `path` would run on: the marked repos when
+    /// the row is one of them, else its own repository.
+    pub fn targets_of_row(&self, path: &Path) -> (Scope, Vec<PathBuf>) {
+        let marked = self.marked_repos();
+        match self.owner_of(path) {
+            Some(owner) if marked.contains(&owner) => (Scope::Marked(marked.len()), marked),
+            owner => (Scope::Row, owner.into_iter().collect()),
+        }
+    }
+
+    /// The listed repository of the row at `path`; that of a worktree's is the
+    /// repository it belongs to.
+    fn owner_of(&self, path: &Path) -> Option<PathBuf> {
+        self.row(path)
+            .map(|row| row.owner)
+            .filter(|owner| self.store.contains(owner))
     }
 
     pub fn row(&self, path: &Path) -> Option<Row> {

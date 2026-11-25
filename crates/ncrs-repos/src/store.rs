@@ -8,6 +8,8 @@ use std::time::SystemTime;
 use ncrs_config::config::replace_file_atomically;
 use serde::{Deserialize, Serialize};
 
+use crate::scan::ScanResult;
+
 /// The newest shape of the file this build reads and the one it writes.
 const CURRENT_VERSION: u32 = 1;
 
@@ -177,10 +179,40 @@ impl Store {
     /// The repos a scan found join the list; one that is listed already keeps
     /// its origin and star. Returns how many are new.
     pub fn merge_found(&mut self, found: &[(PathBuf, PathBuf)]) -> usize {
-        found
-            .iter()
-            .filter(|(path, source)| self.add(path.clone(), Origin::Found, Some(source.clone())))
-            .count()
+        let before = self.repos.len();
+        for (path, source) in found {
+            match self.repos.iter_mut().find(|entry| entry.path == *path) {
+                Some(entry) if entry.origin == Origin::Found => {
+                    entry.source = Some(source.clone());
+                }
+                Some(_) => {}
+                None => {
+                    self.add(path.clone(), Origin::Found, Some(source.clone()));
+                }
+            }
+        }
+        self.repos.len() - before
+    }
+
+    /// Drops what earlier scans found and `scan` did not, below a folder it read
+    /// or below one that is not among the `sources` any more. Favourites stay,
+    /// and folders that are gone: their drive may be unplugged. Returns the dropped.
+    pub fn drop_unfound(&mut self, scan: &ScanResult, sources: &[PathBuf]) -> Vec<PathBuf> {
+        let is_stale = |entry: &RepoEntry| {
+            entry.origin == Origin::Found
+                && !entry.favourite
+                && entry
+                    .source
+                    .as_ref()
+                    .is_some_and(|source| scan.roots.contains(source) || !sources.contains(source))
+                && !scan.found.iter().any(|(path, _)| *path == entry.path)
+                && entry.path.is_dir()
+        };
+        let (dropped, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.repos)
+            .into_iter()
+            .partition(is_stale);
+        self.repos = kept;
+        dropped.into_iter().map(|entry| entry.path).collect()
     }
 }
 
@@ -280,5 +312,43 @@ mod tests {
         let mut store = Store::default();
         assert!(!store.remove(Path::new("/x")));
         assert_eq!(store.toggle_favourite(Path::new("/x")), None);
+    }
+
+    #[test]
+    fn a_scan_drops_what_it_no_longer_finds_where_it_looked() {
+        let base = tempfile::tempdir().unwrap();
+        let folder = |name: &str| {
+            let path = base.path().join(name);
+            std::fs::create_dir_all(&path).unwrap();
+            path
+        };
+        let (code, old_source, unread) = (folder("code"), folder("old"), folder("unread"));
+        let mut store = Store::default();
+        let mut add = |name: &str, origin: Origin, source: &Path| {
+            let path = folder(name);
+            store.add(path.clone(), origin, Some(source.to_path_buf()));
+            path
+        };
+        add("code/stale", Origin::Found, &code);
+        add("old/of-a-removed-source", Origin::Found, &old_source);
+        let kept = [
+            add("code/found", Origin::Found, &code),
+            add("code/favourite", Origin::Found, &code),
+            add("code/learned", Origin::Learned, &code),
+            add("unread/found-before", Origin::Found, &unread),
+        ];
+        let unplugged = code.join("unplugged");
+        store.add(unplugged.clone(), Origin::Found, Some(code.clone()));
+        store.toggle_favourite(&kept[1]);
+        let scan = ScanResult {
+            found: vec![(kept[0].clone(), code.clone())],
+            roots: vec![code.clone()],
+            ..ScanResult::default()
+        };
+        let dropped = store.drop_unfound(&scan, &[code, unread]);
+        assert_eq!(dropped.len(), 2);
+        let left: Vec<&PathBuf> = store.repos.iter().map(|entry| &entry.path).collect();
+        assert_eq!(left.len(), 5);
+        assert!(kept.iter().chain([&unplugged]).all(|path| left.contains(&path)));
     }
 }

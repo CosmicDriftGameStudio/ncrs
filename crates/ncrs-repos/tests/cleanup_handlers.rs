@@ -234,3 +234,13 @@ fn a_result_of_an_earlier_opening_is_dropped() {
     assert!(pane.reports.is_empty());
     assert!(pane.scan(&repo("alpha")).is_none());
 }
+
+#[test]
+fn the_menu_opens_the_pane_for_its_row_without_marks_or_favourites() {
+    let mut fixture = fixture(&["alpha", "bravo"], 0);
+    fixture.send(Message::OpenMenuAt(repo("bravo")));
+    fixture.send(Message::MenuPicked(ncrs_repos::MenuEntry::Cleanup));
+    let opened = pane(&fixture);
+    assert_eq!(opened.scope, ncrs_repos::Scope::Row);
+    assert_eq!(opened.order, [repo("bravo")]);
+}

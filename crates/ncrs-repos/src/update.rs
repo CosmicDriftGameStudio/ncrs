@@ -13,12 +13,12 @@ use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
-use crate::cleanup::CleanupMessage;
+use crate::cleanup;
 use crate::ctx::Ctx;
 use crate::message::{MenuEntry, Message};
 use crate::rows::{is_hidden_worktree, RowKind};
 use crate::run;
-use crate::scan::ScanRequest;
+use crate::scan::{ScanRequest, ScanResult};
 use crate::state::State;
 use crate::store::{Origin, ScanStamp, Store};
 use crate::tasks;
@@ -208,11 +208,16 @@ fn toggle_favourite(state: &mut State, path: &Path, ctx: &Ctx) {
 
 fn remove(state: &mut State, path: &Path, ctx: &Ctx) {
     if state.store.remove(path) {
-        state.readings.remove(path);
-        state.cleanable.remove(path);
-        state.read_queue.retain(|queued| queued != path);
+        forget(state, path);
         persist(state, ctx);
     }
+}
+
+/// What the tab knows of a repository that is off the list.
+fn forget(state: &mut State, path: &Path) {
+    state.readings.remove(path);
+    state.cleanable.remove(path);
+    state.read_queue.retain(|queued| queued != path);
 }
 
 fn open_tab(path: &Path, state: &State) -> Vec<Action> {
@@ -222,11 +227,22 @@ fn open_tab(path: &Path, state: &State) -> Vec<Action> {
     }
 }
 
+fn open_cursor_row(state: &State) -> Vec<Action> {
+    state
+        .cursor()
+        .map(|path| open_tab(&path, state))
+        .unwrap_or_default()
+}
+
 fn open_in_tabs(state: &State) -> Vec<Action> {
     let mut paths = state.marked_repos();
     if paths.is_empty() {
         paths.extend(state.cursor());
     }
+    open_tabs(state, paths)
+}
+
+fn open_tabs(state: &State, mut paths: Vec<PathBuf>) -> Vec<Action> {
     paths.retain(|path| {
         state
             .readings
@@ -249,7 +265,29 @@ pub fn learn(state: &mut State, path: PathBuf, origin: Origin, ctx: &Ctx) -> Tas
     pump_reads(state, ctx)
 }
 
-fn scanned(state: &mut State, result: &crate::scan::ScanResult, ctx: &Ctx) -> Task<Message> {
+/// Starts the scan of everything the settings name, after the one that runs.
+fn rescan(state: &mut State, ctx: &Ctx) -> Task<Message> {
+    if let Some(flag) = &state.scanning {
+        flag.store(true, Ordering::Relaxed);
+        state.scan_again = true;
+        return Task::none();
+    }
+    start_scan(state, ctx, true)
+}
+
+/// The folders repositories are searched in.
+fn sources(ctx: &Ctx) -> Vec<PathBuf> {
+    let home = ctx.home.clone().filter(|_| ctx.settings.scan_home);
+    ctx.settings.sources.iter().cloned().chain(home).collect()
+}
+
+fn drop_unfound(state: &mut State, result: &ScanResult, ctx: &Ctx) {
+    for path in state.store.drop_unfound(result, &sources(ctx)) {
+        forget(state, &path);
+    }
+}
+
+fn scanned(state: &mut State, result: &ScanResult, ctx: &Ctx) -> Task<Message> {
     state.scanning = None;
     let known: Vec<PathBuf> = state
         .store
@@ -259,6 +297,7 @@ fn scanned(state: &mut State, result: &crate::scan::ScanResult, ctx: &Ctx) -> Ta
         .collect();
     state.store.merge_found(&result.found);
     if !result.stopped {
+        drop_unfound(state, result, ctx);
         state.store.last_scan = Some(ScanStamp {
             at: ctx
                 .now
@@ -267,9 +306,7 @@ fn scanned(state: &mut State, result: &crate::scan::ScanResult, ctx: &Ctx) -> Ta
             repos: u64::try_from(result.found.len()).unwrap_or(u64::MAX),
             millis: result.millis,
         });
-        if ctx.settings.scan_home && ctx.home.is_some() {
-            state.store.home_scanned = true;
-        }
+        state.store.home_scanned = ctx.settings.scan_home && ctx.home.is_some();
     }
     persist(state, ctx);
     for (path, _) in &result.found {
@@ -277,7 +314,11 @@ fn scanned(state: &mut State, result: &crate::scan::ScanResult, ctx: &Ctx) -> Ta
             enqueue_read(state, path.clone());
         }
     }
-    pump_reads(state, ctx)
+    let reads = pump_reads(state, ctx);
+    if std::mem::take(&mut state.scan_again) {
+        return Task::batch([reads, start_scan(state, ctx, true)]);
+    }
+    reads
 }
 
 fn escape(state: &mut State) -> Outcome {
@@ -309,22 +350,32 @@ fn escape(state: &mut State) -> Outcome {
 }
 
 fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
-    let target = state.menu.take();
-    let message = match (entry, target) {
-        (MenuEntry::Open, Some(path)) => Message::RowOpened(path),
-        (MenuEntry::Favourite, Some(path)) => Message::FavouriteClicked(path),
-        (MenuEntry::Remove, Some(path)) => Message::RowRemoved(path),
-        (MenuEntry::Bulk(action), _) => Message::Bulk(action),
-        (MenuEntry::OpenInTabs, _) => Message::OpenInTabs,
-        (MenuEntry::Cleanup, _) => Message::Cleanup(CleanupMessage::Open),
-        (_, None) => return quiet(Task::none()),
+    let Some(path) = state.menu.take() else {
+        return quiet(Task::none());
     };
-    update(state, message, ctx)
+    match entry {
+        MenuEntry::Open => update(state, Message::RowOpened(path), ctx),
+        MenuEntry::Favourite => update(state, Message::FavouriteClicked(path), ctx),
+        MenuEntry::Remove => update(state, Message::RowRemoved(path), ctx),
+        MenuEntry::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
+        MenuEntry::Bulk(action) => {
+            let targets = state.targets_of_row(&path);
+            quiet(run::start(state, action, targets, ctx))
+        }
+        MenuEntry::OpenInTabs if state.is_marked(&path) => {
+            update(state, Message::OpenInTabs, ctx)
+        }
+        MenuEntry::OpenInTabs => (Task::none(), open_tabs(state, vec![path])),
+        MenuEntry::Cleanup => {
+            let targets = state.targets_of_row(&path);
+            cleanup::open(state, targets, ctx)
+        }
+    }
 }
 
 pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
     state.open_roots.clone_from(&ctx.open_roots);
-    let message = match crate::cleanup::update(state, incoming, ctx) {
+    let message = match cleanup::update(state, incoming, ctx) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
@@ -355,13 +406,7 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             mark_all(state, true);
             quiet(Task::none())
         }
-        Message::Enter => (
-            Task::none(),
-            state
-                .cursor()
-                .map(|path| open_tab(&path, state))
-                .unwrap_or_default(),
-        ),
+        Message::Enter => (Task::none(), open_cursor_row(state)),
         Message::ToggleFavouriteAtCursor => {
             if let Some(path) = state.cursor().filter(|path| is_repo_row(state, path)) {
                 toggle_favourite(state, &path, ctx);
@@ -386,11 +431,13 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         }
         Message::FilterChanged(text) => {
             state.filter = text;
+            state.filter_focused = true;
             quiet(Task::none())
         }
+        Message::FilterSubmitted if state.clone.is_some() => quiet(Task::none()),
         Message::FilterSubmitted => {
             state.filter_focused = false;
-            quiet(release_focus())
+            (release_focus(), open_cursor_row(state))
         }
         Message::OnlyNeedingActionToggled => {
             state.only_needing_action = !state.only_needing_action;
@@ -412,12 +459,14 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         }
         Message::MenuPicked(entry) => menu_picked(state, entry, ctx),
         Message::RowPressed(path) => {
+            state.filter_focused = false;
             state.marks.move_to(path);
-            quiet(Task::none())
+            quiet(release_focus())
         }
         Message::RowToggled(path) => {
+            state.filter_focused = false;
             toggle_mark(state, &path);
-            quiet(Task::none())
+            quiet(release_focus())
         }
         Message::FavouriteClicked(path) => {
             toggle_favourite(state, &path, ctx);
@@ -440,7 +489,9 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(Task::none())
         }
+        Message::Rescan => quiet(rescan(state, ctx)),
         Message::ScanNow => {
+            state.scan_again = false;
             if let Some(flag) = &state.scanning {
                 flag.store(true, Ordering::Relaxed);
                 return quiet(Task::none());
@@ -488,7 +539,10 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Message::Shown if is_stale(state, ctx) => quiet(refresh(state, ctx)),
         Message::Shown => quiet(Task::none()),
         Message::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
-        Message::Bulk(action) => quiet(run::start(state, action, ctx)),
+        Message::Bulk(action) => {
+            let targets = state.targets();
+            quiet(run::start(state, action, targets, ctx))
+        }
         Message::StepDone(path, executed) => {
             run::finish(state, ctx, path, *executed);
             quiet(run::pump(state, ctx))

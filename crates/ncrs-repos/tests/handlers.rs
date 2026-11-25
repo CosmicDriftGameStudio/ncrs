@@ -11,7 +11,7 @@
 mod common;
 
 use common::{fixture, read, repo, summary, ROOT};
-use ncrs_repos::{open, Action, GroupKey, Message, Origin, Reading, Store, REFRESH_EVERY};
+use ncrs_repos::{open, Action, GroupKey, Message, Origin, Reading, ScanResult, Store, REFRESH_EVERY};
 use std::path::PathBuf;
 
 const NAMES: [&str; 5] = ["alpha", "bravo", "charlie", "delta", "echo"];
@@ -204,4 +204,56 @@ fn showing_the_tab_reads_again_only_what_is_old() {
     fixture.ctx.now += REFRESH_EVERY / 2;
     fixture.send(Message::Shown);
     assert_eq!(fixture.state.refreshed_at, Some(fixture.ctx.now));
+}
+
+#[test]
+fn enter_in_the_filter_opens_the_row_and_gives_the_keys_back() {
+    let mut fixture = fixture(&NAMES, 0);
+    fixture.send(Message::FilterChanged("rav".to_owned()));
+    assert!(fixture.state.filter_focused());
+    assert_eq!(
+        fixture.send(Message::FilterSubmitted),
+        [Action::OpenGitTab(repo("bravo"))]
+    );
+    assert!(!fixture.state.filter_focused());
+}
+
+#[test]
+fn a_click_on_a_row_takes_the_keys_from_the_filter() {
+    let mut fixture = fixture(&NAMES, 0);
+    fixture.send(Message::FocusFilter);
+    fixture.send(Message::RowPressed(repo("charlie")));
+    assert!(!fixture.state.takes_text());
+    assert_eq!(
+        fixture.send(Message::Enter),
+        [Action::OpenGitTab(repo("charlie"))]
+    );
+}
+
+#[test]
+fn a_search_asked_for_while_one_runs_starts_after_it() {
+    let mut fixture = fixture(&NAMES, 0);
+    fixture.ctx.settings.sources = vec![fixture.dir.path().to_path_buf()];
+    fixture.send(Message::ScanNow);
+    assert!(fixture.state.is_scanning());
+    fixture.send(Message::Rescan);
+    let stopped = ScanResult {
+        stopped: true,
+        ..ScanResult::default()
+    };
+    fixture.send(Message::Scanned(Box::new(stopped)));
+    assert!(fixture.state.is_scanning());
+    fixture.send(Message::Scanned(Box::default()));
+    assert!(!fixture.state.is_scanning());
+}
+
+#[test]
+fn a_search_of_the_button_stops_for_good_when_pressed_again() {
+    let mut fixture = fixture(&NAMES, 0);
+    fixture.ctx.settings.sources = vec![fixture.dir.path().to_path_buf()];
+    fixture.send(Message::Rescan);
+    fixture.send(Message::Rescan);
+    fixture.send(Message::ScanNow);
+    fixture.send(Message::Scanned(Box::default()));
+    assert!(!fixture.state.is_scanning());
 }

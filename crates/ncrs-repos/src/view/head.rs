@@ -79,6 +79,7 @@ pub fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
     let (msg, count) = match scope {
         Scope::Marked(count) => (Msg::ReposSelected, count),
         Scope::Favourites(count) => (Msg::ReposScopeFavourites, count),
+        Scope::Row => (Msg::ReposScopeRow, 1),
     };
     fill_template(ctx.lang.text(msg), &[("{n}", &count.to_string())])
 }

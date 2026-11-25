@@ -13280,15 +13280,15 @@
     },
     {
       "key": "key_bindings.git_heading",
-      "context": "Title of the read-only list of Git actions below the actions in the keyboard shortcuts dialog. The name of the Git tab; keep Git.",
+      "context": "Shown in the group column of the Git actions in the keyboard shortcuts dialog. The name of the Git tab; keep Git.",
       "en": "Git",
       "de": "Git"
     },
     {
       "key": "key_bindings.git_note",
-      "context": "Note under the title of the Git list in the keyboard shortcuts dialog: these keys cannot be changed here. [keys.git] is the name of a table in the config file; keep it as it is.",
-      "en": "Shown only. Change these keys in the [keys.git] table of the config file.",
-      "de": "Nur zur Ansicht. Diese Tasten ändert man in der Tabelle [keys.git] der Konfigurationsdatei."
+      "context": "Note under the list of the keyboard shortcuts dialog: the keys of its Git actions cannot be changed here. [keys.git] is the name of a table in the config file; keep it as it is.",
+      "en": "The Git keys are shown only. Change them in the [keys.git] table of the config file.",
+      "de": "Die Git-Tasten sind nur zur Ansicht. Man ändert sie in der Tabelle [keys.git] der Konfigurationsdatei."
     },
     {
       "key": "git_view.undo_ignored",
@@ -14093,6 +14093,12 @@
       "context": "Entry of the command list while the Repos tab is shown: opens the clean-up of merged branches and worktrees over the chosen repositories.",
       "en": "Clean up merged branches and worktrees…",
       "de": "Gemergte Branches und Worktrees aufräumen…"
+    },
+    {
+      "key": "repos.scope_row",
+      "context": "Added to the label of a bulk action button of the Repos tab when nothing is ticked and there are no favourites: the action runs on the repository of the row under the cursor. Also under the title of the clean-up pane.",
+      "en": "this repository",
+      "de": "dieses Repository"
     },
     {
       "key": "repos.scope_favourites",

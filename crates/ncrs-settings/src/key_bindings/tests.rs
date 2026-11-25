@@ -69,6 +69,21 @@ fn the_git_actions_follow_the_search_by_name_and_by_key() {
 }
 
 #[test]
+fn the_git_actions_end_the_one_list_and_are_read_only() {
+    let keymap = Keymap::built_in();
+    let mut dialog = KeyBindings::new(Language::English, &keymap)
+        .with_git_shortcuts(vec![git_shortcut("Pull", "Ctrl+L")]);
+    let actions = dialog.rows().len();
+    assert_eq!(dialog.listed_len(), actions + 1);
+    dialog.move_cursor(isize::MAX);
+    assert_eq!(dialog.cursor(), actions);
+    assert_eq!(dialog.offset(), actions + 1 - VISIBLE_ROWS);
+    assert!(dialog.selected().is_none());
+    dialog.record();
+    assert!(!dialog.is_recording());
+}
+
+#[test]
 fn the_grant_action_is_not_listed_outside_the_sandbox() {
     let keymap = Keymap::built_in();
     let dialog = KeyBindings::new(Language::English, &keymap);

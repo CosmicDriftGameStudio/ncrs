@@ -109,6 +109,8 @@ pub fn repos_key(
         return match (modifiers.is_empty(), key.as_ref()) {
             (true, Key::Named(Named::ArrowDown)) => Some(Message::Down),
             (true, Key::Named(Named::ArrowUp)) => Some(Message::Up),
+            // Only when the field itself has lost the keyboard: it takes Enter.
+            (true, Key::Named(Named::Enter)) => Some(Message::FilterSubmitted),
             _ => None,
         };
     }

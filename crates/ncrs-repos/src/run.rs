@@ -13,18 +13,22 @@ use crate::ctx::Ctx;
 use crate::log::{clock_text, Log, LogLine};
 use crate::message::Message;
 use crate::rows::name_of;
-use crate::state::{Run, State};
+use crate::state::{Run, Scope, State};
 use crate::summary::Reading;
 use crate::tasks;
 use crate::texts::log_text;
 
-/// Starts `action` on what `State::targets` says. Nothing happens while a run
-/// is going, without targets, or where the write actions are off.
-pub fn start(state: &mut State, action: BulkAction, ctx: &Ctx) -> Task<Message> {
+/// Starts `action` on `targets`. Nothing happens while a run is going, without
+/// targets, or where the write actions are off.
+pub fn start(
+    state: &mut State,
+    action: BulkAction,
+    (scope, mut targets): (Scope, Vec<PathBuf>),
+    ctx: &Ctx,
+) -> Task<Message> {
     if !ctx.actions_available || state.run.as_ref().is_some_and(|run| !run.is_finished()) {
         return Task::none();
     }
-    let (scope, mut targets) = state.targets();
     if targets.is_empty() {
         return Task::none();
     }

@@ -2,7 +2,7 @@
 //! and the bar that sums up what a fetch or pull did.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{container, mouse_area, row, text, Row, Space};
+use iced::widget::{container, row, text, Row, Space};
 use iced::{alignment, Color, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
 
@@ -78,8 +78,6 @@ pub struct RepoRow<'a, M> {
     pub on_favourite: Option<M>,
     /// A click on a chip of the standing column.
     pub on_standing: Option<M>,
-    /// A click on the row itself.
-    pub on_open: Option<M>,
     /// The buttons of the last column; the caller shows them while the row is hovered.
     pub actions: Option<Element<'a, M>>,
 }
@@ -303,7 +301,7 @@ pub fn repo_row<'a, M: Clone + 'a>(
         )
     };
 
-    let line = container(
+    container(
         row![
             fixed(columns.checkbox, checkbox),
             fixed(columns.star, star),
@@ -326,11 +324,8 @@ pub fn repo_row<'a, M: Clone + 'a>(
     )
     .width(Length::Fill)
     .height(size::REPO_ROW)
-    .style(git::marked_row(palette, item.cursor, item.checked));
-    match item.on_open {
-        Some(message) => mouse_area(line).on_press(message).into(),
-        None => line.into(),
-    }
+    .style(git::marked_row(palette, item.cursor, item.checked))
+    .into()
 }
 
 /// How many repositories a run ended in each way.

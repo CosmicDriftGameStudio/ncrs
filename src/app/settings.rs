@@ -442,8 +442,12 @@ impl App {
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
             SettingChange::Repos(settings) => {
+                let searches_alike = self.repos_settings.searches_like(&settings);
                 self.repos_settings = settings;
-                Task::none()
+                if searches_alike {
+                    return Task::none();
+                }
+                self.update_repos(ncrs_repos::Message::Rescan)
             }
             SettingChange::Git(settings) => {
                 self.git_settings = settings;

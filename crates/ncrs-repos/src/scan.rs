@@ -1,6 +1,6 @@
 //! The walk that finds repositories under the project folders and `~`.
-//! It never enters a repository, never follows a symlink, and leaves out what
-//! the settings name, cloud folders and network drives.
+//! It looks inside a repository for further ones, never follows a symlink, and
+//! leaves out what the settings name, cloud folders and network drives.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,6 +74,8 @@ pub type Found = (PathBuf, PathBuf);
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScanResult {
     pub found: Vec<Found>,
+    /// The roots that could be read.
+    pub roots: Vec<PathBuf>,
     pub millis: u64,
     /// The stop flag ended the walk before it was done.
     pub stopped: bool,
@@ -89,6 +91,7 @@ pub fn scan(request: &ScanRequest) -> ScanResult {
     };
     let walk = Walk { request, network };
     let mut found: Vec<Found> = Vec::new();
+    let mut roots = Vec::new();
     for root in &request.roots {
         if walk.stopped() {
             break;
@@ -96,15 +99,33 @@ pub fn scan(request: &ScanRequest) -> ScanResult {
         if !walk.may_enter(root, true) {
             continue;
         }
-        walk.descend(root, root, 0, &mut found);
+        let start = Place {
+            dir: root,
+            level: 0,
+            inside_repo: false,
+        };
+        if root.read_dir().is_ok() {
+            roots.push(root.clone());
+        }
+        walk.descend(root, start, &mut found);
     }
-    found.sort();
+    // A repository below two roots belongs to the deeper one.
+    found.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)));
     found.dedup_by(|later, earlier| later.0 == earlier.0);
     ScanResult {
         found,
+        roots,
         millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         stopped: walk.stopped(),
     }
+}
+
+/// Where the walk is.
+#[derive(Clone, Copy)]
+struct Place<'a> {
+    dir: &'a Path,
+    level: u8,
+    inside_repo: bool,
 }
 
 struct Walk<'a> {
@@ -117,29 +138,40 @@ impl Walk<'_> {
         self.request.stop.load(Ordering::Relaxed)
     }
 
-    fn descend(&self, root: &Path, dir: &Path, level: u8, found: &mut Vec<Found>) {
+    fn descend(&self, root: &Path, place: Place<'_>, found: &mut Vec<Found>) {
         if self.stopped() {
             return;
         }
-        if has_git_entry(dir) {
-            found.push((dir.to_path_buf(), root.to_path_buf()));
+        let git_entry = place.dir.join(".git").symlink_metadata().ok();
+        // Inside a repository a `.git` file is one of its worktrees or submodules.
+        if place.inside_repo && git_entry.as_ref().is_some_and(|entry| !entry.is_dir()) {
             return;
         }
-        if level >= self.request.depth {
+        if git_entry.is_some() {
+            found.push((place.dir.to_path_buf(), root.to_path_buf()));
+        }
+        if place.level >= self.request.depth {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else {
+        let inside_repo = place.inside_repo || git_entry.is_some();
+        let Ok(entries) = std::fs::read_dir(place.dir) else {
             return;
         };
         let mut folders: Vec<PathBuf> = entries
             .filter_map(Result::ok)
             .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .filter(|entry| entry.file_name() != ".git")
             .map(|entry| entry.path())
             .filter(|path| self.may_enter(path, false))
             .collect();
         folders.sort();
         for folder in folders {
-            self.descend(root, &folder, level + 1, found);
+            let below = Place {
+                dir: &folder,
+                level: place.level + 1,
+                inside_repo,
+            };
+            self.descend(root, below, found);
         }
     }
 
@@ -190,10 +222,6 @@ impl Walk<'_> {
         }
         self.network.iter().any(|mount| path.starts_with(mount))
     }
-}
-
-fn has_git_entry(dir: &Path) -> bool {
-    dir.join(".git").symlink_metadata().is_ok()
 }
 
 fn is_cloud_folder(path: &Path) -> bool {
@@ -275,11 +303,28 @@ mod tests {
     }
 
     #[test]
-    fn the_walk_does_not_enter_a_repo() {
+    fn repos_inside_a_repo_are_found_down_to_the_depth() {
         let base = tempfile::tempdir().unwrap();
         repo(base.path(), "outer");
-        repo(base.path(), "outer/vendor/inner");
-        let result = scan(&request(base.path(), 4));
+        repo(base.path(), "outer/inner");
+        repo(base.path(), "outer/apps/shop");
+        repo(base.path(), "outer/apps/deeper/far");
+        repo(base.path(), "outer/node_modules/dep");
+        repo(base.path(), "outer/.git/modules/lib");
+        let result = scan(&request(base.path(), 3));
+        assert_eq!(
+            paths(&result, base.path()),
+            ["outer", "outer/apps/shop", "outer/inner"]
+        );
+    }
+
+    #[test]
+    fn worktrees_and_submodules_inside_a_repo_are_not_listed_nor_entered() {
+        let base = tempfile::tempdir().unwrap();
+        repo(base.path(), "outer");
+        repo(base.path(), "outer/.wt/feature/nested");
+        std::fs::write(base.path().join("outer/.wt/feature/.git"), "gitdir: x").unwrap();
+        let result = scan(&request(base.path(), 5));
         assert_eq!(paths(&result, base.path()), ["outer"]);
     }
 

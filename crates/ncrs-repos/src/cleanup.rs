@@ -497,12 +497,15 @@ fn limit(ctx: &Ctx) -> usize {
     usize::from(ctx.settings.concurrency).max(1)
 }
 
-fn open(state: &mut State, ctx: &Ctx) -> Outcome {
+pub fn open(
+    state: &mut State,
+    (scope, mut targets): (Scope, Vec<PathBuf>),
+    ctx: &Ctx,
+) -> Outcome {
     let busy = state.run.as_ref().is_some_and(|run| !run.is_finished());
     if !ctx.actions_available || busy || state.cleanup.is_some() || state.clone.is_some() {
         return quiet(Task::none());
     }
-    let (scope, mut targets) = state.targets();
     targets.sort_by_cached_key(|path| (name_of(path).to_lowercase(), path.clone()));
     let repos: BTreeMap<PathBuf, RepoState> = targets
         .iter()
@@ -805,7 +808,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Result<Outcome,
 
 fn handle(state: &mut State, message: CleanupMessage, ctx: &Ctx) -> Outcome {
     if let CleanupMessage::Open = message {
-        return open(state, ctx);
+        let targets = state.targets();
+        return open(state, targets, ctx);
     }
     let Some(cleanup) = state.cleanup.as_mut() else {
         return quiet(Task::none());
