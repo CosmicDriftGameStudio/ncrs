@@ -84,20 +84,18 @@ fn a_rule_listed_for_a_target_carries_it_and_the_listing_of_all_has_every_target
 }
 
 #[test]
-fn moving_the_rules_of_a_target_keeps_their_order_and_deleting_takes_only_its_own() {
+fn deleting_the_rules_of_a_target_takes_only_its_own() {
     let (_dir, mut index) = encrypted_index();
-    let (first, second, third) = (target("t1"), target("t2"), target("t3"));
-    let a = add(&mut index, "a", &first);
+    let (first, second) = (target("t1"), target("t2"));
+    add(&mut index, "a", &first);
     let b = add(&mut index, "b", &second);
-    let c = add(&mut index, "c", &first);
+    add(&mut index, "c", &first);
 
-    assert_eq!(index.move_rules_to_target(&first, &second).unwrap(), 2);
+    assert_eq!(index.delete_rules_of(&first).unwrap(), 2);
 
     assert!(index.rules_of(&first).unwrap().is_empty());
-    assert_eq!(ids_of(&index, &second), [a, b, c]);
-    assert_eq!(index.move_rules_to_target(&third, &first).unwrap(), 0);
-    assert_eq!(index.delete_rules_of(&second).unwrap(), 3);
-    assert!(index.rules().unwrap().is_empty());
+    assert_eq!(ids_of(&index, &second), [b]);
+    assert_eq!(index.delete_rules_of(&first).unwrap(), 0);
 }
 
 #[test]

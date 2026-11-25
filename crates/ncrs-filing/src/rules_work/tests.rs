@@ -50,10 +50,10 @@ impl Fixture {
 fn a_suggestion_between_two_rules(fixture: &Fixture) -> [RuleId; 3] {
     fixture.with_index(|index| {
         let a = index
-            .create_rule_from(&spec("rent"), RuleOrigin::Filing)
+            .create_rule_in(&spec("rent"), RuleOrigin::Filing, &TargetId::main())
             .unwrap();
         let RuleSuggestion::Created(s) = index
-            .suggest_rule(
+            .suggest_rule_in(
                 &spec("tax"),
                 RuleEvidence {
                     matching_in_folder: 3,
@@ -61,6 +61,7 @@ fn a_suggestion_between_two_rules(fixture: &Fixture) -> [RuleId; 3] {
                     matching_elsewhere: 0,
                     subtree: None,
                 },
+                &TargetId::main(),
             )
             .unwrap()
         else {
@@ -260,7 +261,9 @@ fn an_update_changes_the_form_fields_and_keeps_the_rest_of_the_rule() {
         let mut stored = spec("rent");
         stored.extract_date = Some(r"\d{4}".to_owned());
         stored.enabled = false;
-        let id = index.create_rule_from(&stored, RuleOrigin::Filing).unwrap();
+        let id = index
+            .create_rule_in(&stored, RuleOrigin::Filing, &TargetId::main())
+            .unwrap();
         index.create_rule(&spec("power")).unwrap();
         id
     });

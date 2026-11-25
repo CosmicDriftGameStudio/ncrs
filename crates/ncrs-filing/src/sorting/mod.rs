@@ -29,7 +29,7 @@ pub use suggest::{ModelNote, RuleForFile, SuggestError, Suggested, Suggestions};
 pub use suggest_file::suggest_rule_for;
 pub use suggest_scheme::suggest_scheme;
 pub use suggest_store::{adopt, dismiss};
-pub use watched::{run_watched, SourceWait, WatchedFiles, WatchedReport, WatchedSkip};
+pub use watched::{forget_backlog, run_watched, SourceWait, WatchedFiles, WatchedReport, WatchedSkip};
 
 #[cfg(test)]
 mod tests;

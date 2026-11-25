@@ -1,8 +1,6 @@
 use super::super::*;
 use super::keys::*;
 use crate::key_store::InMemoryKeyStore;
-use crate::model::ReviewReason;
-use crate::test_support::{encrypted_index, new_document, plain_index};
 use tempfile::TempDir;
 
 #[test]
@@ -85,38 +83,3 @@ fn database_from_a_newer_version_is_refused() {
     );
 }
 
-#[test]
-fn statistics_of_a_fresh_index_are_empty_in_both_flavours() {
-    for (_dir, index) in [encrypted_index(), plain_index()] {
-        let statistics = index.statistics().unwrap();
-
-        assert_eq!(
-            usize::try_from(statistics.schema_version).unwrap(),
-            MIGRATIONS.len()
-        );
-        assert_eq!(statistics.document_count, 0);
-        assert_eq!(statistics.open_reviews, 0);
-        assert!(statistics.full_text_bytes > 0);
-    }
-}
-
-#[test]
-fn statistics_follow_documents_text_and_reviews() {
-    let (_dir, mut index) = encrypted_index();
-    let before = index.statistics().unwrap().full_text_bytes;
-    let document = index.insert_document(&new_document(1)).unwrap();
-    index
-        .set_document_text(document, &"Invoice from Company A. ".repeat(4000))
-        .unwrap();
-
-    let filled = index.statistics().unwrap();
-    assert_eq!(filled.document_count, 1);
-    assert!(filled.full_text_bytes > before);
-
-    let entry = index
-        .add_review(document, ReviewReason::NoMatchingRule)
-        .unwrap();
-    assert_eq!(index.statistics().unwrap().open_reviews, 1);
-    index.resolve_review(entry).unwrap();
-    assert_eq!(index.statistics().unwrap().open_reviews, 0);
-}

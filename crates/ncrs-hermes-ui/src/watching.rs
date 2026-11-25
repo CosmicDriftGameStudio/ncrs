@@ -58,6 +58,8 @@ pub struct Watching {
     stalled: BTreeMap<PathBuf, u32>,
     everything_in: Option<u32>,
     problems: BTreeMap<PathBuf, Problem>,
+    /// Switched to watching and not run since: what they hold is backlog.
+    switched_on: BTreeSet<PathBuf>,
     /// Looking up how a folder is spelled on disk takes a moment or, on a dead
     /// mount, long: kept until the sources change.
     roots: Option<Vec<WatchedRoots>>,
@@ -70,6 +72,7 @@ impl Watching {
         *self = Self {
             running: self.running,
             everything: true,
+            switched_on: std::mem::take(&mut self.switched_on),
             ..Self::default()
         };
     }
@@ -79,6 +82,25 @@ impl Watching {
     pub fn mark_all(&mut self) {
         self.everything = true;
         self.roots = None;
+    }
+
+    /// Remembers the sources `after` watches and `before` did not; returns the
+    /// ones that are no longer watched.
+    pub fn switch(&mut self, before: &[SortSource], after: &[SortSource]) -> Vec<PathBuf> {
+        let watched = |sources: &[SortSource]| -> BTreeSet<PathBuf> {
+            sources
+                .iter()
+                .filter(|source| source.watch)
+                .map(|source| source.path.clone())
+                .collect()
+        };
+        let (before, after) = (watched(before), watched(after));
+        self.switched_on.extend(after.difference(&before).cloned());
+        before.difference(&after).cloned().collect()
+    }
+
+    pub fn is_switched_on(&self, source: &Path) -> bool {
+        self.switched_on.contains(source)
     }
 
     pub fn is_running(&self) -> bool {
@@ -196,6 +218,9 @@ impl Watching {
         };
         for run in runs {
             let source = &run.source;
+            if run.result.is_ok() {
+                self.switched_on.remove(source);
+            }
             match &run.result {
                 Ok(WatchedReport::Done { run: report, .. }) => {
                     settled.counts_changed = true;
@@ -322,6 +347,34 @@ mod tests {
             paths(&watching.take_due(&sources, never_busy)),
             [WatchedFiles::All]
         );
+    }
+
+    #[test]
+    fn a_source_switched_on_again_is_remembered_until_a_run_worked() {
+        let on = [source("/in")];
+        let off = [SortSource {
+            watch: false,
+            ..source("/in")
+        }];
+        let mut watching = Watching::default();
+
+        assert!(watching.switch(&on, &on).is_empty());
+        assert!(!watching.is_switched_on(Path::new("/in")));
+        assert_eq!(watching.switch(&on, &off), [PathBuf::from("/in")]);
+        assert_eq!(watching.switch(&on, &[]), [PathBuf::from("/in")]);
+        assert!(watching.switch(&off, &on).is_empty());
+        watching.reset();
+
+        let ended = |result| {
+            vec![SourceRun {
+                source: PathBuf::from("/in"),
+                result,
+            }]
+        };
+        watching.finish(&Ok(ended(Err("broken".to_owned()))));
+        assert!(watching.is_switched_on(Path::new("/in")));
+        watching.finish(&Ok(ended(Ok(WatchedReport::BacklogRecorded { files: 1 }))));
+        assert!(!watching.is_switched_on(Path::new("/in")));
     }
 
     #[test]

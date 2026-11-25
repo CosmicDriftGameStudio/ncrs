@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use iced::Task;
 use ncrs_config::config::Filing;
-use ncrs_filing::sorting::{run_watched, SortingAccess, WatchedFiles};
+use ncrs_filing::sorting::{forget_backlog, run_watched, SortingAccess, WatchedFiles};
 use ncrs_fs::transfer::Progress;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_intake::{canonical_path, SortSource};
@@ -51,6 +51,13 @@ pub fn run_watching(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action
     if due.is_empty() {
         return;
     }
+    let due: Vec<_> = due
+        .into_iter()
+        .map(|(source, files)| {
+            let is_switched_on = hermes.watching.is_switched_on(&source.path);
+            (source, files, is_switched_on)
+        })
+        .collect();
     let template = ctx.lang.text(Msg::HermesChatRunNameContinuous).to_owned();
     actions.push(Action::StartJobWithProgress(StartProgressJob {
         job: Job {
@@ -117,21 +124,28 @@ fn is_source_of(folder: Option<&Path>, source: &SortSource) -> bool {
 
 fn file_watched<P: Progress>(
     access: &SortingAccess,
-    due: &[(SortSource, WatchedFiles)],
+    due: &[(SortSource, WatchedFiles, bool)],
     busy_source: Option<&Path>,
     run_name_template: &str,
     progress: &mut P,
 ) -> Vec<SourceRun> {
     due.iter()
-        .map(|(source, files)| {
+        .map(|(source, files, is_switched_on)| {
             let folder = source
                 .path
                 .file_name()
                 .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
             let run_name = fill_template(run_name_template, &[("{folder}", &folder)]);
+            let stock = if *is_switched_on {
+                forget_backlog(access, std::slice::from_ref(&source.path))
+            } else {
+                Ok(())
+            };
             SourceRun {
                 source: source.path.clone(),
-                result: run_watched(access, source, files, busy_source, &run_name, progress),
+                result: stock.and_then(|()| {
+                    run_watched(access, source, files, busy_source, &run_name, progress)
+                }),
             }
         })
         .collect()

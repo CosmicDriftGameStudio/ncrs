@@ -50,6 +50,25 @@ fn what_lay_in_the_source_stays_and_new_files_go() {
 }
 
 #[test]
+fn what_came_while_the_source_was_not_watched_stays() {
+    let setup = Setup::new();
+    setup.rule("t1", "acme", "Acme/{number}");
+    let source = watched(&setup, &["t1"]);
+    let meanwhile = setup.write("Q1/meanwhile.txt", "acme Ref A1");
+
+    forget_backlog(&setup.access, std::slice::from_ref(&source.path)).unwrap();
+
+    assert_eq!(
+        setup.watch_after_reading(&source),
+        WatchedReport::BacklogRecorded { files: 1 }
+    );
+    assert_eq!(filed(&setup.watch(&source)), 0);
+    assert!(meanwhile.exists());
+    setup.write("Q1/new.txt", "acme Ref A2");
+    assert_eq!(filed(&setup.watch_after_reading(&source)), 1);
+}
+
+#[test]
 fn an_empty_source_records_that_it_was_empty() {
     let setup = Setup::new();
     setup.rule("t1", "acme", "Acme/{number}");

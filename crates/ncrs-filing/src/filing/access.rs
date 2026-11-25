@@ -119,21 +119,10 @@ impl FilingModule {
         })
     }
 
-    /// Takes the saved sources and targets, and copy or move for the locations
-    /// this module already has, so the next job works as saved. A saved
-    /// location the module does not have is left to the next start.
+    /// Takes the saved sources and targets, so the next job works as saved.
     pub fn adopt_sorting(&mut self, saved: &Filing) {
         self.sources.clone_from(&saved.sources);
         self.targets.clone_from(&saved.targets);
-        for entry in &mut self.locations {
-            if let Some(chosen) = saved
-                .locations
-                .iter()
-                .find(|candidate| candidate.path == entry.configured.path)
-            {
-                entry.configured.transfer = chosen.transfer;
-            }
-        }
     }
 
     /// What `resolve_locations` is to look up for the saved locations the

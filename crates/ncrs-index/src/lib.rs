@@ -39,7 +39,7 @@ mod test_support;
 pub use backup::{migration_backups, set_aside_path};
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
-pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};
+pub use hermes_column::{FileTags, IncludeOutcome, PathState};
 pub use index::Index;
 pub use journal::{
     BatchInfo, BatchKind, JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
@@ -54,9 +54,9 @@ pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name}
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ContentHash, Currency, Document,
     DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin, FieldOrigins,
-    FileStamp, HermesCounts, IndexStatistics, NewDocument, QuerySpec, ReviewEntry, ReviewEntryId,
+    FileStamp, HermesCounts, NewDocument, QuerySpec, ReviewEntry, ReviewEntryId,
     ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
-    SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind, SenderAliasState,
+    SavedQuery, SavedQueryId, SenderAlias, SenderAliasKind, SenderAliasState,
     SenderAliases, StatusCounts, SubtreePattern, TargetId,
 };
 pub use query_hit::QueryHit;

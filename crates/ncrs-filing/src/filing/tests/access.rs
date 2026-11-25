@@ -154,7 +154,7 @@ fn the_document_finder_exists_in_ready_only_and_fails_without_an_index() {
 }
 
 #[test]
-fn the_figures_reader_exists_in_ready_only() {
+fn the_counts_reader_exists_in_ready_only() {
     let others = [
         Phase::Starting,
         Phase::AskEncryption {
@@ -176,31 +176,14 @@ fn the_figures_reader_exists_in_ready_only() {
     for phase in others {
         let module = FilingModule::in_phase(phase);
         assert!(
-            module.index_figures_reader().is_none(),
+            module.hermes_counts_reader().is_none(),
             "{:?}",
             module.phase()
         );
     }
     assert!(FilingModule::in_phase(Phase::Ready)
-        .index_figures_reader()
+        .hermes_counts_reader()
         .is_some());
-}
-
-#[test]
-fn the_figures_reader_reports_a_plain_index_on_disk() {
-    let dir = TempDir::new().unwrap();
-    let db = db_in(&dir);
-    let store = Arc::new(InMemoryKeyStore::empty());
-    let mut module = started(&db, shared(&store));
-    send(&mut module, FilingMessage::ChooseEncrypted(false));
-    send(&mut module, FilingMessage::CreateIndex);
-
-    let figures = module.index_figures_reader().unwrap().read().unwrap();
-
-    assert!(!figures.encrypted);
-    assert_eq!(figures.path, db);
-    assert!(figures.file_bytes.is_some_and(|bytes| bytes > 0));
-    assert_eq!(figures.statistics.document_count, 0);
 }
 
 #[test]
@@ -277,10 +260,10 @@ fn only_a_module_without_work_or_a_shown_key_can_be_replaced() {
 }
 
 #[test]
-fn the_figures_reader_fails_when_the_slot_is_empty() {
+fn the_counts_reader_fails_when_the_slot_is_empty() {
     let module = FilingModule::in_phase(Phase::Ready);
 
-    let result = module.index_figures_reader().unwrap().read();
+    let result = module.hermes_counts_reader().unwrap().read();
 
     assert_eq!(result, Err(INDEX_NOT_OPEN.to_owned()));
 }

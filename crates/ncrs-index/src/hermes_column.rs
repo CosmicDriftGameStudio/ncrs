@@ -32,13 +32,6 @@ pub struct FileTags {
     pub own: Vec<String>,
 }
 
-/// The documents of a folder: those directly in it and those anywhere below.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct FolderCounts {
-    pub direct: StatusCounts,
-    pub deep: StatusCounts,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IncludeOutcome {
     Included,
@@ -135,28 +128,6 @@ impl Index {
         transaction.execute(
             "INSERT OR IGNORE INTO excluded_path (path) VALUES (?1)",
             [utf8(&key)?],
-        )?;
-        self.forget_documents_at(&key)?;
-        transaction.commit()?;
-        Ok(())
-    }
-
-    /// Like [`Self::exclude_path`], for a judgement of Hermes itself: the
-    /// exclusion remembers the stamp of the file it was made for and ends when
-    /// a different file lies at the path ([`Self::lift_outdated_automatic_exclusion`]).
-    pub fn exclude_path_automatically(&self, path: &Path) -> Result<(), IndexError> {
-        let key = stored(path);
-        let stamp = self
-            .document_by_path(&key)?
-            .and_then(|document| document.stamp);
-        let transaction = self.connection().unchecked_transaction()?;
-        transaction.execute(
-            "INSERT OR IGNORE INTO excluded_path (path, auto_size, auto_mtime) VALUES (?1, ?2, ?3)",
-            params![
-                utf8(&key)?,
-                stamp.map(FileStamp::size_column),
-                stamp.map(FileStamp::mtime_nanos)
-            ],
         )?;
         self.forget_documents_at(&key)?;
         transaction.commit()?;
@@ -341,27 +312,9 @@ impl Index {
         Ok(by_path)
     }
 
-    /// Counts of the documents, not missing, for every folder, in the order
-    /// given. Excluded documents are counted like the others, except as an
-    /// inquiry.
-    pub fn status_counts_under(
-        &self,
-        directories: &[PathBuf],
-    ) -> Result<Vec<FolderCounts>, IndexError> {
-        let direct = self.direct_status_counts_under(directories)?;
-        let deep = self.deep_status_counts_under(directories)?;
-        Ok(direct
-            .into_iter()
-            .zip(deep)
-            .map(|(direct_count, deep_count)| FolderCounts {
-                direct: direct_count,
-                deep: deep_count,
-            })
-            .collect())
-    }
-
-    /// The `deep` half of [`Self::status_counts_under`]: everything below each
-    /// folder, which is the slow one on a deep tree.
+    /// Counts of the documents, not missing, anywhere below each folder, in the
+    /// order given; slow on a deep tree. Excluded documents are counted like
+    /// the others, except as an inquiry.
     pub fn deep_status_counts_under(
         &self,
         directories: &[PathBuf],
@@ -380,8 +333,8 @@ impl Index {
             .collect()
     }
 
-    /// The `direct` half of [`Self::status_counts_under`], which is the cheap
-    /// one: only the files in the folder itself.
+    /// Like [`Self::deep_status_counts_under`], only the files in the folder
+    /// itself, which is cheap.
     pub fn direct_status_counts_under(
         &self,
         directories: &[PathBuf],
@@ -550,17 +503,18 @@ mod tests {
         let gone = document_at(&index, 4, "/d/Scan/gone.pdf");
         index.mark_document_missing(gone).unwrap();
 
-        let counts = index
-            .status_counts_under(&[p("/d/Scan"), p("/d/Scan/deeper"), p("/nowhere")])
-            .unwrap();
+        let folders = [p("/d/Scan"), p("/d/Scan/deeper"), p("/nowhere")];
+        let direct = index.direct_status_counts_under(&folders).unwrap();
+        let deep = index.deep_status_counts_under(&folders).unwrap();
 
-        assert_eq!(counts[0].direct.new, 1);
-        assert_eq!(counts[0].direct.filed, 0);
-        assert_eq!(counts[0].deep.new, 1);
-        assert_eq!(counts[0].deep.filed, 1);
-        assert_eq!(counts[1].direct.filed, 1);
-        assert_eq!(counts[1].deep.filed, 1);
-        assert_eq!(counts[2], FolderCounts::default());
+        assert_eq!(direct[0].new, 1);
+        assert_eq!(direct[0].filed, 0);
+        assert_eq!(deep[0].new, 1);
+        assert_eq!(deep[0].filed, 1);
+        assert_eq!(direct[1].filed, 1);
+        assert_eq!(deep[1].filed, 1);
+        assert_eq!(direct[2], StatusCounts::default());
+        assert_eq!(deep[2], StatusCounts::default());
     }
 
     #[test]
@@ -577,13 +531,13 @@ mod tests {
         index.exclude_path(&p("/d/icons/a.png")).unwrap();
         index.exclude_path(&p("/d/icons")).unwrap();
 
-        let counts = index
-            .status_counts_under(&[p("/d"), p("/d/icons")])
-            .unwrap();
+        let folders = [p("/d"), p("/d/icons")];
+        let direct = index.direct_status_counts_under(&folders).unwrap();
+        let deep = index.deep_status_counts_under(&folders).unwrap();
 
-        assert_eq!(counts[0].deep.in_review, 1);
-        assert_eq!(counts[0].direct.in_review, 1);
-        assert_eq!(counts[1].direct.in_review, 0);
+        assert_eq!(deep[0].in_review, 1);
+        assert_eq!(direct[0].in_review, 1);
+        assert_eq!(direct[1].in_review, 0);
         assert_eq!(index.hermes_counts().unwrap().open_reviews, 1);
         assert_eq!(index.hermes_counts().unwrap().open_reviews_without_text, 1);
     }
@@ -592,10 +546,12 @@ mod tests {
     fn a_folder_with_a_trailing_separator_counts_the_same() {
         let (_dir, index) = plain_index();
         document_at(&index, 1, "/d/a.pdf");
-        let counts = index.status_counts_under(&[p("/d/"), p("/")]).unwrap();
-        assert_eq!(counts[0].direct.new, 1);
-        assert_eq!(counts[1].deep.new, 1);
-        assert_eq!(counts[1].direct.new, 0);
+        let folders = [p("/d/"), p("/")];
+        let direct = index.direct_status_counts_under(&folders).unwrap();
+        let deep = index.deep_status_counts_under(&folders).unwrap();
+        assert_eq!(direct[0].new, 1);
+        assert_eq!(deep[1].new, 1);
+        assert_eq!(direct[1].new, 0);
     }
 
     #[test]

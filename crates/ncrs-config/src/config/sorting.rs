@@ -360,28 +360,24 @@ pub fn locations_of_sorting(sorting: &Sorting, listed: &[FilingLocation]) -> Vec
             ..location.clone()
         })
         .collect();
-    let mut target_marked = false;
     let running_targets = sorting
         .targets
         .iter()
         .filter(|setting| setting.paused.is_none());
     for setting in running_targets {
-        let is_main = !target_marked;
-        let known = locations
-            .iter_mut()
-            .find(|location| same_folder(&location.path, &setting.target.path));
-        match known {
-            Some(location) => location.is_target = location.is_target || is_main,
-            None => locations.push(FilingLocation {
+        let is_listed = locations
+            .iter()
+            .any(|location| same_folder(&location.path, &setting.target.path));
+        if !is_listed {
+            locations.push(FilingLocation {
                 path: setting.target.path.clone(),
                 mode: LocationMode::Archive,
                 images: true,
-                is_target: is_main,
+                is_target: false,
                 transfer: LocationTransfer::default(),
                 continuous: false,
-            }),
+            });
         }
-        target_marked = true;
     }
     let archives: Vec<PathBuf> = locations.iter().map(|location| location.path.clone()).collect();
     for setting in sorting
@@ -401,8 +397,8 @@ pub fn locations_of_sorting(sorting: &Sorting, listed: &[FilingLocation]) -> Vec
             mode: LocationMode::Inbox,
             images: !source.exclude.eq_ignore_ascii_case(IMAGE_EXCLUDE),
             is_target: false,
-            transfer: source.transfer,
-            continuous: source.watch,
+            transfer: LocationTransfer::default(),
+            continuous: false,
         });
     }
     locations

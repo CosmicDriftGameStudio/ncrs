@@ -592,7 +592,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_hosting_rule(
     assert_eq!(hosting.spec.tags, tag_set(&["services"]));
     assert_eq!(hosting.spec.filing_pattern, "{year}/{sender}/");
     assert!(hosting.spec.confirmed && hosting.spec.enabled);
-    assert_eq!(index.rule_evidence(hosting.id).unwrap(), None);
+    assert_eq!(crate::test_support::rule_evidence(index, hosting.id), None);
 }
 
 pub(in crate::index::tests) fn assert_v1_2_0_inbox_rule(inbox: &crate::model::Rule) {
@@ -629,7 +629,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_suggested_rule(
         [Condition::new(ConditionKind::Word, "Rechnung")]
     );
     assert_eq!(
-        index.rule_evidence(suggested.id).unwrap(),
+        crate::test_support::rule_evidence(index, suggested.id),
         Some(RuleEvidence {
             matching_in_folder: 8,
             folder_documents: 10,
@@ -637,8 +637,6 @@ pub(in crate::index::tests) fn assert_v1_2_0_suggested_rule(
             subtree: Some("2026".to_owned()),
         })
     );
-    let (suggested_rule, _) = index.suggested_rules().unwrap().remove(0);
-    assert_eq!(suggested_rule.id, suggested.id);
 }
 
 pub(in crate::index::tests) fn assert_v1_2_0_discarded_suggestion(index: &Index) {
