@@ -138,6 +138,28 @@ pub fn count_commits(
     Ok(count)
 }
 
+/// Like `count_commits`, but a history that cannot be walked to the end
+/// (a shallow clone) is `None`: "unknown" must not read as "nothing missing".
+pub fn count_commits_strict(
+    repository: &gix::Repository,
+    tip: gix::ObjectId,
+    hidden: gix::ObjectId,
+    stop: &AtomicBool,
+) -> Result<Option<u32>, GitError> {
+    let Ok(walk) = repository.rev_walk([tip]).with_hidden([hidden]).all() else {
+        return Ok(None);
+    };
+    let mut count: u32 = 0;
+    for commit in walk {
+        check_stop(stop)?;
+        if commit.is_err() {
+            return Ok(None);
+        }
+        count = count.saturating_add(1);
+    }
+    Ok(Some(count))
+}
+
 fn file_states(
     repository: &gix::Repository,
     stop: &Arc<AtomicBool>,

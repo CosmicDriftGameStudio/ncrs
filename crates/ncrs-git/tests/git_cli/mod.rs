@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::Once;
 
 use ncrs_git::Git;
-use tempfile::TempDir;
+pub use tempfile::TempDir;
 
 static ISOLATE: Once = Once::new();
 

@@ -30,4 +30,15 @@ impl Git {
             Err(invalid(name))
         }
     }
+
+    /// A name for a tag that is about to be made, as git itself judges it.
+    pub fn check_tag_name(&self, name: &str) -> Result<(), ActionError> {
+        plain_ref(name)?;
+        let output = self.run(&["check-ref-format", &format!("refs/tags/{name}")], None)?;
+        if output.success {
+            Ok(())
+        } else {
+            Err(invalid(name))
+        }
+    }
 }

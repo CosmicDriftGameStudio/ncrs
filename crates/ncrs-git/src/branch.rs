@@ -62,4 +62,24 @@ impl Git {
             },
         })
     }
+
+    /// Switches to the default branch (what `origin/HEAD` names, else main or master),
+    /// making a local branch that tracks origin first when there is none yet.
+    /// Returns its name.
+    pub fn switch_to_default(&self) -> Result<String, ActionError> {
+        let repository = crate::repo_access::open(self.root()).map_err(|cause| ActionError::Other {
+            git_output: cause.to_string(),
+        })?;
+        let found = crate::repo_access::default_branch(&repository).ok_or_else(|| {
+            ActionError::Other {
+                git_output: "there is no default branch here".to_string(),
+            }
+        })?;
+        if found.local_tip.is_some() {
+            self.checkout(&found.name)?;
+        } else {
+            self.checkout_remote_branch(&format!("origin/{}", found.name))?;
+        }
+        Ok(found.name)
+    }
 }

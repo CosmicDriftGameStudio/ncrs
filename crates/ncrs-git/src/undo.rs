@@ -19,6 +19,12 @@ pub enum UndoSummary {
     Discard { files: usize },
     Commit { title: String },
     DeleteBranch { name: String },
+    Ignore { pattern: String },
+    CreateTag { name: String },
+    CherryPick { title: String },
+    Revert { title: String },
+    Reset { branch: String, sha: String },
+    CleanUp { branches: usize },
 }
 
 /// The last local action and how to take it back. Held by the caller (in memory
@@ -49,6 +55,31 @@ pub enum UndoAction {
         name: String,
         sha: String,
     },
+    /// Branches deleted together by the clean up, with the upstream they tracked.
+    RecreateBranches(Vec<RecreatedBranch>),
+    DeleteTag {
+        name: String,
+        sha: String,
+    },
+    /// A reset of the checked-out branch. The index trees are `None` while the
+    /// index had conflicts (no tree can be written then).
+    ResetBranch {
+        previous_head: String,
+        new_head: String,
+        index_before: Option<String>,
+        index_after: Option<String>,
+        /// What a hard reset would have thrown away; empty for soft and mixed.
+        saved: Vec<SavedFile>,
+        hard: bool,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecreatedBranch {
+    pub name: String,
+    pub sha: String,
+    /// The tracking name (`origin/feature`) to set again, when that ref still exists.
+    pub upstream: Option<String>,
 }
 
 /// A file as the discard found it, kept under `.git/ncrs-undo`.
@@ -182,7 +213,29 @@ impl Git {
                 self.ok(&["reset", "--soft", previous_head])?;
                 Ok(())
             }
-            UndoAction::RestoreFiles { saved } => self.restore_files(saved),
+            UndoAction::RestoreFiles { saved } => {
+                self.check_saved(saved)?;
+                self.apply_saved(saved)
+            }
+            UndoAction::RecreateBranches(branches) => self.recreate_branches(branches),
+            UndoAction::DeleteTag { name, sha } => {
+                let current = self.try_text(&["rev-parse", "--verify", "-q", &format!("refs/tags/{name}")]);
+                if current.as_deref() != Some(sha.as_str()) {
+                    return Err(ActionError::UndoNotSafe(format!(
+                        "tag {name} was moved or removed since"
+                    )));
+                }
+                self.ok(&["tag", "-d", "--", name])?;
+                Ok(())
+            }
+            UndoAction::ResetBranch {
+                previous_head,
+                new_head,
+                index_before,
+                index_after,
+                saved,
+                hard,
+            } => self.undo_reset(previous_head, new_head, index_before, index_after, saved, *hard),
             UndoAction::RecreateBranch { name, sha } => {
                 if self
                     .try_text(&["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")])
@@ -198,7 +251,98 @@ impl Git {
         }
     }
 
-    fn restore_files(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
+    fn recreate_branches(&self, branches: &[RecreatedBranch]) -> Result<(), ActionError> {
+        for branch in branches {
+            if self
+                .try_text(&[
+                    "rev-parse",
+                    "--verify",
+                    "-q",
+                    &format!("refs/heads/{}", branch.name),
+                ])
+                .is_some()
+            {
+                return Err(ActionError::UndoNotSafe(format!(
+                    "branch {} exists again",
+                    branch.name
+                )));
+            }
+        }
+        for branch in branches {
+            self.ok(&["branch", "--", &branch.name, &branch.sha])?;
+            if let Some(upstream) = &branch.upstream {
+                let known = self
+                    .try_text(&[
+                        "rev-parse",
+                        "--verify",
+                        "-q",
+                        &format!("refs/remotes/{upstream}"),
+                    ])
+                    .is_some();
+                if known {
+                    self.ok(&[
+                        "branch",
+                        &format!("--set-upstream-to={upstream}"),
+                        &branch.name,
+                    ])?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn undo_reset(
+        &self,
+        previous_head: &str,
+        new_head: &str,
+        index_before: &Option<String>,
+        index_after: &Option<String>,
+        saved: &[SavedFile],
+        hard: bool,
+    ) -> Result<(), ActionError> {
+        if self.head_sha().as_deref() != Some(new_head) {
+            return Err(ActionError::UndoNotSafe(
+                "HEAD moved since the reset".to_string(),
+            ));
+        }
+        if index_after.is_some() && self.index_tree() != *index_after {
+            return Err(ActionError::UndoNotSafe(
+                "the index changed since".to_string(),
+            ));
+        }
+        if hard {
+            let changed = self.text(&["status", "--porcelain=v1", "--untracked-files=no"])?;
+            if !changed.is_empty() {
+                return Err(ActionError::UndoNotSafe(
+                    "tracked files changed since the reset".to_string(),
+                ));
+            }
+            self.check_saved(saved)?;
+            self.ok(&["reset", "--hard", previous_head])?;
+        } else {
+            self.ok(&["reset", "--soft", previous_head])?;
+        }
+        if let Some(tree) = index_before {
+            self.ok(&["read-tree", tree])?;
+        }
+        self.apply_saved(saved)
+    }
+
+    /// The files a hard reset is about to lose, saved as `save_files` does.
+    pub(crate) fn save_changed_tracked(&self) -> Result<Vec<SavedFile>, ActionError> {
+        let output = self.ok(&["diff", "--name-only", "-z", "HEAD", "--"])?;
+        let paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .split('\0')
+            .filter(|path| !path.is_empty())
+            .map(str::to_string)
+            .collect();
+        for path in &paths {
+            refuse_symlinks(self.root(), path)?;
+        }
+        self.save_files(&paths)
+    }
+
+    fn check_saved(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
         for file in saved {
             refuse_symlinks(self.root(), &file.path)?;
             if hash_of_file(&self.root().join(&file.path)) != file.after_hash {
@@ -208,6 +352,10 @@ impl Git {
                 )));
             }
         }
+        Ok(())
+    }
+
+    fn apply_saved(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
         for file in saved {
             let target = self.root().join(&file.path);
             match &file.backup {
