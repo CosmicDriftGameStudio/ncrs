@@ -140,6 +140,7 @@ impl App {
         };
         let shared = PromptKeyState {
             keymap: Arc::clone(&self.keymap),
+            git_keys: Arc::clone(&self.git_keys),
             job_running,
             config_error,
             delete_dialog,

@@ -382,3 +382,19 @@ pub fn tooltip<'a, M: 'a>(
     )
     .into()
 }
+
+/// `content` with the one look of keyboard focus around it while `has_focus`;
+/// without focus it takes the same room, so focus moves nothing.
+pub fn focused<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    has_focus: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ring = has_focus.then(|| theme::focus_border(palette));
+    container(content)
+        .style(move |_: &iced::Theme| container::Style {
+            border: ring.unwrap_or_default(),
+            ..container::Style::default()
+        })
+        .into()
+}

@@ -108,7 +108,8 @@ fn open(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
-    settings.key_bindings = Some(KeyBindings::new(ctx.lang, ctx.keymap));
+    settings.key_bindings =
+        Some(KeyBindings::new(ctx.lang, ctx.keymap).with_git_shortcuts(ctx.git_shortcuts.clone()));
     focus
 }
 

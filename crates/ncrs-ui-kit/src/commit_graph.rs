@@ -5,7 +5,7 @@ use iced::widget::canvas::{self, Canvas, Frame, Geometry, LineCap, Path, Stroke}
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Theme};
 
 use crate::palette::Palette;
-use crate::theme::size;
+use crate::theme::{git, size};
 
 /// Horizontal room of one lane.
 pub const LANE_WIDTH: f32 = 14.0;
@@ -39,16 +39,10 @@ pub struct GraphCell {
     pub dimmed: bool,
 }
 
-/// The colour of a lane; the lanes take turns in the accent colours of the palette.
+/// The colour of a lane; the lanes take turns in cyan, pink and orange. Yellow
+/// is left to keyboard focus.
 pub fn lane_color(palette: &Palette, lane: usize) -> Color {
-    let colors = [
-        palette.accent,
-        palette.directory,
-        palette.success,
-        palette.title,
-        palette.tagged,
-        palette.error,
-    ];
+    let colors = [git::cyan(), palette.tagged, git::orange()];
     colors
         .get(lane % colors.len())
         .copied()
@@ -75,7 +69,7 @@ impl GraphProgram {
     }
 }
 
-fn lane_x(lane: usize) -> f32 {
+pub(crate) fn lane_x(lane: usize) -> f32 {
     LANE_WIDTH * lane as f32 + LANE_WIDTH / 2.0
 }
 
@@ -164,6 +158,14 @@ mod tests {
     #[test]
     fn lanes_take_turns_in_colours() {
         let palette = Palette::default();
-        assert_eq!(lane_color(&palette, 0), lane_color(&palette, 6));
+        assert_eq!(lane_color(&palette, 0), lane_color(&palette, 3));
+    }
+
+    #[test]
+    fn no_lane_is_drawn_in_the_focus_yellow() {
+        let palette = Palette::default();
+        for lane in 0..6 {
+            assert_ne!(lane_color(&palette, lane), palette.accent);
+        }
     }
 }

@@ -9,7 +9,7 @@ use iced::{alignment, Border, Color, Element, Length, Padding};
 use crate::format::{estimated_width, fit_end};
 use crate::git_mark::MODIFIED_ORANGE;
 use crate::palette::Palette;
-use crate::theme::{self, font_size, size, spacing};
+use crate::theme::{self, font_size, git, size, spacing};
 use crate::tree_list::{LABEL_LEAD, TREE_INDENT};
 
 const NUMBER_WIDTH: f32 = 44.0;
@@ -116,29 +116,46 @@ pub fn drag_capture<'a, M: Clone + 'a>(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefChipKind {
+    /// The checked-out branch: filled, bold, with a tick.
+    Head,
+    /// A local branch.
     Branch,
     Remote,
     Tag,
 }
 
-fn chip_color(kind: RefChipKind, palette: &Palette) -> Color {
+fn ref_look(kind: RefChipKind) -> git::RefLook {
     match kind {
-        RefChipKind::Branch => palette.accent,
-        RefChipKind::Remote => palette.dim_text,
-        RefChipKind::Tag => palette.success,
+        RefChipKind::Head => git::RefLook::Head,
+        RefChipKind::Branch => git::RefLook::Local,
+        RefChipKind::Remote => git::RefLook::Remote,
+        RefChipKind::Tag => git::RefLook::Tag,
+    }
+}
+
+/// What a chip shows: the head carries a tick.
+fn chip_text(label: &str, kind: RefChipKind) -> String {
+    match kind {
+        RefChipKind::Head => format!("\u{2713} {label}"),
+        RefChipKind::Branch | RefChipKind::Remote | RefChipKind::Tag => label.to_owned(),
     }
 }
 
 /// A branch, remote branch or tag name on a commit.
 pub fn ref_chip<'a, M: 'a>(label: String, kind: RefChipKind, palette: &Palette) -> Element<'a, M> {
+    let font = if kind == RefChipKind::Head {
+        crate::APP_FONT_BOLD
+    } else {
+        crate::APP_FONT
+    };
     container(
-        text(label)
+        text(chip_text(&label, kind))
             .size(font_size::SMALL)
-            .color(chip_color(kind, palette))
+            .font(font)
             .wrapping(Wrapping::None),
     )
     .padding([0.0, spacing::XS])
-    .style(theme::chip(palette, false))
+    .style(git::ref_label(palette, ref_look(kind)))
     .into()
 }
 
@@ -158,6 +175,8 @@ pub struct CommitRow<'a, M> {
     pub chosen: bool,
     /// A merge commit is drawn in the dim ink.
     pub dimmed: bool,
+    /// The checked-out commit: tinted in purple and bold.
+    pub is_head: bool,
     pub on_press: M,
 }
 
@@ -229,12 +248,15 @@ fn message_cell<'a, M: 'a>(
     message: &str,
     width: f32,
     ink: Color,
+    bold: bool,
     palette: &Palette,
 ) -> Element<'a, M> {
     let chips_width: f32 = chips
         .iter()
-        .map(|(label, _)| {
-            estimated_width(label, font_size::SMALL) + 2.0 * spacing::XS + spacing::XS
+        .map(|(label, kind)| {
+            estimated_width(&chip_text(label, *kind), font_size::SMALL)
+                + 2.0 * spacing::XS
+                + spacing::XS
         })
         .sum();
     let fitted = fit_end(message, width - chips_width, font_size::BODY);
@@ -248,6 +270,11 @@ fn message_cell<'a, M: 'a>(
         chip_row,
         text(fitted)
             .size(font_size::BODY)
+            .font(if bold {
+                crate::APP_FONT_BOLD
+            } else {
+                crate::APP_FONT
+            })
             .color(ink)
             .wrapping(Wrapping::None)
     ]
@@ -291,6 +318,7 @@ pub fn commit_row<'a, M: Clone + 'a>(
         &commit.message,
         commit.message_width,
         ink,
+        commit.is_head,
         palette,
     );
     let line = row![
@@ -315,7 +343,7 @@ pub fn commit_row<'a, M: Clone + 'a>(
     .width(Length::Fill)
     .height(size::ROW)
     .padding(0.0)
-    .style(theme::menu_item(palette, commit.chosen))
+    .style(git::graph_row(palette, commit.chosen, commit.is_head))
     .into()
 }
 

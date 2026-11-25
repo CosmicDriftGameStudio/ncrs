@@ -1,5 +1,6 @@
-//! The keys of the Git actions: one table says which chord does what, the
-//! key handler, the menus, the tooltips and the status bar read it.
+//! The Git actions with the keys they ship with; [`GitKeys`] says which key
+//! does what once `[keys.git]` is applied. The key handler, the menus, the
+//! tooltips and the status bar read that.
 
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
@@ -7,14 +8,8 @@ use iced::keyboard::{Key, Modifiers};
 use ncrs_i18n::{Language, Msg};
 
 use crate::actions::{ConflictAction, MenuAction, Side};
+use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
-
-/// The key of a chord.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pressed {
-    Letter(&'static str),
-    Named(Named),
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -45,7 +40,7 @@ pub enum Shortcut {
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: &'static [Self] = &[
         Self::Fetch,
         Self::Pull,
         Self::Push,
@@ -72,46 +67,107 @@ impl Shortcut {
         Self::ResetConflict,
     ];
 
-    /// ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F, ⇧⌘B, ⇧⌘D,
-    /// ⇧⌘H, ⌘K, ⌘,) stay free.
-    fn chord(self) -> (Modifiers, Pressed) {
-        let shifted = Modifiers::COMMAND | Modifiers::SHIFT;
+    /// The name of the action in `[keys.git]`.
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::Fetch => (shifted, Pressed::Letter("e")),
-            Self::Pull => (shifted, Pressed::Letter("l")),
-            Self::Push => (shifted, Pressed::Letter("u")),
-            Self::Stash => (shifted, Pressed::Letter("s")),
-            Self::Undo => (shifted, Pressed::Letter("y")),
-            Self::Commit => (Modifiers::COMMAND, Pressed::Named(Named::Enter)),
-            Self::StageAll => (shifted, Pressed::Letter("i")),
-            Self::UnstageAll => (shifted, Pressed::Letter("r")),
-            Self::DiscardAll => (shifted, Pressed::Named(Named::Backspace)),
-            Self::NewBranch => (shifted, Pressed::Letter("t")),
-            Self::Checkout => (shifted, Pressed::Letter("o")),
-            Self::Rename => (Modifiers::SHIFT, Pressed::Named(Named::F6)),
-            Self::Delete => (Modifiers::COMMAND, Pressed::Named(Named::Backspace)),
-            Self::Merge => (shifted, Pressed::Letter("m")),
-            Self::Rebase => (shifted, Pressed::Letter("x")),
-            Self::StashApply => (shifted, Pressed::Named(Named::Enter)),
-            Self::StashPop => (shifted, Pressed::Letter("w")),
-            Self::OpenMenu => (Modifiers::SHIFT, Pressed::Named(Named::F10)),
-            Self::TakeMine => (shifted, Pressed::Named(Named::ArrowLeft)),
-            Self::TakeTheirs => (shifted, Pressed::Named(Named::ArrowRight)),
-            Self::TakeBoth => (shifted, Pressed::Named(Named::ArrowDown)),
-            Self::OpenEditor => (Modifiers::empty(), Pressed::Named(Named::F4)),
-            Self::MarkResolved => (shifted, Pressed::Letter("j")),
-            Self::ResetConflict => (shifted, Pressed::Letter("z")),
+            Self::Fetch => "fetch",
+            Self::Pull => "pull",
+            Self::Push => "push",
+            Self::Stash => "stash",
+            Self::Undo => "undo",
+            Self::Commit => "commit",
+            Self::StageAll => "stage_all",
+            Self::UnstageAll => "unstage_all",
+            Self::DiscardAll => "discard_all",
+            Self::NewBranch => "new_branch",
+            Self::Checkout => "checkout",
+            Self::Rename => "rename",
+            Self::Delete => "delete",
+            Self::Merge => "merge",
+            Self::Rebase => "rebase",
+            Self::StashApply => "stash_apply",
+            Self::StashPop => "stash_pop",
+            Self::OpenMenu => "open_menu",
+            Self::TakeMine => "take_mine",
+            Self::TakeTheirs => "take_theirs",
+            Self::TakeBoth => "take_both",
+            Self::OpenEditor => "open_editor",
+            Self::MarkResolved => "mark_resolved",
+            Self::ResetConflict => "reset_conflict",
         }
     }
 
-    /// The modifiers and key of the chord, as the app-wide keymap spells them.
-    pub fn binding(self) -> (Modifiers, Key) {
-        let (held, pressed) = self.chord();
-        let key = match pressed {
-            Pressed::Letter(letter) => Key::Character(letter.into()),
-            Pressed::Named(named) => Key::Named(named),
-        };
-        (held, key)
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|shortcut| shortcut.name() == name)
+    }
+
+    /// The place in [`Self::ALL`], which is where [`GitKeys`] keeps the keys.
+    pub fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|shortcut| *shortcut == self)
+            .unwrap_or_default()
+    }
+
+    /// The default key is one the whole app already gives the same meaning:
+    /// edit, menu, rename. The check against the app keymap skips these.
+    pub const fn shares_an_app_key(self) -> bool {
+        matches!(self, Self::OpenEditor | Self::OpenMenu | Self::Rename)
+    }
+
+    /// The key it ships with; `command` is what Cmd or Ctrl is on the
+    /// platform. ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F,
+    /// ⇧⌘B, ⇧⌘D, ⇧⌘H, ⌘K, ⌘,) stay free.
+    pub(crate) fn default_chord(self, command: Modifiers) -> Chord {
+        let shifted = command | Modifiers::SHIFT;
+        let letter = |held: Modifiers, letter: &str| (held, Key::Character(letter.into()));
+        let named = |held: Modifiers, named: Named| (held, Key::Named(named));
+        match self {
+            Self::Fetch => letter(shifted, "e"),
+            Self::Pull => letter(shifted, "l"),
+            Self::Push => letter(shifted, "u"),
+            Self::Stash => letter(shifted, "s"),
+            Self::Undo => letter(shifted, "y"),
+            Self::Commit => named(command, Named::Enter),
+            Self::StageAll => letter(shifted, "i"),
+            Self::UnstageAll => letter(shifted, "r"),
+            Self::DiscardAll => named(shifted, Named::Backspace),
+            Self::NewBranch => letter(shifted, "t"),
+            Self::Checkout => letter(shifted, "o"),
+            Self::Rename => named(Modifiers::SHIFT, Named::F6),
+            Self::Delete => named(command, Named::Backspace),
+            Self::Merge => letter(shifted, "m"),
+            Self::Rebase => letter(shifted, "x"),
+            Self::StashApply => named(shifted, Named::Enter),
+            Self::StashPop => letter(shifted, "w"),
+            Self::OpenMenu => named(Modifiers::SHIFT, Named::F10),
+            Self::TakeMine => named(shifted, Named::ArrowLeft),
+            Self::TakeTheirs => named(shifted, Named::ArrowRight),
+            Self::TakeBoth => named(shifted, Named::ArrowDown),
+            Self::OpenEditor => named(Modifiers::empty(), Named::F4),
+            Self::MarkResolved => letter(shifted, "j"),
+            Self::ResetConflict => letter(shifted, "z"),
+        }
+    }
+
+    /// The first key of the action, as the app-wide keymap spells it; none
+    /// when `[keys.git]` took it away.
+    pub fn binding(self, keys: &GitKeys) -> Option<Chord> {
+        keys.chords(self).first().cloned()
+    }
+
+    /// The shortcut a press stands for.
+    pub fn pressed(keys: &GitKeys, key: &Key, modifiers: Modifiers) -> Option<Self> {
+        keys.pressed(key, modifiers)
+    }
+
+    /// The first key as this platform spells it: `⇧⌘E` on a Mac,
+    /// `Ctrl+Shift+E` elsewhere; empty for an action without a key.
+    pub fn label(self, keys: &GitKeys) -> String {
+        keys.label(self)
     }
 
     /// The name in the command list; the menu key opens a menu and is no command.
@@ -198,66 +254,17 @@ impl Shortcut {
             ConflictAction::Reset => Self::ResetConflict,
         }
     }
-
-    /// The shortcut a press stands for.
-    pub fn pressed(key: &Key, modifiers: Modifiers) -> Option<Self> {
-        Self::ALL.into_iter().find(|shortcut| {
-            let (held, pressed) = shortcut.chord();
-            modifiers == held
-                && match (pressed, key.as_ref()) {
-                    (Pressed::Letter(letter), Key::Character(typed)) => {
-                        typed.eq_ignore_ascii_case(letter)
-                    }
-                    (Pressed::Named(wanted), Key::Named(typed)) => wanted == typed,
-                    _ => false,
-                }
-        })
-    }
-
-    /// The chord as this platform spells it: `⇧⌘E` on a Mac, `Ctrl+Shift+E`
-    /// elsewhere.
-    pub fn label(self) -> String {
-        let (held, pressed) = self.chord();
-        let key = match pressed {
-            Pressed::Letter(letter) => letter.to_uppercase(),
-            Pressed::Named(Named::Enter) => "\u{21b5}".to_owned(),
-            Pressed::Named(Named::Backspace) => "\u{232b}".to_owned(),
-            Pressed::Named(Named::ArrowLeft) => "\u{2190}".to_owned(),
-            Pressed::Named(Named::ArrowRight) => "\u{2192}".to_owned(),
-            Pressed::Named(Named::ArrowDown) => "\u{2193}".to_owned(),
-            Pressed::Named(named) => format!("{named:?}"),
-        };
-        let mut label = String::new();
-        if cfg!(target_os = "macos") {
-            if held.shift() {
-                label.push('\u{21e7}');
-            }
-            if held.command() {
-                label.push('\u{2318}');
-            }
-            label.push_str(&key);
-        } else {
-            if held.command() {
-                label.push_str("Ctrl+");
-            }
-            if held.shift() {
-                label.push_str("Shift+");
-            }
-            label.push_str(&key);
-        }
-        label
-    }
 }
 
 /// Every Git action the command list offers while a Git tab is shown, with
 /// its label and key. The place in the list is what the app sends back to
 /// [`message_of_command`].
-pub fn commands(lang: Language) -> Vec<(String, String)> {
+pub fn commands(lang: Language, keys: &GitKeys) -> Vec<(String, String)> {
     Shortcut::ALL
-        .into_iter()
+        .iter()
         .filter_map(|shortcut| {
             let label = lang.text(shortcut.command_label()?).to_owned();
-            Some((label, shortcut.label()))
+            Some((label, shortcut.label(keys)))
         })
         .collect()
 }
@@ -265,34 +272,8 @@ pub fn commands(lang: Language) -> Vec<(String, String)> {
 /// The message of the command at `place` in [`commands`].
 pub fn message_of_command(place: usize) -> Option<Message> {
     Shortcut::ALL
-        .into_iter()
+        .iter()
         .filter(|shortcut| shortcut.command_label().is_some())
         .nth(place)
-        .map(Shortcut::message)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_chord_is_its_own() {
-        for (index, left) in Shortcut::ALL.iter().enumerate() {
-            for right in &Shortcut::ALL[index + 1..] {
-                assert_ne!(left.chord(), right.chord(), "{left:?} and {right:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_chord_finds_its_shortcut() {
-        for shortcut in Shortcut::ALL {
-            let (held, pressed) = shortcut.chord();
-            let key = match pressed {
-                Pressed::Letter(letter) => Key::Character(letter.into()),
-                Pressed::Named(named) => Key::Named(named),
-            };
-            assert_eq!(Shortcut::pressed(&key, held), Some(shortcut));
-        }
-    }
+        .map(|shortcut| shortcut.message())
 }

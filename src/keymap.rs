@@ -237,34 +237,61 @@ mod tests {
 
     #[test]
     fn no_git_view_shortcut_is_taken_by_the_app_keymap() {
-        use ncrs_git_view::shortcuts::Shortcut;
-        let same_key = |left: &Key, right: &Key| match (left, right) {
-            (Key::Character(a), Key::Character(b)) => a.eq_ignore_ascii_case(b),
-            _ => left == right,
-        };
-        for shortcut in Shortcut::ALL {
-            // These mean in the Git tab what they mean in the app: edit, menu, rename.
-            if matches!(
-                shortcut,
-                Shortcut::OpenEditor | Shortcut::OpenMenu | Shortcut::Rename
-            ) {
-                continue;
-            }
-            let (modifiers, key) = shortcut.binding();
-            let taken_by: Vec<_> = Keymap::built_in()
-                .bindings()
-                .iter()
-                .filter(|(_, binding)| {
-                    binding.modifiers == modifiers && same_key(&binding.key, &key)
-                })
-                .map(|(action, _)| *action)
-                .collect();
-            assert!(
-                taken_by.is_empty(),
-                "{shortcut:?} ({}) is also {taken_by:?}",
-                shortcut.label()
-            );
+        use crate::git_keys::clashes;
+        use ncrs_git_view::GitKeys;
+        // The keys depend on the platform; both sets are checked here, not
+        // only the one this binary was built for.
+        for mac in [true, false] {
+            let taken = clashes(&GitKeys::defaults_for(mac), &default_bindings_for(mac));
+            assert!(taken.is_empty(), "mac: {mac}: {taken:?}");
         }
+    }
+
+    #[test]
+    fn a_git_key_set_in_the_config_is_checked_against_the_app_keymap() {
+        let (_dir, path) = written("[keys.git]\nfetch = \"primary+shift+c\"\n");
+        let config = config::load(&path).unwrap();
+        let clash =
+            crate::git_keys::resolve(&config.git_keys, &config.keymap, cfg!(target_os = "macos"));
+        // Ctrl+Shift+C is copy_name elsewhere, free on a Mac.
+        assert_eq!(clash.is_err(), !cfg!(target_os = "macos"), "{clash:?}");
+        let (_dir, path) = written("[keys.git]\nfetch = \"primary+alt+shift+k\"\n");
+        let config = config::load(&path).unwrap();
+        let keys = crate::git_keys::resolve(&config.git_keys, &config.keymap, false).unwrap();
+        assert_eq!(
+            keys.pressed(
+                &Key::Character("k".into()),
+                Modifiers::COMMAND | Modifiers::ALT | Modifiers::SHIFT
+            ),
+            Some(ncrs_git_view::shortcuts::Shortcut::Fetch)
+        );
+    }
+
+    #[test]
+    fn an_unknown_git_action_is_reported_at_its_line() {
+        let (_dir, path) = written("[keys.git]\n\nteleport = \"f9\"\n");
+        let config = config::load(&path).unwrap();
+        let problem =
+            crate::git_keys::resolve(&config.git_keys, &config.keymap, false).unwrap_err();
+        assert_eq!(problem.line, Some(3));
+        assert!(problem.reason.contains("teleport"));
+    }
+
+    #[test]
+    fn a_git_key_that_does_not_parse_fails_the_config_at_its_line() {
+        let (line, reason) = failure("[keys.git]\nfetch = \"hyper+nothing\"\n");
+        assert_eq!(line, Some(2));
+        assert!(
+            reason.contains("nothing") || reason.contains("hyper"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_table_of_an_unknown_tab_fails_the_config() {
+        let (line, reason) = failure("[keys.folders]\nfetch = \"f9\"\n");
+        assert_eq!(line, Some(1));
+        assert!(reason.contains("folders"), "{reason}");
     }
 
     #[test]
@@ -580,6 +607,14 @@ mod tests {
         assert_eq!(
             keymap.function_keys(Language::English, KeyScope::Panel)[0],
             Some("Copy")
+        );
+    }
+
+    #[test]
+    fn the_menu_key_opens_the_context_menu_like_shift_f10() {
+        assert_eq!(
+            map_key(Key::Named(Named::ContextMenu), Modifiers::default()),
+            Some(Message::Files(MenuMessage::ContextMenuKey))
         );
     }
 

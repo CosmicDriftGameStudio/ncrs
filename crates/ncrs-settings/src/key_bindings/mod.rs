@@ -37,6 +37,15 @@ pub struct Row {
     pub is_built_in: bool,
 }
 
+/// A Git action as the dialog lists it, read only: the keys of the Git tab are
+/// set in the `[keys.git]` table of the config file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitShortcut {
+    pub label: String,
+    /// The keys as they are shown.
+    pub keys: String,
+}
+
 /// An edit that would take keys from other actions, shown before anything is
 /// written.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +99,7 @@ pub struct KeyBindings {
     notice: Option<Notice>,
     /// A write is on its way; edits wait for the keymap it brings back.
     writing: bool,
+    git_shortcuts: Vec<GitShortcut>,
 }
 
 /// The label of an action, also of the cursor keys the command list leaves
@@ -161,9 +171,36 @@ impl KeyBindings {
             mode: Mode::Browsing,
             notice: None,
             writing: false,
+            git_shortcuts: Vec::new(),
         };
         dialog.refresh(keymap);
         dialog
+    }
+
+    /// The Git actions the dialog lists below the rows, read only.
+    pub fn with_git_shortcuts(mut self, shortcuts: Vec<GitShortcut>) -> Self {
+        self.git_shortcuts = shortcuts;
+        self
+    }
+
+    /// The Git actions that match the search words. None while the search is
+    /// by key, which only the rebindable actions answer.
+    pub fn git_shortcuts_shown(&self) -> Vec<&GitShortcut> {
+        if self.key_filter.is_some() {
+            return Vec::new();
+        }
+        let words: Vec<String> = self
+            .query
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        self.git_shortcuts
+            .iter()
+            .filter(|shortcut| {
+                let haystack = format!("{} {}", shortcut.label, shortcut.keys).to_lowercase();
+                words.iter().all(|word| haystack.contains(word.as_str()))
+            })
+            .collect()
     }
 
     pub fn query(&self) -> &str {

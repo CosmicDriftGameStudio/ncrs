@@ -470,6 +470,7 @@ pub(in crate::app) fn git_page_key(
     scope: KeyScope,
 ) -> Option<Message> {
     if let Some(message) = ncrs_git_view::git_view_key(
+        &prompt.git_keys,
         key,
         key_modifiers,
         prompt.git_filter,

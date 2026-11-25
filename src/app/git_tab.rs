@@ -46,6 +46,7 @@ impl App {
             date_format: self.columns.date_format,
             window: self.window_size,
             columns: self.git_columns(),
+            keys: &self.git_keys,
         };
         let content: Element<'_, Message> = match self
             .shown_git_tab()
@@ -157,5 +158,25 @@ impl App {
         self.update_settings(ncrs_settings::message::SettingsMessage::Change(
             ncrs_settings::message::SettingChange::GitView(settings),
         ))
+    }
+}
+
+impl App {
+    /// Takes the keys of `[keys.git]`. Keys that do not fit leave the
+    /// built-in ones and say why in the status line.
+    pub(in crate::app) fn apply_git_keys(&mut self, overrides: &ncrs_config::keymap::TabKeys) {
+        match crate::git_keys::resolve(overrides, &self.keymap, cfg!(target_os = "macos")) {
+            Ok(keys) => self.git_keys = Arc::new(keys),
+            Err(problem) => {
+                self.git_keys = Arc::default();
+                self.report(ConfigProblem::Invalid(
+                    ncrs_config::config::ConfigError::Invalid {
+                        path: self.config_path.clone().unwrap_or_default(),
+                        line: problem.line,
+                        reason: problem.reason,
+                    },
+                ));
+            }
+        }
     }
 }

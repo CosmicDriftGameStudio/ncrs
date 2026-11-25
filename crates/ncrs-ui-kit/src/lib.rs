@@ -47,18 +47,24 @@ pub mod format;
 pub mod frame;
 #[cfg(test)]
 mod gallery_tests;
+pub mod git_lines;
 pub mod git_mark;
 pub mod git_rows;
+pub mod git_state;
+pub mod header_picker;
 pub mod hermes_kit;
 pub mod hermes_state;
 pub mod io_reason;
 pub mod key_intercept;
 pub mod kit;
+#[cfg(test)]
+mod kit_gallery;
 pub mod layout;
 pub mod list_below;
 pub mod list_kit;
 pub mod list_window;
 pub mod markdown_view;
+pub mod marked_list;
 mod menu_button;
 pub mod meter;
 pub mod nav_list;
@@ -74,10 +80,13 @@ pub mod picker;
 pub mod plan_rows;
 pub mod popup_menu;
 pub mod rename_row;
+pub mod repo_row;
 pub mod row_scroll;
+pub mod section_head;
 pub mod setting_rows;
 #[cfg(any(test, feature = "test-support"))]
 pub mod snapshot_support;
+pub mod splitter;
 pub use ncrs_core::tags;
 pub mod theme;
 pub mod tree_list;
@@ -114,5 +123,28 @@ mod tests {
         assert!(bold.is_bold());
         assert_eq!(advance_of_m(&regular), advance_of_m(&bold));
         assert!(regular.is_monospaced() && bold.is_monospaced());
+    }
+
+    /// The signs the Git views draw as text. The bundled font draws them on
+    /// Linux and Windows, where there is no system fallback. A sign it lacks
+    /// is an icon: the branch symbol (`file_icon::git_branch_icon`), the pause
+    /// and the cross (`Icon::CirclePause`, `Icon::CircleX`; color emoji on a
+    /// Mac) and the star (`Icon::Star`).
+    const TEXT_SIGNS: [char; 9] = [
+        '\u{2713}', '\u{2193}', '\u{2191}', '\u{25cf}', '!', '\u{203a}', '\u{25be}', '\u{25b8}',
+        '\u{25a2}',
+    ];
+
+    #[test]
+    fn the_bundled_font_has_every_sign_the_git_views_draw_as_text() {
+        for (name, bytes) in [("regular", BUNDLED_REGULAR), ("bold", BUNDLED_BOLD)] {
+            let font = face(bytes);
+            for sign in TEXT_SIGNS {
+                assert!(
+                    font.glyph_index(sign).is_some(),
+                    "{sign} is missing in the {name} font"
+                );
+            }
+        }
     }
 }

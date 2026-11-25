@@ -200,6 +200,7 @@ pub fn chord_text(binding: &Binding) -> Option<String> {
             Named::ArrowDown => "down",
             Named::ArrowLeft => "left",
             Named::ArrowRight => "right",
+            Named::ContextMenu => "contextmenu",
             _ => return None,
         }
         .to_owned(),
@@ -302,6 +303,7 @@ pub fn parse_key_name(name: &str) -> Option<Result<Key, String>> {
         "down" => Named::ArrowDown,
         "left" => Named::ArrowLeft,
         "right" => Named::ArrowRight,
+        "contextmenu" => Named::ContextMenu,
         "plus" => return Some(Ok(Key::Character("+".into()))),
         _ => {
             let mut chars = name.chars();

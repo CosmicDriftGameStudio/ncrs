@@ -7,6 +7,7 @@ use iced::{Background, Border, Color, Element, Length, Theme};
 use crate::hermes_state::{FolderRole, HermesFileState};
 use crate::palette::{contrast_ratio, Palette};
 
+pub mod git;
 mod settings;
 pub use settings::{feature_item, focused_setting, marked_setting};
 

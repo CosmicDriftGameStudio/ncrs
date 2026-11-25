@@ -3,6 +3,7 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
+use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 
@@ -10,6 +11,7 @@ use crate::shortcuts::Shortcut;
 /// [`Message::Escape`] whatever field took the key. While the filter has the
 /// keyboard only the arrows that leave it count.
 pub fn git_view_key(
+    keys: &GitKeys,
     key: &Key,
     modifiers: Modifiers,
     filter_focused: bool,
@@ -30,7 +32,7 @@ pub fn git_view_key(
     if filter_focused {
         return None;
     }
-    if let Some(shortcut) = Shortcut::pressed(key, modifiers) {
+    if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
         return Some(shortcut.message());
     }
     // "/" is a shifted key on some layouts.

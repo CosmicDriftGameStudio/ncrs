@@ -268,6 +268,8 @@ pub struct App {
     search_function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
     /// The keys in effect: the built-in ones, or those of the config file.
     keymap: Arc<Keymap>,
+    /// The keys of the Git tab: the built-in ones, or those of `[keys.git]`.
+    git_keys: Arc<ncrs_git_view::GitKeys>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
     /// The question whether to remove the Hermes index and begin again.
@@ -492,6 +494,8 @@ pub struct PromptKeyState {
     /// The keys in effect. A shared handle: cloning the state per message
     /// must not copy the table.
     pub keymap: Arc<Keymap>,
+    /// The keys of the Git tab, shared like the keymap.
+    pub git_keys: Arc<ncrs_git_view::GitKeys>,
     /// A prompt is open, so keys belong to it.
     pub open: bool,
     /// A job is running, so Escape stops it rather than doing nothing.
@@ -620,6 +624,7 @@ impl Default for PromptKeyState {
     fn default() -> Self {
         Self {
             keymap: Keymap::built_in(),
+            git_keys: Arc::default(),
             open: false,
             job_running: false,
             config_error: false,

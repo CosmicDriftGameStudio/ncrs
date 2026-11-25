@@ -79,6 +79,10 @@ impl App {
                 .as_deref()
                 .and_then(std::path::Path::parent)
                 .map(ncrs_ai::usage_log_path),
+            git_shortcuts: ncrs_git_view::commands(self.lang, &self.git_keys)
+                .into_iter()
+                .map(|(label, keys)| ncrs_settings::GitShortcut { label, keys })
+                .collect(),
             services: ncrs_settings::Services {
                 fetch_extension: self.fetch_extension,
                 install_theme: self.install_theme,

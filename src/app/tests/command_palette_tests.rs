@@ -116,7 +116,7 @@ fn the_git_actions_are_listed_with_their_keys_while_a_git_tab_offers_them() {
     let mut app = app_showing_git(true);
     open_palette(&mut app);
     let entries = git_entries(&app);
-    let commands = ncrs_git_view::commands(app.lang);
+    let commands = ncrs_git_view::commands(app.lang, &app.git_keys);
     assert!(!commands.is_empty());
     assert_eq!(entries.len(), commands.len());
     for (label, shortcut) in commands {

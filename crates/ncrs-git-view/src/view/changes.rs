@@ -197,7 +197,7 @@ fn commit_form<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Mes
             Space::new().width(Length::Fill),
             key_button(
                 &label,
-                &Shortcut::Commit.label(),
+                &Shortcut::Commit.label(ctx.keys),
                 can_commit.then_some(Message::Commit),
                 Tone::Primary,
                 palette
@@ -228,7 +228,11 @@ pub fn view<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Messag
                 icon_button(
                     Icon::Trash,
                     None,
-                    &tip(lang.text(Msg::GitViewDiscardAll), Shortcut::DiscardAll),
+                    &tip(
+                        lang.text(Msg::GitViewDiscardAll),
+                        Shortcut::DiscardAll,
+                        ctx.keys
+                    ),
                     (!local.unstaged.is_empty()).then_some(Message::DiscardAll),
                     Tone::Secondary,
                     palette,
@@ -236,7 +240,11 @@ pub fn view<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Messag
                 icon_button(
                     Icon::Plus,
                     None,
-                    &tip(lang.text(Msg::GitViewStageAll), Shortcut::StageAll),
+                    &tip(
+                        lang.text(Msg::GitViewStageAll),
+                        Shortcut::StageAll,
+                        ctx.keys
+                    ),
                     (!local.unstaged.is_empty()).then_some(Message::StageAll),
                     Tone::Secondary,
                     palette,
@@ -252,7 +260,11 @@ pub fn view<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Messag
             vec![icon_button(
                 Icon::Minus,
                 None,
-                &tip(lang.text(Msg::GitViewUnstageAll), Shortcut::UnstageAll),
+                &tip(
+                    lang.text(Msg::GitViewUnstageAll),
+                    Shortcut::UnstageAll,
+                    ctx.keys
+                ),
                 (!local.staged.is_empty()).then_some(Message::UnstageAll),
                 Tone::Secondary,
                 palette,

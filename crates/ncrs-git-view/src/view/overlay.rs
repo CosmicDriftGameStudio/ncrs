@@ -22,6 +22,7 @@ use crate::actions::{
     RenameBranch, Side,
 };
 use crate::ctx::ViewCtx;
+use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::State;
@@ -31,18 +32,25 @@ const MENU_WIDTH: f32 = 300.0;
 pub const NAME_ID: &str = "git-new-branch-name";
 pub const RENAME_ID: &str = "git-rename-branch-name";
 
-fn row(label: String, shortcut: Shortcut, message: Message, enabled: bool) -> MenuRow<Message> {
+fn row(
+    keys: &GitKeys,
+    label: String,
+    shortcut: Shortcut,
+    message: Message,
+    enabled: bool,
+) -> MenuRow<Message> {
     MenuRow::Entry(PopupEntry {
         label,
-        key: Some(shortcut.label()),
+        key: Some(shortcut.label(keys)).filter(|key| !key.is_empty()),
         is_selected: false,
         on_press: enabled.then_some(message),
         on_hover: None,
     })
 }
 
-fn entry(label: String, action: MenuAction, enabled: bool) -> MenuRow<Message> {
+fn entry(keys: &GitKeys, label: String, action: MenuAction, enabled: bool) -> MenuRow<Message> {
     row(
+        keys,
         label,
         Shortcut::of_menu(action),
         Message::MenuPressed(action),
@@ -62,6 +70,7 @@ fn checked_out(state: &State) -> String {
 fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
     let lang = ctx.lang;
     let text = |msg| lang.text(msg).to_owned();
+    let entry = |label, action, enabled| entry(ctx.keys, label, action, enabled);
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
     match menu.target {
@@ -153,6 +162,7 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
             let edited = conflict.is_some_and(|found| found.edited);
             let choice = |msg, action: ConflictAction, enabled| {
                 row(
+                    ctx.keys,
                     text(msg),
                     Shortcut::of_conflict(action),
                     Message::ConflictPressed(index, action),

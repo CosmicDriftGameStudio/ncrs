@@ -5,6 +5,7 @@ pub mod action;
 pub mod actions;
 pub mod ctx;
 mod diff_layout;
+pub mod git_keys;
 mod handlers;
 pub mod job;
 pub mod keys;
@@ -18,6 +19,7 @@ pub mod view;
 
 pub use action::Action;
 pub use ctx::{Ctx, ViewCtx};
+pub use git_keys::{GitKeys, GitKeysError, KeyOverride};
 pub use keys::git_view_key;
 pub use message::Message;
 pub use shortcuts::{commands, message_of_command};

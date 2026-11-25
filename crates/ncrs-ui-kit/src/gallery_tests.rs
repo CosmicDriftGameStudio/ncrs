@@ -175,16 +175,6 @@ fn sidebar_item<'a>(chosen: bool, dimmed: bool, palette: &Palette) -> Cell<'a> {
     container(list).height(ONE_GROUP_HEIGHT).into()
 }
 
-fn focus_ring<'a>(content: Cell<'a>, palette: &Palette) -> Cell<'a> {
-    let ring = theme::focus_border(palette);
-    container(content)
-        .style(move |_: &iced::Theme| container::Style {
-            border: ring,
-            ..container::Style::default()
-        })
-        .into()
-}
-
 fn gallery<'a>(palette: &Palette) -> Cell<'a> {
     let p = palette;
     let button_of =
@@ -255,7 +245,11 @@ fn gallery<'a>(palette: &Palette) -> Cell<'a> {
                 Some(hermes_kit::dropdown(150.0, &items, 0, p)),
                 Some(hermes_kit::dropdown(150.0, &items, 1, p)),
                 None,
-                Some(focus_ring(hermes_kit::dropdown(150.0, &items, 0, p), p)),
+                Some(kit::focused(
+                    hermes_kit::dropdown(150.0, &items, 0, p),
+                    true,
+                    p,
+                )),
             ),
             p,
         ),

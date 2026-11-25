@@ -8,6 +8,7 @@ use ncrs_git::{LogCommit, RefKind, SegmentHalf};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::commit_graph::{graph_cell, GraphCell, GraphLine, LineHalf, LANE_WIDTH};
 use ncrs_ui_kit::format;
+use ncrs_ui_kit::git_lines::summarize_refs;
 use ncrs_ui_kit::git_rows::{
     commit_header, commit_message_width, commit_row, CommitRow, RefChipKind,
 };
@@ -63,6 +64,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
                 dimmed: false,
+                is_head: false,
                 on_press: Message::CommitPressed(0),
             },
             palette,
@@ -74,11 +76,13 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         commit_row(
             CommitRow {
                 graph: graph_cell(graph_of(commit), lanes, palette),
-                chips: commit
-                    .refs
-                    .iter()
-                    .map(|label| (label.name.clone(), chip_kind(label.kind)))
-                    .collect(),
+                chips: summarize_refs(
+                    commit
+                        .refs
+                        .iter()
+                        .map(|label| (label.name.clone(), chip_kind(label.kind)))
+                        .collect(),
+                ),
                 message: commit.summary.clone(),
                 author: commit.author.clone(),
                 date: date_of(commit, ctx),
@@ -88,6 +92,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == row,
                 dimmed: commit.is_merge,
+                is_head: log.head.as_deref() == Some(commit.id.as_str()),
                 on_press: Message::CommitPressed(row),
             },
             palette,

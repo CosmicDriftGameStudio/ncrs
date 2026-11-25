@@ -26,6 +26,7 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
+            git_keys: Arc::default(),
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
             protection_quit_warned: None,

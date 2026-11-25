@@ -8,6 +8,7 @@ use ncrs_ui_kit::theme::spacing;
 
 use crate::actions::{Operation, SyncBar};
 use crate::ctx::ViewCtx;
+use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 
@@ -15,8 +16,13 @@ use crate::shortcuts::Shortcut;
 const BUSY_LABEL: &str = "\u{2026}";
 
 /// The tooltip: what it does and the key that does the same.
-pub(in crate::view) fn tip(what: &str, shortcut: Shortcut) -> String {
-    format!("{what} ({})", shortcut.label())
+pub(in crate::view) fn tip(what: &str, shortcut: Shortcut, keys: &GitKeys) -> String {
+    let key = shortcut.label(keys);
+    if key.is_empty() {
+        what.to_owned()
+    } else {
+        format!("{what} ({key})")
+    }
 }
 
 fn counted(count: u32) -> Option<String> {
@@ -44,7 +50,11 @@ pub fn view<'a>(
         icon_button(
             Icon::Download,
             label(Operation::Fetch, None),
-            &tip(lang.text(Msg::GitViewToolbarFetch), Shortcut::Fetch),
+            &tip(
+                lang.text(Msg::GitViewToolbarFetch),
+                Shortcut::Fetch,
+                ctx.keys
+            ),
             press(Operation::Fetch, Message::Fetch),
             Tone::Secondary,
             palette
@@ -55,7 +65,7 @@ pub fn view<'a>(
                 Operation::Pull,
                 counted(sync.behind).map(|count| format!("\u{2193}{count}"))
             ),
-            &tip(lang.text(Msg::GitViewToolbarPull), Shortcut::Pull),
+            &tip(lang.text(Msg::GitViewToolbarPull), Shortcut::Pull, ctx.keys),
             press(Operation::Pull, Message::Pull),
             Tone::Secondary,
             palette
@@ -66,7 +76,7 @@ pub fn view<'a>(
                 Operation::Push,
                 counted(sync.ahead).map(|count| format!("\u{2191}{count}"))
             ),
-            &tip(lang.text(Msg::GitViewToolbarPush), Shortcut::Push),
+            &tip(lang.text(Msg::GitViewToolbarPush), Shortcut::Push, ctx.keys),
             press(Operation::Push, Message::Push),
             Tone::Secondary,
             palette
@@ -74,7 +84,11 @@ pub fn view<'a>(
         icon_button(
             Icon::Archive,
             label(Operation::Stash, None),
-            &tip(lang.text(Msg::GitViewToolbarStash), Shortcut::Stash),
+            &tip(
+                lang.text(Msg::GitViewToolbarStash),
+                Shortcut::Stash,
+                ctx.keys
+            ),
             press(Operation::Stash, Message::Stash),
             Tone::Secondary,
             palette
@@ -89,6 +103,7 @@ pub fn view<'a>(
             &tip(
                 &fill_template(lang.text(Msg::GitViewToolbarUndo), &[("{what}", what)]),
                 Shortcut::Undo,
+                ctx.keys,
             ),
             press(Operation::Undo, Message::Undo),
             Tone::Secondary,

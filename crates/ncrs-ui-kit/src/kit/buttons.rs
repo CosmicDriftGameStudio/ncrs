@@ -275,3 +275,51 @@ pub fn icon_button<'a, M: Clone + 'a>(
         palette,
     )
 }
+
+/// A button of the toolbar of a page: the label, the key that does the same
+/// dim beside it, and a tooltip with the key. With `on_press` of `None` it is
+/// disabled and fainter, and its tooltip, which should say why, stays.
+pub fn toolbar_button<'a, M: Clone + 'a>(
+    label: &str,
+    key: Option<&str>,
+    tip: &str,
+    on_press: Option<M>,
+    tone: Tone,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let key_ink = match tone {
+        Tone::Secondary => palette.dim_text,
+        Tone::Primary => palette.primary_button().1.scale_alpha(KEY_ON_FILL_ALPHA),
+        Tone::Danger => palette.cursor_text.scale_alpha(KEY_ON_FILL_ALPHA),
+    };
+    let key_ink = if on_press.is_none() {
+        key_ink.scale_alpha(DISABLED_OPACITY)
+    } else {
+        key_ink
+    };
+    let mut content = Row::new()
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .push(label_text(label));
+    if let Some(key) = key {
+        content = content.push(
+            text(key.to_owned())
+                .size(font_size::SMALL)
+                .color(key_ink)
+                .wrapping(Wrapping::None),
+        );
+    }
+    let shown_tip = match key {
+        Some(key) => format!("{tip} ({key})"),
+        None => tip.to_owned(),
+    };
+    super::tooltip(
+        sized_button(content.into(), on_press, tone, palette),
+        shown_tip,
+        iced::widget::tooltip::Position::Bottom,
+        palette,
+    )
+}
+
+/// How much of a filled button's ink its key keeps.
+const KEY_ON_FILL_ALPHA: f32 = 0.7;

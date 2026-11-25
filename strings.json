@@ -13985,6 +13985,222 @@
       "context": "Notice after Restore purchase when the App Store knows of no earlier purchase of ncrs for this Apple account.",
       "en": "No earlier purchase was found for this Apple account.",
       "de": "Für dieses Apple-Konto wurde kein früherer Kauf gefunden."
+    },
+    {
+      "key": "git_state.behind",
+      "context": "Git tab and repository list: chip that says the branch is behind its upstream. {upstream} is the name of the remote branch, for example origin/main. The number of commits is shown next to it with an arrow, not in this text.",
+      "en": "behind {upstream}",
+      "de": "hinter {upstream}"
+    },
+    {
+      "key": "git_state.ahead",
+      "context": "Git tab and repository list: chip that says the branch has commits the upstream does not have yet, so a push is due. Lower case, one word. The number of commits is shown next to it with an arrow.",
+      "en": "ahead",
+      "de": "voraus"
+    },
+    {
+      "key": "git_state.changes_one",
+      "context": "Git tab and repository list: chip for exactly one file with local, uncommitted changes. {count} is 1.",
+      "en": "{count} local change",
+      "de": "{count} lokale Änderung"
+    },
+    {
+      "key": "git_state.changes_other",
+      "context": "Git tab and repository list: chip for several files with local, uncommitted changes. {count} is 2 or more.",
+      "en": "{count} local changes",
+      "de": "{count} lokale Änderungen"
+    },
+    {
+      "key": "git_state.conflicts_one",
+      "context": "Git tab and repository list: chip for exactly one file with a merge conflict. {count} is 1.",
+      "en": "{count} conflict",
+      "de": "{count} Konflikt"
+    },
+    {
+      "key": "git_state.conflicts_other",
+      "context": "Git tab and repository list: chip for several files with a merge conflict. {count} is 2 or more.",
+      "en": "{count} conflicts",
+      "de": "{count} Konflikte"
+    },
+    {
+      "key": "git_state.up_to_date",
+      "context": "Git tab and repository list: chip of a branch that has nothing to fetch or push and no local changes. Lower case, short.",
+      "en": "up to date",
+      "de": "aktuell"
+    },
+    {
+      "key": "git_outcome.running",
+      "context": "Repository list: word next to the spinner of a repository whose fetch or pull is running right now. Lower case, one word.",
+      "en": "running",
+      "de": "läuft"
+    },
+    {
+      "key": "git_outcome.updated",
+      "context": "Repository list: result word for a repository whose fetch or pull brought new commits. Lower case, one word.",
+      "en": "updated",
+      "de": "aktualisiert"
+    },
+    {
+      "key": "git_outcome.already_current",
+      "context": "Repository list: result word for a repository whose fetch or pull found nothing new. Lower case.",
+      "en": "already up to date",
+      "de": "schon aktuell"
+    },
+    {
+      "key": "git_outcome.skipped",
+      "context": "Repository list: result word for a repository that was left out of a run, for example because it has local changes or no upstream. Lower case, one word.",
+      "en": "skipped",
+      "de": "übersprungen"
+    },
+    {
+      "key": "git_outcome.failed",
+      "context": "Repository list: result word for a repository whose fetch or pull failed. Lower case, one word.",
+      "en": "error",
+      "de": "Fehler"
+    },
+    {
+      "key": "splitter.hint",
+      "context": "Tooltip of the thin bar between two panes of a page that can be dragged to change a pane's width.",
+      "en": "Drag to change the width · double-click resets",
+      "de": "Ziehen ändert die Breite · Doppelklick setzt zurück"
+    },
+    {
+      "key": "splitter.width",
+      "context": "Small label that follows the mouse while a pane's width is dragged. {width} is the width in pixels. Keep px.",
+      "en": "{width} px",
+      "de": "{width} px"
+    },
+    {
+      "key": "repo_row.unreachable",
+      "context": "Repository list: note on a row whose folder is not there any more or cannot be read, shown dimmed. Lower case.",
+      "en": "unreachable",
+      "de": "nicht erreichbar"
+    },
+    {
+      "key": "git_view.picker_repository",
+      "context": "Git tab header: small label above the name of the open repository, which is also the button that opens the list of repositories. Keep the word Repository.",
+      "en": "Repository",
+      "de": "Repository"
+    },
+    {
+      "key": "git_view.picker_branch",
+      "context": "Git tab header: small label above the name of the checked-out branch, which is also the button that opens the list of branches.",
+      "en": "Branch",
+      "de": "Branch"
+    },
+    {
+      "key": "git_view.picker_search_branch",
+      "context": "Git tab: placeholder of the search field at the top of the branch list.",
+      "en": "Search branches…",
+      "de": "Branch suchen…"
+    },
+    {
+      "key": "git_view.picker_search_repository",
+      "context": "Git tab: placeholder of the search field at the top of the repository list.",
+      "en": "Search repositories…",
+      "de": "Repository suchen…"
+    },
+    {
+      "key": "git_view.command_choose_repository",
+      "context": "Command list (F1) entry of the Git tab that opens the list of repositories in the header. Imperative.",
+      "en": "Choose repository",
+      "de": "Repository wählen"
+    },
+    {
+      "key": "git_view.command_choose_branch",
+      "context": "Command list (F1) entry of the Git tab that opens the list of branches in the header. Imperative.",
+      "en": "Choose branch",
+      "de": "Branch wählen"
+    },
+    {
+      "key": "git_view.command_reset_panes",
+      "context": "Command list (F1) entry of the Git tab that puts the sidebar and the detail pane back to their standard widths. Imperative.",
+      "en": "Reset pane widths",
+      "de": "Breiten zurücksetzen"
+    },
+    {
+      "key": "git_view.wip_title",
+      "context": "Git tab, commit list: title of the first row, which stands for the changes in the folder that are not committed yet (work in progress). Short.",
+      "en": "Local changes",
+      "de": "Lokale Änderungen"
+    },
+    {
+      "key": "git_view.wip_changed",
+      "context": "Git tab, commit list: part of the first row after its title, the number of files with changes. {count} is the number. Lower case, short.",
+      "en": "{count} changed",
+      "de": "{count} geändert"
+    },
+    {
+      "key": "git_view.wip_staged",
+      "context": "Git tab, commit list: part of the first row after the number of changed files, the number of files already staged for the next commit. {count} is the number. Lower case, short.",
+      "en": "{count} staged",
+      "de": "{count} vorgemerkt"
+    },
+    {
+      "key": "git_view.wip_marker",
+      "context": "Git tab, commit list: in the column of the commit id on the first row, which has no commit yet. Abbreviation of work in progress, upper case, three letters.",
+      "en": "WIP",
+      "de": "WIP"
+    },
+    {
+      "key": "repo_row.column_name",
+      "context": "Column head of the repository list: the name of the repository folder.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "repo_row.column_location",
+      "context": "Column head of the repository list: the folder the repository lies in, shown with its start cut off.",
+      "en": "Location",
+      "de": "Ort"
+    },
+    {
+      "key": "repo_row.column_branch",
+      "context": "Column head of the repository list: the branch that is checked out.",
+      "en": "Branch",
+      "de": "Branch"
+    },
+    {
+      "key": "repo_row.column_standing",
+      "context": "Column head of the repository list: whether the branch is behind or ahead of its upstream.",
+      "en": "Standing",
+      "de": "Stand"
+    },
+    {
+      "key": "repo_row.column_changes",
+      "context": "Column head of the repository list: the files with local changes or conflicts.",
+      "en": "Changes",
+      "de": "Änderungen"
+    },
+    {
+      "key": "repo_row.column_fetched",
+      "context": "Column head of the repository list: when the repository was last fetched from its remote.",
+      "en": "Fetched",
+      "de": "Geholt"
+    },
+    {
+      "key": "git_banner.repos_one",
+      "context": "Start of the result bar after a fetch or pull over one repository, followed by what happened to it. {count} is 1. Ends with a colon.",
+      "en": "{count} repo:",
+      "de": "{count} Repo:"
+    },
+    {
+      "key": "git_banner.repos_other",
+      "context": "Start of the result bar after a fetch or pull over several repositories, followed by what happened to them. {count} is at least 2. Ends with a colon.",
+      "en": "{count} repos:",
+      "de": "{count} Repos:"
+    },
+    {
+      "key": "key_bindings.git_heading",
+      "context": "Title of the read-only list of Git actions below the actions in the keyboard shortcuts dialog. The name of the Git tab; keep Git.",
+      "en": "Git",
+      "de": "Git"
+    },
+    {
+      "key": "key_bindings.git_note",
+      "context": "Note under the title of the Git list in the keyboard shortcuts dialog: these keys cannot be changed here. [keys.git] is the name of a table in the config file; keep it as it is.",
+      "en": "Shown only. Change these keys in the [keys.git] table of the config file.",
+      "de": "Nur zur Ansicht. Diese Tasten ändert man in der Tabelle [keys.git] der Konfigurationsdatei."
     }
   ]
 }

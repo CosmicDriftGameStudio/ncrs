@@ -31,7 +31,7 @@ use serde_spanned::Spanned;
 
 use crate::file_list_tags::{FileListTags, TagGroup};
 use crate::git_view::GitViewSettings;
-use crate::keymap::{KeyAction, Keymap};
+use crate::keymap::{KeyAction, Keymap, TabKeys, TAB_KEY_TABLES};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
 };
@@ -140,6 +140,9 @@ pub struct Config {
     /// The keys in effect: the built-in ones with `keys` applied.
     #[serde(skip)]
     pub keymap: Arc<Keymap>,
+    /// The `[keys.git]` table, read for its keys; the Git tab says which names are actions.
+    #[serde(skip)]
+    pub git_keys: TabKeys,
     /// The `[theme]` section as written; `load` turns it into `palette`.
     #[serde(default)]
     pub theme: ThemeSection,
@@ -268,9 +271,9 @@ pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
     ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,
-    HermesSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue,
-    LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection,
-    ThemeEntry, ThemeSection, VscodeWarning,
+    HermesSection, KeyEntry, KeySection, KeyTable, KindSection, KindWarning, LanguageWarning,
+    LoadValue, LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry,
+    ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,

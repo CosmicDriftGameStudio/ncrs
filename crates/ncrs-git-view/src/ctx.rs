@@ -6,6 +6,8 @@ use ncrs_ui_kit::format::DateFormat;
 use ncrs_ui_kit::git_rows::CommitColumns;
 use ncrs_ui_kit::palette::Palette;
 
+use crate::git_keys::GitKeys;
+
 /// What `update` reads from the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ctx {
@@ -38,4 +40,6 @@ pub struct ViewCtx<'a> {
     pub window: Size,
     /// The widths of the commit columns the app remembers.
     pub columns: CommitColumns,
+    /// The keys of the Git actions, `[keys.git]` applied.
+    pub keys: &'a GitKeys,
 }

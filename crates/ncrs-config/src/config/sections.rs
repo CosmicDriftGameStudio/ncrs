@@ -578,12 +578,21 @@ pub struct KeyEntry {
     pub chords: Vec<Spanned<String>>,
 }
 
+/// A `[keys.<name>]` table: the keys of one tab, written like `[keys]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyTable {
+    pub name: Spanned<String>,
+    pub entries: Vec<KeyEntry>,
+}
+
 /// The `[keys]` section, unchecked. Names and keys stay text with their
 /// position, so a wrong one is reported at its own line once the keymap has
-/// looked at it.
+/// looked at it. A sub-table such as `[keys.git]` holds the keys of the tab
+/// of that name and stays apart from the actions of the panels.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeySection {
     pub entries: Vec<KeyEntry>,
+    pub tables: Vec<KeyTable>,
 }
 
 /// A single key or a list of them.
@@ -620,6 +629,58 @@ impl<'de> Deserialize<'de> for Chords {
     }
 }
 
+/// What a line of `[keys]` holds: the keys of an action, or the table of a tab.
+enum KeyValue {
+    Chords(Chords),
+    Table(Vec<KeyEntry>),
+}
+
+fn key_entry(action: Spanned<String>, span: std::ops::Range<usize>, value: Chords) -> KeyEntry {
+    let chords = match value {
+        Chords::One(text) => vec![Spanned::new(span, text)],
+        Chords::Many(texts) => texts,
+    };
+    KeyEntry { action, chords }
+}
+
+impl<'de> Deserialize<'de> for KeyValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct KeyValueVisitor;
+
+        impl<'de> Visitor<'de> for KeyValueVisitor {
+            type Value = KeyValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a key such as \"F5\", a list of keys or a table of tab keys")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<KeyValue, E> {
+                Ok(KeyValue::Chords(Chords::One(v.to_owned())))
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<KeyValue, A::Error> {
+                let mut chords = Vec::new();
+                while let Some(chord) = seq.next_element::<Spanned<String>>()? {
+                    chords.push(chord);
+                }
+                Ok(KeyValue::Chords(Chords::Many(chords)))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeyValue, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(action) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<Chords>>()?;
+                    let span = value.span();
+                    entries.push(key_entry(action, span, value.into_inner()));
+                }
+                Ok(KeyValue::Table(entries))
+            }
+        }
+
+        deserializer.deserialize_any(KeyValueVisitor)
+    }
+}
+
 impl<'de> Deserialize<'de> for KeySection {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct KeySectionVisitor;
@@ -632,17 +693,18 @@ impl<'de> Deserialize<'de> for KeySection {
             }
 
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeySection, A::Error> {
-                let mut entries = Vec::new();
-                while let Some(action) = map.next_key::<Spanned<String>>()? {
-                    let value = map.next_value::<Spanned<Chords>>()?;
+                let mut section = KeySection::default();
+                while let Some(name) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<KeyValue>>()?;
                     let span = value.span();
-                    let chords = match value.into_inner() {
-                        Chords::One(text) => vec![Spanned::new(span, text)],
-                        Chords::Many(texts) => texts,
-                    };
-                    entries.push(KeyEntry { action, chords });
+                    match value.into_inner() {
+                        KeyValue::Chords(chords) => {
+                            section.entries.push(key_entry(name, span, chords));
+                        }
+                        KeyValue::Table(entries) => section.tables.push(KeyTable { name, entries }),
+                    }
                 }
-                Ok(KeySection { entries })
+                Ok(section)
             }
         }
 

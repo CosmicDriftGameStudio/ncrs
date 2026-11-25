@@ -22,11 +22,11 @@ impl App {
         if !offered {
             return Vec::new();
         }
-        ncrs_git_view::commands(self.lang)
+        ncrs_git_view::commands(self.lang, &self.git_keys)
             .into_iter()
             .map(|(label, shortcut)| GitCommandEntry {
                 label,
-                shortcut: Some(shortcut),
+                shortcut: Some(shortcut).filter(|key| !key.is_empty()),
             })
             .collect()
     }

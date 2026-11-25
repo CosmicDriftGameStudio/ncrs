@@ -11,7 +11,7 @@ use ncrs_i18n::Language;
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns, COMMIT_COLUMN_MAX};
 
 use crate::state::{remote_groups, Area, Section, SidebarItem, Subject};
-use crate::{git_view_key, open, tab_title, update, Action, Ctx, Message, State};
+use crate::{git_view_key, open, tab_title, update, Action, Ctx, GitKeys, Message, State};
 
 const CTX: Ctx = Ctx::new(Language::English);
 
@@ -344,23 +344,52 @@ fn the_tab_is_titled_with_the_repository_and_has_none_while_closed() {
 fn keys_map_to_messages_and_the_filter_keeps_the_letters() {
     let none = Modifiers::empty();
     assert_eq!(
-        git_view_key(&Key::Named(Named::ArrowDown), none, false, false, false),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Named(Named::ArrowDown),
+            none,
+            false,
+            false,
+            false
+        ),
         Some(Message::Down)
     );
     assert_eq!(
-        git_view_key(&Key::Character("/".into()), none, false, false, false),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Character("/".into()),
+            none,
+            false,
+            false,
+            false
+        ),
         Some(Message::FocusFilter)
     );
     assert_eq!(
-        git_view_key(&Key::Character("n".into()), none, false, false, false),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Character("n".into()),
+            none,
+            false,
+            false,
+            false
+        ),
         None
     );
     assert_eq!(
-        git_view_key(&Key::Character("n".into()), none, false, true, false),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Character("n".into()),
+            none,
+            false,
+            true,
+            false
+        ),
         Some(Message::NextHunk)
     );
     assert_eq!(
         git_view_key(
+            &GitKeys::default(),
             &Key::Named(Named::ArrowDown),
             Modifiers::COMMAND,
             false,
@@ -370,16 +399,37 @@ fn keys_map_to_messages_and_the_filter_keeps_the_letters() {
         Some(Message::NextFile)
     );
     assert_eq!(
-        git_view_key(&Key::Named(Named::ArrowDown), none, true, false, false),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Named(Named::ArrowDown),
+            none,
+            true,
+            false,
+            false
+        ),
         None
     );
     // A dialog over the tab takes every key but Enter.
     assert_eq!(
-        git_view_key(&Key::Named(Named::Enter), none, false, false, true),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Named(Named::Enter),
+            none,
+            false,
+            false,
+            true
+        ),
         Some(Message::Enter)
     );
     assert_eq!(
-        git_view_key(&Key::Named(Named::ArrowDown), none, false, false, true),
+        git_view_key(
+            &GitKeys::default(),
+            &Key::Named(Named::ArrowDown),
+            none,
+            false,
+            false,
+            true
+        ),
         None
     );
 }

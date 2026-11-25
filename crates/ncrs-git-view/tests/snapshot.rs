@@ -201,6 +201,7 @@ mod ui_tests {
             date_format: DateFormat::Iso,
             window: size,
             columns: CommitColumns::STANDARD,
+            keys: &ncrs_git_view::GitKeys::default(),
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {

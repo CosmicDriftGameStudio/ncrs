@@ -38,3 +38,14 @@ pub const DOT: f32 = 6.0;
 pub const ICON: f32 = 14.0;
 /// The gap between two columns of a list of rows.
 pub const COLUMN_GAP: f32 = 12.0;
+
+/// The header of the Git tab and of the repository list, the two pickers in it.
+pub const PICKER_HEADER: f32 = 52.0;
+/// The bar between two panes that can be dragged.
+pub const SPLITTER: f32 = 5.0;
+/// The detail pane of the Git tab, one and a half side panes.
+pub const DETAIL_PANE: f32 = 450.0;
+/// A row of the repository list.
+pub const REPO_ROW: f32 = 26.0;
+/// The dark bar that heads a group of rows.
+pub const SECTION_HEAD: f32 = 26.0;

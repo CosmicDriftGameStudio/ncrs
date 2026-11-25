@@ -14,6 +14,7 @@ use ncrs_i18n::{FuturamaName, Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{self, DialogSize, Frame, PageHint};
 use ncrs_ui_kit::kit::{self, ListView, Tone};
+use ncrs_ui_kit::page_scroll::page_scroll_padded;
 use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 type Message = KeyBindingsMessage;
@@ -83,6 +84,9 @@ pub fn view<'a>(
         palette,
     );
     let mut content = column![field, list].spacing(spacing::M);
+    if let Some(git) = git_section(dialog, lang, palette) {
+        content = content.push(git);
+    }
     if let Some(line) = status(dialog, lang, palette) {
         content = content.push(line);
     }
@@ -104,6 +108,55 @@ pub fn view<'a>(
         Mode::Clash(_) | Mode::ResetAllQuestion => frame,
     }
     .into_element()
+}
+
+/// The room of the Git list below the rows: this many lines, then it scrolls.
+const GIT_LINES_VISIBLE: f32 = 5.0;
+const GIT_SCROLL_ID: &str = "key-bindings-git";
+
+/// The Git actions under the rows, read only; none when no action matches the search.
+fn git_section<'a>(
+    dialog: &KeyBindings,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
+    let shown = dialog.git_shortcuts_shown();
+    if shown.is_empty() {
+        return None;
+    }
+    let lines: Vec<Element<'a, Message>> = shown
+        .into_iter()
+        .map(|shortcut| {
+            row![
+                container(
+                    text(shortcut.label.clone())
+                        .size(font_size::ROW)
+                        .color(palette.text)
+                        .wrapping(Wrapping::None)
+                )
+                .width(Length::FillPortion(ACTION_PORTION + GROUP_PORTION))
+                .clip(true),
+                container(kit::key_cap(&shortcut.keys, palette))
+                    .width(Length::FillPortion(KEYS_PORTION))
+                    .clip(true),
+            ]
+            .spacing(spacing::M)
+            .padding([0.0, spacing::CELL_PADDING_X])
+            .height(size::ROW_TALL)
+            .align_y(alignment::Vertical::Center)
+            .into()
+        })
+        .collect();
+    let list = page_scroll_padded(GIT_SCROLL_ID, column(lines).into(), iced::Padding::ZERO);
+    Some(
+        column![
+            kit::group_heading(lang.text(Msg::KeyBindingsGitHeading), palette),
+            kit::dim(lang.text(Msg::KeyBindingsGitNote), palette),
+            container(list).height(GIT_LINES_VISIBLE * size::ROW_TALL),
+        ]
+        .spacing(spacing::XS)
+        .into(),
+    )
 }
 
 fn header<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {

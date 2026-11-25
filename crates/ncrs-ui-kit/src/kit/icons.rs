@@ -28,10 +28,13 @@ pub enum Icon {
     ArrowUp,
     ArrowDown,
     ArrowUpDown,
+    Star,
+    CircleX,
+    CirclePause,
 }
 
 impl Icon {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 22] = [
         Self::Clock,
         Self::Loader,
         Self::CircleCheck,
@@ -51,6 +54,9 @@ impl Icon {
         Self::ArrowUp,
         Self::ArrowDown,
         Self::ArrowUpDown,
+        Self::Star,
+        Self::CircleX,
+        Self::CirclePause,
     ];
 
     pub(super) const fn bytes(self) -> &'static [u8] {
@@ -80,6 +86,9 @@ impl Icon {
             Self::ArrowUp => include_bytes!("../../../../assets/icons/arrow-up.svg"),
             Self::ArrowDown => include_bytes!("../../../../assets/icons/arrow-down.svg"),
             Self::ArrowUpDown => include_bytes!("../../../../assets/icons/arrow-up-down.svg"),
+            Self::Star => include_bytes!("../../../../assets/icons/star.svg"),
+            Self::CircleX => include_bytes!("../../../../assets/icons/circle-x.svg"),
+            Self::CirclePause => include_bytes!("../../../../assets/icons/circle-pause.svg"),
         }
     }
 

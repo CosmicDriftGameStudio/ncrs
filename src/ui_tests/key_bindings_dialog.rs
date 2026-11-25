@@ -44,6 +44,22 @@ fn the_dialog_lists_the_actions_with_their_keys() {
 }
 
 #[test]
+fn the_git_actions_are_listed_read_only_and_follow_the_search() {
+    for (lang, name) in [
+        (Language::English, "key_bindings_git"),
+        (Language::German, "key_bindings_git_de"),
+    ] {
+        let mut app = opened(lang);
+        drop(
+            app.update(Message::KeyBindings(KeyBindingsMessage::SearchChanged(
+                "stash".to_owned(),
+            ))),
+        );
+        assert_snapshot(&app, name);
+    }
+}
+
+#[test]
 fn a_clash_names_the_action_that_holds_the_key() {
     for (lang, name) in [
         (Language::English, "key_bindings_clash"),
