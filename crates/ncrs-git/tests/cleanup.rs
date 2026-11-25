@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use git_cli::{clone_of, repo, sh, with_origin, write, Repo};
 use ncrs_git::{
-    cleanup_list, refs, remote_state, remote_tips, ActionError, CleanupBranch, CleanupList, CleanupPlan,
-    CleanupReason, CleanupTarget, KeepReason, RemoteState,
+    cleanup_list, refs, remote_state, remote_tips, ActionError, CleanupBranch, CleanupList,
+    CleanupPlan, CleanupReason, CleanupTarget, KeepReason, RemoteState,
 };
 use tempfile::TempDir;
 
@@ -375,9 +375,11 @@ fn a_shallow_clone_does_not_turn_unmerged_branches_into_merged_ones() {
         .find(|branch| branch.name == "feat")
         .unwrap();
     assert!(!feat.merged);
-    assert!(cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default())
-        .branches
-        .is_empty());
+    assert!(
+        cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default())
+            .branches
+            .is_empty()
+    );
 }
 
 /// `feat` merged into main and pushed, so it is offered as `InDefault`.

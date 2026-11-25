@@ -32,8 +32,14 @@ fn a_link_in_the_working_copy_shows_its_target_text_not_the_file_behind_it() {
 
     let diff = compare_diff(repo.path(), &head, None, "a.txt", None, false, &go()).unwrap();
     let shown = format!("{diff:?}");
-    assert!(shown.contains("outside.txt"), "the link text is the content");
-    assert!(!shown.contains("secret"), "the file behind the link stays unread");
+    assert!(
+        shown.contains("outside.txt"),
+        "the link text is the content"
+    );
+    assert!(
+        !shown.contains("secret"),
+        "the file behind the link stays unread"
+    );
 }
 
 #[cfg(unix)]

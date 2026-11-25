@@ -163,7 +163,11 @@ pub struct RemoteState {
 
 /// Reads the tracking branches that are fully inside the remote's default branch.
 /// Call it after the fetch and pass whether the fetch worked.
-pub fn remote_state(root: &Path, fetched: bool, stop: &AtomicBool) -> Result<RemoteState, GitError> {
+pub fn remote_state(
+    root: &Path,
+    fetched: bool,
+    stop: &AtomicBool,
+) -> Result<RemoteState, GitError> {
     let mut state = RemoteState {
         fetched,
         in_default: BTreeMap::new(),
@@ -305,10 +309,12 @@ fn judge_worktree(
         is_current: false,
         ..branch.clone()
     };
-    judge_branch(&seen_from_outside, overview, remote_tips_before, remote).map(|judged| CleanupWorktree {
-        path: worktree.path.clone(),
-        branch: judged,
-        ignored_files: worktree.ignored_files.clone(),
+    judge_branch(&seen_from_outside, overview, remote_tips_before, remote).map(|judged| {
+        CleanupWorktree {
+            path: worktree.path.clone(),
+            branch: judged,
+            ignored_files: worktree.ignored_files.clone(),
+        }
     })
 }
 
@@ -387,8 +393,7 @@ impl Git {
         }
         doomed.extend(plan.branches.iter());
         for branch in doomed {
-            let result =
-                plain_ref(&branch.name).and_then(|_| self.delete_scanned_branch(branch));
+            let result = plain_ref(&branch.name).and_then(|_| self.delete_scanned_branch(branch));
             if result.is_ok() {
                 let tracking_exists = branch.upstream.as_ref().filter(|name| {
                     self.try_text(&[
@@ -401,7 +406,10 @@ impl Git {
                 });
                 if plan.delete_remote {
                     let target = branch.remote_tip.as_ref().zip(
-                        branch.upstream.as_deref().and_then(|name| name.split_once('/')),
+                        branch
+                            .upstream
+                            .as_deref()
+                            .and_then(|name| name.split_once('/')),
                     );
                     if let Some((tip, (remote, name))) = target {
                         remote_deletes.push((remote.to_string(), name.to_string(), tip.clone()));

@@ -239,6 +239,12 @@ pub enum Prompts {
     Unattended,
 }
 
+pub(crate) fn repository_runs_commands() -> ActionError {
+    ActionError::Other {
+        git_output: "the repository config runs commands".to_string(),
+    }
+}
+
 /// The only transports an unattended call may use: no `ext::` command transport.
 const UNATTENDED_PROTOCOLS: &str = "https:http:ssh:git:file";
 /// `-c` settings of an unattended call: no command transport, no background
@@ -297,7 +303,15 @@ impl Git {
     /// names, so showing a folder never runs what a downloaded `.git/config` says.
     pub fn open_reading(root: &Path) -> Result<Self, ActionError> {
         let mut git = Self::open(root)?;
-        git.reading_without = Some(crate::repo_access::repository_filter_names(root));
+        let filters = crate::repo_access::repository_filter_names(root);
+        // `-c` cuts a name at its first `=`, so such a filter would stay on.
+        let cannot_be_emptied = |name: &String| {
+            name.is_empty() || name.contains(['=', char::REPLACEMENT_CHARACTER])
+        };
+        if filters.iter().any(cannot_be_emptied) {
+            return Err(repository_runs_commands());
+        }
+        git.reading_without = Some(filters);
         Ok(git)
     }
 
@@ -373,6 +387,11 @@ impl Git {
                     );
             }
         }
+    }
+
+    /// Only reads, or runs unattended: nothing the repository names may start.
+    pub(crate) fn is_guarded(&self) -> bool {
+        self.reading_without.is_some()
     }
 
     pub(crate) fn run(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<Output, ActionError> {
@@ -589,7 +608,11 @@ mod tests {
             timeout: None,
         };
         let given = git.extra_settings();
-        for wanted in ["protocol.ext.allow=never", "maintenance.auto=false", "gc.auto=0"] {
+        for wanted in [
+            "protocol.ext.allow=never",
+            "maintenance.auto=false",
+            "gc.auto=0",
+        ] {
             assert!(given.contains(&wanted), "{wanted}");
         }
         assert!(!settings_of(Prompts::Plain).contains_key("GIT_ALLOW_PROTOCOL"));

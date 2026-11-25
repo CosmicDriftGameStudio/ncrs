@@ -20,10 +20,7 @@ pub fn read_working_text(root: &Path, relative: &str) -> Option<String> {
 
 /// The whole file, for an action that writes back what it read: a file that
 /// would be cut is refused.
-pub(crate) fn read_whole_working_file(
-    root: &Path,
-    relative: &str,
-) -> Result<Vec<u8>, ActionError> {
+pub(crate) fn read_whole_working_file(root: &Path, relative: &str) -> Result<Vec<u8>, ActionError> {
     let bytes = read_working_file(root, relative).ok_or_else(|| ActionError::Other {
         git_output: format!("{relative} cannot be read"),
     })?;
@@ -83,7 +80,11 @@ pub(crate) fn read_working_file(root: &Path, relative: &str) -> Option<Vec<u8>> 
     {
         return None;
     }
-    if let Some(parent) = path.parent().and_then(Path::to_str).filter(|p| !p.is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .and_then(Path::to_str)
+        .filter(|p| !p.is_empty())
+    {
         refuse_symlinks(root, parent).ok()?;
     }
     let full = root.join(path);

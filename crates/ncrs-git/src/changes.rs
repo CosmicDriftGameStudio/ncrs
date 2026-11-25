@@ -107,7 +107,12 @@ impl Git {
     }
 
     pub(crate) fn porcelain(&self) -> Result<Vec<PorcelainEntry>, ActionError> {
-        let output = self.ok(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
+        let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+        if self.is_guarded() {
+            // Looking into a submodule runs the filters of its own config.
+            args.push("--ignore-submodules=dirty");
+        }
+        let output = self.ok(&args)?;
         let text = String::from_utf8_lossy(&output.stdout).to_string();
         let mut fields = text.split('\0');
         let mut entries = Vec::new();

@@ -44,12 +44,18 @@ pub struct DiffHunk {
 impl DiffHunk {
     /// How many lines the hunk covers in the old file.
     pub fn old_len(&self) -> usize {
-        self.rows.iter().filter(|row| row.old_line.is_some()).count()
+        self.rows
+            .iter()
+            .filter(|row| row.old_line.is_some())
+            .count()
     }
 
     /// How many lines the hunk covers in the new file.
     pub fn new_len(&self) -> usize {
-        self.rows.iter().filter(|row| row.new_line.is_some()).count()
+        self.rows
+            .iter()
+            .filter(|row| row.new_line.is_some())
+            .count()
     }
 }
 

@@ -367,8 +367,8 @@ impl Git {
             .map(|raw| utf8_path(raw).map(str::to_string))
             .collect::<Result<Vec<String>, ActionError>>()?;
         for path in self.untracked_in_the_way(target)? {
-            let is_folder = fs::symlink_metadata(self.root().join(&path))
-                .is_ok_and(|found| found.is_dir());
+            let is_folder =
+                fs::symlink_metadata(self.root().join(&path)).is_ok_and(|found| found.is_dir());
             if is_folder {
                 return Err(ActionError::Io(format!(
                     "{path} is a folder the reset would replace"

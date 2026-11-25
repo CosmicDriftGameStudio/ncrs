@@ -495,7 +495,10 @@ mod tests {
     #[test]
     fn an_unknown_prompt_is_masked() {
         let kind = |prompt| kind_of_prompt(prompt, false);
-        assert_eq!(kind("Enter the code from your device: "), PromptKind::Secret);
+        assert_eq!(
+            kind("Enter the code from your device: "),
+            PromptKind::Secret
+        );
         assert_eq!(kind(""), PromptKind::Secret);
         assert_eq!(
             kind("Password for 'https://username@host': "),

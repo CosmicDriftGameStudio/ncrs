@@ -17,17 +17,26 @@ impl Git {
     }
 
     pub fn checkout(&self, branch: &str) -> Result<(), ActionError> {
-        // A partial clone fetches what the checkout lacks.
-        self.refuse_commands_of_the_repository()?;
-        self.ok(&["checkout", plain_ref(branch)?, "--"])?;
+        self.refuse_unsafe_checkout()?;
+        self.ok(&[self.checkout_args(), &[plain_ref(branch)?, "--"]].concat())?;
         Ok(())
     }
 
     /// `remote_branch` is `origin/feature`: makes a local `feature` that tracks it.
     pub fn checkout_remote_branch(&self, remote_branch: &str) -> Result<(), ActionError> {
-        self.refuse_commands_of_the_repository()?;
-        self.ok(&["checkout", "--track", plain_ref(remote_branch)?])?;
+        self.refuse_unsafe_checkout()?;
+        self.ok(&[self.checkout_args(), &["--track", plain_ref(remote_branch)?]].concat())?;
         Ok(())
+    }
+
+    /// Without `--quiet` git looks into every submodule for changes, which
+    /// runs the filters of the submodule's own config.
+    fn checkout_args(&self) -> &'static [&'static str] {
+        if self.is_unattended() {
+            &["checkout", "--quiet"]
+        } else {
+            &["checkout"]
+        }
     }
 
     pub fn rename_branch(&self, old: &str, new: &str) -> Result<(), ActionError> {

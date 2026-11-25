@@ -352,7 +352,13 @@ fn blame_names_each_author() {
     let repo = repo();
     write(repo.path(), "a.txt", "one\nTWO\nthree\n");
     repo.sh(&["add", "a.txt"]);
-    repo.sh(&["commit", "-q", "-m", "second", "--author=Ada <ada@example.com>"]);
+    repo.sh(&[
+        "commit",
+        "-q",
+        "-m",
+        "second",
+        "--author=Ada <ada@example.com>",
+    ]);
     let blamed = blame(repo.path(), "a.txt", None, &go()).unwrap();
     let authors: Vec<_> = blamed
         .lines

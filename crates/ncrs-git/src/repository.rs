@@ -36,7 +36,10 @@ pub fn path_in_repository(root: &Path, file: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "test code: a failing setup is the signal")]
+#[allow(
+    clippy::unwrap_used,
+    reason = "test code: a failing setup is the signal"
+)]
 mod tests {
     use super::path_in_repository;
 

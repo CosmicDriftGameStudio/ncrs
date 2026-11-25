@@ -11,6 +11,14 @@ mod git_cli;
 
 use git_cli::{repo, with_origin, write};
 use ncrs_git::Git;
+use tempfile::TempDir;
+#[cfg(unix)]
+use {
+    git_cli::Repo,
+    std::path::PathBuf,
+    std::sync::atomic::AtomicBool,
+    std::sync::Arc,
+};
 
 #[test]
 fn a_fresh_repository_runs_nothing() {
@@ -44,7 +52,11 @@ fn a_command_transport_remote_is_found() {
 #[test]
 fn an_equals_sign_in_the_name_hides_nothing() {
     let repo = repo();
-    repo.sh(&["config", "credential.https://a=b@x.test.helper", "!echo evil"]);
+    repo.sh(&[
+        "config",
+        "credential.https://a=b@x.test.helper",
+        "!echo evil",
+    ]);
     assert!(repo.git.repository_config_runs_commands());
 }
 
@@ -93,7 +105,13 @@ fn an_unattended_pull_leaves_submodules_alone() {
     repo.sh(&["config", "submodule.recurse", "true"]);
     repo.sh(&["config", "submodule.library.fetchRecurseSubmodules", "true"]);
     let command = format!("touch {}; git-upload-pack", marker.display());
-    repo.sh(&["-C", "library", "config", "remote.origin.uploadpack", &command]);
+    repo.sh(&[
+        "-C",
+        "library",
+        "config",
+        "remote.origin.uploadpack",
+        &command,
+    ]);
 
     let unattended = Git::open_unattended(repo.path()).unwrap();
     unattended.fetch(Some("origin")).unwrap();
@@ -103,4 +121,99 @@ fn an_unattended_pull_leaves_submodules_alone() {
 
     let _attended = repo.git.pull(None);
     assert!(marker.exists(), "the program of the submodule would run");
+}
+
+/// A repository with a submodule whose own config names a filter that makes
+/// the returned file, and with a changed file in the submodule.
+#[cfg(unix)]
+fn with_hostile_submodule() -> (Repo, TempDir, PathBuf) {
+    let repo = repo();
+    let library = git_cli::repo();
+    let outside = TempDir::new().unwrap();
+    let marker = outside.path().join("filter-ran");
+    repo.sh(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        library.path().to_str().unwrap(),
+        "library",
+    ]);
+    repo.sh(&["commit", "-q", "-m", "library"]);
+    repo.sh(&["branch", "feature"]);
+    let clean = format!("touch {}; cat", marker.display());
+    repo.sh(&["-C", "library", "config", "filter.evil.clean", &clean]);
+    write(
+        repo.path(),
+        ".git/modules/library/info/attributes",
+        "* filter=evil\n",
+    );
+    write(repo.path(), "library/a.txt", "ONE\ntwo\nthree\n");
+    (repo, outside, marker)
+}
+
+#[cfg(unix)]
+#[test]
+fn showing_a_repository_runs_no_filter_of_a_submodule() {
+    let (repo, _outside, marker) = with_hostile_submodule();
+
+    Git::open_reading(repo.path()).unwrap().changes().unwrap();
+    ncrs_git::status(repo.path(), &Arc::new(AtomicBool::new(false))).unwrap();
+    assert!(!marker.exists());
+
+    repo.sh(&["status"]);
+    assert!(marker.exists(), "git itself runs it");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unattended_switch_runs_no_filter_of_a_submodule() {
+    let (repo, _outside, marker) = with_hostile_submodule();
+    repo.sh(&["checkout", "-q", "feature"]);
+    assert!(!marker.exists());
+
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    assert_eq!(unattended.switch_to_default().unwrap(), "main");
+    assert!(!marker.exists());
+
+    repo.git.checkout("feature").unwrap();
+    assert!(marker.exists(), "git itself runs it");
+}
+
+#[test]
+fn a_filter_that_only_one_branch_includes_is_seen_after_the_switch() {
+    let (_origin, repo) = with_origin();
+    repo.sh(&["checkout", "-q", "-b", "feature"]);
+    write(
+        repo.path(),
+        ".git/evil.inc",
+        "[filter \"evil\"]\n\tsmudge = evil\n",
+    );
+    repo.sh(&["config", "includeIf.onbranch:main.path", "evil.inc"]);
+
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    assert!(!unattended.has_content_filters().unwrap());
+    unattended.switch_to_default().unwrap();
+    unattended.pull(None).unwrap_err();
+    unattended.checkout("feature").unwrap_err();
+}
+
+#[test]
+fn an_unattended_switch_never_writes_outside_the_repository() {
+    let repo = repo();
+    repo.sh(&["branch", "feature"]);
+    let elsewhere = TempDir::new().unwrap();
+    let folder = elsewhere.path().to_str().unwrap();
+    repo.sh(&["config", "core.worktree", folder]);
+
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    unattended.checkout("feature").unwrap_err();
+    assert!(!elsewhere.path().join("a.txt").exists());
+}
+
+#[test]
+fn a_filter_name_that_cannot_be_switched_off_is_refused() {
+    let repo = repo();
+    repo.sh(&["config", "filter.a=b.clean", "evil"]);
+    Git::open_reading(repo.path()).unwrap_err();
 }

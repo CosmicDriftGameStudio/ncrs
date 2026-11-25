@@ -1,4 +1,4 @@
-use crate::cli::Git;
+use crate::cli::{repository_runs_commands, Git};
 use crate::integrate::IntegrateOutcome;
 use crate::refname::plain_ref;
 use crate::repo_access::parse_id;
@@ -78,21 +78,58 @@ impl Git {
     /// helper URL. A downloaded repository can carry any of these. When git
     /// cannot tell (an old git without `--show-scope`), the answer is yes.
     pub fn repository_config_runs_commands(&self) -> bool {
+        self.any_repository_setting(setting_runs_commands)
+    }
+
+    fn any_repository_setting(&self, found: impl Fn(&str, &str) -> bool) -> bool {
         match self.run(&["config", "--show-scope", "-z", "--list"], None) {
-            Ok(output) if output.success => config_runs_commands(&output.stdout_text()),
+            Ok(output) if output.success => settings_of_the_repository(&output.stdout_text())
+                .any(|(name, value)| found(&name, value)),
             Ok(_) | Err(_) => true,
         }
     }
 
     /// Nobody looks at what an unattended call starts, so the repository's own
     /// config must not name a program for it.
-    pub(crate) fn refuse_commands_of_the_repository(&self) -> Result<(), ActionError> {
+    fn refuse_commands_of_the_repository(&self) -> Result<(), ActionError> {
         if self.is_unattended() && self.repository_config_runs_commands() {
+            return Err(repository_runs_commands());
+        }
+        Ok(())
+    }
+
+    /// The same for a call that does more than fetch: merges, signs.
+    fn refuse_commands_beyond_a_fetch(&self) -> Result<(), ActionError> {
+        let runs = |name: &str, value: &str| {
+            setting_runs_commands(name, value) || setting_runs_commands_beyond_a_fetch(name)
+        };
+        if self.is_unattended() && self.any_repository_setting(runs) {
+            return Err(repository_runs_commands());
+        }
+        Ok(())
+    }
+
+    /// Before every call that writes files unattended, as switching the branch
+    /// can switch an include of the config on.
+    pub(crate) fn refuse_unsafe_checkout(&self) -> Result<(), ActionError> {
+        self.refuse_commands_beyond_a_fetch()?;
+        if self.is_unattended() && self.has_content_filters().unwrap_or(true) {
+            return Err(repository_runs_commands());
+        }
+        if self.is_unattended() && !self.has_its_files_here() {
             return Err(ActionError::Other {
-                git_output: "the repository config runs commands".to_string(),
+                git_output: "the files of this repository are in another folder".to_string(),
             });
         }
         Ok(())
+    }
+
+    /// `core.worktree` can name a folder outside the repository, whose files a
+    /// checkout would overwrite.
+    fn has_its_files_here(&self) -> bool {
+        let top = self.try_text(&["rev-parse", "--show-toplevel"]);
+        let top = top.and_then(|path| std::fs::canonicalize(path).ok());
+        top.is_some() && top == std::fs::canonicalize(self.root()).ok()
     }
 
     /// Whether this repository's own config names content filters (git-crypt,
@@ -119,7 +156,7 @@ impl Git {
     /// or the way `strategy` says for this call; the config is never written.
     /// Conflicts come back as an outcome, not as an error.
     pub fn pull(&self, strategy: Option<PullStrategy>) -> Result<IntegrateOutcome, ActionError> {
-        self.refuse_commands_of_the_repository()?;
+        self.refuse_unsafe_checkout()?;
         let remote = self
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
@@ -151,7 +188,7 @@ impl Git {
 
     /// Pushes a local branch, checked out or not, and sets its upstream when it has none.
     pub fn push_branch(&self, branch: &str, requested: Option<&str>) -> Result<(), ActionError> {
-        self.refuse_commands_of_the_repository()?;
+        self.refuse_commands_beyond_a_fetch()?;
         let (configured, remote_name, target) = self.push_destination(branch, requested)?;
         let refspec = format!("refs/heads/{branch}:{target}");
         let mut args = vec!["push"];
@@ -246,7 +283,7 @@ impl Git {
     /// The expected commit is always spelled out: a bare lease checks the
     /// tracking ref, which a fetch in the background moves without anyone looking.
     pub fn force_push_with_lease(&self, plan: &ForcePushPlan) -> Result<(), ActionError> {
-        self.refuse_commands_of_the_repository()?;
+        self.refuse_commands_beyond_a_fetch()?;
         plain_ref(&plan.remote)?;
         plain_ref(&plan.branch)?;
         let lease = format!(
@@ -270,7 +307,7 @@ impl Git {
         branch: &str,
         expected_tip: Option<&str>,
     ) -> Result<(), ActionError> {
-        self.refuse_commands_of_the_repository()?;
+        self.refuse_commands_beyond_a_fetch()?;
         let remote = plain_ref(remote)?;
         let full_name = format!("refs/heads/{branch}");
         let lease = match expected_tip {
@@ -330,23 +367,20 @@ fn settings_of_the_repository(listing: &str) -> impl Iterator<Item = (String, &s
         })
 }
 
-fn config_runs_commands(listing: &str) -> bool {
-    settings_of_the_repository(listing).any(|(name, value)| setting_runs_commands(&name, value))
-}
-
 /// `name` is lowercase; the part between the first and last dot (a remote or
 /// URL name) may hold anything, so only the ends are compared.
 fn setting_runs_commands(name: &str, value: &str) -> bool {
     let last = name.rsplit('.').next().unwrap_or_default();
     let starts = |prefix: &str| name.starts_with(prefix);
     match name {
-        "core.sshcommand" | "core.gitproxy" | "core.askpass" | "core.alternaterefscommand"
+        "core.sshcommand"
+        | "core.gitproxy"
+        | "core.askpass"
+        | "core.alternaterefscommand"
         | "gc.recentobjectshook" => true,
         _ if starts("credential.") => last == "helper",
-        _ if starts("gpg.") => matches!(last, "program" | "defaultkeycommand"),
         // Hooks from the config run whatever `core.hooksPath` says.
         _ if starts("hook.") => last == "command",
-        _ if starts("merge.") => last == "driver",
         _ if starts("remote.") => {
             matches!(last, "uploadpack" | "receivepack" | "vcs")
                 || (matches!(last, "url" | "pushurl") && value.contains("::"))
@@ -359,9 +393,23 @@ fn setting_runs_commands(name: &str, value: &str) -> bool {
     }
 }
 
+/// What a merge, a signature or a file checked out with git-lfs starts.
+fn setting_runs_commands_beyond_a_fetch(name: &str) -> bool {
+    let last = name.rsplit('.').next().unwrap_or_default();
+    let starts = |prefix: &str| name.starts_with(prefix);
+    match last {
+        "program" | "defaultkeycommand" => starts("gpg."),
+        "driver" => starts("merge."),
+        "path" | "clean" | "smudge" => starts("lfs."),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod config_tests {
-    use super::config_runs_commands;
+    use super::{
+        setting_runs_commands, setting_runs_commands_beyond_a_fetch, settings_of_the_repository,
+    };
 
     fn runs(lines: &[&str]) -> bool {
         let listing: String = lines
@@ -371,39 +419,61 @@ mod config_tests {
                 format!("{scope}\0{}\0", setting.replacen("==", "\n", 1))
             })
             .collect();
-        config_runs_commands(&listing)
+        let mut settings = settings_of_the_repository(&listing);
+        settings.any(|(name, value)| setting_runs_commands(&name, value))
     }
 
     #[test]
     fn a_local_credential_helper_runs_a_program() {
         assert!(runs(&["local\tcredential.helper==!sh -c evil"]));
         assert!(runs(&["local\tcredential.https://x.test.helper==store"]));
-        assert!(runs(&["worktree\tcore.sshcommand==ssh -o ProxyCommand=evil"]));
+        assert!(runs(&[
+            "worktree\tcore.sshcommand==ssh -o ProxyCommand=evil"
+        ]));
         assert!(runs(&["local\tremote.origin.uploadpack==evil"]));
         assert!(runs(&["local\tgc.recentobjectshook==evil"]));
     }
 
     #[test]
-    fn signing_config_hooks_and_merge_drivers_run_a_program() {
-        assert!(runs(&["local\tgpg.program==evil"]));
-        assert!(runs(&["local\tgpg.ssh.program==evil"]));
-        assert!(runs(&["local\tgpg.ssh.defaultkeycommand==evil"]));
+    fn a_config_hook_runs_a_program() {
         assert!(runs(&["local\thook.x.command==evil"]));
-        assert!(runs(&["local\tmerge.x.driver==evil"]));
-        assert!(!runs(&["local\tgpg.format==ssh", "local\tmerge.ff==only"]));
+    }
+
+    #[test]
+    fn signing_merging_and_lfs_programs_count_beyond_a_fetch_only() {
+        for name in [
+            "gpg.program",
+            "gpg.ssh.program",
+            "gpg.ssh.defaultkeycommand",
+            "merge.x.driver",
+            "lfs.customtransfer.x.path",
+            "lfs.extension.x.smudge",
+        ] {
+            assert!(setting_runs_commands_beyond_a_fetch(name), "{name}");
+            assert!(!setting_runs_commands(name, "evil"), "{name}");
+        }
+        for name in ["gpg.format", "merge.ff", "lfs.url"] {
+            assert!(!setting_runs_commands_beyond_a_fetch(name), "{name}");
+        }
     }
 
     #[test]
     fn an_equals_sign_in_the_name_hides_nothing() {
-        assert!(runs(&["local\tcredential.https://a=b@x.test.helper==!sh -c evil"]));
+        assert!(runs(&[
+            "local\tcredential.https://a=b@x.test.helper==!sh -c evil"
+        ]));
         assert!(runs(&["local\tremote.a=b.uploadpack==evil"]));
     }
 
     #[test]
     fn a_command_transport_url_runs_a_program() {
         assert!(runs(&["local\tremote.origin.url==ext::sh -c evil"]));
-        assert!(runs(&["local\turl.ext::sh -c evil.insteadof==https://x.test/"]));
-        assert!(runs(&["local\turl.https://x.test/.insteadof==ext::sh evil"]));
+        assert!(runs(&[
+            "local\turl.ext::sh -c evil.insteadof==https://x.test/"
+        ]));
+        assert!(runs(&[
+            "local\turl.https://x.test/.insteadof==ext::sh evil"
+        ]));
     }
 
     #[test]

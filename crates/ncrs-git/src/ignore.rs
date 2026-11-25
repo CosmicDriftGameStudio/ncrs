@@ -22,8 +22,7 @@ pub fn literal_pattern(relative_path: &str) -> String {
     let mut pattern = String::from("/");
     for (index, letter) in name.char_indices() {
         let is_outer_space = letter == ' ' && (index == 0 || index >= trailing_spaces_from);
-        let needs_escape =
-            matches!(letter, '*' | '?' | '[' | '!' | '#' | '\\') || is_outer_space;
+        let needs_escape = matches!(letter, '*' | '?' | '[' | '!' | '#' | '\\') || is_outer_space;
         if needs_escape {
             pattern.push('\\');
         }
