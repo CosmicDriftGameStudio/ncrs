@@ -27,6 +27,8 @@ pub struct ChangedFile {
     pub removed: u32,
     /// No line counts: binary or too large.
     pub binary: bool,
+    /// Not known to git yet (only in the working copy).
+    pub untracked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +37,12 @@ pub struct CommitDetail {
     pub short: String,
     pub parents: Vec<String>,
     pub author: String,
+    /// Seconds since the Unix epoch, when the author wrote it.
+    pub author_time: i64,
+    /// Who committed it; differs from the author after a cherry-pick or rebase.
+    pub committer: String,
+    /// The committer's time, which is what `time` shows in the list.
+    pub committer_time: i64,
     pub time: i64,
     /// Title, empty line and body as written.
     pub message: String,
@@ -60,8 +68,44 @@ pub fn commit_detail(
             .map_err(GitError::read)?,
         None => repository.empty_tree(),
     };
+    let files = changed_files(&repository, &parent_tree, &tree, stop)?;
+
+    let committer_time = commit.time().map(|time| time.seconds).unwrap_or_default();
+    Ok(CommitDetail {
+        short: short_hash(&id),
+        id: id.to_string(),
+        parents: parents.iter().map(ToString::to_string).collect(),
+        author: commit
+            .author()
+            .map(|signature| signature.name.to_string())
+            .unwrap_or_default(),
+        author_time: commit
+            .author()
+            .map(|signature| signature.time().map(|time| time.seconds).unwrap_or_default())
+            .unwrap_or_default(),
+        committer: commit
+            .committer()
+            .map(|signature| signature.name.to_string())
+            .unwrap_or_default(),
+        committer_time,
+        time: committer_time,
+        message: commit
+            .message_raw()
+            .map(|message| message.to_string().trim_end().to_string())
+            .unwrap_or_default(),
+        files,
+    })
+}
+
+/// The files that differ between two trees, renames followed, by path.
+pub fn changed_files(
+    repository: &gix::Repository,
+    parent_tree: &gix::Tree<'_>,
+    tree: &gix::Tree<'_>,
+    stop: &Arc<AtomicBool>,
+) -> Result<Vec<ChangedFile>, GitError> {
     let changes = repository
-        .diff_tree_to_tree(&parent_tree, &tree, None)
+        .diff_tree_to_tree(parent_tree, tree, None)
         .map_err(GitError::read)?;
 
     let mut files = Vec::new();
@@ -71,11 +115,11 @@ pub fn commit_detail(
             continue;
         };
         let old = blob_at(
-            &repository,
-            &parent_tree,
+            repository,
+            parent_tree,
             old_path.as_deref().unwrap_or(&path),
         );
-        let new = blob_at(&repository, &tree, &path);
+        let new = blob_at(repository, tree, &path);
         let counts = line_counts(&old, &new);
         files.push(ChangedFile {
             path,
@@ -84,25 +128,11 @@ pub fn commit_detail(
             added: counts.map_or(0, |(added, _)| added),
             removed: counts.map_or(0, |(_, removed)| removed),
             binary: counts.is_none(),
+            untracked: false,
         });
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
-
-    Ok(CommitDetail {
-        short: short_hash(&id),
-        id: id.to_string(),
-        parents: parents.iter().map(ToString::to_string).collect(),
-        author: commit
-            .author()
-            .map(|signature| signature.name.to_string())
-            .unwrap_or_default(),
-        time: commit.time().map(|time| time.seconds).unwrap_or_default(),
-        message: commit
-            .message_raw()
-            .map(|message| message.to_string().trim_end().to_string())
-            .unwrap_or_default(),
-        files,
-    })
+    Ok(files)
 }
 
 /// Path, previous path and kind of a changed file; `None` for folders and submodules.
@@ -176,6 +206,7 @@ pub fn working_changes(root: &Path, stop: &Arc<AtomicBool>) -> Result<Vec<Change
                 added: counts.map_or(0, |(added, _)| added),
                 removed: counts.map_or(0, |(_, removed)| removed),
                 binary: counts.is_none(),
+                untracked: *state == FileState::Untracked,
             });
         }
     }

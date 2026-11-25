@@ -34,6 +34,13 @@ pub enum ActionError {
     NeedsPullStrategy {
         git_output: String,
     },
+    /// `pull --ff-only` on branches that have diverged: nothing was changed.
+    NotFastForward {
+        git_output: String,
+    },
+    /// A force push with lease found the remote branch somewhere else than
+    /// the caller last saw it: nothing was overwritten.
+    LeaseRejected,
     /// Files are still in conflict, or blocks inside a file.
     UnresolvedConflicts {
         count: usize,
@@ -71,6 +78,10 @@ impl fmt::Display for ActionError {
             Self::NeedsPullStrategy { git_output } => {
                 write!(f, "pull needs a strategy: {git_output}")
             }
+            Self::NotFastForward { git_output } => {
+                write!(f, "not a fast-forward: {git_output}")
+            }
+            Self::LeaseRejected => f.write_str("the remote branch changed since it was last seen"),
             Self::UnresolvedConflicts { count } => write!(f, "{count} conflict(s) unresolved"),
             Self::UndoNotSafe(reason) => write!(f, "undo not safe: {reason}"),
             Self::Io(cause) => write!(f, "io: {cause}"),
@@ -117,6 +128,9 @@ const NETWORK_MARKERS: &[&str] = &[
 /// a rejected push also says "failed to push", and an auth failure ends with
 /// "Could not read from remote repository", so network comes last.
 pub fn classify_sync_failure(git_output: &str, remote: &str) -> ActionError {
+    if git_output.contains("(stale info)") {
+        return ActionError::LeaseRejected;
+    }
     let rejected = git_output.contains("[rejected]")
         && (git_output.contains("non-fast-forward") || git_output.contains("fetch first"))
         || git_output.contains("Updates were rejected because");
@@ -129,6 +143,11 @@ pub fn classify_sync_failure(git_output: &str, remote: &str) -> ActionError {
     {
         return ActionError::AuthFailed {
             remote: remote.to_string(),
+            git_output: git_output.to_string(),
+        };
+    }
+    if git_output.contains("Not possible to fast-forward") {
+        return ActionError::NotFastForward {
             git_output: git_output.to_string(),
         };
     }
@@ -223,6 +242,24 @@ mod tests {
         assert!(matches!(
             classify_sync_failure(output, "origin"),
             ActionError::NeedsPullStrategy { .. }
+        ));
+    }
+
+    #[test]
+    fn a_stale_lease_is_not_a_plain_rejection() {
+        let output = "To /srv/origin.git\n ! [rejected]        main -> main (stale info)\nerror: failed to push some refs";
+        assert_eq!(
+            classify_sync_failure(output, "origin"),
+            ActionError::LeaseRejected
+        );
+    }
+
+    #[test]
+    fn a_pull_that_cannot_fast_forward_is_typed() {
+        let output = "fatal: Not possible to fast-forward, aborting.";
+        assert!(matches!(
+            classify_sync_failure(output, "origin"),
+            ActionError::NotFastForward { .. }
         ));
     }
 

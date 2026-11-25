@@ -10,6 +10,8 @@ use crate::ActionError;
 pub enum Integration {
     Merge,
     Rebase,
+    CherryPick,
+    Revert,
 }
 
 /// The two sides of a merge or rebase that stopped, as branch names. While
@@ -73,6 +75,8 @@ fn sides_with_file(kind: ConflictKind) -> (bool, bool) {
     }
 }
 
+const SHORT_SHA: usize = 7;
+
 fn io_error(cause: std::io::Error) -> ActionError {
     ActionError::Io(cause.to_string())
 }
@@ -99,6 +103,10 @@ impl Git {
             Some(Integration::Rebase)
         } else if git_dir.join("MERGE_HEAD").exists() {
             Some(Integration::Merge)
+        } else if git_dir.join("CHERRY_PICK_HEAD").exists() {
+            Some(Integration::CherryPick)
+        } else if git_dir.join("REVERT_HEAD").exists() {
+            Some(Integration::Revert)
         } else {
             None
         }
@@ -125,6 +133,19 @@ impl Git {
                     .or_else(|| self.name_of(&read("MERGE_HEAD")?))
                     .unwrap_or_default();
                 (self.current_branch().unwrap_or_default(), other)
+            }
+            Integration::CherryPick | Integration::Revert => {
+                let head_file = if kind == Integration::CherryPick {
+                    "CHERRY_PICK_HEAD"
+                } else {
+                    "REVERT_HEAD"
+                };
+                let picked: String = read(head_file)
+                    .unwrap_or_default()
+                    .chars()
+                    .take(SHORT_SHA)
+                    .collect();
+                (self.current_branch().unwrap_or_default(), picked)
             }
             Integration::Rebase => {
                 let folder = if git_dir.join("rebase-merge").exists() {
@@ -253,6 +274,8 @@ impl Git {
         match self.integration_in_progress() {
             Some(Integration::Rebase) => self.ok(&["rebase", "--abort"])?,
             Some(Integration::Merge) => self.ok(&["merge", "--abort"])?,
+            Some(Integration::CherryPick) => self.ok(&["cherry-pick", "--abort"])?,
+            Some(Integration::Revert) => self.ok(&["revert", "--abort"])?,
             None => return Err(nothing_in_progress()),
         };
         Ok(())
@@ -273,6 +296,14 @@ impl Git {
             Some(Integration::Merge) => {
                 self.ok(&["commit", "--no-edit"])?;
                 Ok(IntegrateOutcome::Completed)
+            }
+            Some(Integration::CherryPick) => {
+                let output = self.run(&["cherry-pick", "--continue"], None)?;
+                self.finished_integration(&output)
+            }
+            Some(Integration::Revert) => {
+                let output = self.run(&["revert", "--continue"], None)?;
+                self.finished_integration(&output)
             }
             None => Err(nothing_in_progress()),
         }

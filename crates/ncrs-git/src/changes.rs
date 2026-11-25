@@ -71,6 +71,7 @@ fn changed(path: &str, kind: ChangeKind, old: &[u8], new: &[u8]) -> ChangedFile 
         added: counts.map_or(0, |(added, _)| added),
         removed: counts.map_or(0, |(_, removed)| removed),
         binary: counts.is_none(),
+        untracked: false,
     }
 }
 
@@ -94,9 +95,9 @@ impl Git {
             if entry.is_untracked() || entry.has_unstaged_change() {
                 let old = self.blob(&format!(":{path}")).unwrap_or_default();
                 let new = fs::read(self.root().join(path)).unwrap_or_default();
-                lists
-                    .unstaged
-                    .push(changed(path, kind_of_letter(entry.worktree), &old, &new));
+                let mut file = changed(path, kind_of_letter(entry.worktree), &old, &new);
+                file.untracked = entry.is_untracked();
+                lists.unstaged.push(file);
             }
         }
         lists.staged.sort_by(|a, b| a.path.cmp(&b.path));
