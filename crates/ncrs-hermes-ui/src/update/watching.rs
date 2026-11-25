@@ -45,9 +45,9 @@ pub fn run_watching(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action
         return;
     };
     let busy_source = ctx.filing_tab_source.map(Path::to_path_buf);
-    let due = hermes
-        .watching
-        .take_due(&sources, |source| is_source_of(busy_source.as_deref(), source));
+    let due = hermes.watching.take_due(&sources, |source| {
+        is_source_of(busy_source.as_deref(), source)
+    });
     if due.is_empty() {
         return;
     }
@@ -192,8 +192,8 @@ mod tests {
     use ncrs_core::PanelSide;
     use ncrs_filing::filing::{FilingModule, Phase};
     use ncrs_filing::sorting::{SortReport, WatchedReport};
-    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets};
     use ncrs_index::Kinds;
+    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets};
 
     use crate::ctx::{Bin, PanelFacts};
 
@@ -309,7 +309,11 @@ mod tests {
     fn the_source_of_the_working_filing_tab_is_skipped_until_the_tab_is_done() {
         let mut hermes = hermes_with_a_due_source();
 
-        assert!(!starts_a_job(&mut hermes, false, Some(Path::new("/watched"))));
+        assert!(!starts_a_job(
+            &mut hermes,
+            false,
+            Some(Path::new("/watched"))
+        ));
         assert!(starts_a_job(&mut hermes, false, None));
     }
 
@@ -372,20 +376,19 @@ mod tests {
         after_the_first_run(&mut hermes);
         let same = hermes.filing_config.clone();
 
-        drop(super::super::lifecycle::keep_running_module_with_saved_transfers(
-            &mut hermes,
-            same.clone(),
-        ));
+        drop(
+            super::super::lifecycle::keep_running_module_with_saved_transfers(
+                &mut hermes,
+                same.clone(),
+            ),
+        );
         assert!(!starts_a_job(&mut hermes, false, None));
 
         let other = Filing {
             sources: vec![watched_source("/watched"), watched_source("/second")],
             ..same
         };
-        drop(super::super::lifecycle::keep_running_module_with_saved_transfers(
-            &mut hermes,
-            other,
-        ));
+        drop(super::super::lifecycle::keep_running_module_with_saved_transfers(&mut hermes, other));
         assert!(starts_a_job(&mut hermes, false, None));
     }
 

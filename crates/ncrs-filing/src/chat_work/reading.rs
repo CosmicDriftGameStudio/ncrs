@@ -296,11 +296,7 @@ fn known_by_hash(
 
 /// A copy that lies in an unordered folder while the same content has a place
 /// in the order can go.
-fn duplicates_of(
-    root: &Path,
-    files: &[PlanFile],
-    structure: &LocationStructure,
-) -> Vec<TrashItem> {
+fn duplicates_of(root: &Path, files: &[PlanFile], structure: &LocationStructure) -> Vec<TrashItem> {
     let documents: Vec<ArchiveDocument> = files
         .iter()
         .map(|file| ArchiveDocument {

@@ -85,7 +85,12 @@ pub fn run_entry(state: &mut State, action: SyncAction) -> Outcome {
 /// Reads what the force push would replace; the question comes with the answer.
 pub fn force_push(state: &mut State) -> Outcome {
     state.actions.sync_menu = None;
-    if state.actions.sync.as_ref().is_some_and(|sync| sync.force_blocked.is_some()) {
+    if state
+        .actions
+        .sync
+        .as_ref()
+        .is_some_and(|sync| sync.force_blocked.is_some())
+    {
         return quiet(Task::none());
     }
     start(state, Job::PrepareForcePush)

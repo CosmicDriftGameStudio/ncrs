@@ -212,7 +212,8 @@ fn migrate(
         .get_mut("locations")
         .and_then(toml_edit::Item::as_array_of_tables_mut)
     {
-        locations.retain(|entry| entry.get("mode").and_then(toml_edit::Item::as_str) != Some("inbox"));
+        locations
+            .retain(|entry| entry.get("mode").and_then(toml_edit::Item::as_str) != Some("inbox"));
         for entry in locations.iter_mut() {
             for key in ["target", "transfer", "continuous"] {
                 entry.remove(key);
@@ -372,7 +373,10 @@ fn path_text(path: &Path) -> Result<&str, FilingWriteError> {
 
 /// The number of a `t<n>` id; `main` and anything else has none.
 fn numbered(id: &str) -> Option<i64> {
-    id.strip_prefix('t')?.parse().ok().filter(|number| *number >= FIRST_NUMBERED_TARGET)
+    id.strip_prefix('t')?
+        .parse()
+        .ok()
+        .filter(|number| *number >= FIRST_NUMBERED_TARGET)
 }
 
 /// The ids in the file, whether the list is made of tables or inline.
@@ -420,7 +424,9 @@ fn allocate_target_id(
     path: &Path,
 ) -> Result<TargetId, FilingWriteError> {
     let ids = target_ids(filing);
-    let written = filing.get(NEXT_TARGET).and_then(toml_edit::Item::as_integer);
+    let written = filing
+        .get(NEXT_TARGET)
+        .and_then(toml_edit::Item::as_integer);
     let taken = |wanted: &str| ids.iter().any(|id| id == wanted);
     let id = if written.is_none() && !taken("main") {
         TargetId::main()
@@ -430,8 +436,7 @@ fn allocate_target_id(
             .unwrap_or(0)
             .max(highest + 1)
             .max(FIRST_NUMBERED_TARGET);
-        TargetId::new(&format!("t{number}"))
-            .ok_or_else(|| not_a_table(path, NEXT_TARGET))?
+        TargetId::new(&format!("t{number}")).ok_or_else(|| not_a_table(path, NEXT_TARGET))?
     };
     Ok(id)
 }

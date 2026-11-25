@@ -36,7 +36,9 @@ pub fn group<'a>(
 ) -> Group<'a, Message> {
     let mut rows: Vec<SettingRow<'a, Message>> = Vec::new();
     for (index, setting) in filing.targets.iter().enumerate() {
-        rows.extend(target_rows(index, setting, rules, filing, home, lang, palette));
+        rows.extend(target_rows(
+            index, setting, rules, filing, home, lang, palette,
+        ));
     }
     if rows.is_empty() {
         rows.push(SettingRow::text(
@@ -231,12 +233,22 @@ fn rule_row<'a>(
         vec![
             RowButton::new(
                 "↑",
-                (idle && can_up).then(|| send_rule(RulesMessage::ReorderAt { index: at, delta: -1 })),
+                (idle && can_up).then(|| {
+                    send_rule(RulesMessage::ReorderAt {
+                        index: at,
+                        delta: -1,
+                    })
+                }),
                 Tone::Secondary,
             ),
             RowButton::new(
                 "↓",
-                (idle && can_down).then(|| send_rule(RulesMessage::ReorderAt { index: at, delta: 1 })),
+                (idle && can_down).then(|| {
+                    send_rule(RulesMessage::ReorderAt {
+                        index: at,
+                        delta: 1,
+                    })
+                }),
                 Tone::Secondary,
             ),
             RowButton::new(

@@ -360,11 +360,9 @@ pub fn update(
         HermesFileMessage::ProcessAgain => {
             process_again(hermes, ctx.action_sources.clone(), ctx, actions)
         }
-        HermesFileMessage::WatchSource if is_dir => super::sorting::open_dialog(
-            hermes,
-            Some(path.to_path_buf()),
-            SourceDialogKind::Watched,
-        ),
+        HermesFileMessage::WatchSource if is_dir => {
+            super::sorting::open_dialog(hermes, Some(path.to_path_buf()), SourceDialogKind::Watched)
+        }
         HermesFileMessage::AddTarget if is_dir => open_target_dialog(hermes, path, ctx, actions),
         HermesFileMessage::ToggleExclusion => {
             let excluded = hermes.cursor_is_excluded(path, is_dir);

@@ -185,7 +185,9 @@ mod ui_tests {
         session.selected = Some(PathBuf::from("scan-006.pdf"));
         session.existing.insert(
             (id("documents"), PathBuf::from("Versicherung/Muster AG")),
-            (0..5).map(|number| format!("alt-{number:03}.pdf")).collect(),
+            (0..5)
+                .map(|number| format!("alt-{number:03}.pdf"))
+                .collect(),
         );
         session
     }
@@ -363,7 +365,9 @@ mod ui_tests {
     fn filing_done_picture() {
         let mut session = session(true);
         session.source.transfer = LocationTransfer::Move;
-        session.rows.retain(|row| !matches!(row.state, RowState::Place(_)));
+        session
+            .rows
+            .retain(|row| !matches!(row.state, RowState::Place(_)));
         session.outcome = Some(Outcome {
             filed: 54,
             left: 8,

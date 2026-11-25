@@ -561,12 +561,7 @@ fn history_and_blame_are_in_the_menu_of_a_file_in_a_repository_only() {
                 MenuEntry::Item { action, .. } => Some(*action),
                 _ => None,
             })
-            .filter(|action| {
-                matches!(
-                    action,
-                    ContextAction::GitHistory | ContextAction::GitBlame
-                )
-            })
+            .filter(|action| matches!(action, ContextAction::GitHistory | ContextAction::GitBlame))
             .collect()
     };
     let mut app = App::with_fixed_panels();
@@ -596,7 +591,10 @@ fn the_history_of_the_file_under_the_cursor_opens_in_the_git_tab() {
     assert!(app.shown_git_tab().is_none(), "no file under the cursor");
 
     app.panel_mut(LEFT).selected = FILE;
-    let name = app.panel(LEFT).entries[FILE].name.to_string_lossy().into_owned();
+    let name = app.panel(LEFT).entries[FILE]
+        .name
+        .to_string_lossy()
+        .into_owned();
     drop(app.update(Message::OpenGitFile(GitFileView::History)));
     let id = app.shown_git_tab().unwrap();
     let history = app.git_tabs.get(id).unwrap().history.as_ref().unwrap();

@@ -16,21 +16,22 @@ mod ui_tests {
     use iced::widget::text_editor;
     use iced::{Point, Size};
     use iced_test::Simulator;
+    use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
+    use ncrs_git::ForcePushPlan;
     use ncrs_git::{
         BranchInfo, ChangeKind, ChangedFile, CommitDetail, DiffHunk, DiffRow, FileDiff, GraphRow,
         Log, LogCommit, RefKind, RefLabel, RefsOverview, RowKind, WorktreeInfo,
     };
-    use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
-    use ncrs_git::ForcePushPlan;
-    use ncrs_git_view::credentials::CredentialAsk;
-    use ncrs_git_view::sync_menu::{SyncKind, SyncMenu};
     use ncrs_git_view::actions::{
-        ForceBlock, ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
-        NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar, Unavailable,
+        ChangeSide, Conflict, ConflictLine, Dialog, ForceBlock, LocalChanges, MenuTarget,
+        MergeInProgress, NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar,
+        Unavailable,
     };
+    use ncrs_git_view::credentials::CredentialAsk;
     use ncrs_git_view::panes::PaneDrag;
     use ncrs_git_view::picker::Picker;
     use ncrs_git_view::state::{Area, Detail, Fold, Section, Subject};
+    use ncrs_git_view::sync_menu::{SyncKind, SyncMenu};
     use ncrs_git_view::{
         update, view, Ctx, Message, PaneWidths, PickerKind, RepoEntry, Split, State, ViewCtx,
     };

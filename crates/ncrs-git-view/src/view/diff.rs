@@ -93,10 +93,7 @@ fn sides(state: &State, shown: &DiffState, ctx: ViewCtx<'_>) -> String {
             let parent = commit.and_then(|commit| commit.parent);
             (parent.unwrap_or_else(|| NO_SIDE.to_owned()), short(sha))
         }
-        Subject::Compare { from, to } => (
-            short(from),
-            to.as_deref().map_or_else(working, short),
-        ),
+        Subject::Compare { from, to } => (short(from), to.as_deref().map_or_else(working, short)),
     };
     fill_template(
         ctx.lang.text(Msg::GitViewDiffSides),
@@ -159,7 +156,12 @@ fn toolbar_rows<'a>(
         )
         .push(layout_choice(shown.unified, ctx))
         .push(whitespace_choice(shown.ignore_whitespace, ctx))
-        .push(change_stepper(shown.hunk, total, width < STEPPER_NARROW, ctx));
+        .push(change_stepper(
+            shown.hunk,
+            total,
+            width < STEPPER_NARROW,
+            ctx,
+        ));
     let buttons = FileButtons {
         committed: !file.untracked,
         on_disk: file.kind != ChangeKind::Deleted,

@@ -66,10 +66,8 @@ mod tests {
             talk.last_parts()
         );
         assert!(
-            talk.labels().contains(&say(
-                Msg::HermesChatShowAll,
-                &[("areas", &count(AREAS))]
-            )),
+            talk.labels()
+                .contains(&say(Msg::HermesChatShowAll, &[("areas", &count(AREAS))])),
             "{:?}",
             talk.labels()
         );

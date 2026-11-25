@@ -46,7 +46,11 @@ mod tests {
             ("Bill_4711", None, "Bill_4711"),
         ];
         for (name, extension, expected) in cases {
-            assert_eq!(file_name_with_extension(name, extension), expected, "{name}");
+            assert_eq!(
+                file_name_with_extension(name, extension),
+                expected,
+                "{name}"
+            );
         }
     }
 }

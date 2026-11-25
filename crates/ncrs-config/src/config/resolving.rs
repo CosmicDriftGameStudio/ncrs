@@ -50,22 +50,25 @@ pub fn resolve_filing(
     };
     if let Some(listed) = &section.locations {
         for entry in listed.get_ref() {
-        let path_error = |reason: String| FilingError {
-            span: entry.path.span(),
-            reason,
-        };
-        let path = ncrs_intake::without_verbatim_prefix(
-            expand_location_path(entry.path.get_ref(), home).map_err(path_error)?,
-        );
-        filing.locations.push(FilingLocation {
-            path,
-            mode: LocationMode::from(*entry.mode.get_ref()),
-            images: entry.images,
-            is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
-            transfer: entry.transfer.map(LocationTransfer::from).unwrap_or_default(),
-            continuous: entry.continuous,
-        });
-    }
+            let path_error = |reason: String| FilingError {
+                span: entry.path.span(),
+                reason,
+            };
+            let path = ncrs_intake::without_verbatim_prefix(
+                expand_location_path(entry.path.get_ref(), home).map_err(path_error)?,
+            );
+            filing.locations.push(FilingLocation {
+                path,
+                mode: LocationMode::from(*entry.mode.get_ref()),
+                images: entry.images,
+                is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
+                transfer: entry
+                    .transfer
+                    .map(LocationTransfer::from)
+                    .unwrap_or_default(),
+                continuous: entry.continuous,
+            });
+        }
     }
     let sorting = resolve_sorting(section, &filing.locations, home);
     if sorting_is_in_file(section) {

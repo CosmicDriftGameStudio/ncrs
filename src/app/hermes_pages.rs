@@ -21,8 +21,8 @@ impl App {
         }
         match wanted {
             Some(page) => {
-                let outcome = self
-                    .with_hermes(|hermes, ctx| ncrs_hermes_ui::show_page(hermes, page, ctx));
+                let outcome =
+                    self.with_hermes(|hermes, ctx| ncrs_hermes_ui::show_page(hermes, page, ctx));
                 self.run_hermes_outcome(outcome)
             }
             None => ncrs_hermes_ui::leave_pages(&mut self.hermes).map(Message::from),
@@ -47,8 +47,7 @@ impl App {
             Message::HermesColumn(inner) => Page::HermesColumn(inner),
             _ => return Task::none(),
         };
-        let outcome =
-            self.with_hermes(|hermes, ctx| ncrs_hermes_ui::update(hermes, page, ctx));
+        let outcome = self.with_hermes(|hermes, ctx| ncrs_hermes_ui::update(hermes, page, ctx));
         outcome.map_or_else(Task::none, |ran| self.run_hermes_outcome(ran))
     }
 

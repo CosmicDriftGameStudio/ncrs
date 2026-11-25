@@ -5,12 +5,12 @@ use iced::{Element, Length};
 use ncrs_git::CommitDetail;
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::action_rows::context_area;
+use ncrs_ui_kit::format::{estimated_width, fit_middle};
 use ncrs_ui_kit::git_lines::{fact_row, purple_link, summarize_refs};
 use ncrs_ui_kit::git_rows::ref_chip;
 use ncrs_ui_kit::kit::{key_cap, segmented};
 use ncrs_ui_kit::page_text::{page_heading_wrapped, page_line, page_paragraph};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
-use ncrs_ui_kit::format::{estimated_width, fit_middle};
 use ncrs_ui_kit::tree_list::{
     tree_row, tree_scroll, TreeRow, LIST_INSET, ROW_OVERHEAD, TREE_INDENT,
 };

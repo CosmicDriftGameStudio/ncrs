@@ -19,12 +19,12 @@ use ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID;
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
 use ncrs_ui_kit::theme::{font_size, spacing};
 
+use crate::bulk::Outcome;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::rows::{name_of, Group, GroupKey, Row, RowKind};
 use crate::state::State;
 use crate::summary::Reading;
-use crate::bulk::Outcome;
 use crate::texts::log_text;
 use crate::update::LIST_ID;
 
@@ -58,7 +58,11 @@ fn columns(state: &State) -> RepoColumns {
 
 /// What a repository could lose; none when nothing or not known yet.
 fn cleanable_count(state: &State, path: &Path) -> Option<usize> {
-    state.cleanable.get(path).copied().filter(|count| *count > 0)
+    state
+        .cleanable
+        .get(path)
+        .copied()
+        .filter(|count| *count > 0)
 }
 
 fn shortened(path: &Path, home: Option<&Path>) -> String {
@@ -111,8 +115,7 @@ fn result_cell<'a>(
     } else {
         outcome_mark(outcome.kind(), ctx.lang, ctx.palette)
     };
-    let mut cell = iced::widget::row![mark]
-        .spacing(spacing::M);
+    let mut cell = iced::widget::row![mark].spacing(spacing::M);
     if let Some(note) = detail {
         let ink = if cursor {
             ctx.palette.cursor_text
@@ -158,7 +161,10 @@ fn one_row<'a>(
         ),
         None => (Vec::new(), Vec::new()),
     };
-    let list_has_keys = state.cleanup.as_ref().is_none_or(|cleanup| cleanup.list_focus);
+    let list_has_keys = state
+        .cleanup
+        .as_ref()
+        .is_none_or(|cleanup| cleanup.list_focus);
     let is_cursor = cursor == Some(&path) && list_has_keys;
     let note_ink = if is_cursor {
         ctx.palette.cursor_text
@@ -167,7 +173,9 @@ fn one_row<'a>(
     };
     let actions = if is_run {
         result_cell(is_cursor, &row.owner, state, ctx).filter(|_| !is_worktree)
-    } else if let Some(count) = cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable) {
+    } else if let Some(count) =
+        cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable)
+    {
         Some(page_line(count.to_string(), font_size::BODY, note_ink))
     } else if unreachable {
         Some(kit::button(

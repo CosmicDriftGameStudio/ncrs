@@ -300,12 +300,7 @@ fn resume(state: &mut State, ctx: &Ctx) -> Option<Action> {
     None
 }
 
-fn act_on(
-    state: &mut State,
-    ctx: &Ctx,
-    intent: ChatIntent,
-    asked: &Asked,
-) -> Option<Action> {
+fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {
     match intent {
         ChatIntent::Answer { choice } => match asked.chips.get(choice) {
             Some(answer) if answer.reply.changes_something() => {

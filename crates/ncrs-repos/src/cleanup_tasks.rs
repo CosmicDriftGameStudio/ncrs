@@ -24,7 +24,10 @@ pub fn cleanable(path: PathBuf, stop: Arc<AtomicBool>) -> Task<Message> {
             let to_read = path.clone();
             let count = tokio::task::spawn_blocking(move || {
                 let overview = refs(&to_read, &stop).ok()?;
-                Some(cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default()).cleanable_count())
+                Some(
+                    cleanup_list(&overview, &BTreeMap::new(), &RemoteState::default())
+                        .cleanable_count(),
+                )
             })
             .await
             .ok()
@@ -40,7 +43,8 @@ fn scan_blocking(path: &PathBuf, stop: &Arc<AtomicBool>) -> Result<Scan, String>
     let tips_before = remote_tips(path, stop).unwrap_or_default();
     let fetch_error = git.fetch(None).err().map(|error| error_line(&error));
     let overview = refs(path, stop).map_err(|error| error.to_string())?;
-    let remote = remote_state(path, fetch_error.is_none(), stop).map_err(|error| error.to_string())?;
+    let remote =
+        remote_state(path, fetch_error.is_none(), stop).map_err(|error| error.to_string())?;
     Ok(Scan {
         list: cleanup_list(&overview, &tips_before, &remote),
         default_branch: overview.main_branch,
@@ -57,7 +61,9 @@ pub fn scan(generation: u64, path: PathBuf, stop: Arc<AtomicBool>) -> Task<Messa
                 .unwrap_or_else(|error| Err(error.to_string()));
             (path, result)
         },
-        move |(root, result)| Message::Cleanup(CleanupMessage::Scanned(generation, root, Box::new(result))),
+        move |(root, result)| {
+            Message::Cleanup(CleanupMessage::Scanned(generation, root, Box::new(result)))
+        },
     )
 }
 
@@ -128,7 +134,9 @@ pub fn delete(generation: u64, path: PathBuf, plan: CleanupPlan) -> Task<Message
                 .unwrap_or_else(|error| Err(error.to_string()));
             (path, result)
         },
-        move |(root, result)| Message::Cleanup(CleanupMessage::Deleted(generation, root, Box::new(result))),
+        move |(root, result)| {
+            Message::Cleanup(CleanupMessage::Deleted(generation, root, Box::new(result)))
+        },
     )
 }
 

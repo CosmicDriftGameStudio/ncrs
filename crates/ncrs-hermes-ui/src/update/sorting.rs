@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use iced::widget::operation;
 use iced::Task;
-use ncrs_config::config::{
-    remove_sort_source, upsert_sort_source, Filing, FilingWriteError,
-};
+use ncrs_config::config::{remove_sort_source, upsert_sort_source, Filing, FilingWriteError};
 use ncrs_filing::sorting::is_on_own_volume;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_index::BatchId;
@@ -18,9 +16,7 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::documents_facts::run_facts;
 use crate::message::Message;
-use crate::sorting_page::{
-    own_volume_to_save, source_state, Loaded, SortingMessage, SortingPage,
-};
+use crate::sorting_page::{own_volume_to_save, source_state, Loaded, SortingMessage, SortingPage};
 use crate::source_dialog::{
     look_up_folder, FolderCheck, SourceDialog, SourceDialogKind, SourceField,
 };
@@ -35,7 +31,11 @@ fn sorting(message: SortingMessage) -> Message {
     Message::Sorting(message)
 }
 
-pub(super) fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, _actions: &mut Vec<Action>) -> Task<Message> {
+pub(super) fn open(
+    hermes: &mut Hermes,
+    ctx: &Ctx<'_>,
+    _actions: &mut Vec<Action>,
+) -> Task<Message> {
     hermes.sorting = Some(SortingPage::default());
     load(hermes, ctx)
 }
@@ -160,9 +160,7 @@ pub(super) fn update(
             }
             Task::none()
         }
-        SortingMessage::AddSource => {
-            open_dialog(hermes, None, SourceDialogKind::Watched)
-        }
+        SortingMessage::AddSource => open_dialog(hermes, None, SourceDialogKind::Watched),
         SortingMessage::ChangeSource(index) => {
             let folder = hermes
                 .filing_config
@@ -694,7 +692,10 @@ mod tests {
         step(&mut hermes, SortingMessage::Enter);
 
         assert!(hermes.target_dialog.is_some());
-        assert!(hermes.source_dialog.as_ref().is_some_and(|dialog| !dialog.saving));
+        assert!(hermes
+            .source_dialog
+            .as_ref()
+            .is_some_and(|dialog| !dialog.saving));
     }
 
     #[test]

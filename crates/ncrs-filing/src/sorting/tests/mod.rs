@@ -178,11 +178,7 @@ impl Setup {
     /// Everything the plan has a place for.
     fn run(&self, source: &SortSource) -> Result<SortReport, RunError> {
         let plan = self.plan(source);
-        run(
-            &self.access,
-            &request_of(source, &plan),
-            &mut Counting,
-        )
+        run(&self.access, &request_of(source, &plan), &mut Counting)
     }
 
     fn watch(&self, source: &SortSource) -> WatchedReport {

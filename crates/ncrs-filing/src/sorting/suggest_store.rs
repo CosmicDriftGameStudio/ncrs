@@ -100,4 +100,3 @@ pub fn dismiss(
         })
         .map_err(SuggestError::Index)
 }
-

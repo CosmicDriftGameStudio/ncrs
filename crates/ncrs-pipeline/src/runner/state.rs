@@ -1,7 +1,13 @@
 use super::*;
 
 impl State {
-    pub(super) fn push_error(&mut self, file: PathBuf, task: Task, message: String, at: SystemTime) {
+    pub(super) fn push_error(
+        &mut self,
+        file: PathBuf,
+        task: Task,
+        message: String,
+        at: SystemTime,
+    ) {
         self.errors.push_back(ErrorEntry {
             file,
             task,

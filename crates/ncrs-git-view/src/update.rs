@@ -26,8 +26,8 @@ use crate::state::{
     remotes_were_chosen, Area, ColumnDrag, Detail, DiffState, Fold, Section, SidebarItem, State,
     Subject, PAGE,
 };
-use crate::view::{DIFF_ID, FILTER_ID};
 use crate::sync_handlers;
+use crate::view::{DIFF_ID, FILTER_ID};
 use crate::wip;
 
 /// Lines an arrow key scrolls the diff by.
@@ -209,7 +209,11 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.file_cursor = index;
             file_views::close_blame(state);
             if state.diff_has_own_list() {
-                if let Some(shown) = state.diff.as_mut().filter(|shown| index < shown.files.len()) {
+                if let Some(shown) = state
+                    .diff
+                    .as_mut()
+                    .filter(|shown| index < shown.files.len())
+                {
                     shown.file = index;
                     shown.diff = None;
                     shown.hunk = 0;

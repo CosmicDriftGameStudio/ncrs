@@ -75,10 +75,7 @@ fn items_stay_below(source: &Path, target: &Path, done: &[JournalItem]) -> bool 
 
 /// The folders below `root` a run emptied by moving files out of them; `root`
 /// and every folder that still holds anything stay.
-pub(crate) fn remove_emptied_folders<'a>(
-    root: &Path,
-    moved_from: impl Iterator<Item = &'a Path>,
-) {
+pub(crate) fn remove_emptied_folders<'a>(root: &Path, moved_from: impl Iterator<Item = &'a Path>) {
     let mut folders: Vec<&Path> = moved_from
         .filter_map(Path::parent)
         .flat_map(|parent| parent.ancestors().take_while(|folder| *folder != root))

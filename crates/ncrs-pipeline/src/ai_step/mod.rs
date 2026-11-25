@@ -202,7 +202,6 @@ pub fn clear_field(fields: &mut DocumentFields, field: Field) {
     }
 }
 
-
 impl Step for AiStep {
     fn name(&self) -> &'static str {
         "ai"

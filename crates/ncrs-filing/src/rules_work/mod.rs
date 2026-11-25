@@ -6,9 +6,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{
-    ContentHash, Index, IndexError, Rule, RuleId, RuleOrigin, RuleSpec, TargetId,
-};
+use ncrs_index::{ContentHash, Index, IndexError, Rule, RuleId, RuleOrigin, RuleSpec, TargetId};
 
 use ncrs_core::INDEX_NOT_OPEN;
 
@@ -184,7 +182,10 @@ impl RulesAccess {
 
     /// What a rule made from the document starts with; `None` when the index
     /// does not know the document.
-    pub fn document_for_rule(&self, id: ncrs_index::DocumentId) -> Result<Option<DocumentForRule>, String> {
+    pub fn document_for_rule(
+        &self,
+        id: ncrs_index::DocumentId,
+    ) -> Result<Option<DocumentForRule>, String> {
         self.with_index(|index| {
             let Some(document) = index.document(id)? else {
                 return Ok(None);

@@ -88,9 +88,8 @@ pub fn plan_action_row<'a, M: Clone + 'a>(
     for (at, link) in action.links.into_iter().enumerate() {
         let is_marked = action.marked_link == Some(at);
         let padding = if is_marked { spacing::XS } else { 0.0 };
-        width += spacing::M
-            + 2.0 * padding
-            + format::estimated_width(&link.label, font_size::SMALL);
+        width +=
+            spacing::M + 2.0 * padding + format::estimated_width(&link.label, font_size::SMALL);
         let ink = if is_marked {
             palette.accent
         } else if chosen {
@@ -114,16 +113,20 @@ pub fn plan_action_row<'a, M: Clone + 'a>(
             Color::TRANSPARENT
         };
         strip = strip.push(
-            container(
-                container(shown).style(move |_| container::background(ground)),
-            )
-            .padding(Padding {
-                left: spacing::M,
-                ..Padding::ZERO
-            }),
+            container(container(shown).style(move |_| container::background(ground))).padding(
+                Padding {
+                    left: spacing::M,
+                    ..Padding::ZERO
+                },
+            ),
         );
     }
-    plan_line(action.file, Some((strip.into(), width)), line_width, palette)
+    plan_line(
+        action.file,
+        Some((strip.into(), width)),
+        line_width,
+        palette,
+    )
 }
 
 /// `links` come with the pixels they take.

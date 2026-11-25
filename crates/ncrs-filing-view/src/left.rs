@@ -162,10 +162,7 @@ fn missing_value(field: Field, lang: Language) -> String {
     say(
         lang,
         Msg::FilingViewStateMissingValue,
-        &[
-            ("field", lang.text(field_name(field))),
-            ("block", &block),
-        ],
+        &[("field", lang.text(field_name(field))), ("block", &block)],
     )
 }
 

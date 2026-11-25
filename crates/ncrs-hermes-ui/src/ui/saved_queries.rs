@@ -9,8 +9,8 @@
 use iced::widget::{Column, Row};
 use iced::{alignment, Element, Size};
 use ncrs_config::palette::Palette;
-use ncrs_index::amount_text;
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_index::amount_text;
 use ncrs_index::{KindCatalog, QuerySpec};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};

@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use ncrs_config::config::{SourceSetting, TargetSetting};
 use ncrs_index::TargetId;
-use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget};
+use ncrs_intake::{
+    LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget,
+};
 
 use super::*;
 use crate::config::{AiSetting, Filing, FilingLocation};
@@ -240,7 +242,9 @@ fn the_search_filters_the_rows_by_label() {
     ))));
     let switch_hidden = simulator(&app).find("On").is_err();
     assert!(switch_hidden);
-    simulator(&app).find("Sorting").expect("the page with the rules");
+    simulator(&app)
+        .find("Sorting")
+        .expect("the page with the rules");
 }
 
 #[test]

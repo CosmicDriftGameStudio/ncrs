@@ -54,8 +54,8 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, ConflictChoice, FilingStatusMessage, GitTabId, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
-    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickOpenMessage,
-    RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
+    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickOpenMessage, RemoteMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
     ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]

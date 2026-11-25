@@ -186,9 +186,11 @@ fn take_in(
         Outcome::NotStableYet => return Ok(TakenIn::Problem(ReadProblem::StillWriting)),
     };
     let document = access.with_index(|index| index.document(id).map_err(text))?;
-    Ok(document.map_or(TakenIn::Problem(ReadProblem::Unknown), |found| {
-        TakenIn::Document(Box::new(found))
-    }))
+    Ok(
+        document.map_or(TakenIn::Problem(ReadProblem::Unknown), |found| {
+            TakenIn::Document(Box::new(found))
+        }),
+    )
 }
 
 fn read_missing_text(
@@ -297,7 +299,8 @@ fn load(
     Ok(known.map_or_else(
         || Found::problem(ReadProblem::Unknown),
         |mut file| {
-            file.known_at.retain(|place| place != path && place.exists());
+            file.known_at
+                .retain(|place| place != path && place.exists());
             Found::Known(Box::new(file))
         },
     ))

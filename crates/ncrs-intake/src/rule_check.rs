@@ -82,9 +82,8 @@ pub fn pattern_problem(source: &str) -> Option<PatternProblem> {
     if segments().contains(&"~") {
         return Some(PatternProblem::HomeFolder);
     }
-    let lost_ending = |segment: &&str| {
-        !segment.trim_matches(['.', ' ']).is_empty() && has_lost_ending(segment)
-    };
+    let lost_ending =
+        |segment: &&str| !segment.trim_matches(['.', ' ']).is_empty() && has_lost_ending(segment);
     if segments().iter().any(lost_ending) {
         return Some(PatternProblem::LostEnding);
     }
@@ -217,7 +216,10 @@ mod pattern_tests {
                 None,
             ),
             ("{year}/{sender}", None),
-            ("{year} {month} {day} {date} {sender} {recipient} {number} {kind}", None),
+            (
+                "{year} {month} {day} {date} {sender} {recipient} {number} {kind}",
+                None,
+            ),
             ("{folder}/{name}", None),
             ("a\\b", None),
             ("x/", None),

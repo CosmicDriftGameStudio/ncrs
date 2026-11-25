@@ -284,7 +284,10 @@ mod tests {
         assert_eq!(state.cursor, 0);
         state.move_cursor(1);
         state.remove(1);
-        assert_eq!((state.cursor, state.items().len(), state.ticks.len()), (0, 1, 1));
+        assert_eq!(
+            (state.cursor, state.items().len(), state.ticks.len()),
+            (0, 1, 1)
+        );
     }
 
     #[test]

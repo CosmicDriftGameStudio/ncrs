@@ -5,10 +5,7 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilingRuleViolation {
     /// Same folder, or one inside the other.
-    Overlap {
-        earlier: usize,
-        later: usize,
-    },
+    Overlap { earlier: usize, later: usize },
 }
 
 /// The rules every list of locations obeys, in the config and in the setup

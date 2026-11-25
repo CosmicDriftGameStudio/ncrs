@@ -24,9 +24,7 @@ use crate::load;
 use crate::message::Message;
 use crate::navigate;
 use crate::state::{Area, DetailRow, DiffState, State, Subject, PAGE};
-use crate::update::{
-    failed, quiet, reload_diff, scroll_to_hunk, step, Outcome, SCROLL_LINES,
-};
+use crate::update::{failed, quiet, reload_diff, scroll_to_hunk, step, Outcome, SCROLL_LINES};
 use crate::view::{BLAME_ID, COMMITS_ID, HISTORY_DIFF_ID, HISTORY_ID};
 use crate::wip;
 
@@ -173,10 +171,7 @@ pub fn current_file(state: &State) -> Option<(String, Option<String>)> {
     }
     if let Some(history) = &state.history {
         let entry = history.entry()?;
-        return Some((
-            entry.path_at_commit.clone(),
-            Some(entry.commit.id.clone()),
-        ));
+        return Some((entry.path_at_commit.clone(), Some(entry.commit.id.clone())));
     }
     if let Some(merge) = &state.actions.merge {
         let conflict = merge.conflicts.get(merge.selected)?;
@@ -405,7 +400,11 @@ fn open_blame(state: &mut State, path: String, at: Option<String>) -> Task<Messa
         cursor: 0,
         scroll: 0.0,
     });
-    Task::batch([release_focus(), scroll_to(BLAME_ID, 0.0), load::blame(state)])
+    Task::batch([
+        release_focus(),
+        scroll_to(BLAME_ID, 0.0),
+        load::blame(state),
+    ])
 }
 
 /// Reads again what is open.
@@ -497,7 +496,12 @@ pub fn menu_of_current(state: &State) -> Option<MenuTarget> {
     if state.blame.is_some() || (state.diff.is_none() && state.history.is_some()) {
         return None;
     }
-    if let Some(merge) = state.actions.merge.as_ref().filter(|_| state.diff.is_none()) {
+    if let Some(merge) = state
+        .actions
+        .merge
+        .as_ref()
+        .filter(|_| state.diff.is_none())
+    {
         let conflict = merge.conflicts.get(merge.selected)?;
         return Some(MenuTarget::Conflict(conflict.path.clone()));
     }
@@ -556,11 +560,8 @@ pub fn menu_entries(state: &State, path: &str) -> Vec<(FileAction, bool)> {
 /// A freshly opened menu of a file starts on its first entry that works, not
 /// on a greyed one.
 pub fn start_menu_on_first_enabled(state: &mut State) {
-    let Some(MenuTarget::File { path, .. }) = state
-        .actions
-        .menu
-        .as_ref()
-        .map(|open| open.target.clone())
+    let Some(MenuTarget::File { path, .. }) =
+        state.actions.menu.as_ref().map(|open| open.target.clone())
     else {
         return;
     };

@@ -166,8 +166,7 @@ fn an_empty_mount_point_is_not_what_lay_in_the_source() {
     let setup = Setup::new();
     setup.rule("t1", "acme", "Acme/{number}");
     let source = setup.source("Q1", &["t1"]);
-    let has_backlog =
-        || setup.index(|index| index.has_source_backlog(&source.path).unwrap());
+    let has_backlog = || setup.index(|index| index.has_source_backlog(&source.path).unwrap());
 
     assert_eq!(setup.watch_drive(&source, || false), drive_is_missing());
     assert!(!has_backlog());
@@ -347,7 +346,10 @@ fn several_targets_are_copied_into_when_the_source_says_so() {
     };
     let path = setup.write("Q1/a.txt", "acme Ref A1");
     assert_eq!(filed(&setup.watch_after_reading(&source)), 1);
-    assert!(path.exists(), "the original stays although the source moves");
+    assert!(
+        path.exists(),
+        "the original stays although the source moves"
+    );
     assert!(setup.path("T1/Acme/A1.txt").exists());
     assert!(setup.path("T2/Both/A1.txt").exists());
     assert_eq!(setup.runs(), 1);

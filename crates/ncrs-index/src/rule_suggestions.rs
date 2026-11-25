@@ -453,7 +453,10 @@ mod tests {
             ..sender_suggestion()
         };
 
-        assert_eq!(suggest(&mut index, &shouting, evidence(5, 0)), RuleSuggestion::Discarded);
+        assert_eq!(
+            suggest(&mut index, &shouting, evidence(5, 0)),
+            RuleSuggestion::Discarded
+        );
     }
 
     #[test]
@@ -478,7 +481,10 @@ mod tests {
         };
         index.discard_rule_suggestion(sender_id).unwrap();
 
-        assert_eq!(suggest(&mut index, &word, evidence(5, 0)), RuleSuggestion::Discarded);
+        assert_eq!(
+            suggest(&mut index, &word, evidence(5, 0)),
+            RuleSuggestion::Discarded
+        );
         assert_eq!(
             suggest(&mut index, &sender_suggestion(), evidence(5, 0)),
             RuleSuggestion::Discarded

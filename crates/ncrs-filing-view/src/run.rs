@@ -97,8 +97,8 @@ pub fn carry_out(
         ..Carried::default()
     };
     if !duplicates.items.is_empty() && !progress.is_stopped() {
-        let root = canonical_path(&request.source.path)
-            .unwrap_or_else(|_| request.source.path.clone());
+        let root =
+            canonical_path(&request.source.path).unwrap_or_else(|_| request.source.path.clone());
         match access.trash_duplicates(&duplicates.name, &root, &duplicates.items) {
             Ok(report) => carried.trashed = report.trashed,
             Err(reason) => carried.trash_problem = Some(reason),
@@ -210,4 +210,3 @@ pub fn file_name(path: &Path) -> String {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
-

@@ -58,16 +58,12 @@ fn line<'a>(
     )
 }
 
-pub fn view<'a>(
-    state: &'a State,
-    shown: &'a BlameState,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
+pub fn view<'a>(state: &'a State, shown: &'a BlameState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    let at = shown.at.as_ref().map_or_else(
-        || "HEAD".to_owned(),
-        |sha| short(sha),
-    );
+    let at = shown
+        .at
+        .as_ref()
+        .map_or_else(|| "HEAD".to_owned(), |sha| short(sha));
     let title = fill_template(
         ctx.lang.text(Msg::GitViewBlameTitle),
         &[("{sha}", &at), ("{path}", &shown.path)],

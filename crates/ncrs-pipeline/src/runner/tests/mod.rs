@@ -688,10 +688,7 @@ fn a_file_processed_again_is_read_again_and_announced_without_a_review() {
         is_idle(snapshot) && snapshot.steps[2].done == 2
     });
     assert!(nothing_busy(&report));
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::New
-    );
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
     assert_eq!(
         fixture.index.lock().unwrap().open_reviews().unwrap().len(),
         0

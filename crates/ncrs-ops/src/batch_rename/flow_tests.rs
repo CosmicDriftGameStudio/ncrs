@@ -459,8 +459,7 @@ fn a_model_without_the_agreement_for_folders_is_not_asked_and_the_dialog_says_so
     let names = vec!["2024-01-02_a.pdf".to_owned()];
     assert_eq!(proposal_for(&refused, &names), Proposal::ConsentMissing);
 
-    let failing =
-        ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::TooLong)]);
+    let failing = ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::TooLong)]);
     assert_eq!(proposal_for(&failing, &names), Proposal::Pattern(None));
 }
 

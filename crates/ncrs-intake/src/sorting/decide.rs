@@ -10,9 +10,7 @@ use ncrs_index::{
 
 use super::model::{SortSource, SortTarget};
 use crate::conditions::SearchText;
-use crate::filing_plan::{
-    conditions_hold, filled_fields, render_strict, PlanInput, Unrenderable,
-};
+use crate::filing_plan::{conditions_hold, filled_fields, render_strict, PlanInput, Unrenderable};
 
 /// What is known about the text of a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +76,10 @@ pub enum Decision {
     },
     /// The rule fits, but the path it gives is not a name every system keeps
     /// (device name, over 255 bytes, on Windows a dot or space at the end).
-    BadName { target: TargetId, rule: RuleId },
+    BadName {
+        target: TargetId,
+        rule: RuleId,
+    },
     AlreadyThere {
         target: TargetId,
         path: PathBuf,
@@ -141,9 +142,7 @@ pub fn decide(
             Some((target, path)) => Decision::AlreadyThere { target, path },
             None => Decision::NoRule,
         },
-        1 => places
-            .pop()
-            .map_or(Decision::NoRule, Decision::File),
+        1 => places.pop().map_or(Decision::NoRule, Decision::File),
         _ => Decision::Several(places),
     }
 }

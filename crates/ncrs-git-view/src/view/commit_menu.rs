@@ -68,7 +68,13 @@ pub fn rows(state: &State, open: &OpenMenu, row: usize, ctx: ViewCtx<'_>) -> Vec
             rows.push(MenuRow::Separator);
         }
         let Some(action) = *slot else {
-            rows.push(reset_submenu(state, open, row, with_branch(Msg::GitViewCommitMenuReset), &label_of));
+            rows.push(reset_submenu(
+                state,
+                open,
+                row,
+                with_branch(Msg::GitViewCommitMenuReset),
+                &label_of,
+            ));
             continue;
         };
         let enabled = commit_menu::enabled(state, row, action);

@@ -91,7 +91,9 @@ fn a_watcher_error_rescans_the_location_for_missed_files() {
         message: "the system dropped file events".to_owned(),
     });
 
-    runner.wait_for("the missed file read", |snapshot| snapshot.steps[2].done == 2);
+    runner.wait_for("the missed file read", |snapshot| {
+        snapshot.steps[2].done == 2
+    });
     let index = fixture.index.lock().unwrap();
     assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
 }
@@ -166,10 +168,7 @@ fn a_known_file_processed_again_passes_the_text_step_again() {
     });
     assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert!(!runner.process_again(Path::new("/elsewhere/invoice.pdf")));
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::New
-    );
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
 }
 
 pub fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
@@ -298,10 +297,7 @@ fn a_file_included_again_is_found_by_a_scan_without_waiting_for_the_rescan() {
     runner.wait_for("the file read", |snapshot| {
         is_idle(snapshot) && snapshot.steps[2].done == 1
     });
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::New
-    );
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
 }
 
 #[test]
@@ -319,10 +315,7 @@ fn a_file_without_text_stays_new_without_a_review_or_an_exclusion_and_is_not_rea
     assert_eq!(first.steps[2].done, 1);
     assert_eq!(second.steps[1].done, 0, "the second scan reads nothing");
     assert_eq!(reads.load(Ordering::SeqCst), 1);
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::New
-    );
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
     let index = fixture.index.lock().unwrap();
     assert!(index.open_reviews().unwrap().is_empty());
     assert!(!index.is_excluded(&path).unwrap());
@@ -739,11 +732,14 @@ fn a_new_inbox_document_with_an_empty_stored_text_gets_no_review_and_is_left_alo
 
     assert_eq!(second.steps[0].unchanged, 1);
     assert_eq!(second.steps[1].done, 0);
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::New
-    );
-    assert!(fixture.index.lock().unwrap().open_reviews().unwrap().is_empty());
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
+    assert!(fixture
+        .index
+        .lock()
+        .unwrap()
+        .open_reviews()
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -785,4 +781,3 @@ fn a_location_added_after_the_start_is_scanned_and_watched() {
                 > settled.steps[0].done + settled.steps[0].unchanged
     });
 }
-

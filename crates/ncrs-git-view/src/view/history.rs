@@ -36,7 +36,10 @@ fn entry_row<'a>(
     let commit = &entry.commit;
     let chips = entry.old_path.as_ref().map(|old| {
         let old = fit_middle(old, RENAME_ROOM, font_size::SMALL);
-        let note = fill_template(ctx.lang.text(Msg::GitViewHistoryRenamed), &[("{old}", &old)]);
+        let note = fill_template(
+            ctx.lang.text(Msg::GitViewHistoryRenamed),
+            &[("{old}", &old)],
+        );
         (note, RefChipKind::Tag)
     });
     commit_row(
@@ -107,12 +110,7 @@ pub fn view<'a>(
                 Some(entry) => entry_row(state, history, index, entry, ctx),
                 None => page_line(String::new(), font_size::BODY, palette.text),
             };
-            page = page.push(page_rows(
-                HISTORY_ID,
-                window,
-                row,
-                Message::HistoryScrolled,
-            ));
+            page = page.push(page_rows(HISTORY_ID, window, row, Message::HistoryScrolled));
             if log.has_more {
                 page = page.push(
                     container(button(

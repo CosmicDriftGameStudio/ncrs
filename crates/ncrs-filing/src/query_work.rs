@@ -16,7 +16,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
 use ncrs_index::{
-    amount_digits, DocumentFields, DocumentId, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId,
+    amount_digits, DocumentFields, DocumentId, Index, IndexError, QuerySpec, SavedQuery,
+    SavedQueryId,
 };
 
 pub use ncrs_index::QueryHit;

@@ -91,7 +91,11 @@ fn pull_rows<'a>(view: &SettingsView<'a>, current: &GitSettings) -> Vec<SettingR
     let keys = options.iter().map(|(_, message)| message.clone()).collect();
     vec![SettingRow::text(
         view.lang.text(Msg::SettingsGitRowPullDefault).to_owned(),
-        Some(view.lang.text(Msg::SettingsGitRowPullDefaultNote).to_owned()),
+        Some(
+            view.lang
+                .text(Msg::SettingsGitRowPullDefaultNote)
+                .to_owned(),
+        ),
         kit::segmented(&options, chosen, true, view.palette),
     )
     .keyed_maybe(choice_key(keys, chosen))]
@@ -172,11 +176,7 @@ fn source_rows<'a>(view: &SettingsView<'a>, current: &ReposSettings) -> Vec<Sett
     rows.push(SettingRow::text(
         view.lang.text(Msg::SettingsGitRowLastScan).to_owned(),
         None,
-        wrapped_value_text(
-            last_scan_text(view),
-            font_size::BODY,
-            view.palette.dim_text,
-        ),
+        wrapped_value_text(last_scan_text(view), font_size::BODY, view.palette.dim_text),
     ));
     rows
 }

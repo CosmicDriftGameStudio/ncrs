@@ -7,9 +7,7 @@ use ncrs_git::askpass::{PromptKind, Secret};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format::ellipsize_end;
 use ncrs_ui_kit::frame::{DialogSize, Frame};
-use ncrs_ui_kit::kit::{
-    button, dim, enter_button, paragraph, secret_field, text_field, Tone,
-};
+use ncrs_ui_kit::kit::{button, dim, enter_button, paragraph, secret_field, text_field, Tone};
 use ncrs_ui_kit::theme::spacing;
 
 use crate::credentials::CredentialAsk;
@@ -49,7 +47,10 @@ pub fn credential_dialog<'a>(ask: &'a CredentialAsk, ctx: ViewCtx<'a>) -> Elemen
     match ask.kind {
         PromptKind::Text => {
             content = content
-                .push(paragraph(lang.text(Msg::GitViewCredentialsFieldText), palette))
+                .push(paragraph(
+                    lang.text(Msg::GitViewCredentialsFieldText),
+                    palette,
+                ))
                 .push(text_field(
                     "",
                     ask.typed.expose(),
@@ -61,7 +62,10 @@ pub fn credential_dialog<'a>(ask: &'a CredentialAsk, ctx: ViewCtx<'a>) -> Elemen
         }
         PromptKind::Secret => {
             content = content
-                .push(paragraph(lang.text(Msg::GitViewCredentialsFieldSecret), palette))
+                .push(paragraph(
+                    lang.text(Msg::GitViewCredentialsFieldSecret),
+                    palette,
+                ))
                 .push(secret_field(
                     "",
                     ask.typed.expose(),

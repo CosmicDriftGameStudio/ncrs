@@ -239,7 +239,13 @@ impl Shared {
         }
     }
 
-    pub(super) fn run_item(&self, id: usize, mut item: Item, step_index: usize, batch: Option<u64>) {
+    pub(super) fn run_item(
+        &self,
+        id: usize,
+        mut item: Item,
+        step_index: usize,
+        batch: Option<u64>,
+    ) {
         let name = self.step_name(step_index);
         let outcome = match self.steps.get(step_index) {
             Some(step) => {

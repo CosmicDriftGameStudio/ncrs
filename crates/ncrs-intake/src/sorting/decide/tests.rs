@@ -7,7 +7,7 @@ use ncrs_index::{
 };
 
 use super::*;
-use crate::sorting::{OnNoText, OnSeveralTargets, LocationTransfer};
+use crate::sorting::{LocationTransfer, OnNoText, OnSeveralTargets};
 
 const PATTERN: &str = "{year}/{sender}/{date}_{number}";
 
@@ -232,7 +232,11 @@ fn a_negated_condition_on_a_file_without_text_is_no_text_not_a_match() {
         ..case()
     };
     assert_eq!(
-        decide_case(&empty, &source(&["t1"]), &[("t1", vec![spec(not_paid, PATTERN)])]),
+        decide_case(
+            &empty,
+            &source(&["t1"]),
+            &[("t1", vec![spec(not_paid, PATTERN)])]
+        ),
         Decision::NoText
     );
 }
@@ -296,9 +300,16 @@ fn a_model_value_fills_the_file_name_but_never_a_folder() {
     let one = source(&["t1"]);
     assert!(matches!(
         decide_case(&by_model, &one, &fits("{sender}/{date}")),
-        Decision::MissingValue { field: Field::Sender, .. }
+        Decision::MissingValue {
+            field: Field::Sender,
+            ..
+        }
     ));
-    let in_name = placed(decide_case(&by_model, &one, &fits("{year}/{date}_{sender}")));
+    let in_name = placed(decide_case(
+        &by_model,
+        &one,
+        &fits("{year}/{date}_{sender}"),
+    ));
     assert_eq!(in_name.relative, Path::new("2026/2026-03-01_Acme.pdf"));
 
     let unsure = Case {
@@ -312,7 +323,10 @@ fn a_model_value_fills_the_file_name_but_never_a_folder() {
     };
     assert!(matches!(
         decide_case(&unsure, &one, &fits("{year}/{date}_{sender}")),
-        Decision::MissingValue { field: Field::Sender, .. }
+        Decision::MissingValue {
+            field: Field::Sender,
+            ..
+        }
     ));
 }
 
@@ -349,10 +363,7 @@ fn only_the_targets_of_the_source_count_and_no_target_means_paused() {
         placed(decide_case(&case(), &source(&["t2"]), &both)).target,
         id("t2")
     );
-    assert_eq!(
-        decide_case(&case(), &source(&[]), &both),
-        Decision::NoRule
-    );
+    assert_eq!(decide_case(&case(), &source(&[]), &both), Decision::NoRule);
 }
 
 #[test]
@@ -416,7 +427,10 @@ fn a_pattern_is_filled_as_typed_and_never_leaves_a_piece_out() {
     let one = source(&["t1"]);
     let long = "Bank/{sender}/{year}/{year}{month}{day}_{kind}_{number}.pdf";
     let place = placed(decide_case(&case(), &one, &fits(long)));
-    assert_eq!(place.relative, Path::new("Bank/Acme/2026/20260301_Invoice_4711.pdf"));
+    assert_eq!(
+        place.relative,
+        Path::new("Bank/Acme/2026/20260301_Invoice_4711.pdf")
+    );
 
     let numberless = Case {
         fields: DocumentFields {
@@ -427,7 +441,10 @@ fn a_pattern_is_filled_as_typed_and_never_leaves_a_piece_out() {
     };
     assert!(matches!(
         decide_case(&numberless, &one, &fits(long)),
-        Decision::MissingValue { field: Field::Number, .. }
+        Decision::MissingValue {
+            field: Field::Number,
+            ..
+        }
     ));
     let dateless = Case {
         fields: DocumentFields {
@@ -438,6 +455,9 @@ fn a_pattern_is_filled_as_typed_and_never_leaves_a_piece_out() {
     };
     assert!(matches!(
         decide_case(&dateless, &one, &fits("{sender}/")),
-        Decision::MissingValue { field: Field::Date, .. }
+        Decision::MissingValue {
+            field: Field::Date,
+            ..
+        }
     ));
 }

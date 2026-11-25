@@ -6,9 +6,7 @@ use iced::widget::operation;
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
-use ncrs_filing::rules_work::{
-    try_in_target, DocumentForRule, RuleChange, RulesAccess, SortTry,
-};
+use ncrs_filing::rules_work::{try_in_target, DocumentForRule, RuleChange, RulesAccess, SortTry};
 use ncrs_index::{DocumentId, TargetId};
 use ncrs_intake::SortSource;
 use ncrs_ui_kit::focus::release_focus;
@@ -108,19 +106,17 @@ pub fn update(
             }
             Task::none()
         }
-        RulesMessage::DocumentLoaded(result) => {
-            match result {
-                Ok(Some(document)) => {
-                    document_loaded(hermes, document, ctx);
-                    Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
-                }
-                Ok(None) => Task::none(),
-                Err(detail) => {
-                    actions.push(Action::ShowError(detail));
-                    Task::none()
-                }
+        RulesMessage::DocumentLoaded(result) => match result {
+            Ok(Some(document)) => {
+                document_loaded(hermes, document, ctx);
+                Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
             }
-        }
+            Ok(None) => Task::none(),
+            Err(detail) => {
+                actions.push(Action::ShowError(detail));
+                Task::none()
+            }
+        },
     }
 }
 
@@ -201,7 +197,10 @@ pub fn open_rule_form(
         stem.clone_into(&mut form.name);
     }
     let form = form.in_target(target.unwrap_or_else(TargetId::main));
-    let read_document = match (document, hermes.filing.as_ref().and_then(FilingModule::rules_access)) {
+    let read_document = match (
+        document,
+        hermes.filing.as_ref().and_then(FilingModule::rules_access),
+    ) {
         (Some(id), Some(access)) => Task::perform(
             tokio::task::spawn_blocking(move || access.document_for_rule(id)),
             |joined| {
@@ -219,7 +218,11 @@ pub fn open_rule_form(
             hermes.rules = Some(RulesPage::for_form(form, Arc::clone(&ctx.kinds.catalog)));
         }
     }
-    Task::batch([read_document, focus_rule_form(hermes), schedule_rule_try(hermes)])
+    Task::batch([
+        read_document,
+        focus_rule_form(hermes),
+        schedule_rule_try(hermes),
+    ])
 }
 
 /// The form changed: its try waits for the form to rest.
@@ -336,13 +339,20 @@ fn update_rule_form(
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if hermes.rules.as_ref().is_some_and(|page| !page.is_form_only() || page.form().is_some()) {
+    if hermes
+        .rules
+        .as_ref()
+        .is_some_and(|page| !page.is_form_only() || page.form().is_some())
+    {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
     hermes.rules_generation = hermes.rules_generation.wrapping_add(1);
     hermes.rules = Some(RulesPage::new().with_kinds(Arc::clone(&ctx.kinds.catalog)));
-    Task::batch([run_rules_load(hermes), super::targets::load_states(hermes, ctx)])
+    Task::batch([
+        run_rules_load(hermes),
+        super::targets::load_states(hermes, ctx),
+    ])
 }
 
 fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {

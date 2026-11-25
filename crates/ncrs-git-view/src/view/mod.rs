@@ -4,10 +4,10 @@
 
 mod blame;
 mod changes;
+mod cleanup;
 mod commit_box;
 mod commit_menu;
 mod commits;
-mod cleanup;
 mod credentials;
 mod detail;
 mod diff;

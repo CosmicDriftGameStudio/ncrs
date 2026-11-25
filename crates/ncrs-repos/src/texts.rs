@@ -47,10 +47,9 @@ pub fn log_text(outcome: &Outcome, lang: Language) -> String {
 /// What the status bar says about a `repos.toml` that cannot be used.
 pub fn store_error_text(error: &StoreError, lang: Language) -> String {
     match error {
-        StoreError::Unreadable(reason) => fill_template(
-            lang.text(Msg::ReposListUnreadable),
-            &[("{reason}", reason)],
-        ),
+        StoreError::Unreadable(reason) => {
+            fill_template(lang.text(Msg::ReposListUnreadable), &[("{reason}", reason)])
+        }
         StoreError::Newer => lang.text(Msg::ReposListNewer).to_owned(),
         StoreError::NotWritten(reason) => {
             fill_template(lang.text(Msg::ReposSaveFailed), &[("{reason}", reason)])

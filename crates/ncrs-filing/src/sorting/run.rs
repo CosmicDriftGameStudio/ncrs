@@ -467,6 +467,9 @@ mod tests {
     fn a_folder_that_ends_in_a_dot_is_usable_where_a_pattern_may_name_one() {
         let may_be_named = ncrs_intake::pattern_is_valid("Company Inc./{year}");
         assert_eq!(is_usable(Path::new("Company Inc./2025.pdf")), may_be_named);
-        assert_eq!(is_usable(Path::new("Company Inc./2025.pdf")), !cfg!(windows));
+        assert_eq!(
+            is_usable(Path::new("Company Inc./2025.pdf")),
+            !cfg!(windows)
+        );
     }
 }

@@ -523,9 +523,8 @@ fn pattern_row<'a>(form: &'a RuleForm, lang: Language, palette: &Palette) -> Ele
         )
     });
     let preview = if problem.is_none() {
-        pattern_result(form, lang).map(|path| {
-            fill_template(lang.text(Msg::SortingPatternResult), &[("{path}", &path)])
-        })
+        pattern_result(form, lang)
+            .map(|path| fill_template(lang.text(Msg::SortingPatternResult), &[("{path}", &path)]))
     } else {
         None
     };

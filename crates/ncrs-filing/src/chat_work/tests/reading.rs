@@ -193,11 +193,7 @@ fn a_known_document_brings_its_fields_and_text_from_the_index() {
     assert_eq!(read.files[0].text.as_deref(), Some("stored text"));
 }
 
-fn index_with_stored_hash(
-    setup: &Setup,
-    path: &Path,
-    stamp: ncrs_index::FileStamp,
-) {
+fn index_with_stored_hash(setup: &Setup, path: &Path, stamp: ncrs_index::FileStamp) {
     let mut guard = setup.access.slot.lock().unwrap();
     let index = guard.as_mut().unwrap();
     let id = index

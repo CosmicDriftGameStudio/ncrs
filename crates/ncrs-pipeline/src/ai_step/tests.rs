@@ -292,7 +292,10 @@ fn a_field_set_by_hand_keeps_value_and_origin() {
     run(&steps, AI, &mut item);
 
     assert_eq!(fixture.fields(document).kind, by_hand.kind);
-    assert_eq!(fixture.origins(document).of(Field::Kind), FieldOrigin::Manual);
+    assert_eq!(
+        fixture.origins(document).of(Field::Kind),
+        FieldOrigin::Manual
+    );
 }
 
 #[test]
@@ -510,14 +513,18 @@ fn document_with_guesses(fixture: &Fixture) -> DocumentId {
         number: Some("7".to_owned()),
         ..guessed
     };
-    fixture.index.lock().unwrap().set_document_fields(document, &by_hand, |field| {
-        if field == Field::Number {
-            FieldOrigin::Manual
-        } else {
-            FieldOrigin::Detected
-        }
-    })
-    .unwrap();
+    fixture
+        .index
+        .lock()
+        .unwrap()
+        .set_document_fields(document, &by_hand, |field| {
+            if field == Field::Number {
+                FieldOrigin::Manual
+            } else {
+                FieldOrigin::Detected
+            }
+        })
+        .unwrap();
     document
 }
 

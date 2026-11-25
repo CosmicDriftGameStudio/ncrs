@@ -156,10 +156,7 @@ fn places<'a>(question: &'a Question, ctx: ViewCtx<'_>) -> Element<'a, Message> 
             ctx.palette,
         )
     });
-    column(lines)
-        .spacing(spacing::M)
-        .width(Length::Fill)
-        .into()
+    column(lines).spacing(spacing::M).width(Length::Fill).into()
 }
 
 fn buttons<'a>(question: &Question, ctx: ViewCtx<'_>) -> Vec<Element<'a, Message>> {
@@ -187,13 +184,8 @@ fn buttons<'a>(question: &Question, ctx: ViewCtx<'_>) -> Vec<Element<'a, Message
         ));
         return shown;
     }
-    let only = |asked: &AskedPlace| {
-        say(
-            lang,
-            Msg::SortingQuestionOnly,
-            &[("target", &asked.number)],
-        )
-    };
+    let only =
+        |asked: &AskedPlace| say(lang, Msg::SortingQuestionOnly, &[("target", &asked.number)]);
     if question.places.len() > 1 {
         shown.push(button(
             lang.text(Msg::SortingQuestionBoth),

@@ -385,11 +385,21 @@ fn the_blame_rows_look_the_same() {
         )
     };
     let content = column![
-        line(1, "9e3779b", "Lena Hartmann", "pub fn total(rows: &[Row]) -> u64 {"),
+        line(
+            1,
+            "9e3779b",
+            "Lena Hartmann",
+            "pub fn total(rows: &[Row]) -> u64 {"
+        ),
         line(2, "", "", "    rows.iter().map(|row| row.size).sum()"),
         line(3, "3c6ef37", "Maximiliane von Hohenstein-Wartenberg", "}"),
         line(4, "daa66d2", "Mira Sommer", "#[derive(Debug)]"),
-        line(1234, "", "", "pub struct Row { pub name: String, pub size: u64, pub time: i64 }"),
+        line(
+            1234,
+            "",
+            "",
+            "pub struct Row { pub name: String, pub size: u64, pub time: i64 }"
+        ),
     ]
     .padding(spacing::XXL);
     matches_picture("blame-rows", Size::new(900.0, 220.0), content.into());

@@ -13,8 +13,8 @@ use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::section_head::{section_head_with, SectionHead};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
-use super::diff_toolbar::kind_letter;
 use super::commit_box;
+use super::diff_toolbar::kind_letter;
 use crate::actions::{ChangeSide, LocalChanges, MenuTarget, WipFocus};
 use crate::ctx::ViewCtx;
 use crate::handlers::current_branch;
@@ -74,8 +74,14 @@ fn file_rows<'a>(
         ];
         let taken: f32 = labels
             .iter()
-            .map(|label| estimated_width(label, font_size::SMALL) + 2.0 * (spacing::M - 2.0) + spacing::M)
-            .chain(trail.iter().map(|(count, _)| estimated_width(count, font_size::SMALL) + spacing::M))
+            .map(|label| {
+                estimated_width(label, font_size::SMALL) + 2.0 * (spacing::M - 2.0) + spacing::M
+            })
+            .chain(
+                trail
+                    .iter()
+                    .map(|(count, _)| estimated_width(count, font_size::SMALL) + spacing::M),
+            )
             .sum();
         let shown = action_row(
             ActionRow {
@@ -129,8 +135,9 @@ fn header<'a>(
     if let Some(worktree) = state.current_worktree() {
         let template = lang.text(Msg::GitViewWipWorktree);
         let frame = fill_template(template, &[("{path}", "")]);
-        let room =
-            width - 2.0 * spacing::M - estimated_width(&format!("{summary} \u{b7} {frame}"), font_size::SMALL);
+        let room = width
+            - 2.0 * spacing::M
+            - estimated_width(&format!("{summary} \u{b7} {frame}"), font_size::SMALL);
         let path = worktree.path.display().to_string();
         summary = format!(
             "{summary} \u{b7} {}",

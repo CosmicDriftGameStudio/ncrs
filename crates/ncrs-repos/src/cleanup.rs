@@ -8,21 +8,21 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use iced::Task;
-use ncrs_i18n::Msg;
 use ncrs_git::{
     CleanupBranch, CleanupList, CleanupPlan, CleanupReason, CleanupReport, CleanupTarget,
     UndoRecord, UndoSummary,
 };
+use ncrs_i18n::Msg;
 use ncrs_ui_kit::kit::Check;
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
+use crate::cleanup_tasks;
 use crate::ctx::Ctx;
 use crate::message::Message;
 use crate::rows::name_of;
 use crate::state::{Scope, State};
 use crate::summary::Reading;
-use crate::cleanup_tasks;
 use crate::update::{enqueue_read, pump_reads, Outcome};
 
 /// How far a Page key moves the cursor.
@@ -231,7 +231,11 @@ impl Cleanup {
             folder: Some(found.path.clone()),
             ignored_files: found.ignored_files.clone(),
             reason: OfferReason::WorktreeOnly,
-            remote: found.branch.remote_tip.as_ref().and(found.branch.upstream.clone()),
+            remote: found
+                .branch
+                .remote_tip
+                .as_ref()
+                .and(found.branch.upstream.clone()),
         });
         let branches = scan.list.branches.iter().map(|found| Item {
             pick: Pick {
@@ -431,7 +435,11 @@ impl Cleanup {
             Offer::Branch(name) => vec![CleanupTarget::Branch(name.clone())],
         };
         let mut seen = false;
-        for row in report.rows.iter().filter(|row| targets.contains(&row.target)) {
+        for row in report
+            .rows
+            .iter()
+            .filter(|row| targets.contains(&row.target))
+        {
             seen = true;
             if let Err(error) = &row.result {
                 return Some(Err(crate::bulk::error_line(error)));
@@ -515,7 +523,12 @@ fn open(state: &mut State, ctx: &Ctx) -> Outcome {
     state.menu = None;
     state.filter_focused = false;
     state.cleanup_generation += 1;
-    state.cleanup = Some(Cleanup::new(state.cleanup_generation, scope, targets, repos));
+    state.cleanup = Some(Cleanup::new(
+        state.cleanup_generation,
+        scope,
+        targets,
+        repos,
+    ));
     quiet(pump_scans(state, ctx))
 }
 
@@ -530,7 +543,11 @@ fn pump_scans(state: &mut State, ctx: &Ctx) -> Task<Message> {
         };
         cleanup.running += 1;
         cleanup.repos.insert(path.clone(), RepoState::Running);
-        started.push(cleanup_tasks::scan(cleanup.generation, path, Arc::clone(&state.stop)));
+        started.push(cleanup_tasks::scan(
+            cleanup.generation,
+            path,
+            Arc::clone(&state.stop),
+        ));
     }
     Task::batch(started)
 }
@@ -582,7 +599,10 @@ fn scanned(
     }
     cleanup.clamp_cursor();
     enqueue_read(state, path);
-    quiet(Task::batch([pump_scans(state, ctx), pump_reads(state, ctx)]))
+    quiet(Task::batch([
+        pump_scans(state, ctx),
+        pump_reads(state, ctx),
+    ]))
 }
 
 fn confirm(state: &mut State, ctx: &Ctx) -> Outcome {
@@ -656,7 +676,10 @@ fn undo(state: &State) -> Outcome {
     if cleanup.phase != Phase::Done || cleanup.undos.is_empty() {
         return quiet(Task::none());
     }
-    quiet(cleanup_tasks::undo(cleanup.generation, cleanup.undos.clone()))
+    quiet(cleanup_tasks::undo(
+        cleanup.generation,
+        cleanup.undos.clone(),
+    ))
 }
 
 fn undone(
@@ -715,7 +738,11 @@ fn key(state: &mut State, message: Message, ctx: &Ctx) -> Result<Outcome, Messag
         }
         _ => {}
     }
-    if state.cleanup.as_ref().is_some_and(|cleanup| cleanup.list_focus) {
+    if state
+        .cleanup
+        .as_ref()
+        .is_some_and(|cleanup| cleanup.list_focus)
+    {
         return Err(message);
     }
     match message {
@@ -792,7 +819,7 @@ fn handle(state: &mut State, message: CleanupMessage, ctx: &Ctx) -> Outcome {
         }
         CleanupMessage::Scanned(generation, path, result) => {
             scanned(state, ctx, generation, path, *result)
-        },
+        }
         CleanupMessage::Toggle(pick) => {
             if cleanup.phase == Phase::Ready {
                 cleanup.toggle(pick);
@@ -831,7 +858,7 @@ fn handle(state: &mut State, message: CleanupMessage, ctx: &Ctx) -> Outcome {
         CleanupMessage::Confirm => confirm(state, ctx),
         CleanupMessage::Deleted(generation, path, result) => {
             deleted(state, ctx, generation, path, *result)
-        },
+        }
         CleanupMessage::Undo => undo(state),
         CleanupMessage::Undone(generation, results) => undone(state, ctx, generation, results),
         CleanupMessage::Shut => {
@@ -863,7 +890,9 @@ mod tests {
             reason,
             upstream: upstream.map(str::to_owned),
             tip_time: 0,
-            remote_tip: upstream.filter(|_| reason == CleanupReason::InDefault).map(|_| "def".to_owned()),
+            remote_tip: upstream
+                .filter(|_| reason == CleanupReason::InDefault)
+                .map(|_| "def".to_owned()),
         }
     }
 
@@ -887,7 +916,10 @@ mod tests {
             fetch_error: None,
         };
         let repos = BTreeMap::from([(repo.clone(), RepoState::Scanned(Box::new(scan)))]);
-        (Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos), repo)
+        (
+            Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos),
+            repo,
+        )
     }
 
     #[test]

@@ -12,8 +12,8 @@ mod common;
 
 use common::{fixture, repo, Fixture};
 use ncrs_git::{
-    CleanupBranch, CleanupList, CleanupReason, CleanupReport, CleanupRow, CleanupTarget,
-    ActionError, KeepReason, Kept,
+    ActionError, CleanupBranch, CleanupList, CleanupReason, CleanupReport, CleanupRow,
+    CleanupTarget, KeepReason, Kept,
 };
 use ncrs_repos::{CleanupMessage, Line, Message, Offer, Phase, Pick, RepoState, Scan};
 
@@ -109,7 +109,10 @@ fn space_ticks_a_row_and_a_group() {
     fixture.send(Message::Mark);
     assert!(pane(&fixture).is_ticked(&first));
     fixture.send(Message::Mark);
-    assert_eq!(pane(&fixture).cursor_line(), Some(Line::Group(repo("alpha"))));
+    assert_eq!(
+        pane(&fixture).cursor_line(),
+        Some(Line::Group(repo("alpha")))
+    );
     assert_eq!(pane(&fixture).ticked().0, 1);
 }
 

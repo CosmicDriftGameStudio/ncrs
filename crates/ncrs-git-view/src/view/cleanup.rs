@@ -45,7 +45,12 @@ fn keep_text(why: KeepReason, lang: Language) -> String {
     }
 }
 
-fn offer_text(dialog: &CleanupDialog, branch: &CleanupBranch, worktree: bool, lang: Language) -> String {
+fn offer_text(
+    dialog: &CleanupDialog,
+    branch: &CleanupBranch,
+    worktree: bool,
+    lang: Language,
+) -> String {
     let base = match (worktree, branch.reason) {
         (true, _) => lang.text(Msg::GitCleanupReasonWorktree).to_owned(),
         (false, CleanupReason::InDefault) => fill_template(
@@ -54,28 +59,30 @@ fn offer_text(dialog: &CleanupDialog, branch: &CleanupBranch, worktree: bool, la
         ),
         (false, CleanupReason::UpstreamGone) => lang.text(Msg::GitCleanupReasonGone).to_owned(),
     };
-    match (&branch.upstream, branch.remote_tip.is_some(), dialog.delete_remote) {
+    match (
+        &branch.upstream,
+        branch.remote_tip.is_some(),
+        dialog.delete_remote,
+    ) {
         (Some(remote), true, true) => format!("{base} + {remote}"),
         _ => base,
     }
 }
 
 fn folder_name(path: &Path) -> String {
-    path.file_name()
-        .map_or_else(|| path.display().to_string(), |last| last.to_string_lossy().into_owned())
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |last| last.to_string_lossy().into_owned(),
+    )
 }
 
-fn outcome(
-    dialog: &CleanupDialog,
-    pick: &Pick,
-    ctx: ViewCtx<'_>,
-) -> Option<RowOutcome> {
+fn outcome(dialog: &CleanupDialog, pick: &Pick, ctx: ViewCtx<'_>) -> Option<RowOutcome> {
     Some(match dialog.result_of(pick)? {
         Ok(()) => RowOutcome::Done(ctx.lang.text(Msg::ReposCleanupRowDeleted).to_owned()),
         Err(reason) => RowOutcome::Failed(fill_template(
-                ctx.lang.text(Msg::GitCleanupRowFailed),
-                &[("{reason}", &reason.to_string())],
-            )),
+            ctx.lang.text(Msg::GitCleanupRowFailed),
+            &[("{reason}", &reason.to_string())],
+        )),
     })
 }
 
@@ -95,7 +102,11 @@ fn item_row<'a>(
             (offered.map(|found| &found.branch), offered)
         }
         Pick::Branch(name) => (
-            dialog.list.branches.iter().find(|found| &found.name == name),
+            dialog
+                .list
+                .branches
+                .iter()
+                .find(|found| &found.name == name),
             None,
         ),
     };
@@ -111,7 +122,8 @@ fn item_row<'a>(
                 Check::Off
             },
             name: branch.name.clone(),
-            detail: worktree.map(|found| worktree_detail(&found.path, &found.ignored_files, ctx.lang)),
+            detail: worktree
+                .map(|found| worktree_detail(&found.path, &found.ignored_files, ctx.lang)),
             reason: offer_text(dialog, branch, worktree.is_some(), ctx.lang),
             worktree: worktree.is_some(),
             kept: false,
@@ -128,7 +140,13 @@ fn remote_line<'a>(dialog: &CleanupDialog, on_it: bool, ctx: ViewCtx<'a>) -> Ele
         .list
         .branches
         .iter()
-        .find_map(|found| found.upstream.as_deref()?.split_once('/').map(|(name, _)| name))
+        .find_map(|found| {
+            found
+                .upstream
+                .as_deref()?
+                .split_once('/')
+                .map(|(name, _)| name)
+        })
         .unwrap_or("origin");
     let label = format!(
         "{}{}",
@@ -149,7 +167,8 @@ fn remote_line<'a>(dialog: &CleanupDialog, on_it: bool, ctx: ViewCtx<'a>) -> Ele
             } else {
                 Check::Off
             },
-            (dialog.phase == Phase::Ready).then_some(Message::Cleanup(CleanupMessage::ToggleRemote)),
+            (dialog.phase == Phase::Ready)
+                .then_some(Message::Cleanup(CleanupMessage::ToggleRemote)),
             Some(&label),
             ctx.palette,
         ),
@@ -279,13 +298,16 @@ pub(super) fn cleanup_dialog<'a>(
             ),
         ],
     };
-    let title = fill_template(
-        lang.text(Msg::GitViewCleanupTitle),
-        &[("{name}", name)],
-    );
-    Frame::new(&title, content, DialogSize::Large, ctx.window, lang, palette)
-        .buttons(buttons)
-        .on_close(Message::CloseDialog)
-        .into_element()
+    let title = fill_template(lang.text(Msg::GitViewCleanupTitle), &[("{name}", name)]);
+    Frame::new(
+        &title,
+        content,
+        DialogSize::Large,
+        ctx.window,
+        lang,
+        palette,
+    )
+    .buttons(buttons)
+    .on_close(Message::CloseDialog)
+    .into_element()
 }
-

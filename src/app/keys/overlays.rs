@@ -481,16 +481,12 @@ pub(in crate::app) fn hermes_dialog_key(
         HermesDialogKeys::Target | HermesDialogKeys::Rule if is_tab => {
             page_tab_message(key_modifiers)
         }
-        HermesDialogKeys::Target => {
-            ncrs_hermes_ui::keys::target_dialog_key(key).map(Message::from)
-        }
+        HermesDialogKeys::Target => ncrs_hermes_ui::keys::target_dialog_key(key).map(Message::from),
         HermesDialogKeys::TargetRemoval => {
             ncrs_hermes_ui::keys::target_removal_key(key).map(Message::from)
         }
         // Closes the dialog on top, and keeps one that holds typed input.
-        HermesDialogKeys::Rule => {
-            is_escape.then_some(Message::Settings(SettingsMessage::Close))
-        }
+        HermesDialogKeys::Rule => is_escape.then_some(Message::Settings(SettingsMessage::Close)),
     }
 }
 

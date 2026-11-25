@@ -583,16 +583,15 @@ mod check_rows_ui_tests {
 /// The blocks of the filing pages apart from the grid, so the grid stays as it is.
 mod filing_blocks_ui_tests {
     use super::*;
-    use iced::widget::column;
     use crate::hermes_kit::TargetCheck;
     use crate::kit::PatternField;
     use crate::plan_rows::{plan_action_row, PlanActionRow, PlanFileRow, PlanLink};
     use crate::setting_rows::RowButton;
+    use iced::widget::column;
 
     fn chips<'a>(p: &Palette) -> Cell<'a> {
-        let chips = (0..7).map(|index| {
-            hermes_kit::target_chip(index, &format!("T{}", index + 1), p)
-        });
+        let chips =
+            (0..7).map(|index| hermes_kit::target_chip(index, &format!("T{}", index + 1), p));
         Row::with_children(chips).spacing(spacing::M).into()
     }
 
@@ -620,7 +619,12 @@ mod filing_blocks_ui_tests {
     }
 
     fn pattern<'a>(p: &Palette) -> Cell<'a> {
-        const TOKENS: [(&str, ()); 4] = [("{sender}", ()), ("{kind}", ()), ("{year}", ()), ("{day}", ())];
+        const TOKENS: [(&str, ()); 4] = [
+            ("{sender}", ()),
+            ("{kind}", ()),
+            ("{year}", ()),
+            ("{day}", ()),
+        ];
         let field = |value: &'a str, preview: Option<&str>, problem: Option<&str>| {
             kit::pattern_field(
                 PatternField {
@@ -642,7 +646,11 @@ mod filing_blocks_ui_tests {
                 Some("Result: Bank/Example Bank/2026/Statement.pdf"),
                 None,
             ),
-            field("Bank/{sender}/{unknown}", None, Some("{unknown} is not a block")),
+            field(
+                "Bank/{sender}/{unknown}",
+                None,
+                Some("{unknown} is not a block")
+            ),
         ]
         .spacing(spacing::M)
         .into()

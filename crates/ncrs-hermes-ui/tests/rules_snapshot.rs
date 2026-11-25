@@ -32,8 +32,8 @@ mod ui_tests {
     use ncrs_hermes_ui::{dialogs, page_content, Hermes, HermesPage, Message, ViewCtx};
     use ncrs_i18n::Language;
     use ncrs_index::{
-        Condition, ConditionKind, Field, Index, Rule, RuleConditions, RuleId, RuleOrigin,
-        RuleSpec, TargetId,
+        Condition, ConditionKind, Field, Index, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
+        TargetId,
     };
     use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget};
     use ncrs_ui_kit::layout::SETTINGS_WIDE_PAGE_MAX_WIDTH;
@@ -100,7 +100,9 @@ mod ui_tests {
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
         let spec = rule_spec("probe", "probe");
-        (0..count).map(|_| index.create_rule(&spec).unwrap()).collect()
+        (0..count)
+            .map(|_| index.create_rule(&spec).unwrap())
+            .collect()
     }
 
     fn rule_spec(name: &str, word: &str) -> RuleSpec {

@@ -340,13 +340,23 @@ pub(super) fn merge() -> MergeInProgress {
             Shared(12, "use crate::kassenbuch::Buchung;".to_owned()),
             Shared(13, "use crate::steuer::Cent;".to_owned()),
             Shared(14, String::new()),
-            Mine("pub fn exportiere(buchungen: &[Buchung]) -> Result<Vec<u8>, Fehler> {".to_owned()),
+            Mine(
+                "pub fn exportiere(buchungen: &[Buchung]) -> Result<Vec<u8>, Fehler> {".to_owned(),
+            ),
             Mine("    let vorlage = Vorlage::laden(&einstellungen.briefkopf)?;".to_owned()),
-            Theirs("pub fn exportiere(rechnungen: &[Rechnung], ziel: &Path) -> Result<(), Fehler> {".to_owned()),
-            Theirs("    let vorlage = Vorlage::aus_datei(ziel.join(\"briefkopf.pdf\"))?;".to_owned()),
+            Theirs(
+                "pub fn exportiere(rechnungen: &[Rechnung], ziel: &Path) -> Result<(), Fehler> {"
+                    .to_owned(),
+            ),
+            Theirs(
+                "    let vorlage = Vorlage::aus_datei(ziel.join(\"briefkopf.pdf\"))?;".to_owned(),
+            ),
             Shared(17, "    let mut seiten = Vec::new();".to_owned()),
             Shared(18, "    for rechnung in rechnungen {".to_owned()),
-            Shared(19, "        seiten.push(vorlage.seite(rechnung)?);".to_owned()),
+            Shared(
+                19,
+                "        seiten.push(vorlage.seite(rechnung)?);".to_owned(),
+            ),
             Shared(20, "    }".to_owned()),
             Shared(21, String::new()),
             Mine("    Ok(zusammenfuegen(seiten))".to_owned()),

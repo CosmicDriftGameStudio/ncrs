@@ -9,7 +9,8 @@ use ncrs_intake::{OnNoText, OnSeveralTargets, SortSource};
 
 use super::access::{text, SortingAccess};
 use super::plan_run::{
-    files_of, plan_watched, source_root, PlanError, PlanFiles, PlanRequest, PlanRow, RowPlace, RowState,
+    files_of, plan_watched, source_root, PlanError, PlanFiles, PlanRequest, PlanRow, RowPlace,
+    RowState,
 };
 use super::read_unknown::ReadUnknown;
 use super::ready::{is_on_own_volume, source_is_mounted, WaitReason};

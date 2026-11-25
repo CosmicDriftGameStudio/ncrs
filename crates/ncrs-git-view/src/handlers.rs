@@ -15,9 +15,9 @@ use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
 use crate::actions::{
-    Actions, ChangeSide, Conflict, ConflictAction, Dialog, LocalChanges, MenuAction, MenuTarget,
-    ForceBlock, MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
-    WipFocus,
+    Actions, ChangeSide, Conflict, ConflictAction, Dialog, ForceBlock, LocalChanges, MenuAction,
+    MenuTarget, MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar,
+    Unavailable, WipFocus,
 };
 use crate::cleanup;
 use crate::ctx::Ctx;
@@ -376,12 +376,17 @@ pub fn current_branch(state: &State) -> String {
 
 /// The row a menu action is about: the open menu's, else the one under the cursor.
 fn menu_subject(state: &State) -> Option<MenuTarget> {
-    state.actions.menu.clone().map(|open| open.target).or_else(|| {
-        state
-            .sidebar_items()
-            .get(state.sidebar_cursor)
-            .and_then(|item| menu_target_of(state, *item))
-    })
+    state
+        .actions
+        .menu
+        .clone()
+        .map(|open| open.target)
+        .or_else(|| {
+            state
+                .sidebar_items()
+                .get(state.sidebar_cursor)
+                .and_then(|item| menu_target_of(state, *item))
+        })
 }
 
 fn branch_of(state: &State, target: &MenuTarget) -> Option<String> {
@@ -430,11 +435,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
     };
     let branch = branch_of(state, &chosen);
     let stash = match &chosen {
-        MenuTarget::Stash(id) => state
-            .actions
-            .stash_ids
-            .contains(id)
-            .then(|| id.clone()),
+        MenuTarget::Stash(id) => state.actions.stash_ids.contains(id).then(|| id.clone()),
         _ => None,
     };
     // The one key for "delete" means what the row it is pressed on can lose.
@@ -554,7 +555,9 @@ fn confirm_dialog(state: &mut State) -> Outcome {
                 to,
             }
         }
-        Some(Dialog::Tag(_) | Dialog::Credential(_) | Dialog::Cleanup(_)) | None => return quiet(Task::none()),
+        Some(Dialog::Tag(_) | Dialog::Credential(_) | Dialog::Cleanup(_)) | None => {
+            return quiet(Task::none())
+        }
     };
     start(state, job)
 }

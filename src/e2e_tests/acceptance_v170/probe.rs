@@ -47,11 +47,7 @@ impl World {
             index.create_rule(&spec).unwrap();
         }
         drop(index);
-        std::fs::write(
-            root.join("config.toml"),
-            Self::target_config(&archive_dir),
-        )
-        .unwrap();
+        std::fs::write(root.join("config.toml"), Self::target_config(&archive_dir)).unwrap();
         Self {
             root,
             dir,
@@ -138,10 +134,7 @@ pub fn inbox_read(world: &World) -> bool {
 }
 
 pub fn backlog_recorded(world: &World) -> bool {
-    world
-        .index()
-        .has_source_backlog(&world.inbox_dir)
-        .unwrap()
+    world.index().has_source_backlog(&world.inbox_dir).unwrap()
 }
 
 pub fn files_in(folder: &Path) -> usize {

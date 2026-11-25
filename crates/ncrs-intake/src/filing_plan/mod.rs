@@ -538,7 +538,8 @@ impl Pattern {
         });
         let is_device =
             matches!(tokens.as_slice(), [Token::Literal(literal)] if is_device_name(literal));
-        let lost_ending = matches!(tokens.last(), Some(Token::Literal(literal)) if has_lost_ending(literal));
+        let lost_ending =
+            matches!(tokens.last(), Some(Token::Literal(literal)) if has_lost_ending(literal));
         let is_home = matches!(tokens.as_slice(), [Token::Literal(literal)] if literal == "~");
         (!only_dots && plain && !is_device && !lost_ending && !is_home).then_some(tokens)
     }

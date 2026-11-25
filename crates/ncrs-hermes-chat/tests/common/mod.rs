@@ -283,9 +283,7 @@ impl Talk {
         self.actions
             .iter()
             .filter_map(|action| match action {
-                Action::SuggestRules { folder, pattern } => {
-                    Some((folder.clone(), pattern.clone()))
-                }
+                Action::SuggestRules { folder, pattern } => Some((folder.clone(), pattern.clone())),
                 _ => None,
             })
             .collect()

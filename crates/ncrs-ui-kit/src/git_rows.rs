@@ -311,9 +311,9 @@ fn message_cell<'a, M: 'a>(
                 .wrapping(Wrapping::None),
         )
         .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center)
-    .width(Length::Fill)
-    .into()
+        .align_y(alignment::Vertical::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 pub fn commit_row<'a, M: Clone + 'a>(
@@ -618,8 +618,8 @@ pub fn diff_cell<'a, M: 'a>(
             code_text(content, palette.text)
         ]
         .spacing(spacing::XS)
-            .align_y(alignment::Vertical::Center)
-            .into(),
+        .align_y(alignment::Vertical::Center)
+        .into(),
         tone,
         Length::FillPortion(1),
         palette,

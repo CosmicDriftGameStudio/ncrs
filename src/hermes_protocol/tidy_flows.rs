@@ -419,7 +419,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             let Some(session) = self.app().filing_session_for_test() else {
                 break;
             };
-            let partial = session.planned && session.rows.iter().any(|row| session.is_being_read(row));
+            let partial =
+                session.planned && session.rows.iter().any(|row| session.is_being_read(row));
             if partial && mid.is_none() {
                 mid = Some(self.shot("filing-mid"));
             }
@@ -603,11 +604,7 @@ fn file_stamp(path: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
 
 /// The files below `root`, relative to it.
 pub(in crate::hermes_protocol) fn relative_files(root: &std::path::Path) -> BTreeSet<PathBuf> {
-    fn walk(
-        root: &std::path::Path,
-        dir: &std::path::Path,
-        found: &mut BTreeSet<PathBuf>,
-    ) {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, found: &mut BTreeSet<PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };

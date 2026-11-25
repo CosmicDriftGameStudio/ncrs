@@ -245,8 +245,7 @@ fn with_model_the_changed_levels_and_their_apply_are_shot_for_each_change() {
             (Language::English, "en", english_sentence),
         ] {
             let name = &format!("{case}-{suffix}");
-            let (_dir, mut app, ctx, access) =
-                opened_pay_slips(&model, lang, answering, name);
+            let (_dir, mut app, ctx, access) = opened_pay_slips(&model, lang, answering, name);
             press(&mut app, &ctx, &access, answering, &ChipReply::LevelsChange);
             if case.starts_with("report") {
                 type_sentence(&mut app, &ctx, &access, answering, "3");

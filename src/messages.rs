@@ -18,9 +18,8 @@ pub use ncrs_hermes_chat::Message as HermesChatMessage;
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
-    HermesOverviewMessage, HermesPage, RulesMessage,
-    SortingMessage, SuggestMessage, TargetsMessage,
-    SavedQueriesMessage, TagsMessage,
+    HermesOverviewMessage, HermesPage, RulesMessage, SavedQueriesMessage, SortingMessage,
+    SuggestMessage, TagsMessage, TargetsMessage,
 };
 pub use ncrs_ops::{
     BatchRenameMessage, ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage,

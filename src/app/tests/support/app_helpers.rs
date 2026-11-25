@@ -703,11 +703,7 @@ impl App {
             .map(|step| format!("{} {}", step.name, step.waiting))
             .collect::<Vec<_>>()
             .join(", ");
-        (
-            format!("{:?}", snapshot.state),
-            queues,
-            filing_now,
-        )
+        (format!("{:?}", snapshot.state), queues, filing_now)
     }
 
     /// Whether the app allows the background filing, and whether the

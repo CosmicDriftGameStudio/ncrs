@@ -117,7 +117,8 @@ impl Store {
     /// alone: it holds a list this build would destroy.
     pub fn write(&self, path: &Path) -> Result<(), StoreError> {
         Self::read(path)?;
-        let not_written = |reason: &dyn std::fmt::Display| StoreError::NotWritten(reason.to_string());
+        let not_written =
+            |reason: &dyn std::fmt::Display| StoreError::NotWritten(reason.to_string());
         let text = toml_edit::ser::to_string(self).map_err(|error| not_written(&error))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| not_written(&error))?;

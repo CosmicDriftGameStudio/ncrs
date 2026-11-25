@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use ncrs_index::{Index, KindCatalog};
 
-use crate::error::IntakeError;
 use crate::duplicate_copies::PlanFile;
+use crate::error::IntakeError;
 use crate::structure::{learn_structure, LocationStructure, StructureDocument};
 
 /// The structure the documents of a location are laid out in, learned from

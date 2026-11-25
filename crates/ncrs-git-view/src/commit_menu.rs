@@ -100,8 +100,9 @@ fn target_row(state: &State) -> Option<usize> {
             MenuTarget::Commit(sha) => state.row_of_commit(sha),
             _ => None,
         },
-        None => (state.area == Area::Commits && !state.list_is_covered())
-            .then_some(state.commit_cursor),
+        None => {
+            (state.area == Area::Commits && !state.list_is_covered()).then_some(state.commit_cursor)
+        }
     }
 }
 
@@ -255,7 +256,9 @@ pub fn key(state: &mut State, message: &Message) -> Outcome {
         }
         _ => {
             let chosen = match open.submenu {
-                Some(inside) => RESET_MODES.get(inside).map(|mode| CommitAction::Reset(*mode)),
+                Some(inside) => RESET_MODES
+                    .get(inside)
+                    .map(|mode| CommitAction::Reset(*mode)),
                 None => match ENTRIES.get(open.cursor).copied().flatten() {
                     Some(action) => Some(action),
                     None => {

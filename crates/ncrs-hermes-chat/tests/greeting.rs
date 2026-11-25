@@ -85,10 +85,7 @@ mod tests {
 
         talk.open();
 
-        assert_eq!(
-            talk.labels(),
-            vec![say(Msg::HermesChatChooseFolder, &[])]
-        );
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatChooseFolder, &[])]);
         assert!(talk.state.chips()[0].primary);
         talk.press(&ChipReply::PickFolder);
         assert_eq!(talk.actions, vec![Action::PickFolder]);

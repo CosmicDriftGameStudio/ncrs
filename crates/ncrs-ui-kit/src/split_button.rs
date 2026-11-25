@@ -9,9 +9,7 @@ use crate::kit::{toolbar_button, Tone};
 use crate::layout::MENU_PADDING;
 use crate::list_below::list_below_own_width;
 use crate::palette::Palette;
-use crate::popup_menu::{
-    menu_entry_colors, menu_item, menu_separator, MenuRow, PopupEntry,
-};
+use crate::popup_menu::{menu_entry_colors, menu_item, menu_separator, MenuRow, PopupEntry};
 use crate::theme::{self, font_size, spacing};
 
 /// The label of the arrow half.

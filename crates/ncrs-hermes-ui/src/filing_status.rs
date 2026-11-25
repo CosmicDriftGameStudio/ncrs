@@ -223,7 +223,11 @@ mod tests {
         let mut status = FilingStatus::default();
         assert_eq!(status.waiting(), 0);
 
-        status.questions_arrived(Ok(vec![asked("/in", 3), asked("/calm", 0), asked("/scans", 4)]));
+        status.questions_arrived(Ok(vec![
+            asked("/in", 3),
+            asked("/calm", 0),
+            asked("/scans", 4),
+        ]));
         assert_eq!(status.waiting(), 7);
         assert_eq!(status.questions(), [asked("/in", 3), asked("/scans", 4)]);
 

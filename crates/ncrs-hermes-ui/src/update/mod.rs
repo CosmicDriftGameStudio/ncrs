@@ -26,9 +26,7 @@ use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::message::{
     ActivityMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    Message, RulesMessage, SavedQueriesMessage, SortingMessage,
-    TargetsMessage,
-    TagsMessage,
+    Message, RulesMessage, SavedQueriesMessage, SortingMessage, TagsMessage, TargetsMessage,
 };
 use crate::rule_form::RuleForm;
 use crate::rules_page::RulesPage;
@@ -38,8 +36,8 @@ use crate::state::Hermes;
 use crate::tags_page::TagsPage;
 use crate::watching::SourceRun;
 use ncrs_config::config::Filing;
-use ncrs_index::{DocumentId, TargetId};
 use ncrs_filing::filing::FilingMessage;
+use ncrs_index::{DocumentId, TargetId};
 
 pub use self::column::{refresh_hermes_column, request_hermes_column};
 pub use self::filing_job::{run_filing_work, run_filing_work_after};

@@ -153,7 +153,10 @@ async fn enter_in_the_history_opens_the_diff_at_the_path_of_that_commit() {
     let file = shown.files.first().unwrap();
     assert_eq!(file.path, "old.txt");
     assert_eq!(file.kind, ChangeKind::Added);
-    assert_eq!(shown.subject, Subject::Commit(sh(dir.path(), &["rev-parse", "HEAD~2"])));
+    assert_eq!(
+        shown.subject,
+        Subject::Commit(sh(dir.path(), &["rev-parse", "HEAD~2"]))
+    );
     assert_eq!(shown.diff.as_ref().map(|diff| diff.hunks.len()), Some(1));
 }
 
@@ -200,7 +203,10 @@ async fn enter_in_the_blame_reads_on_for_a_commit_further_down() {
     }
     sh(at, &["reset", "-q", "--soft", &tip]);
     let mut state = opened(at).await;
-    assert!(state.log.as_ref().unwrap().has_more, "the commit is not listed yet");
+    assert!(
+        state.log.as_ref().unwrap().has_more,
+        "the commit is not listed yet"
+    );
     send(&mut state, Message::OpenBlame("new.txt".to_owned(), None)).await;
     send(&mut state, Message::Enter).await;
     let chosen = state.commit_at(state.commit_cursor).unwrap();
@@ -261,7 +267,10 @@ async fn the_sandbox_shows_history_and_blame() {
     press(&mut state, "y").await;
     assert_eq!(summaries(&state).len(), 3);
     press(&mut state, "i").await;
-    assert!(state.blame.as_ref().is_some_and(|shown| shown.blame.is_some()));
+    assert!(state
+        .blame
+        .as_ref()
+        .is_some_and(|shown| shown.blame.is_some()));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -288,7 +297,11 @@ async fn the_menu_of_an_untracked_file_starts_on_an_entry_that_works() {
     fs::write(dir.path().join("junk.log"), "x").unwrap();
     let mut state = opened(dir.path()).await;
     let path = "junk.log".to_owned();
-    send(&mut state, Message::OpenMenu(MenuTarget::File { path, at: None })).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::File { path, at: None }),
+    )
+    .await;
     let cursor = state.actions.menu.as_ref().unwrap().cursor;
     let entries = menu_entries(&state, "junk.log");
     assert!(entries[cursor].1, "{:?} is greyed out", entries[cursor].0);
@@ -301,7 +314,11 @@ async fn a_file_menu_closes_when_its_file_is_gone() {
     fs::write(dir.path().join("junk.log"), "x").unwrap();
     let mut state = opened(dir.path()).await;
     let path = "junk.log".to_owned();
-    send(&mut state, Message::OpenMenu(MenuTarget::File { path, at: None })).await;
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::File { path, at: None }),
+    )
+    .await;
     assert!(state.actions.menu.is_some(), "the new file has a menu");
     let entries = menu_entries(&state, "junk.log");
     assert!(entries.contains(&(FileAction::History, false)));

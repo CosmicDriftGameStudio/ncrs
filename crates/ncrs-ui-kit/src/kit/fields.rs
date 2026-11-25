@@ -195,9 +195,12 @@ pub fn radio_choice<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     iced::widget::container(
-        iced::widget::radio(label.to_owned(), true, selected.then_some(true), move |_| {
-            on_choose.clone()
-        })
+        iced::widget::radio(
+            label.to_owned(),
+            true,
+            selected.then_some(true),
+            move |_| on_choose.clone(),
+        )
         .size(CHECKBOX_SIDE)
         .text_size(font_size::BODY)
         .spacing(spacing::M)

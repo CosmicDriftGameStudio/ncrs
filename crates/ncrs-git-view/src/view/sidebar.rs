@@ -6,9 +6,9 @@ use iced::Element;
 use ncrs_git::{BranchInfo, WorktreeInfo};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::action_rows::context_area;
-use ncrs_ui_kit::kit::dim;
 use ncrs_ui_kit::format::{estimated_text_width, estimated_width, fit_end, fit_middle};
 use ncrs_ui_kit::git_lines::{worktree_line, WorktreeLine, WorktreeState};
+use ncrs_ui_kit::kit::dim;
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
 use ncrs_ui_kit::theme::{font_size, git, spacing};
 use ncrs_ui_kit::tree_list::{

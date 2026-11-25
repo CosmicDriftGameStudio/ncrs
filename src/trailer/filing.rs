@@ -188,19 +188,12 @@ fn plan_rows(rules: &[RuleId]) -> Vec<Row> {
                     )
                 }
                 Fate::Duplicate { folder } => filing_already_there(
-                    PathBuf::from(TARGET)
-                        .join(folder.path)
-                        .join(folder.already),
+                    PathBuf::from(TARGET).join(folder.path).join(folder.already),
                 ),
                 Fate::NoRule => RowState::NoRule,
                 Fate::Unreadable => RowState::NoText,
             };
-            filing_row(
-                &PathBuf::from(SOURCE),
-                index,
-                PathBuf::from(from),
-                state,
-            )
+            filing_row(&PathBuf::from(SOURCE), index, PathBuf::from(from), state)
         })
         .collect()
 }

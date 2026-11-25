@@ -6,9 +6,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use ncrs_index::{
-    Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleSpec, TargetId,
-};
+use ncrs_index::{Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleSpec, TargetId};
 
 use crate::rule_form::{RuleForm, RuleFormTarget, RuleSave};
 use ncrs_filing::rules_work::{ListedRule, RuleChange, RulesLoad};

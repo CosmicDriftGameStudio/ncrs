@@ -131,9 +131,8 @@ impl HermesStatus {
             StateWord::Paused => Msg::HermesStatusPaused,
             StateWord::Idle => Msg::HermesStatusIdle,
         });
-        let part = |count: usize, template: Msg| {
-            (count > 0).then(|| counted(template, count, lang))
-        };
+        let part =
+            |count: usize, template: Msg| (count > 0).then(|| counted(template, count, lang));
         [
             Some(word.to_owned()),
             part(self.working, Msg::HermesStatusWorking),
@@ -191,8 +190,7 @@ mod tests {
 
     #[test]
     fn a_running_pipeline_names_what_is_not_zero() {
-        let status =
-            HermesStatus::of(&snapshot(RunnerState::Running, 5, 0, 2), 3, false).unwrap();
+        let status = HermesStatus::of(&snapshot(RunnerState::Running, 5, 0, 2), 3, false).unwrap();
         assert_eq!(
             line(status, Language::English),
             "running \u{b7} 2 working \u{b7} 5 open \u{b7} 3 wait for you"
@@ -206,8 +204,7 @@ mod tests {
 
     #[test]
     fn nothing_waiting_and_no_worker_busy_is_idle() {
-        let status =
-            HermesStatus::of(&snapshot(RunnerState::Running, 0, 0, 0), 0, false).unwrap();
+        let status = HermesStatus::of(&snapshot(RunnerState::Running, 0, 0, 0), 0, false).unwrap();
         assert_eq!(status.word, StateWord::Idle);
         assert_eq!(line(status, Language::English), "idle");
         assert_eq!(line(status, Language::German), "ruht");
@@ -215,8 +212,7 @@ mod tests {
 
     #[test]
     fn errors_show_up_and_turn_the_chip_red() {
-        let status =
-            HermesStatus::of(&snapshot(RunnerState::Running, 0, 4, 0), 0, false).unwrap();
+        let status = HermesStatus::of(&snapshot(RunnerState::Running, 0, 4, 0), 0, false).unwrap();
         assert_eq!(line(status, Language::English), "idle \u{b7} 4 failed");
         assert_eq!(status.tone(), Tone::Failing);
     }

@@ -13,8 +13,8 @@ use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
-use crate::ctx::Ctx;
 use crate::cleanup::CleanupMessage;
+use crate::ctx::Ctx;
 use crate::message::{MenuEntry, Message};
 use crate::rows::{is_hidden_worktree, RowKind};
 use crate::run;
@@ -333,7 +333,7 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Err(other) => other,
     };
     match message {
-        Message::Up =>move_cursor(state, -1),
+        Message::Up => move_cursor(state, -1),
         Message::Down => move_cursor(state, 1),
         Message::PageUp => move_cursor(state, -PAGE_ROWS),
         Message::PageDown => move_cursor(state, PAGE_ROWS),

@@ -264,7 +264,10 @@ fn sorting_of_locations(listed: &[FilingLocation]) -> Sorting {
             paused: None,
         });
     }
-    let first_target = sorting.targets.first().map(|setting| setting.target.id.clone());
+    let first_target = sorting
+        .targets
+        .first()
+        .map(|setting| setting.target.id.clone());
     for location in listed
         .iter()
         .filter(|location| location.mode == LocationMode::Inbox)
@@ -379,7 +382,10 @@ pub fn locations_of_sorting(sorting: &Sorting, listed: &[FilingLocation]) -> Vec
             });
         }
     }
-    let archives: Vec<PathBuf> = locations.iter().map(|location| location.path.clone()).collect();
+    let archives: Vec<PathBuf> = locations
+        .iter()
+        .map(|location| location.path.clone())
+        .collect();
     for setting in sorting
         .sources
         .iter()

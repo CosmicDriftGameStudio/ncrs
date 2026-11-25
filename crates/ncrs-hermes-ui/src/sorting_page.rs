@@ -29,7 +29,9 @@ pub struct SortingPage {
 /// Why a source does something, or nothing, right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceState {
-    Ready { questions: usize },
+    Ready {
+        questions: usize,
+    },
     /// No target, or an entry the config reader paused.
     Paused,
     DriveMissing,

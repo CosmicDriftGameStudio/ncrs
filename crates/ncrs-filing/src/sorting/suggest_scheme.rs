@@ -102,9 +102,7 @@ pub fn suggest_scheme(
             .collect();
         let ranked = words.words_of_group(&group.docs, &others);
         for pattern in &patterns {
-            let accepted = accepted_for(
-                &material, &words, &groups, &owner, at, &ranked, pattern,
-            );
+            let accepted = accepted_for(&material, &words, &groups, &owner, at, &ranked, pattern);
             if let Some((suggested, hits)) =
                 first_new(access, target, accepted, again).map_err(SuggestError::Index)?
             {
@@ -244,9 +242,18 @@ fn accepted_for(
     };
     let mut accepted = Vec::new();
     for word in ranked {
-        let rule = candidate(&material.target.id, &group.name, word_condition(word), pattern);
+        let rule = candidate(
+            &material.target.id,
+            &group.name,
+            word_condition(word),
+            pattern,
+        );
         let tried = try_word(material, words, word, &rule, &group.docs);
-        let own = tried.filed.iter().filter(|doc| group.docs.contains(doc)).count();
+        let own = tried
+            .filed
+            .iter()
+            .filter(|doc| group.docs.contains(doc))
+            .count();
         let mut taken_of_others: BTreeMap<usize, usize> = BTreeMap::new();
         for doc in &tried.filed {
             if let Some(Some(other)) = owner.get(*doc) {

@@ -96,8 +96,14 @@ fn the_configs_of_the_1_x_releases_give_the_target_main_and_one_source() {
         assert_eq!(filing.targets[0].target.id, TargetId::main());
         assert_eq!(filing.sources.len(), 1);
         assert_eq!(filing.sources[0].source.targets, [TargetId::main()]);
-        assert!(filing.targets.iter().all(|setting| setting.paused.is_none()));
-        assert!(filing.sources.iter().all(|setting| setting.paused.is_none()));
+        assert!(filing
+            .targets
+            .iter()
+            .all(|setting| setting.paused.is_none()));
+        assert!(filing
+            .sources
+            .iter()
+            .all(|setting| setting.paused.is_none()));
     }
 }
 
@@ -186,7 +192,10 @@ fn once_sources_or_targets_are_in_the_file_the_old_locations_count_only_as_archi
         let text = format!(
             "[modules.filing]\nenabled = true\n{key}\n{}{}",
             location(&quoted(&inbox), "mode = \"inbox\"\ncontinuous = true"),
-            location(&quoted(&archive), "mode = \"archive\"\nimages = true\ntarget = true"),
+            location(
+                &quoted(&archive),
+                "mode = \"archive\"\nimages = true\ntarget = true"
+            ),
         );
 
         let filing = load_filing(&text, None).unwrap().filing;
@@ -196,9 +205,20 @@ fn once_sources_or_targets_are_in_the_file_the_old_locations_count_only_as_archi
         let kept: Vec<_> = filing
             .locations
             .iter()
-            .map(|found| (found.path.clone(), found.mode, found.images, found.is_target))
+            .map(|found| {
+                (
+                    found.path.clone(),
+                    found.mode,
+                    found.images,
+                    found.is_target,
+                )
+            })
             .collect();
-        assert_eq!(kept, [(archive.clone(), LocationMode::Archive, true, false)], "{key}");
+        assert_eq!(
+            kept,
+            [(archive.clone(), LocationMode::Archive, true, false)],
+            "{key}"
+        );
     }
 }
 
@@ -277,7 +297,10 @@ fn an_unknown_target_pauses_only_the_source() {
         Some(PauseReason::UnknownTarget("t9".to_owned()))
     );
     assert_eq!(filing.sources[0].source.targets, [id("main")]);
-    assert!(filing.targets.iter().all(|setting| setting.paused.is_none()));
+    assert!(filing
+        .targets
+        .iter()
+        .all(|setting| setting.paused.is_none()));
 }
 
 #[test]
@@ -325,10 +348,18 @@ fn a_repeated_id_or_folder_pauses_the_later_target_and_source() {
 
     let filing = load_filing(&text, None).unwrap().filing;
 
-    let paused: Vec<_> = filing.targets.iter().map(|setting| setting.paused.clone()).collect();
+    let paused: Vec<_> = filing
+        .targets
+        .iter()
+        .map(|setting| setting.paused.clone())
+        .collect();
     assert_eq!(
         paused,
-        [None, Some(PauseReason::DuplicateId), Some(PauseReason::SamePath)]
+        [
+            None,
+            Some(PauseReason::DuplicateId),
+            Some(PauseReason::SamePath)
+        ]
     );
     assert_eq!(filing.sources[0].paused, None);
     assert_eq!(filing.sources[1].paused, Some(PauseReason::SamePath));
@@ -355,16 +386,27 @@ fn only_a_watched_source_in_a_target_is_refused() {
 
     let filing = load_filing(&text, None).unwrap().filing;
 
-    let paused: Vec<_> = filing.sources.iter().map(|setting| setting.paused.clone()).collect();
+    let paused: Vec<_> = filing
+        .sources
+        .iter()
+        .map(|setting| setting.paused.clone())
+        .collect();
     // A target as a once source and a watched source that holds a target are fine.
-    assert_eq!(paused, [Some(PauseReason::WatchedInTarget(id("main"))), None, None]);
-    assert!(filing.targets.iter().all(|setting| setting.paused.is_none()));
+    assert_eq!(
+        paused,
+        [Some(PauseReason::WatchedInTarget(id("main"))), None, None]
+    );
+    assert!(filing
+        .targets
+        .iter()
+        .all(|setting| setting.paused.is_none()));
 }
 
 #[cfg(windows)]
 #[test]
 fn a_target_written_with_the_verbatim_prefix_loads_without_it() {
-    let text = "[modules.filing]\n[[modules.filing.targets]]\nid = \"main\"\npath = '\\\\?\\C:\\x'\n";
+    let text =
+        "[modules.filing]\n[[modules.filing.targets]]\nid = \"main\"\npath = '\\\\?\\C:\\x'\n";
 
     let filing = load_filing(text, None).unwrap().filing;
 
@@ -381,7 +423,10 @@ fn legacy_config(base: &tempfile::TempDir) -> String {
             &quoted(&inbox),
             "mode = \"inbox\"\ncontinuous = true\ntransfer = \"copy\""
         ),
-        location(&quoted(&archive), "mode = \"archive\"\nimages = true\ntarget = true"),
+        location(
+            &quoted(&archive),
+            "mode = \"archive\"\nimages = true\ntarget = true"
+        ),
         location(&quoted(&other), "mode = \"archive\"\nimages = true"),
     )
 }
@@ -405,10 +450,18 @@ fn the_first_write_keeps_a_copy_and_moves_the_old_folders_into_the_new_lists() {
     assert_eq!(std::fs::read_to_string(backup_of(&path)).unwrap(), original);
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("# mine"), "{text}");
-    assert!(!text.contains("continuous") && !text.contains("target = true"), "{text}");
+    assert!(
+        !text.contains("continuous") && !text.contains("target = true"),
+        "{text}"
+    );
     assert_eq!(names_of(&written), (vec!["main".to_owned()], vec![inbox]));
     assert_eq!(written.filing.targets[0].target.path, archive);
-    let kept: Vec<_> = written.filing.locations.iter().map(|l| l.path.clone()).collect();
+    let kept: Vec<_> = written
+        .filing
+        .locations
+        .iter()
+        .map(|l| l.path.clone())
+        .collect();
     assert!(kept.contains(&archive) && kept.contains(&other));
     assert_eq!(load_with_home(&path, None).unwrap(), written);
 }
@@ -429,7 +482,10 @@ fn the_copy_is_made_once_and_never_overwritten() {
     let path = config_in(&second, &legacy_config(&second));
     std::fs::write(backup_of(&path), "earlier copy").unwrap();
     upsert_sort_source_with_home(&path, &source_at(&paths(&second).0, &[]), None, None).unwrap();
-    assert_eq!(std::fs::read_to_string(backup_of(&path)).unwrap(), "earlier copy");
+    assert_eq!(
+        std::fs::read_to_string(backup_of(&path)).unwrap(),
+        "earlier copy"
+    );
 }
 
 #[cfg(unix)]
@@ -478,7 +534,11 @@ fn a_removed_source_does_not_come_back_from_the_old_locations() {
     let removed = remove_sort_source_with_home(&path, &inbox, None).unwrap();
 
     assert!(removed.filing.sources.is_empty());
-    assert!(removed.filing.locations.iter().all(|l| l.mode == LocationMode::Archive));
+    assert!(removed
+        .filing
+        .locations
+        .iter()
+        .all(|l| l.mode == LocationMode::Archive));
     let reloaded = load_with_home(&path, None).unwrap();
     assert!(reloaded.filing.sources.is_empty());
     let text = std::fs::read_to_string(&path).unwrap();
@@ -542,9 +602,17 @@ fn targets_written_inline_keep_their_ids_when_one_is_added() {
         .filing
         .targets
         .iter()
-        .map(|setting| (setting.target.id.as_str().to_owned(), setting.target.path.clone()))
+        .map(|setting| {
+            (
+                setting.target.id.as_str().to_owned(),
+                setting.target.path.clone(),
+            )
+        })
         .collect();
-    assert_eq!(targets, [("main".to_owned(), archive), ("t2".to_owned(), other)]);
+    assert_eq!(
+        targets,
+        [("main".to_owned(), archive), ("t2".to_owned(), other)]
+    );
 }
 
 #[test]
@@ -602,7 +670,12 @@ fn what_is_written_is_what_is_read() {
 
     let reloaded = load_with_home(&path, None).unwrap();
     assert_eq!(reloaded, written);
-    let sources: Vec<_> = reloaded.filing.sources.iter().map(|s| s.source.clone()).collect();
+    let sources: Vec<_> = reloaded
+        .filing
+        .sources
+        .iter()
+        .map(|s| s.source.clone())
+        .collect();
     assert_eq!(sources, [source, plain]);
     assert_eq!(reloaded.filing.targets[0].target, target);
     assert!(reloaded.filing.sources.iter().all(|s| s.paused.is_none()));
@@ -668,5 +741,9 @@ fn a_folder_the_file_lists_stays_a_read_folder_when_its_target_is_removed() {
     write_read_folders_with_home(&path, &folders, None).unwrap();
     let config = remove_sort_target_with_home(&path, &id("t2"), None).unwrap();
 
-    assert!(config.filing.locations.iter().any(|found| found.path == other));
+    assert!(config
+        .filing
+        .locations
+        .iter()
+        .any(|found| found.path == other));
 }

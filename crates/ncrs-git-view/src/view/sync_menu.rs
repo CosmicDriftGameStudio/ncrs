@@ -33,10 +33,14 @@ pub fn rows(
         if action == SyncAction::ForcePush && menu.kind == SyncKind::Push {
             rows.push(MenuRow::Separator);
         }
-        let letter = action.letter().map(|letter| letter.to_ascii_uppercase().to_string());
+        let letter = action
+            .letter()
+            .map(|letter| letter.to_ascii_uppercase().to_string());
         let is_default = action == SyncAction::Pull(ctx.pull_default);
         let reason = match (action, blocked) {
-            (SyncAction::ForcePush, Some(ForceBlock::Detached)) => Some(Msg::GitViewForceBlockedDetached),
+            (SyncAction::ForcePush, Some(ForceBlock::Detached)) => {
+                Some(Msg::GitViewForceBlockedDetached)
+            }
             (SyncAction::ForcePush, Some(ForceBlock::NoUpstream)) => {
                 Some(Msg::GitViewForceBlockedNoUpstream)
             }

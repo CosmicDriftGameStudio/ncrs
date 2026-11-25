@@ -280,11 +280,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
     SettingRow {
         problem: field_problem(field, view),
         in_command_list: true,
-        ..SettingRow::text(
-            lang.text(label).to_owned(),
-            Some(description),
-            build(None),
-        )
+        ..SettingRow::text(lang.text(label).to_owned(), Some(description), build(None))
     }
     .with_buttons(pressable(&buttons), build)
 }

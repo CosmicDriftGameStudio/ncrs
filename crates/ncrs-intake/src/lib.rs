@@ -52,36 +52,34 @@ pub use extract::{
 pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
     contains_condition_holds, has_lost_ending, pattern_is_valid, plan, render_pattern_in,
-    unknown_placeholder, FilingPlan, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
+    unknown_placeholder, FilingPlan, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
+    FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
-pub use location::{
-    canonical_path, location_of, without_verbatim_prefix, Location, LocationMode,
-};
+pub use location::{canonical_path, location_of, without_verbatim_prefix, Location, LocationMode};
 pub use location_documents::{location_documents, location_structure};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
-pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUnavailable};
 pub use pattern_words::pattern_in_words;
+pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUnavailable};
 pub use plain_words::{branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use rule_check::{
-    condition_problem, pattern_problem, rule_problem, ConditionProblem, PatternProblem,
-    RuleProblem,
+    condition_problem, pattern_problem, rule_problem, ConditionProblem, PatternProblem, RuleProblem,
 };
 pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
-pub use sorting::{
-    decide, file_name_with_extension, Decision, OnNoText, OnSeveralTargets, Place, SortSource,
-    SortTarget, LocationTransfer, Subject, TargetRules, TextState, Words,
-};
 pub use scan::{
     scan_location, settle_gone_path, settle_location, walk_location, Found, ScanReport,
     MAX_REPORTED_ERRORS,
 };
 pub use sender_detection::{detect_sender, DetectedSender, OwnIdentifiers, SenderSource};
+pub use sorting::{
+    decide, file_name_with_extension, Decision, LocationTransfer, OnNoText, OnSeveralTargets,
+    Place, SortSource, SortTarget, Subject, TargetRules, TextState, Words,
+};
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use structure::{
     folder_label, learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart,

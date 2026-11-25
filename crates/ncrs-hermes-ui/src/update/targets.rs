@@ -17,8 +17,8 @@ use super::{hermes_file, lifecycle, rules, sorting, suggest};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::Message;
-use crate::state::Hermes;
 use crate::sorting_page::own_volume_to_save;
+use crate::state::Hermes;
 use crate::target_dialog::{
     target_name, ConfirmCheck, Removed, SuggestAfter, TargetConfirmation, TargetDialog,
     TargetQuestion, TargetRemoval, TargetsMessage,
@@ -111,7 +111,11 @@ pub(super) fn update(
             return check_folder(hermes, ctx);
         }
         TargetsMessage::PickFolder => {
-            if let Some(dialog) = hermes.target_dialog.as_ref().filter(|d| !d.folder.is_empty()) {
+            if let Some(dialog) = hermes
+                .target_dialog
+                .as_ref()
+                .filter(|d| !d.folder.is_empty())
+            {
                 actions.push(Action::PickTargetFolder(Some(dialog.path(ctx.home))));
             } else {
                 actions.push(Action::PickTargetFolder(None));
@@ -250,9 +254,9 @@ fn confirm_checked(
 
 fn ask_confirm(hermes: &mut Hermes, target: SortTarget, gone: usize) {
     // A question that is up is answered first.
-    hermes.target_removal.get_or_insert_with(|| {
-        TargetQuestion::Confirm(TargetConfirmation::new(target, gone))
-    });
+    hermes
+        .target_removal
+        .get_or_insert_with(|| TargetQuestion::Confirm(TargetConfirmation::new(target, gone)));
 }
 
 /// The drive may have been plugged in since the question: the volume is asked
@@ -297,7 +301,11 @@ fn write_confirmed(
             };
             upsert_sort_target(&config_path, &confirmed).map(|config| config.filing)
         }),
-        |joined| targets(TargetsMessage::Written(Box::new(joined.unwrap_or_else(join_failed)))),
+        |joined| {
+            targets(TargetsMessage::Written(Box::new(
+                joined.unwrap_or_else(join_failed),
+            )))
+        },
     )
 }
 
@@ -367,14 +375,15 @@ fn save(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
             let config = match draft.replacing.clone() {
                 None => add_sort_target(&config_path, draft.name.trim(), &folder, own_volume)
                     .map(|(_, config)| config),
-                Some(id) => upsert_sort_target(
-                    &config_path,
-                    &draft.target(id, folder, own_volume),
-                ),
+                Some(id) => upsert_sort_target(&config_path, &draft.target(id, folder, own_volume)),
             };
             config.map(|config| config.filing)
         }),
-        |joined| targets(TargetsMessage::Written(Box::new(joined.unwrap_or_else(join_failed)))),
+        |joined| {
+            targets(TargetsMessage::Written(Box::new(
+                joined.unwrap_or_else(join_failed),
+            )))
+        },
     )
 }
 
@@ -459,11 +468,7 @@ fn sources_without(hermes: &Hermes, id: &ncrs_index::TargetId) -> Vec<SortSource
         .collect()
 }
 
-fn confirm_remove(
-    hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
+fn confirm_remove(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
     let Some(TargetQuestion::Remove(removal)) = hermes.target_removal.as_mut() else {
         return Task::none();
     };
@@ -482,9 +487,7 @@ fn confirm_remove(
         tokio::task::spawn_blocking(move || {
             let filing = sources
                 .iter()
-                .try_for_each(|source| {
-                    upsert_sort_source(&config_path, source, None).map(|_| ())
-                })
+                .try_for_each(|source| upsert_sort_source(&config_path, source, None).map(|_| ()))
                 .and_then(|()| remove_sort_target(&config_path, &id))
                 .map(|config| config.filing);
             let rules_failure = match (&filing, access) {
@@ -582,7 +585,10 @@ mod tests {
         let Some(TargetQuestion::Remove(asked)) = hermes.target_removal else {
             panic!("no question");
         };
-        assert_eq!((asked.name.as_str(), asked.rules, asked.busy), ("Company", 3, false));
+        assert_eq!(
+            (asked.name.as_str(), asked.rules, asked.busy),
+            ("Company", 3, false)
+        );
         assert_eq!(hermes.filing_config.targets.len(), 1);
     }
 

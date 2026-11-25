@@ -114,11 +114,7 @@ fn source_row<'a>(
 }
 
 /// "[*.pdf] → [T1 Documents] [T2 Firm]"
-fn route<'a>(
-    setting: &SourceSetting,
-    filing: &Filing,
-    palette: &Palette,
-) -> Element<'a, Message> {
+fn route<'a>(setting: &SourceSetting, filing: &Filing, palette: &Palette) -> Element<'a, Message> {
     let source = &setting.source;
     let mut line = Row::new()
         .spacing(GAP_S)
@@ -163,7 +159,10 @@ fn source_summary(setting: &SourceSetting, lang: Language) -> String {
     };
     fill_template(
         lang.text(Msg::SortingSourceSummary),
-        &[("{files}", lang.text(files)), ("{no_text}", lang.text(no_text))],
+        &[
+            ("{files}", lang.text(files)),
+            ("{no_text}", lang.text(no_text)),
+        ],
     )
 }
 

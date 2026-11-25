@@ -544,7 +544,10 @@ mod tests {
         let (directory, before) = repo_on_feature();
         let root = directory.path();
         git(root, &["checkout", "-q", "--detach"]);
-        git(root, &["commit", "-q", "--allow-empty", "-m", "on no branch"]);
+        git(
+            root,
+            &["commit", "-q", "--allow-empty", "-m", "on no branch"],
+        );
         let head = git(root, &["rev-parse", "HEAD"]);
         assert_eq!(
             switch(root, &before),

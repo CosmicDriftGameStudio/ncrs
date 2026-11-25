@@ -86,7 +86,9 @@ impl Setup {
         ExecutionItem {
             expected_hash: hash_path(&path).unwrap(),
             from: path,
-            to: to.split('/').fold(self.archive(), |path, part| path.join(part)),
+            to: to
+                .split('/')
+                .fold(self.archive(), |path, part| path.join(part)),
             document_id: None,
             duplicate: false,
         }

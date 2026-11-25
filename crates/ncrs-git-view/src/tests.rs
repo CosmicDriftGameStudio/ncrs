@@ -875,4 +875,3 @@ fn the_sidebar_lists_the_worktrees_after_the_branches() {
     assert_eq!(items.first(), Some(&SidebarItem::Header(Section::Local)));
     assert!(items.contains(&SidebarItem::Header(Section::Worktrees)));
 }
-

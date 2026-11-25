@@ -273,7 +273,13 @@ fn with_model_the_app_suggests_rules_for_a_folder_opened_by_a_sentence() {
     let levels = shoot(&app, "hermes_rule_1_levels");
 
     if !has_chip(&app, &ChipReply::LevelsKeep) {
-        press(&mut app, &ctx, &access, answering, &ChipReply::LevelsDefault);
+        press(
+            &mut app,
+            &ctx,
+            &access,
+            answering,
+            &ChipReply::LevelsDefault,
+        );
     }
     let keep = if has_chip(&app, &ChipReply::LevelsKeep) {
         ChipReply::LevelsKeep

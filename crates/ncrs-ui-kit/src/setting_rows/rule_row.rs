@@ -1,9 +1,9 @@
 //! A rule of a target as a row: its texts in columns.
 
+use crate::palette::Palette;
 use iced::widget::text::Wrapping;
 use iced::widget::{container, responsive, row, text};
 use iced::{alignment, Color, Element, Length};
-use crate::palette::Palette;
 
 use crate::format::fit_end;
 use crate::theme::{font_size, spacing};

@@ -228,10 +228,7 @@ fn hunks_are_not_applied_while_whitespace_is_ignored() {
         ..ncrs_git::FileDiff::default()
     });
     local.ignore_whitespace = true;
-    for message in [
-        Message::StageHunk(0),
-        Message::DiscardHunk(0),
-    ] {
+    for message in [Message::StageHunk(0), Message::DiscardHunk(0)] {
         send(&mut state, message);
         assert!(state.actions.busy.is_none());
     }

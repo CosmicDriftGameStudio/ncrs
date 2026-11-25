@@ -141,10 +141,7 @@ fn folder_row<'a>(
     }
 }
 
-fn remove_folder_button(
-    location: &FilingLocation,
-    view: &SettingsView<'_>,
-) -> RowButton<Message> {
+fn remove_folder_button(location: &FilingLocation, view: &SettingsView<'_>) -> RowButton<Message> {
     RowButton::new(
         view.lang.text(Msg::SettingsRemove),
         Some(SettingsMessage::RemoveFolder(location.path.clone())),
@@ -387,7 +384,8 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         in_command_list: true,
         ..SettingRow::text(
             lang.text(label).to_owned(),
-            matches!(detail, OwnDetail::Names).then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
+            matches!(detail, OwnDetail::Names)
+                .then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
             control,
         )
     }

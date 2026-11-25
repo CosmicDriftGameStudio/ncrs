@@ -96,7 +96,10 @@ impl App {
         state.facts_in_flight = true;
         let now = self.wall_clock.now();
         self.facts_requested_at = Some(now);
-        let stopped = self.lang.text(Msg::SettingsBackgroundWorkStopped).to_owned();
+        let stopped = self
+            .lang
+            .text(Msg::SettingsBackgroundWorkStopped)
+            .to_owned();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || read_documents_facts(access, &locations)).await

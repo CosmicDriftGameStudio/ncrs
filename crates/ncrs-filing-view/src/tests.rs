@@ -17,9 +17,7 @@ use ncrs_filing::sorting::{
 use ncrs_fs::transfer::Counting;
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_i18n::{Language, Msg};
-use ncrs_index::{
-    Condition, ConditionKind, Index, RuleConditions, RuleOrigin, RuleSpec, TargetId,
-};
+use ncrs_index::{Condition, ConditionKind, Index, RuleConditions, RuleOrigin, RuleSpec, TargetId};
 use ncrs_intake::{
     canonical_path, LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget,
 };
@@ -32,8 +30,8 @@ use crate::left::what_happens;
 use crate::run::{carry_answer, carry_out, Duplicates, RunProgress};
 use crate::tree::{tree_items, Item};
 use crate::{
-    busy_source, filing_key, is_running, key_facts, open, question_is_open, tab_title, update, Action, Change,
-    Ctx, Link, Message, Session, State,
+    busy_source, filing_key, is_running, key_facts, open, question_is_open, tab_title, update,
+    Action, Change, Ctx, Link, Message, Session, State,
 };
 
 const LANG: Language = Language::German;
@@ -368,16 +366,16 @@ fn every_row_says_what_happens_and_what_can_be_done() {
     let place = Path::new("Invoices").join("A1.txt").display().to_string();
     assert_eq!(what(&state, "a.txt"), format!("Invoices → T1 {place}"));
     assert_eq!(what(&state, "both.txt"), "passt in T1 und T2");
-    assert_eq!(
-        what(&state, "none.txt"),
-        LANG.text(Msg::SortingStateNoRule)
-    );
+    assert_eq!(what(&state, "none.txt"), LANG.text(Msg::SortingStateNoRule));
     assert_eq!(
         what(&state, "blank.txt"),
         LANG.text(Msg::SortingStateNoTextAsk)
     );
     let there = Path::new("Invoices").join("OLD.txt").display().to_string();
-    assert_eq!(what(&state, "copied.txt"), format!("= schon da: T1 {there}"));
+    assert_eq!(
+        what(&state, "copied.txt"),
+        format!("= schon da: T1 {there}")
+    );
 
     assert!(links(&state, "a.txt").is_empty());
     assert_eq!(links(&state, "both.txt"), [Link::Ask]);
@@ -408,7 +406,10 @@ fn a_run_files_what_has_a_place_and_tells_what_stays() {
     assert!(setup.path("Documents/Invoices/A1.txt").exists());
     assert!(!setup.path("Inbox/a.txt").exists());
     assert!(setup.path("Inbox/both.txt").exists());
-    assert_eq!(texts(&state), ["1 einsortiert", "3 Dateien liegen weiter hier"]);
+    assert_eq!(
+        texts(&state),
+        ["1 einsortiert", "3 Dateien liegen weiter hier"]
+    );
     let Some(Action::Filed {
         source,
         transfer,
@@ -440,7 +441,10 @@ fn the_button_hands_the_run_over_and_no_second_one_starts() {
 
     select(&mut state, "a.txt", &setup.ctx());
     send(&mut state, Message::Stay, &setup.ctx());
-    assert!(session(&state).changes.is_empty(), "the run goes on as shown");
+    assert!(
+        session(&state).changes.is_empty(),
+        "the run goes on as shown"
+    );
 
     let closed = send(&mut state, Message::Cancel, &setup.ctx());
     assert_eq!(closed, None, "the tab stays to show what the run did");
@@ -486,15 +490,26 @@ fn folders_that_only_lead_to_one_other_share_its_row() {
     };
     let row = |label: &str, depth: usize| (label.to_owned(), depth);
     let shown = state.session.as_mut().unwrap();
-    shown.changes.insert(PathBuf::from("a.txt"), place("Bank/North/2026"));
-    shown.changes.insert(PathBuf::from("b.txt"), place("Bank/North/2026"));
+    shown
+        .changes
+        .insert(PathBuf::from("a.txt"), place("Bank/North/2026"));
+    shown
+        .changes
+        .insert(PathBuf::from("b.txt"), place("Bank/North/2026"));
     assert_eq!(rows(&state), [row("", 0), row("Bank/North/2026", 1)]);
 
     let shown = state.session.as_mut().unwrap();
-    shown.changes.insert(PathBuf::from("b.txt"), place("Bank/North/2025"));
+    shown
+        .changes
+        .insert(PathBuf::from("b.txt"), place("Bank/North/2025"));
     assert_eq!(
         rows(&state),
-        [row("", 0), row("Bank/North", 1), row("2025", 2), row("2026", 2)]
+        [
+            row("", 0),
+            row("Bank/North", 1),
+            row("2025", 2),
+            row("2026", 2)
+        ]
     );
     let folder = Path::new("Bank").join("North");
     send(&mut state, Message::ToggleFolder(id("t1"), folder), &ctx);
@@ -573,14 +588,23 @@ fn a_new_name_keeps_the_folder_and_is_checked() {
     select(&mut state, "a.txt", &ctx);
     send(&mut state, Message::StartRename, &ctx);
     assert_eq!(session(&state).renaming.as_deref(), Some("A1.txt"));
-    assert!(filing_key(&Key::Named(Named::Enter), Modifiers::empty(), key_facts(&state)).is_none());
+    assert!(filing_key(
+        &Key::Named(Named::Enter),
+        Modifiers::empty(),
+        key_facts(&state)
+    )
+    .is_none());
     for bad in ["", "..", "x/y.txt"] {
         send(&mut state, Message::RenameInput(bad.to_owned()), &ctx);
         send(&mut state, Message::RenameSubmit, &ctx);
         assert!(session(&state).renaming.is_some());
         assert!(session(&state).error.is_some());
     }
-    send(&mut state, Message::RenameInput("Heating.txt".to_owned()), &ctx);
+    send(
+        &mut state,
+        Message::RenameInput("Heating.txt".to_owned()),
+        &ctx,
+    );
     send(&mut state, Message::RenameSubmit, &ctx);
     assert_eq!(
         places(&state, "a.txt"),
@@ -656,7 +680,12 @@ fn the_question_about_two_targets_is_answered_by_keys() {
     }
     assert!(question_is_open(&state));
     assert!(setup.path("Inbox/both.txt").exists());
-    let message = filing_key(&Key::Named(Named::Enter), Modifiers::empty(), key_facts(&state)).unwrap();
+    let message = filing_key(
+        &Key::Named(Named::Enter),
+        Modifiers::empty(),
+        key_facts(&state),
+    )
+    .unwrap();
     send(&mut state, message, &ctx);
     assert!(!question_is_open(&state));
     assert_eq!(
@@ -746,10 +775,7 @@ fn a_tree_per_target_shows_only_the_folders_that_get_something() {
 #[test]
 fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
     let setup = setup();
-    assert_eq!(
-        setup.watch(),
-        WatchedReport::BacklogRecorded { files: 0 }
-    );
+    assert_eq!(setup.watch(), WatchedReport::BacklogRecorded { files: 0 });
     one_of_each(&setup);
     let ctx = setup.ctx();
     let mut state = setup.questions();
@@ -786,11 +812,7 @@ fn a_watched_source_shows_only_its_questions_and_answers_them_at_once() {
         LANG,
     )
     .unwrap();
-    let message = Message::Answered(
-        shown.id,
-        PathBuf::from("both.txt"),
-        Ok(Box::new(answer)),
-    );
+    let message = Message::Answered(shown.id, PathBuf::from("both.txt"), Ok(Box::new(answer)));
     let action = send(&mut state, message, &ctx);
     assert!(setup.path("Company/Letters/B1.txt").exists());
     assert!(matches!(action, Some(Action::Filed { filed: 1, .. })));

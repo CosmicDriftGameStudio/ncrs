@@ -18,15 +18,14 @@ mod ui_tests {
 
     use iced::Size;
     use iced_test::Simulator;
-    use ncrs_i18n::Language;
-    use ncrs_repos::{
-        view, BulkAction, CleanupMessage, Executed, GroupKey, Message, Offer, Outcome, Pick, Reading,
-        ReposKeys, Scan, SkipReason,
-        State, ViewCtx,
-    };
     use ncrs_git::{
         ActionError, CleanupBranch, CleanupList, CleanupReason, CleanupReport, CleanupRow,
         CleanupTarget, KeepReason, Kept,
+    };
+    use ncrs_i18n::Language;
+    use ncrs_repos::{
+        view, BulkAction, CleanupMessage, Executed, GroupKey, Message, Offer, Outcome, Pick,
+        Reading, ReposKeys, Scan, SkipReason, State, ViewCtx,
     };
     use ncrs_ui_kit::palette::ThemePreset;
     use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
@@ -296,8 +295,13 @@ mod ui_tests {
     fn repos_cleanup_ready_with_mixed_ticks() {
         let mut fixture = cleanup_fixture();
         answer_reads(&mut fixture, 6);
-        fixture.send(Message::Cleanup(CleanupMessage::ToggleGroup(repo("kumiko"))));
-        let solon = pane_order(&fixture).iter().position(|path| *path == repo("solon")).unwrap();
+        fixture.send(Message::Cleanup(CleanupMessage::ToggleGroup(repo(
+            "kumiko",
+        ))));
+        let solon = pane_order(&fixture)
+            .iter()
+            .position(|path| *path == repo("solon"))
+            .unwrap();
         for index in [1, 3] {
             fixture.send(Message::Cleanup(CleanupMessage::Toggle(Pick {
                 repo: repo("solon"),

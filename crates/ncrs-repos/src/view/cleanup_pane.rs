@@ -86,22 +86,19 @@ fn problem<'a>(content: String, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into()
 }
 
-fn outcome(
-    cleanup: &Cleanup,
-    item: &Item,
-    ctx: ViewCtx<'_>,
-) -> Option<RowOutcome> {
+fn outcome(cleanup: &Cleanup, item: &Item, ctx: ViewCtx<'_>) -> Option<RowOutcome> {
     Some(match cleanup.result_of(item)? {
         Ok(()) => RowOutcome::Done(ctx.lang.text(Msg::ReposCleanupRowDeleted).to_owned()),
         Err(reason) => RowOutcome::Failed(fill_template(
-                ctx.lang.text(Msg::GitCleanupRowFailed),
-                &[("{reason}", &reason)],
-            )),
+            ctx.lang.text(Msg::GitCleanupRowFailed),
+            &[("{reason}", &reason)],
+        )),
     })
 }
 
 fn item_row<'a>(cleanup: &Cleanup, item: Item, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let cursor = !cleanup.list_focus && cleanup.cursor_line() == Some(Line::Item(item.pick.clone()));
+    let cursor =
+        !cleanup.list_focus && cleanup.cursor_line() == Some(Line::Item(item.pick.clone()));
     let ready = cleanup.phase == Phase::Ready;
     let built = check_row(
         CheckRow {
@@ -116,7 +113,9 @@ fn item_row<'a>(cleanup: &Cleanup, item: Item, ctx: ViewCtx<'a>) -> Element<'a, 
                 .as_ref()
                 .map(|folder| worktree_detail(folder, &item.ignored_files, ctx.lang)),
             reason: match (&item.remote, cleanup.delete_remote) {
-                (Some(remote), true) => format!("{} + {remote}", offer_text(cleanup, &item, ctx.lang)),
+                (Some(remote), true) => {
+                    format!("{} + {remote}", offer_text(cleanup, &item, ctx.lang))
+                }
                 _ => offer_text(cleanup, &item, ctx.lang),
             },
             worktree: matches!(item.pick.offer, Offer::Worktree(_)),
@@ -171,11 +170,14 @@ fn group<'a>(cleanup: &Cleanup, repo: &Path, ctx: ViewCtx<'a>) -> Element<'a, Me
         for item in items {
             body = body.push(item_row(cleanup, item, ctx));
         }
-        let stays = cleanup.scan(repo).map_or(&[][..], |scan| &scan.list.kept[..]);
+        let stays = cleanup
+            .scan(repo)
+            .map_or(&[][..], |scan| &scan.list.kept[..]);
         for kept in stays.iter().filter(|kept| kept.is_worktree) {
-            let name = Path::new(&kept.name)
-                .file_name()
-                .map_or_else(|| kept.name.clone(), |last| last.to_string_lossy().into_owned());
+            let name = Path::new(&kept.name).file_name().map_or_else(
+                || kept.name.clone(),
+                |last| last.to_string_lossy().into_owned(),
+            );
             body = body.push(check_row(
                 CheckRow {
                     check: Check::Off,
@@ -199,7 +201,11 @@ fn keep_section<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Option<Element<'a, M
     let kept: Vec<(&Path, &ncrs_git::Kept)> = cleanup
         .order
         .iter()
-        .filter_map(|repo| cleanup.scan(repo).map(|scan| (repo.as_path(), &scan.list.kept)))
+        .filter_map(|repo| {
+            cleanup
+                .scan(repo)
+                .map(|scan| (repo.as_path(), &scan.list.kept))
+        })
         .flat_map(|(repo, kept)| kept.iter().map(move |one| (repo, one)))
         .collect();
     if kept.is_empty() {
@@ -379,7 +385,9 @@ fn buttons<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ],
     );
     let can_undo = cleanup.phase == Phase::Done && !cleanup.undos.is_empty();
-    let mut line = row![].spacing(spacing::M).align_y(alignment::Vertical::Center);
+    let mut line = row![]
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center);
     if cleanup.phase != Phase::Done {
         line = line.push(kit::button(
             &confirm,

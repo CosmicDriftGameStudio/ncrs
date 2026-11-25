@@ -82,4 +82,3 @@ fn database_from_a_newer_version_is_refused() {
         "{err}"
     );
 }
-

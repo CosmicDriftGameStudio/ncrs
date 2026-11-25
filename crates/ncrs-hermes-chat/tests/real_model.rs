@@ -109,7 +109,9 @@ fn with_model_a_sentence_puts_the_date_in_front_of_the_file_name_level() {
     let model = real_model();
     let mut talk = archive_talk(&model);
     talk.send(Message::Open);
-    talk.send(Message::FolderPicked(Some(talk.path("archive/Arbeit/Gehalt"))));
+    talk.send(Message::FolderPicked(Some(
+        talk.path("archive/Arbeit/Gehalt"),
+    )));
     let shown = levels_card(&talk);
     println!("recognized: {:?}", shown.rows);
     talk.press(&ChipReply::LevelsChange);

@@ -65,13 +65,24 @@ fn the_menu_of_one_button_replaces_the_other() {
 fn a_login_question_opens_the_dialog_and_enter_sends_what_was_typed() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Secret)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Secret)),
+        &ctx,
+    );
     assert!(dialog_is_open(&state));
     let _ = update(&mut state, Message::CredentialSend(7), &ctx);
     assert!(dialog_is_open(&state), "an empty password is not sent");
-    let _ = update(&mut state, Message::CredentialTyped(7, Secret::new("hunter2")), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialTyped(7, Secret::new("hunter2")),
+        &ctx,
+    );
     let _ = update(&mut state, Message::Enter, &ctx);
-    assert!(dialog_is_open(&state), "the field sends its own Enter, with the id");
+    assert!(
+        dialog_is_open(&state),
+        "the field sends its own Enter, with the id"
+    );
     let _ = update(&mut state, Message::CredentialSend(7), &ctx);
     assert!(!dialog_is_open(&state));
 }
@@ -81,7 +92,11 @@ fn closing_a_dialog_shows_the_login_question_that_waited_behind_it() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
     state.actions.dialog = Some(Dialog::Ask(Question::DiscardAll { count: 1 }));
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Secret)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Secret)),
+        &ctx,
+    );
     assert!(!dialog_is_open(&state));
     let _ = update(&mut state, Message::CloseDialog, &ctx);
     assert!(dialog_is_open(&state));
@@ -93,8 +108,16 @@ fn closing_a_dialog_shows_the_login_question_that_waited_behind_it() {
 fn a_message_for_another_question_is_dropped() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Secret)), &ctx);
-    let _ = update(&mut state, Message::CredentialTyped(6, Secret::new("late")), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Secret)),
+        &ctx,
+    );
+    let _ = update(
+        &mut state,
+        Message::CredentialTyped(6, Secret::new("late")),
+        &ctx,
+    );
     let Some(Dialog::Credential(shown)) = &state.actions.dialog else {
         panic!("the dialog should show");
     };
@@ -108,10 +131,18 @@ fn a_message_for_another_question_is_dropped() {
 fn enter_refuses_an_unknown_host_and_only_the_button_connects() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Confirm)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Confirm)),
+        &ctx,
+    );
     let _ = update(&mut state, Message::Enter, &ctx);
     assert!(!dialog_is_open(&state), "Enter cancelled it");
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Confirm)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Confirm)),
+        &ctx,
+    );
     let _ = update(&mut state, Message::CredentialSend(7), &ctx);
     assert!(!dialog_is_open(&state), "the button connected");
 }
@@ -120,7 +151,11 @@ fn enter_refuses_an_unknown_host_and_only_the_button_connects() {
 fn cancelling_the_login_closes_the_dialog() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Text)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Text)),
+        &ctx,
+    );
     let _ = update(&mut state, Message::Escape, &ctx);
     assert!(!dialog_is_open(&state));
 }
@@ -129,7 +164,11 @@ fn cancelling_the_login_closes_the_dialog() {
 fn a_second_question_waits_for_the_first() {
     let ctx = Ctx::new(Language::English);
     let mut state = State::default();
-    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Confirm)), &ctx);
+    let _ = update(
+        &mut state,
+        Message::CredentialAsked(ask(PromptKind::Confirm)),
+        &ctx,
+    );
     let mut second = ask(PromptKind::Text);
     second.id = 8;
     let _ = update(&mut state, Message::CredentialAsked(second), &ctx);
@@ -182,7 +221,10 @@ fn the_quiet_fetch_waits_until_the_user_has_synced_here_once() {
     let mut state = State::default();
     state.root = Some(std::path::PathBuf::from("/nowhere/repository"));
     let _ = update(&mut state, Message::BackgroundFetch, &ctx);
-    assert!(!state.actions.background_fetch, "never fetched by hand here");
+    assert!(
+        !state.actions.background_fetch,
+        "never fetched by hand here"
+    );
     state.actions.deliberate_sync = true;
     let _ = update(&mut state, Message::BackgroundFetch, &ctx);
     assert!(state.actions.background_fetch);

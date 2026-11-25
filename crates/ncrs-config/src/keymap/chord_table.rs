@@ -67,8 +67,8 @@ impl ChordTable {
         }
         for (place, (entry, index)) in overrides.iter().zip(rebound).enumerate() {
             for chord in &entry.chords {
-                let holder =
-                    (0..self.chords.len()).find(|other| *other != index && self.holds(*other, chord));
+                let holder = (0..self.chords.len())
+                    .find(|other| *other != index && self.holds(*other, chord));
                 if let Some(other) = holder {
                     return Err(ChordTableError {
                         place,

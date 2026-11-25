@@ -16,8 +16,8 @@ use crate::saved_queries::SavedQueries;
 use crate::sorting_page::SortingPage;
 use crate::source_dialog::SourceDialog;
 use crate::suggest::Suggest;
-use crate::target_dialog::{TargetDialog, TargetQuestion};
 use crate::tags_page::TagsPage;
+use crate::target_dialog::{TargetDialog, TargetQuestion};
 use crate::watching::Watching;
 
 /// What only the Hermes pages use: the pages that are up. Each page has a

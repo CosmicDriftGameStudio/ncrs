@@ -8,9 +8,7 @@ use ncrs_i18n::{Language, Msg};
 use ncrs_index::TargetId;
 use ncrs_intake::LocationTransfer;
 use ncrs_ui_kit::compare_bar::{mode_tally_bar, Tally};
-use ncrs_ui_kit::kit::{
-    button, checkbox, key_button, paragraph, Check, Tone, ENTER_KEY,
-};
+use ncrs_ui_kit::kit::{button, checkbox, key_button, paragraph, Check, Tone, ENTER_KEY};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::spacing;
 
@@ -71,7 +69,12 @@ fn counts(session: &Session) -> Counts {
 pub fn figures(session: &Session, lang: Language, palette: &Palette) -> Vec<(String, Color)> {
     if let Some(running) = &session.running {
         return vec![(
-            progress(lang, Msg::FilingViewRunFiling, running.done(), running.total()),
+            progress(
+                lang,
+                Msg::FilingViewRunFiling,
+                running.done(),
+                running.total(),
+            ),
             palette.text,
         )];
     }
@@ -109,7 +112,11 @@ pub fn figures(session: &Session, lang: Language, palette: &Palette) -> Vec<(Str
     let tallies = [
         (Msg::SortingFigureByRule, counts.by_rule, palette.success),
         (Msg::SortingFigurePresent, counts.present, palette.dim_text),
-        (Msg::SortingFigureNoRule, counts.no_rule, open_color(palette)),
+        (
+            Msg::SortingFigureNoRule,
+            counts.no_rule,
+            open_color(palette),
+        ),
         (Msg::SortingFigureNoText, counts.no_text, palette.error),
     ];
     shown.extend(
@@ -144,10 +151,7 @@ fn progress(lang: Language, msg: Msg, done: usize, total: usize) -> String {
     say(
         lang,
         msg,
-        &[
-            ("done", &done.to_string()),
-            ("total", &total.to_string()),
-        ],
+        &[("done", &done.to_string()), ("total", &total.to_string())],
     )
 }
 

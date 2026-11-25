@@ -1,8 +1,6 @@
 //! Lists, rows and content areas.
 use iced::widget::text::LineHeight;
-use iced::widget::{
-    button, column, container, mouse_area, pick_list, scrollable, Column, Row,
-};
+use iced::widget::{button, column, container, mouse_area, pick_list, scrollable, Column, Row};
 use iced::{alignment, Color, Element, Length, Padding, Pixels};
 
 use crate::format;

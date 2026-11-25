@@ -23,11 +23,11 @@ mod worker;
 use gone::GoneQueue;
 use handle::forward_watch_events;
 use snapshot::ChangeLog;
-use worker::worker_main;
 pub use snapshot::{
     Busy, ChangeOutcome, ChangedPath, ErrorEntry, RunnerState, Settings, Snapshot, StepSnapshot,
     Task, WorkerSnapshot, MAX_CHANGED_PATHS, MAX_ERRORS, RATE_MINUTES,
 };
+use worker::worker_main;
 
 const PANIC_MESSAGE: &str = "the step stopped unexpectedly";
 /// Never shown in practice: items only ever name a registered step.
@@ -163,7 +163,6 @@ struct State {
     left_pipeline: usize,
     changes: ChangeLog,
 }
-
 
 struct Shared {
     state: Mutex<State>,

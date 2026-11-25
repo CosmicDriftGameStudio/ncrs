@@ -4,9 +4,9 @@
 pub mod action;
 pub mod actions;
 pub mod cleanup;
+pub mod commit_menu;
 pub mod credentials;
 pub mod ctx;
-pub mod commit_menu;
 mod diff_layout;
 pub mod file_views;
 pub mod git_keys;

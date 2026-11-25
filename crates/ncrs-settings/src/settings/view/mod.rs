@@ -514,21 +514,17 @@ pub fn view_with<'a, M: 'a>(
     } else {
         SETTINGS_PAGE_MAX_WIDTH
     };
-    let content = scrollable(
-        container(body)
-            .max_width(max_width)
-            .padding(spacing::XXL),
-    )
-    .direction(Direction::Vertical(
-        Scrollbar::new()
-            .width(SCROLLBAR_WIDTH)
-            .scroller_width(SCROLLBAR_WIDTH)
-            .margin(SCROLLBAR_MARGIN)
-            .spacing(0.0),
-    ))
-    .id(PAGE_SCROLL_ID)
-    .width(Length::Fill)
-    .height(Length::Fill);
+    let content = scrollable(container(body).max_width(max_width).padding(spacing::XXL))
+        .direction(Direction::Vertical(
+            Scrollbar::new()
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH)
+                .margin(SCROLLBAR_MARGIN)
+                .spacing(0.0),
+        ))
+        .id(PAGE_SCROLL_ID)
+        .width(Length::Fill)
+        .height(Length::Fill);
     row![
         Element::from(nav(&listed, shown, view)).map(wrap),
         theme::vertical_rule(palette.border_inactive),

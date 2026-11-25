@@ -326,9 +326,7 @@ pub(super) fn try_word(
                 }
                 tried.filed.push(at);
             }
-            Decision::MissingValue { .. } | Decision::BadName { .. }
-                if in_group.contains(&at) =>
-            {
+            Decision::MissingValue { .. } | Decision::BadName { .. } if in_group.contains(&at) => {
                 tried.group_unrenderable = true;
             }
             _ => {}

@@ -62,7 +62,10 @@ fn page(
     loaded: Option<LoadedFacts>,
 ) -> Result<App, Box<dyn Error>> {
     let mut app = App::with_settings_file(feature, Ok(from_text(source)?));
-    if loaded.as_ref().is_some_and(|facts| !facts.folder_files.is_empty()) {
+    if loaded
+        .as_ref()
+        .is_some_and(|facts| !facts.folder_files.is_empty())
+    {
         app = app.with_ready_index_for_test();
     }
     if let Some(state) = app.settings.page.as_mut() {

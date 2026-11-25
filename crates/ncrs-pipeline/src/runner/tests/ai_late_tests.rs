@@ -184,7 +184,9 @@ fn a_document_is_asked_once_per_version_even_when_nothing_was_found_and_after_a_
     let provider = found_nothing();
 
     let first = start_with_ai(&fixture, &inbox, Arc::clone(&provider) as _, 1)
-        .wait_for("asked", |snapshot| is_idle(snapshot) && snapshot.steps[3].unchanged == 1);
+        .wait_for("asked", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].unchanged == 1
+        });
     assert_eq!(count(&first, ChangeOutcome::FilledByAi), 0);
     assert_eq!(provider.requests().len(), 1);
     let id = document_ids(&fixture, &inbox)[0];
@@ -261,13 +263,7 @@ fn a_field_a_person_sets_while_the_model_runs_is_kept() {
         is_idle(snapshot) && snapshot.steps[3].done == 1
     });
 
-    let document = fixture
-        .index
-        .lock()
-        .unwrap()
-        .document(id)
-        .unwrap()
-        .unwrap();
+    let document = fixture.index.lock().unwrap().document(id).unwrap().unwrap();
     assert_eq!(document.fields.sender.as_deref(), Some("Own Choice"));
     assert_eq!(document.fields.number.as_deref(), Some("4711"));
 }
@@ -304,13 +300,7 @@ fn a_file_replaced_while_the_model_runs_gets_no_answer_meant_for_the_old_bytes()
     });
 
     assert!(path.exists());
-    let document = fixture
-        .index
-        .lock()
-        .unwrap()
-        .document(id)
-        .unwrap()
-        .unwrap();
+    let document = fixture.index.lock().unwrap().document(id).unwrap().unwrap();
     assert_eq!(document.fields.number, None);
 }
 

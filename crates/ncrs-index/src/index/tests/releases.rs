@@ -725,10 +725,7 @@ pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(
-        reasons,
-        ["missing_field:recipient", "low_confidence:kind"]
-    );
+    assert_eq!(reasons, ["missing_field:recipient", "low_confidence:kind"]);
 
     let learned_pattern: String = index
         .connection()

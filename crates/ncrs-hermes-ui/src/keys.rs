@@ -41,9 +41,9 @@ pub fn source_dialog_key(key: &Key, shift: bool) -> Option<Message> {
         Key::Named(Named::Enter) => sorting(SortingMessage::Enter),
         Key::Named(Named::Tab) if shift => sorting(SortingMessage::FocusPrevious),
         Key::Named(Named::Tab) => sorting(SortingMessage::FocusNext),
-        Key::Named(
-            Named::ArrowLeft | Named::ArrowRight | Named::ArrowUp | Named::ArrowDown,
-        ) => sorting(SortingMessage::StepChoice),
+        Key::Named(Named::ArrowLeft | Named::ArrowRight | Named::ArrowUp | Named::ArrowDown) => {
+            sorting(SortingMessage::StepChoice)
+        }
         Key::Named(Named::Space) => sorting(SortingMessage::Press),
         _ => None,
     }

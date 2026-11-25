@@ -150,9 +150,7 @@ impl TargetDialog {
     /// Whether the draft may be saved: the disk said the folder is there and
     /// nothing else is wrong.
     pub fn can_save(&self, filing: &Filing, home: &Path) -> bool {
-        !self.saving
-            && self.folder_exists == Some(true)
-            && self.problems(filing, home).is_empty()
+        !self.saving && self.folder_exists == Some(true) && self.problems(filing, home).is_empty()
     }
 
     /// Takes the answer of the disk for the folder if it is for the text as

@@ -46,12 +46,14 @@ fn facts_height(state: &State, ctx: ViewCtx<'_>) -> f32 {
         let lines = (estimated_width(content, size) / room).ceil().max(1.0);
         lines * size * LINE_HEIGHT + spacing::XS
     };
-    let info = state.detail.as_ref().and_then(|detail| detail.info.as_ref());
+    let info = state
+        .detail
+        .as_ref()
+        .and_then(|detail| detail.info.as_ref());
     let Some(info) = info else {
         return text("", font_size::ROW);
     };
-    let has_committer =
-        info.committer != info.author || info.committer_time != info.author_time;
+    let has_committer = info.committer != info.author || info.committer_time != info.author_time;
     let has_branches = state
         .containing
         .as_ref()
@@ -72,9 +74,8 @@ fn facts_height(state: &State, ctx: ViewCtx<'_>) -> f32 {
 /// Where the rows of the local changes begin, and how tall what lies between
 /// the start and row `row` is.
 fn local_row_top(local: &LocalChanges, row: usize) -> f32 {
-    let head = 2.0 * spacing::M
-        + (font_size::BODY + font_size::SMALL) * LINE_HEIGHT
-        + 2.0 * spacing::XS;
+    let head =
+        2.0 * spacing::M + (font_size::BODY + font_size::SMALL) * LINE_HEIGHT + 2.0 * spacing::XS;
     let sections = if row < local.unstaged.len() { 1.0 } else { 2.0 };
     head + sections * size::SECTION_HEAD + row as f32 * size::ROW_TALL
 }

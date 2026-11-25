@@ -395,9 +395,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let undo_started = Instant::now();
         let mut undo_checks: Vec<Check> = Vec::new();
         for (batch, run) in &runs {
-            self.deliver(Message::Sorting(
-                ncrs_hermes_ui::SortingMessage::Undo(batch.number()),
-            ));
+            self.deliver(Message::Sorting(ncrs_hermes_ui::SortingMessage::Undo(
+                batch.number(),
+            )));
             let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
             undo_checks.push(idle);
             let left: Vec<String> = run

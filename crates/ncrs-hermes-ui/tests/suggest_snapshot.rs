@@ -19,15 +19,15 @@ mod ui_tests {
     use iced::{Element, Size};
     use iced_test::Simulator;
     use ncrs_config::palette::Palette;
-    use ncrs_filing::sorting::{ModelNote, RuleForFile, Suggested, SuggestError, Suggestions};
+    use ncrs_filing::sorting::{ModelNote, RuleForFile, SuggestError, Suggested, Suggestions};
     use ncrs_hermes_ui::suggest::{Found, Suggest, SuggestFor};
     use ncrs_hermes_ui::ui::suggest::{dialog, TargetLabel};
     use ncrs_hermes_ui::Message;
     use ncrs_i18n::Language;
-    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
     use ncrs_index::{
         Condition, ConditionKind, DocumentFields, KindCatalog, RuleConditions, RuleSpec, TargetId,
     };
+    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
     use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
     const WINDOW: Size = Size::new(1740.0, 1130.0);
@@ -35,14 +35,70 @@ mod ui_tests {
     /// Name, condition, pattern, example and file count of the proposals of the
     /// board of the scheme dialog.
     const BOARD: [(&str, ConditionKind, &str, &str, &str, usize); 8] = [
-        ("Schule", ConditionKind::Word, "zeugnis", "Schule/{recipient}/{year}/{year}{month}{day}_{kind}.pdf", "Schule/Anna/2026/20260703_Zeugnis.pdf", 34),
-        ("Kita", ConditionKind::Sender, "Muster-Kita", "Kita/{year}/{year}{month}{day}_{kind}.pdf", "Kita/2025/20250901_Vertrag.pdf", 21),
-        ("Arzt", ConditionKind::Kind, "Arztrechnung", "Gesundheit/{recipient}/{year}{month}{day}_{sender}.pdf", "Gesundheit/Anna/20260211_Praxis Beispiel.pdf", 48),
-        ("Urlaub", ConditionKind::Word, "buchungsbestätigung", "Urlaub/{year}/{year}{month}{day}_{sender}.pdf", "Urlaub/2026/20260812_Reisebüro Muster.pdf", 26),
-        ("Verein", ConditionKind::Sender, "e. V.", "Verein/{sender}/{year}{month}{day}_{kind}.pdf", "Verein/Turnverein Muster e. V./20260110_Beitrag.pdf", 19),
-        ("Garantie", ConditionKind::Word, "garantie", "Garantie/{year}/{year}{month}{day}_{sender}.pdf", "Garantie/2026/20260503_Elektro Beispiel.pdf", 28),
-        ("Urkunden", ConditionKind::Kind, "Urkunde", "Urkunden/{recipient}/{kind}_{year}.pdf", "Urkunden/Anna/Geburtsurkunde_2014.pdf", 11),
-        ("Versicherung", ConditionKind::Word, "police", "Versicherung/{sender}/{year}/{year}{month}{day}_{kind}.pdf", "Versicherung/Beispiel AG/2026/20260115_Police.pdf", 14),
+        (
+            "Schule",
+            ConditionKind::Word,
+            "zeugnis",
+            "Schule/{recipient}/{year}/{year}{month}{day}_{kind}.pdf",
+            "Schule/Anna/2026/20260703_Zeugnis.pdf",
+            34,
+        ),
+        (
+            "Kita",
+            ConditionKind::Sender,
+            "Muster-Kita",
+            "Kita/{year}/{year}{month}{day}_{kind}.pdf",
+            "Kita/2025/20250901_Vertrag.pdf",
+            21,
+        ),
+        (
+            "Arzt",
+            ConditionKind::Kind,
+            "Arztrechnung",
+            "Gesundheit/{recipient}/{year}{month}{day}_{sender}.pdf",
+            "Gesundheit/Anna/20260211_Praxis Beispiel.pdf",
+            48,
+        ),
+        (
+            "Urlaub",
+            ConditionKind::Word,
+            "buchungsbestätigung",
+            "Urlaub/{year}/{year}{month}{day}_{sender}.pdf",
+            "Urlaub/2026/20260812_Reisebüro Muster.pdf",
+            26,
+        ),
+        (
+            "Verein",
+            ConditionKind::Sender,
+            "e. V.",
+            "Verein/{sender}/{year}{month}{day}_{kind}.pdf",
+            "Verein/Turnverein Muster e. V./20260110_Beitrag.pdf",
+            19,
+        ),
+        (
+            "Garantie",
+            ConditionKind::Word,
+            "garantie",
+            "Garantie/{year}/{year}{month}{day}_{sender}.pdf",
+            "Garantie/2026/20260503_Elektro Beispiel.pdf",
+            28,
+        ),
+        (
+            "Urkunden",
+            ConditionKind::Kind,
+            "Urkunde",
+            "Urkunden/{recipient}/{kind}_{year}.pdf",
+            "Urkunden/Anna/Geburtsurkunde_2014.pdf",
+            11,
+        ),
+        (
+            "Versicherung",
+            ConditionKind::Word,
+            "police",
+            "Versicherung/{sender}/{year}/{year}{month}{day}_{kind}.pdf",
+            "Versicherung/Beispiel AG/2026/20260115_Police.pdf",
+            14,
+        ),
     ];
 
     fn scans() -> SortSource {
@@ -159,7 +215,14 @@ mod ui_tests {
 
     fn picture(name: &str, state: &Suggest, target: &TargetLabel, lang: Language) {
         let palette = Palette::default();
-        let view: Element<'_, Message> = dialog(state, Some(target), &KindCatalog::default(), WINDOW, lang, &palette);
+        let view: Element<'_, Message> = dialog(
+            state,
+            Some(target),
+            &KindCatalog::default(),
+            WINDOW,
+            lang,
+            &palette,
+        );
         let matches = Simulator::with_size(
             iced::Settings {
                 default_font: ncrs_ui_kit::APP_FONT,

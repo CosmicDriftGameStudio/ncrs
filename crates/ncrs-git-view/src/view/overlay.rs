@@ -8,8 +8,8 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::{banner, BannerTone};
 use ncrs_ui_kit::frame::{DialogSize, Frame};
 use ncrs_ui_kit::kit::{
-    button, dim, enter_button, error_line, labelled_checkbox, paragraph, radio_choice, scrim, text_field, Check,
-    Tone,
+    button, dim, enter_button, error_line, labelled_checkbox, paragraph, radio_choice, scrim,
+    text_field, Check, Tone,
 };
 use ncrs_ui_kit::popup_menu::{
     menu_rows_height, popup_layer, popup_menu_rows_in, MenuRow, PopupEntry, RightPress,
@@ -73,8 +73,7 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
     let lang = ctx.lang;
     let text = |msg| lang.text(msg).to_owned();
     let writable = state.actions.unavailable.is_none();
-    let entry =
-        |label, action, enabled: bool| entry(ctx.keys, label, action, enabled && writable);
+    let entry = |label, action, enabled: bool| entry(ctx.keys, label, action, enabled && writable);
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
     match &menu.target {
@@ -236,7 +235,11 @@ fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
             super::commit_menu::anchor(state, state.row_of_commit(sha).unwrap_or_default(), ctx)
         }
         MenuTarget::Conflict(path) => {
-            let conflicts = state.actions.merge.iter().flat_map(|merge| &merge.conflicts);
+            let conflicts = state
+                .actions
+                .merge
+                .iter()
+                .flat_map(|merge| &merge.conflicts);
             let row = conflicts.into_iter().position(|it| it.path == *path);
             Point::new(
                 ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
@@ -725,7 +728,11 @@ pub fn over<'a>(
             return stack![page, scrim(super::commit_menu::tag_dialog(draft, ctx))].into();
         }
         Some(Dialog::Cleanup(dialog)) => {
-            return stack![page, scrim(super::cleanup::cleanup_dialog(dialog, &state.name, ctx))].into();
+            return stack![
+                page,
+                scrim(super::cleanup::cleanup_dialog(dialog, &state.name, ctx))
+            ]
+            .into();
         }
         Some(Dialog::Credential(ask)) => {
             return stack![page, scrim(super::credentials::credential_dialog(ask, ctx))].into();
@@ -738,7 +745,11 @@ pub fn over<'a>(
     if state.actions.sync_menu.is_some() {
         // The header stays live: its buttons close the menu themselves.
         let below_header = size::PICKER_HEADER + spacing::BORDER_WIDTH;
-        let catcher = popup_layer(Space::new().into(), Some(Message::CloseMenu), RightPress::Dismiss);
+        let catcher = popup_layer(
+            Space::new().into(),
+            Some(Message::CloseMenu),
+            RightPress::Dismiss,
+        );
         return stack![page, column![Space::new().height(below_header), catcher]].into();
     }
     page

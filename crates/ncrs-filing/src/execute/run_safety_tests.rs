@@ -239,7 +239,7 @@ fn the_recorded_target_folder_is_checked_by_the_undo() {
 }
 
 mod trash_entries {
-use super::*;
+    use super::*;
 
     fn bin(place: &Place) -> JournaledTrash<FolderBackend> {
         let folder = place.dir.path().join("bin");

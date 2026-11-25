@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use ncrs_config::config::{same_folder, Filing, SourceSetting};
-use ncrs_fs::search::PathFilter;
 use ncrs_filing::sorting::is_on_own_volume;
+use ncrs_fs::search::PathFilter;
 use ncrs_index::TargetId;
 use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
 
@@ -65,7 +65,10 @@ pub enum SourceProblem {
     InsideTarget,
     NoTarget,
     /// The pattern as typed, and the field it is in.
-    Glob { field: SourceField, pattern: String },
+    Glob {
+        field: SourceField,
+        pattern: String,
+    },
 }
 
 /// The draft of a source; nothing is written before Save.
@@ -95,11 +98,7 @@ pub struct SourceDialog {
 impl SourceDialog {
     /// A draft for `folder`; the settings of a source at the same folder are
     /// taken over. A once dialog never watches.
-    pub fn new(
-        kind: SourceDialogKind,
-        folder: Option<&Path>,
-        filing: &Filing,
-    ) -> Self {
+    pub fn new(kind: SourceDialogKind, folder: Option<&Path>, filing: &Filing) -> Self {
         let existing = folder.and_then(|path| {
             filing
                 .sources
@@ -110,7 +109,9 @@ impl SourceDialog {
             kind,
             replacing: None,
             own_volume: None,
-            folder: folder.map(|path| path.to_string_lossy().into_owned()).unwrap_or_default(),
+            folder: folder
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             include: String::new(),
             exclude: String::new(),
             targets: Vec::new(),
@@ -160,10 +161,18 @@ impl SourceDialog {
         }
         match self.focus {
             SourceField::When if self.kind == SourceDialogKind::Watched => self.watch = !self.watch,
-            SourceField::Files => flip(&mut self.transfer, LocationTransfer::Move, LocationTransfer::Copy),
+            SourceField::Files => flip(
+                &mut self.transfer,
+                LocationTransfer::Move,
+                LocationTransfer::Copy,
+            ),
             SourceField::NoText => flip(&mut self.no_text, OnNoText::Ask, OnNoText::Skip),
             SourceField::Several => {
-                flip(&mut self.several, OnSeveralTargets::Ask, OnSeveralTargets::CopyToAll);
+                flip(
+                    &mut self.several,
+                    OnSeveralTargets::Ask,
+                    OnSeveralTargets::CopyToAll,
+                );
             }
             _ => {}
         }
@@ -300,8 +309,7 @@ fn inside_a_target(path: &Path, filing: &Filing) -> bool {
 mod tests {
     use super::*;
     use ncrs_config::config::{
-        add_sort_target_with_home, load, upsert_sort_source_with_home,
-        TargetSetting,
+        add_sort_target_with_home, load, upsert_sort_source_with_home, TargetSetting,
     };
     use ncrs_intake::SortTarget;
 
@@ -346,16 +354,10 @@ mod tests {
             field,
             pattern: "[".to_owned(),
         };
-        assert_eq!(
-            draft.problems(&filing),
-            [broken(SourceField::Include)]
-        );
+        assert_eq!(draft.problems(&filing), [broken(SourceField::Include)]);
         draft.include = "*.pdf".to_owned();
         draft.exclude = "*.tmp; [".to_owned();
-        assert_eq!(
-            draft.problems(&filing),
-            [broken(SourceField::Exclude)]
-        );
+        assert_eq!(draft.problems(&filing), [broken(SourceField::Exclude)]);
         draft.exclude.clear();
         assert!(draft.can_be_saved(&filing));
     }
@@ -364,8 +366,7 @@ mod tests {
     fn a_draft_is_not_saved_before_the_disk_answered() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (filing, id) = filing_with_target(&dir.path().join("docs"));
-        let mut draft =
-            SourceDialog::new(SourceDialogKind::Watched, Some(dir.path()), &filing);
+        let mut draft = SourceDialog::new(SourceDialogKind::Watched, Some(dir.path()), &filing);
         draft.toggle_target(&id);
         assert!(draft.problems(&filing).is_empty());
         assert!(!draft.can_be_saved(&filing));
@@ -395,10 +396,7 @@ mod tests {
             SourceDialog::new(SourceDialogKind::Watched, Some(&target.join("in")), &filing);
         draft.toggle_target(&id);
         look(&mut draft, dir.path());
-        assert_eq!(
-            draft.problems(&filing),
-            vec![SourceProblem::InsideTarget]
-        );
+        assert_eq!(draft.problems(&filing), vec![SourceProblem::InsideTarget]);
         let mut once = SourceDialog::new(SourceDialogKind::Once, Some(&target.join("in")), &filing);
         look(&mut once, dir.path());
         assert!(!once.watch);

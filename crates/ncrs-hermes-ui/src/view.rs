@@ -22,9 +22,8 @@ use crate::state::Hermes;
 use crate::ui::{
     activity as activity_ui, confirm_again as confirm_again_ui, filing_status as filing_status_ui,
     rules as rules_ui, saved_queries as saved_queries_ui, sorting as sorting_ui,
-    source_dialog as source_dialog_ui, target_dialog as target_dialog_ui,
-    suggest as suggest_ui,
-    tags as tags_ui,
+    source_dialog as source_dialog_ui, suggest as suggest_ui, tags as tags_ui,
+    target_dialog as target_dialog_ui,
 };
 
 /// What drawing the Hermes pages reads from the app.
@@ -133,19 +132,16 @@ fn page_groups<'a>(
 ) -> Option<Vec<setting_rows::Group<'a, Message>>> {
     let (lang, palette) = (ctx.lang, ctx.palette);
     match page {
-        HermesPage::Sorting => hermes
-            .sorting
-            .as_ref()
-            .map(|state| {
-                sorting_ui::groups(
-                    state,
-                    hermes.rules.as_ref(),
-                    &hermes.filing_config,
-                    ctx.home,
-                    lang,
-                    palette,
-                )
-            }),
+        HermesPage::Sorting => hermes.sorting.as_ref().map(|state| {
+            sorting_ui::groups(
+                state,
+                hermes.rules.as_ref(),
+                &hermes.filing_config,
+                ctx.home,
+                lang,
+                palette,
+            )
+        }),
         HermesPage::SavedQueries => hermes
             .saved_queries
             .as_ref()
@@ -209,10 +205,9 @@ pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Mes
             .target_removal
             .as_ref()
             .map(|asked| target_dialog_ui::question(asked, window, lang, palette)),
-        hermes
-            .rules
-            .as_ref()
-            .and_then(|state| rules_ui::dialog(state, &hermes.filing_config, window, lang, palette)),
+        hermes.rules.as_ref().and_then(|state| {
+            rules_ui::dialog(state, &hermes.filing_config, window, lang, palette)
+        }),
         hermes
             .saved_queries
             .as_ref()

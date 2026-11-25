@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use ncrs_git::{
-    ActionError, CleanupList, CleanupPlan, CleanupReport, CommitMessage, ConflictChoice, DiffHunk, ForcePushPlan, Git, PullStrategy,
-    ResetMode, UndoRecord,
+    ActionError, CleanupList, CleanupPlan, CleanupReport, CommitMessage, ConflictChoice, DiffHunk,
+    ForcePushPlan, Git, PullStrategy, ResetMode, UndoRecord,
 };
 
 use crate::actions::Operation;
@@ -265,9 +265,7 @@ impl Job {
                 .remove_worktree(path)
                 .map(|()| Done::WorktreeRemoved(path.clone())),
             Self::PrepareForcePush => git.prepare_force_push().map(Done::ForcePlan),
-            Self::ForcePushWithLease(plan) => {
-                git.force_push_with_lease(plan).map(|()| Done::Plain)
-            }
+            Self::ForcePushWithLease(plan) => git.force_push_with_lease(plan).map(|()| Done::Plain),
             Self::Pull(strategy) => git.pull(*strategy).map(|_| Done::Plain),
             Self::Push => git.push().map(|()| Done::Plain),
             Self::PushBranch(name) => git.push_branch(name, None).map(|()| Done::Plain),
@@ -332,7 +330,9 @@ impl Job {
                 .create_tag(name, sha)
                 .map(|record| Done::Undoable(Some(record))),
             // A pick that stops on conflicts has no undo; the next read shows the banner.
-            Self::CherryPick(sha) => git.cherry_pick(sha).map(|picked| Done::Undoable(picked.undo)),
+            Self::CherryPick(sha) => git
+                .cherry_pick(sha)
+                .map(|picked| Done::Undoable(picked.undo)),
             Self::Revert(sha) => git.revert(sha).map(|picked| Done::Undoable(picked.undo)),
             Self::Reset { mode, sha } => git
                 .reset(*mode, sha)

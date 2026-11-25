@@ -109,7 +109,9 @@ fn conditions_for(
             sender,
         )]));
     }
-    let others: Vec<usize> = (0..material.docs.len()).filter(|&other| other != at).collect();
+    let others: Vec<usize> = (0..material.docs.len())
+        .filter(|&other| other != at)
+        .collect();
     list.extend(
         words
             .words_of_group(&[at], &others)
@@ -124,9 +126,8 @@ fn conditions_for(
 /// what the fields give.
 fn fallback_patterns(material: &Material, doc: &Doc) -> Vec<String> {
     let mut patterns = Vec::new();
-    let same_sender = |other: &Doc| {
-        doc.fields.sender.is_some() && other.fields.sender == doc.fields.sender
-    };
+    let same_sender =
+        |other: &Doc| doc.fields.sender.is_some() && other.fields.sender == doc.fields.sender;
     let same_kind = |other: &Doc| doc.fields.kind.is_some() && other.fields.kind == doc.fields.kind;
     let sibling = material
         .docs

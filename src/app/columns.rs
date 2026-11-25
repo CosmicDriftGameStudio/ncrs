@@ -84,11 +84,21 @@ impl App {
     /// sources or targets changed; checked after every message, drawn from the result.
     pub(in crate::app) fn refresh_special_folders(&mut self) {
         let filing = &self.hermes.filing_config;
-        let targets = filing.targets.iter().map(|known| known.target.path.as_path());
-        let sources = filing.sources.iter().map(|known| known.source.path.as_path());
+        let targets = filing
+            .targets
+            .iter()
+            .map(|known| known.target.path.as_path());
+        let sources = filing
+            .sources
+            .iter()
+            .map(|known| known.source.path.as_path());
         let (last_targets, last_sources) = &self.special_folders_source;
-        if targets.clone().eq(last_targets.iter().map(PathBuf::as_path))
-            && sources.clone().eq(last_sources.iter().map(PathBuf::as_path))
+        if targets
+            .clone()
+            .eq(last_targets.iter().map(PathBuf::as_path))
+            && sources
+                .clone()
+                .eq(last_sources.iter().map(PathBuf::as_path))
         {
             return;
         }

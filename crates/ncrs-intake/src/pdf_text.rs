@@ -96,9 +96,7 @@ impl PdfText {
         collect_within_budget(
             document.pages().iter().take(MAX_SCAN_PAGES),
             MAX_SCAN_TOTAL_BYTES,
-            |page| {
-                Ok(trim_to_content(render_page(&page, path)?))
-            },
+            |page| Ok(trim_to_content(render_page(&page, path)?)),
         )
     }
 }

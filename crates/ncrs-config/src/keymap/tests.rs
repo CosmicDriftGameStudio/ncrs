@@ -543,9 +543,16 @@ fn the_history_and_the_blame_of_a_file_have_keys_and_can_be_rebound() {
             .collect()
     };
     for mac in [true, false] {
-        for (action, letter) in [(KeyAction::GitFileHistory, "y"), (KeyAction::GitFileBlame, "i")] {
+        for (action, letter) in [
+            (KeyAction::GitFileHistory, "y"),
+            (KeyAction::GitFileBlame, "i"),
+        ] {
             let key = Key::Character(letter.into());
-            let command = if mac { Modifiers::LOGO } else { Modifiers::CTRL };
+            let command = if mac {
+                Modifiers::LOGO
+            } else {
+                Modifiers::CTRL
+            };
             let expected = Binding::with_modifiers(key, command);
             assert_eq!(keys_of(action, mac), [expected]);
         }

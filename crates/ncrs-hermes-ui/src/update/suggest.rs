@@ -44,12 +44,7 @@ pub fn open_scheme(
 }
 
 /// "Regel vorschlagen" on a file of a source that no rule takes.
-pub fn open_rule(
-    hermes: &mut Hermes,
-    source: SortSource,
-    path: PathBuf,
-    ctx: &Ctx<'_>,
-) -> Outcome {
+pub fn open_rule(hermes: &mut Hermes, source: SortSource, path: PathBuf, ctx: &Ctx<'_>) -> Outcome {
     open(
         hermes,
         Suggest::new(SuggestFor::File { source, path }, 0),
@@ -171,7 +166,10 @@ fn handle(
 ) -> Task<Message> {
     match message {
         SuggestMessage::Loaded { generation, result } => {
-            let Some(state) = hermes.suggest.as_mut().filter(|s| s.generation == generation)
+            let Some(state) = hermes
+                .suggest
+                .as_mut()
+                .filter(|s| s.generation == generation)
             else {
                 return Task::none();
             };
@@ -205,7 +203,10 @@ fn handle(
         SuggestMessage::Reject(at) => reject(hermes, at, ctx),
         SuggestMessage::Rejected { generation, result } => {
             if let (Some(state), Err(detail)) = (
-                hermes.suggest.as_mut().filter(|s| s.generation == generation),
+                hermes
+                    .suggest
+                    .as_mut()
+                    .filter(|s| s.generation == generation),
                 result,
             ) {
                 state.problem = Some(detail);
@@ -214,7 +215,10 @@ fn handle(
         }
         SuggestMessage::Adopt => adopt(hermes, ctx),
         SuggestMessage::Adopted { generation, result } => {
-            let Some(state) = hermes.suggest.as_mut().filter(|s| s.generation == generation)
+            let Some(state) = hermes
+                .suggest
+                .as_mut()
+                .filter(|s| s.generation == generation)
             else {
                 return Task::none();
             };
@@ -288,7 +292,10 @@ fn edit(hermes: &mut Hermes, at: usize) -> Task<Message> {
     let mut form = RuleForm::from_suggestion(&rule);
     form.target = RuleFormTarget::New;
     let fresh = hermes.rules.is_none();
-    hermes.rules.get_or_insert_with(RulesPage::new).open_form(form);
+    hermes
+        .rules
+        .get_or_insert_with(RulesPage::new)
+        .open_form(form);
     if let Some(state) = hermes.suggest.as_mut() {
         state.editing = Some(Editing {
             at,

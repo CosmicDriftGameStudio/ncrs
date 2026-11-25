@@ -10,8 +10,8 @@ use ncrs_config::config::Filing;
 use ncrs_config::palette::Palette;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets};
-use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::format::shown_path;
+use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, TargetCheck, GAP_S, GAP_XS};
 use ncrs_ui_kit::key_intercept::key_intercept_pressed;
 use ncrs_ui_kit::kit::{self, Check, Tone};
@@ -74,9 +74,12 @@ pub fn view<'a>(
         palette,
     ));
     let glob_problem = |at: SourceField| {
-        problem_line(&problems, lang, palette, move |problem| {
-            matches!(problem, SourceProblem::Glob { field, .. } if *field == at)
-        })
+        problem_line(
+            &problems,
+            lang,
+            palette,
+            move |problem| matches!(problem, SourceProblem::Glob { field, .. } if *field == at),
+        )
     };
     body = body.push(page_kit::form_row(
         lang.text(Msg::SortingFieldInclude),
@@ -122,8 +125,14 @@ pub fn view<'a>(
         lang.text(Msg::SortingFieldWhen),
         kit::focusable_segmented(
             &[
-                (lang.text(Msg::SortingWhenWatch), send(SortingMessage::SetWatch(true))),
-                (lang.text(Msg::SortingWhenOnce), send(SortingMessage::SetWatch(false))),
+                (
+                    lang.text(Msg::SortingWhenWatch),
+                    send(SortingMessage::SetWatch(true)),
+                ),
+                (
+                    lang.text(Msg::SortingWhenOnce),
+                    send(SortingMessage::SetWatch(false)),
+                ),
             ],
             usize::from(!dialog.watch),
             !once,
@@ -136,8 +145,14 @@ pub fn view<'a>(
     body = body.push(choice_row(
         lang.text(Msg::SortingFieldFiles),
         [
-            (Msg::SortingFilesCopy, SortingMessage::SetTransfer(LocationTransfer::Copy)),
-            (Msg::SortingFilesMove, SortingMessage::SetTransfer(LocationTransfer::Move)),
+            (
+                Msg::SortingFilesCopy,
+                SortingMessage::SetTransfer(LocationTransfer::Copy),
+            ),
+            (
+                Msg::SortingFilesMove,
+                SortingMessage::SetTransfer(LocationTransfer::Move),
+            ),
         ],
         usize::from(dialog.transfer == LocationTransfer::Move),
         dialog.focus == SourceField::Files,
@@ -147,8 +162,14 @@ pub fn view<'a>(
     body = body.push(choice_row(
         lang.text(Msg::SortingFieldNoText),
         [
-            (Msg::SortingNoTextAsk, SortingMessage::SetNoText(OnNoText::Ask)),
-            (Msg::SortingNoTextSkip, SortingMessage::SetNoText(OnNoText::Skip)),
+            (
+                Msg::SortingNoTextAsk,
+                SortingMessage::SetNoText(OnNoText::Ask),
+            ),
+            (
+                Msg::SortingNoTextSkip,
+                SortingMessage::SetNoText(OnNoText::Skip),
+            ),
         ],
         usize::from(dialog.no_text == OnNoText::Skip),
         dialog.focus == SourceField::NoText,
@@ -158,7 +179,10 @@ pub fn view<'a>(
     body = body.push(choice_row(
         lang.text(Msg::SortingFieldSeveral),
         [
-            (Msg::SortingSeveralAsk, SortingMessage::SetSeveral(OnSeveralTargets::Ask)),
+            (
+                Msg::SortingSeveralAsk,
+                SortingMessage::SetSeveral(OnSeveralTargets::Ask),
+            ),
             (
                 Msg::SortingSeveralCopyAll,
                 SortingMessage::SetSeveral(OnSeveralTargets::CopyToAll),
@@ -198,7 +222,14 @@ pub fn view<'a>(
             ),
         )
     };
-    let frame = Frame::new(lang.text(title), body, DialogSize::Wide, window, lang, palette);
+    let frame = Frame::new(
+        lang.text(title),
+        body,
+        DialogSize::Wide,
+        window,
+        lang,
+        palette,
+    );
     let folder = dialog.path(home);
     let subject = if once {
         folder_below_its_parent(&folder)
@@ -226,21 +257,22 @@ fn when_hints<'a>(
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
     let is_new = dialog.watch && dialog.replacing.is_none();
-    let existing_stay = is_new
-        .then(|| kit::paragraph(lang.text(Msg::SortingHintExistingStay).to_owned(), palette));
-    let not_read = dialog.is_not_read_by_itself(filing).then(|| {
-        kit::warning_line(
-            lang.text(Msg::SortingHintHoldsTarget).to_owned(),
-            palette,
-        )
-    });
+    let existing_stay =
+        is_new.then(|| kit::paragraph(lang.text(Msg::SortingHintExistingStay).to_owned(), palette));
+    let not_read = dialog
+        .is_not_read_by_itself(filing)
+        .then(|| kit::warning_line(lang.text(Msg::SortingHintHoldsTarget).to_owned(), palette));
     let hints: Vec<_> = existing_stay.into_iter().chain(not_read).collect();
     (!hints.is_empty()).then(|| kit::stack(hints).into())
 }
 
 /// The field tells the dialog when the mouse goes into it.
 fn noticed<'a>(field: SourceField, input: Element<'a, Message>) -> Element<'a, Message> {
-    key_intercept_pressed(input, |_, _, _| None, move || send(SortingMessage::Focus(field)))
+    key_intercept_pressed(
+        input,
+        |_, _, _| None,
+        move || send(SortingMessage::Focus(field)),
+    )
 }
 
 fn folder_name(folder: &Path) -> Option<String> {

@@ -189,48 +189,39 @@ fn levels_scene(lang: Language) -> App {
         role: role.to_owned(),
         before: None,
     };
-    user_says(
-        &mut app,
-        if german {
-            "Öffne Bank"
-        } else {
-            "Open Bank"
-        },
-    );
+    user_says(&mut app, if german { "Öffne Bank" } else { "Open Bank" });
     hermes_says(
         &mut app,
-        vec![
-            Part::Levels(LevelsCard {
-                moves: None,
-                title: if german {
-                    "3 Ebenen gefunden"
+        vec![Part::Levels(LevelsCard {
+            moves: None,
+            title: if german {
+                "3 Ebenen gefunden"
+            } else {
+                "3 levels found"
+            }
+            .to_owned(),
+            rows: vec![
+                row(1, "Bank", if german { "fest" } else { "fixed" }),
+                row(2, "2025", if german { "Jahr" } else { "year" }),
+                row(
+                    3,
+                    "2025-11-03_Sparkasse.pdf",
+                    if german {
+                        "Dateiname: Datum, Absender"
+                    } else {
+                        "file name: date, sender"
+                    },
+                ),
+            ],
+            footer: Some(
+                if german {
+                    "passt bei 11 von 12 Dateien"
                 } else {
-                    "3 levels found"
+                    "fits 11 of 12 files"
                 }
                 .to_owned(),
-                rows: vec![
-                    row(1, "Bank", if german { "fest" } else { "fixed" }),
-                    row(2, "2025", if german { "Jahr" } else { "year" }),
-                    row(
-                        3,
-                        "2025-11-03_Sparkasse.pdf",
-                        if german {
-                            "Dateiname: Datum, Absender"
-                        } else {
-                            "file name: date, sender"
-                        },
-                    ),
-                ],
-                footer: Some(
-                    if german {
-                        "passt bei 11 von 12 Dateien"
-                    } else {
-                        "fits 11 of 12 files"
-                    }
-                    .to_owned(),
-                ),
-            }),
-        ],
+            ),
+        })],
         vec![
             chip(
                 if german { "Passt so" } else { "Looks right" },

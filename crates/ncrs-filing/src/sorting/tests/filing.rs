@@ -91,7 +91,10 @@ fn several_targets_are_copied_into_and_taken_back_as_one_run() {
     assert_eq!(setup.run(&source).unwrap().done(), 1);
     assert!(from.exists() && first.exists() && second.exists());
     let known = setup.document(&from);
-    assert_eq!((known.id, known.status), (document.id, DocumentStatus::Filed));
+    assert_eq!(
+        (known.id, known.status),
+        (document.id, DocumentStatus::Filed)
+    );
     setup.index(|index| assert!(index.open_review_of(document.id).unwrap().is_none()));
 }
 
@@ -234,8 +237,9 @@ fn a_missing_target_stops_the_whole_source_and_is_never_made() {
 #[test]
 fn a_paused_target_waits() {
     let mut setup = Setup::new();
-    setup.access.targets[0].paused =
-        Some(ncrs_config::config::PauseReason::UnusablePath("x".to_owned()));
+    setup.access.targets[0].paused = Some(ncrs_config::config::PauseReason::UnusablePath(
+        "x".to_owned(),
+    ));
     let plan = setup.plan(&setup.source("Q1", &["t1"]));
     assert_eq!(plan.waiting, [(id("t1"), WaitReason::Paused)]);
 }

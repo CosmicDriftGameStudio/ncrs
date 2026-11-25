@@ -188,7 +188,11 @@ fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<Path
 /// stock of anew even when it is switched on again outside this session.
 fn switch_watching(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
     let sources = |filing: &Filing| -> Vec<SortSource> {
-        filing.sources.iter().map(|entry| entry.source.clone()).collect()
+        filing
+            .sources
+            .iter()
+            .map(|entry| entry.source.clone())
+            .collect()
     };
     let switched_off = hermes
         .watching

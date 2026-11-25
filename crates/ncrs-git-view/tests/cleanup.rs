@@ -107,11 +107,7 @@ fn the_list_comes_with_everything_ticked_and_the_remote_off() {
 #[test]
 fn a_worktree_with_ignored_files_is_not_ticked() {
     let mut state = tab();
-    let _ = update(
-        &mut state,
-        Message::Cleanup(CleanupMessage::Open),
-        &ctx(),
-    );
+    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Open), &ctx());
     let mut offered = list();
     offered.worktrees[0].ignored_files = vec![".env".to_owned()];
     let _ = finish(
@@ -134,7 +130,9 @@ fn space_unticks_and_only_what_is_ticked_goes_into_the_plan() {
     // The worktree comes first, then the branches.
     let _ = update(&mut state, Message::Cleanup(CleanupMessage::Down), &ctx());
     let _ = update(&mut state, Message::Cleanup(CleanupMessage::Space), &ctx());
-    assert!(!dialog(&state).ticked.contains(&Pick::Branch("fix/a".to_owned())));
+    assert!(!dialog(&state)
+        .ticked
+        .contains(&Pick::Branch("fix/a".to_owned())));
     let plan = dialog(&state).plan();
     assert_eq!(plan.branches.len(), 1);
     assert_eq!(plan.worktrees.len(), 1);
@@ -152,11 +150,19 @@ fn confirming_starts_the_deletion_but_never_with_nothing_ticked() {
             &ctx(),
         );
     }
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Confirm), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Confirm),
+        &ctx(),
+    );
     assert_eq!(dialog(&state).phase, Phase::Ready);
     assert_eq!(state.actions.busy, None);
     let _ = update(&mut state, Message::Cleanup(CleanupMessage::Space), &ctx());
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Confirm), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Confirm),
+        &ctx(),
+    );
     assert_eq!(dialog(&state).phase, Phase::Deleting);
     assert_eq!(state.actions.busy, Some(Operation::Branch));
 }
@@ -165,11 +171,19 @@ fn confirming_starts_the_deletion_but_never_with_nothing_ticked() {
 fn the_remote_checkbox_is_on_the_last_line_and_tab_reaches_it() {
     let mut state = tab();
     open_and_scan(&mut state);
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Tab(false)), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Tab(false)),
+        &ctx(),
+    );
     assert_eq!(dialog(&state).cursor, 3);
     let _ = update(&mut state, Message::Cleanup(CleanupMessage::Space), &ctx());
     assert!(dialog(&state).delete_remote);
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Tab(true)), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Tab(true)),
+        &ctx(),
+    );
     assert_eq!(dialog(&state).cursor, 0);
 }
 
@@ -177,7 +191,11 @@ fn the_remote_checkbox_is_on_the_last_line_and_tab_reaches_it() {
 fn a_finished_deletion_reports_each_row_and_hands_the_folders_to_the_app() {
     let mut state = tab();
     open_and_scan(&mut state);
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Confirm), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Confirm),
+        &ctx(),
+    );
     let plan = dialog(&state).plan();
     let report = CleanupReport {
         rows: vec![
@@ -201,7 +219,9 @@ fn a_finished_deletion_reports_each_row_and_hands_the_folders_to_the_app() {
     let action = finish(&mut state, Job::CleanUp(plan), Ok(Done::Cleaned(report)));
     assert_eq!(
         action,
-        Some(Action::WorktreesRemoved(vec![PathBuf::from("/repo-wt/fix-c")]))
+        Some(Action::WorktreesRemoved(vec![PathBuf::from(
+            "/repo-wt/fix-c"
+        )]))
     );
     let shown = dialog(&state);
     assert_eq!(shown.phase, Phase::Done);
@@ -210,7 +230,11 @@ fn a_finished_deletion_reports_each_row_and_hands_the_folders_to_the_app() {
         .result_of(&Pick::Branch("fix/a".to_owned()))
         .is_some_and(Result::is_err));
     // Enter on the finished dialog closes it.
-    let _ = update(&mut state, Message::Cleanup(CleanupMessage::Confirm), &ctx());
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Confirm),
+        &ctx(),
+    );
     assert!(state.actions.dialog.is_none());
 }
 

@@ -152,7 +152,10 @@ fn conflict_row<'a>(
         },
         palette,
     );
-    context_area(row, Message::OpenMenu(MenuTarget::Conflict(conflict.path.clone())))
+    context_area(
+        row,
+        Message::OpenMenu(MenuTarget::Conflict(conflict.path.clone())),
+    )
 }
 
 /// Mine, theirs or both for one block, as three small icons.

@@ -470,7 +470,9 @@ fn an_edit_of_the_form_starts_a_try_and_a_stale_timer_does_nothing() {
 #[test]
 fn the_new_rule_button_opens_the_form_and_the_edit_button_fills_it() {
     let mut app = App::with_rules(three_rules());
-    let _ = app.update(Message::Rules(RulesMessage::NewIn(ncrs_index::TargetId::main())));
+    let _ = app.update(Message::Rules(RulesMessage::NewIn(
+        ncrs_index::TargetId::main(),
+    )));
     let new_form = app.rules_for_test().unwrap().form().unwrap();
     assert_eq!(new_form.name, "");
     assert_eq!(new_form.pattern, "");

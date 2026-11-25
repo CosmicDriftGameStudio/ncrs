@@ -551,10 +551,7 @@ mod tests {
         talk.assert_saves_no_rule();
         for action in &talk.actions {
             assert!(
-                matches!(
-                    action,
-                    Action::SuggestRules { .. } | Action::OpenSearch
-                ),
+                matches!(action, Action::SuggestRules { .. } | Action::OpenSearch),
                 "{action:?}"
             );
         }

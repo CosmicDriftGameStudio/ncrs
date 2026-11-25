@@ -22,8 +22,8 @@ mod ui_tests {
     use ncrs_git::{
         ActionError, BranchInfo, ChangeKind, ChangedFile, CleanupBranch, CleanupList,
         CleanupReason, CleanupReport, CleanupRow, CleanupTarget, CleanupWorktree, CommitDetail,
-        DiffHunk, DiffRow, FileDiff, GraphRow, KeepReason, Kept, Log, LogCommit, RefKind,
-        RefLabel, RefsOverview, RowKind, WorktreeInfo,
+        DiffHunk, DiffRow, FileDiff, GraphRow, KeepReason, Kept, Log, LogCommit, RefKind, RefLabel,
+        RefsOverview, RowKind, WorktreeInfo,
     };
     use ncrs_git_view::actions::{
         ChangeSide, Conflict, ConflictLine, Dialog, ForceBlock, LocalChanges, MenuTarget,
@@ -93,7 +93,11 @@ mod ui_tests {
         let filled = phase != Phase::Fetching;
         let mut shown = CleanupDialog {
             phase,
-            list: if filled { list() } else { CleanupList::default() },
+            list: if filled {
+                list()
+            } else {
+                CleanupList::default()
+            },
             ticked: HashSet::new(),
             cursor: 1,
             delete_remote: false,

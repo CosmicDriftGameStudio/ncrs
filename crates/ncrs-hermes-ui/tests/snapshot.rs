@@ -139,17 +139,83 @@ mod ui_tests {
         };
         let firm = (Recipient, "Beispiel AG");
         let rows = [
-            ("documents", "Bank", all(&[(Kind, "bank_statement")]), "Bank/{sender}/{year}/{year}{month}{day}_{kind}_{number}.pdf", 48),
-            ("documents", "Versicherung", either(&[(Word, "Police"), (Word, "Versicherungsschein")]), "Versicherung/{sender}/{year}{month}{day}_{kind}.pdf", 17),
-            ("documents", "Steuer", all(&[(TaxId, "12/345/67890")]), "Steuer/{year}/{year}{month}{day}_{kind}.pdf", 41),
-            ("documents", "Telekom", all(&[(Sender, "Company A"), (Word, "Rechnung")]), "Telefon/{sender}/{year}/{year}{month}_{number}.pdf", 12),
-            ("documents", "Strom und Gas", all(&[(Iban, "DE89 3704 0044 0532 0130 00")]), "Wohnung/Energie/{year}/{year}{month}{day}_{sender}.pdf", 9),
-            ("documents", "Arzt", all(&[(Kind, "Arztrechnung")]), "Gesundheit/{recipient}/{year}/{year}{month}{day}_{sender}.pdf", 23),
-            ("documents", "Gehalt", all(&[(Kind, "Gehaltsabrechnung")]), "Gehalt/{sender}/{year}/{year}{month}.pdf", 36),
-            ("documents", "Auto", all(&[(Word, "Kennzeichen B-XY 123")]), "Auto/{kind}/{year}{month}{day}_{sender}.pdf", 7),
-            ("firm", "Eingangsrechnungen", all(&[firm, (Kind, "invoice")]), "Eingang/{year}/{month}/{year}{month}{day}_{sender}_{number}.pdf", 64),
-            ("firm", "Verträge", all(&[firm, (Kind, "contract")]), "Verträge/{sender}/{year}{month}{day}_{kind}.pdf", 5),
-            ("firm", "Bescheide", all(&[firm, (Kind, "notice")]), "Behörden/{sender}/{year}/{year}{month}{day}.pdf", 8),
+            (
+                "documents",
+                "Bank",
+                all(&[(Kind, "bank_statement")]),
+                "Bank/{sender}/{year}/{year}{month}{day}_{kind}_{number}.pdf",
+                48,
+            ),
+            (
+                "documents",
+                "Versicherung",
+                either(&[(Word, "Police"), (Word, "Versicherungsschein")]),
+                "Versicherung/{sender}/{year}{month}{day}_{kind}.pdf",
+                17,
+            ),
+            (
+                "documents",
+                "Steuer",
+                all(&[(TaxId, "12/345/67890")]),
+                "Steuer/{year}/{year}{month}{day}_{kind}.pdf",
+                41,
+            ),
+            (
+                "documents",
+                "Telekom",
+                all(&[(Sender, "Company A"), (Word, "Rechnung")]),
+                "Telefon/{sender}/{year}/{year}{month}_{number}.pdf",
+                12,
+            ),
+            (
+                "documents",
+                "Strom und Gas",
+                all(&[(Iban, "DE89 3704 0044 0532 0130 00")]),
+                "Wohnung/Energie/{year}/{year}{month}{day}_{sender}.pdf",
+                9,
+            ),
+            (
+                "documents",
+                "Arzt",
+                all(&[(Kind, "Arztrechnung")]),
+                "Gesundheit/{recipient}/{year}/{year}{month}{day}_{sender}.pdf",
+                23,
+            ),
+            (
+                "documents",
+                "Gehalt",
+                all(&[(Kind, "Gehaltsabrechnung")]),
+                "Gehalt/{sender}/{year}/{year}{month}.pdf",
+                36,
+            ),
+            (
+                "documents",
+                "Auto",
+                all(&[(Word, "Kennzeichen B-XY 123")]),
+                "Auto/{kind}/{year}{month}{day}_{sender}.pdf",
+                7,
+            ),
+            (
+                "firm",
+                "Eingangsrechnungen",
+                all(&[firm, (Kind, "invoice")]),
+                "Eingang/{year}/{month}/{year}{month}{day}_{sender}_{number}.pdf",
+                64,
+            ),
+            (
+                "firm",
+                "Verträge",
+                all(&[firm, (Kind, "contract")]),
+                "Verträge/{sender}/{year}{month}{day}_{kind}.pdf",
+                5,
+            ),
+            (
+                "firm",
+                "Bescheide",
+                all(&[firm, (Kind, "notice")]),
+                "Behörden/{sender}/{year}/{year}{month}{day}.pdf",
+                8,
+            ),
         ];
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
@@ -384,8 +450,7 @@ mod ui_tests {
     #[test]
     fn source_dialog_of_a_folder_that_holds_a_target_picture() {
         let folder = home("Firma");
-        let mut dialog =
-            SourceDialog::new(SourceDialogKind::Watched, Some(&folder), &filing());
+        let mut dialog = SourceDialog::new(SourceDialogKind::Watched, Some(&folder), &filing());
         dialog.folder_check = FolderCheck::Found(folder);
         dialog.targets = vec![id("firm")];
         picture(&with_dialog(dialog), "source-dialog-holds-target");
@@ -496,7 +561,9 @@ mod ui_tests {
         });
         assert_eq!(
             messages,
-            vec![Message::Sorting(SortingMessage::Focus(SourceField::Exclude))]
+            vec![Message::Sorting(SortingMessage::Focus(
+                SourceField::Exclude
+            ))]
         );
     }
 }

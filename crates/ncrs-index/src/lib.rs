@@ -25,10 +25,10 @@ mod query_hit;
 mod regex_limits;
 mod review;
 mod rule_suggestions;
-mod rules;
-mod saved_queries;
 #[cfg(test)]
 mod rule_target_tests;
+mod rules;
+mod saved_queries;
 mod search_index;
 mod sender_aliases;
 mod source_backlog;
@@ -54,10 +54,10 @@ pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name}
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ContentHash, Currency, Document,
     DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin, FieldOrigins,
-    FileStamp, HermesCounts, NewDocument, QuerySpec, ReviewEntry, ReviewEntryId,
-    ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
-    SavedQuery, SavedQueryId, SenderAlias, SenderAliasKind, SenderAliasState,
-    SenderAliases, StatusCounts, SubtreePattern, TargetId,
+    FileStamp, HermesCounts, NewDocument, QuerySpec, ReviewEntry, ReviewEntryId, ReviewReason,
+    Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion, SavedQuery,
+    SavedQueryId, SenderAlias, SenderAliasKind, SenderAliasState, SenderAliases, StatusCounts,
+    SubtreePattern, TargetId,
 };
 pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;

@@ -119,11 +119,7 @@ pub struct FileButtons {
 
 /// The second row: the history and the blame of the file, what is compared
 /// with what, and the way to the editor.
-pub fn file_row<'a>(
-    buttons: FileButtons,
-    sides: String,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
+pub fn file_row<'a>(buttons: FileButtons, sides: String, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let button = |label: Msg, shortcut: Shortcut, message: Option<Message>| {
         key_button(

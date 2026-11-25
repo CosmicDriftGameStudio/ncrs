@@ -280,7 +280,11 @@ fn drop_old_changes(session: &mut Session) {
         })
     };
     session.changes.retain(|relative, _| open(relative));
-    if session.question.as_ref().is_some_and(|question| !open(&question.relative)) {
+    if session
+        .question
+        .as_ref()
+        .is_some_and(|question| !open(&question.relative))
+    {
         session.question = None;
     }
     if !session
@@ -306,10 +310,12 @@ fn select(session: &mut Session, path: PathBuf) {
 }
 
 fn move_selection(session: &mut Session, forward: bool) -> Task<Message> {
-    let at = session
-        .selected
-        .as_ref()
-        .and_then(|selected| session.rows.iter().position(|row| row.relative == *selected));
+    let at = session.selected.as_ref().and_then(|selected| {
+        session
+            .rows
+            .iter()
+            .position(|row| row.relative == *selected)
+    });
     let next = match (at, forward) {
         (None, _) => 0,
         (Some(index), true) => (index + 1).min(session.rows.len().saturating_sub(1)),
@@ -339,10 +345,13 @@ fn mark_link(session: &mut Session, forward: bool) {
 }
 
 fn press_marked_link(session: &mut Session, ctx: &Ctx) -> Step {
-    let pressed = session.marked_link.zip(session.selected_row()).and_then(|(at, row)| {
-        let link = *session.links(row).get(at)?;
-        Some(link_of(link, row).1)
-    });
+    let pressed = session
+        .marked_link
+        .zip(session.selected_row())
+        .and_then(|(at, row)| {
+            let link = *session.links(row).get(at)?;
+            Some(link_of(link, row).1)
+        });
     match pressed {
         Some(message) => edit(session, message, ctx),
         None => nothing(),
@@ -373,7 +382,10 @@ fn submit_rename(session: &mut Session, ctx: &Ctx) -> Task<Message> {
     }
     let place = session.selected_row().and_then(|row| {
         let (target, relative) = session.one_place(row)?;
-        Some((row.relative.clone(), (target, relative.with_file_name(&name))))
+        Some((
+            row.relative.clone(),
+            (target, relative.with_file_name(&name)),
+        ))
     });
     session.renaming = None;
     session.error = None;
@@ -427,9 +439,10 @@ fn folder_picked(session: &mut Session, folder: Option<PathBuf>, ctx: &Ctx) -> T
         session.error = Some(ctx.lang.text(Msg::FilingViewErrorOutside).to_owned());
         return Task::none();
     };
-    let name = session
-        .one_place(row)
-        .map_or_else(|| file_name(&row.relative), |(_, relative)| file_name(&relative));
+    let name = session.one_place(row).map_or_else(
+        || file_name(&row.relative),
+        |(_, relative)| file_name(&relative),
+    );
     let from = row.relative.clone();
     session.error = None;
     change(
@@ -602,12 +615,7 @@ fn filed_action(source: PathBuf, carried: &Carried, left: usize) -> Option<Actio
     })
 }
 
-fn carried(
-    state: &mut State,
-    id: u64,
-    result: Result<Box<Carried>, String>,
-    ctx: &Ctx,
-) -> Step {
+fn carried(state: &mut State, id: u64, result: Result<Box<Carried>, String>, ctx: &Ctx) -> Step {
     let Some(session) = state.session.as_mut().filter(|session| session.id == id) else {
         return nothing();
     };

@@ -3,18 +3,15 @@ use crate::app::*;
 impl App {
     /// Replaces nothing: the caller has dropped any module and pipeline before.
     pub(in crate::app) fn start_filing_module(&mut self, filing: &Filing) -> Task<Message> {
-        self.run_hermes_flow(|hermes, ctx| {
-            ncrs_hermes_ui::start_filing_module(hermes, filing, ctx)
-        })
+        self.run_hermes_flow(|hermes, ctx| ncrs_hermes_ui::start_filing_module(hermes, filing, ctx))
     }
 
     pub(in crate::app) fn apply_saved_filing(
         &mut self,
         filing: Filing,
     ) -> (SavedFilingApplies, Task<Message>) {
-        let (applies, outcome) = self.with_hermes(|hermes, ctx| {
-            ncrs_hermes_ui::apply_saved_filing(hermes, filing, ctx)
-        });
+        let (applies, outcome) =
+            self.with_hermes(|hermes, ctx| ncrs_hermes_ui::apply_saved_filing(hermes, filing, ctx));
         (applies, self.run_hermes_outcome(outcome))
     }
 
@@ -22,9 +19,8 @@ impl App {
         &mut self,
         filing: Filing,
     ) -> (SavedFilingApplies, Task<Message>) {
-        let (applies, outcome) = self.with_hermes(|hermes, ctx| {
-            ncrs_hermes_ui::apply_ai_change(hermes, filing, ctx)
-        });
+        let (applies, outcome) =
+            self.with_hermes(|hermes, ctx| ncrs_hermes_ui::apply_ai_change(hermes, filing, ctx));
         (applies, self.run_hermes_outcome(outcome))
     }
 
@@ -251,9 +247,7 @@ impl App {
             Ask::SetLoad(load) => {
                 self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
             }
-            Ask::RestartHermesModule => {
-                self.run_hermes_flow(ncrs_hermes_ui::restart_hermes_module)
-            }
+            Ask::RestartHermesModule => self.run_hermes_flow(ncrs_hermes_ui::restart_hermes_module),
             Ask::SetTagExceptions(exceptions) => {
                 self.tag_exceptions = exceptions;
                 Task::none()
@@ -271,9 +265,7 @@ impl App {
                 Message::Targets(ncrs_hermes_ui::TargetsMessage::FolderPicked(folder))
             }),
             Ask::OpenPlan { source, once } => self.open_filing_plan(source, once),
-            Ask::RulesChanged => {
-                self.update_filing_tab(ncrs_filing_view::Message::RulesChanged)
-            }
+            Ask::RulesChanged => self.update_filing_tab(ncrs_filing_view::Message::RulesChanged),
             Ask::StartJobWithProgress(start) => {
                 self.start_job_with_progress(start.job, start.build)
             }

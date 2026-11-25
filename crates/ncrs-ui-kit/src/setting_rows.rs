@@ -38,7 +38,6 @@ pub enum RowLayout {
     Bare,
 }
 
-
 /// What the keyboard can do on a row; a row without one is skipped by it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RowKey<M> {
@@ -394,7 +393,6 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         }
         .with_buttons(pressable(&buttons), build)
     }
-
 
     /// The head of a group of rows that folds (a target and its rules): the
     /// arrow, `lead` (its chip), the name as a link, `description` under it and
@@ -810,7 +808,9 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 let control_width = match (setting.layout, setting.list_indent) {
                     (RowLayout::Columns, _) => Length::FillPortion(COLUMNS_PORTION),
                     (_, Some(_)) => Length::Shrink,
-                    (_, None) => Length::Fixed(setting.control_width.unwrap_or(size::CONTROL_WIDTH)),
+                    (_, None) => {
+                        Length::Fixed(setting.control_width.unwrap_or(size::CONTROL_WIDTH))
+                    }
                 };
                 let plain_row = match setting.layout {
                     RowLayout::Heading => heading_row(

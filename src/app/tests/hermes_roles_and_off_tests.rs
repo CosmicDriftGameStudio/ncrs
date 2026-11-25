@@ -83,7 +83,11 @@ async fn adding_a_target_opens_its_dialog_with_the_folder_and_writes_nothing() {
 
     settle(&mut app, Message::HermesFile(HermesFileMessage::AddTarget)).await;
 
-    let dialog = app.hermes.target_dialog.as_ref().expect("the target dialog");
+    let dialog = app
+        .hermes
+        .target_dialog
+        .as_ref()
+        .expect("the target dialog");
     assert!(dialog.folder.ends_with("Documents"), "{}", dialog.folder);
     assert!(dialog.replacing.is_none());
     assert!(app.hermes.filing_config.targets.is_empty());
@@ -275,9 +279,16 @@ async fn a_folder_that_is_no_target_becomes_one_before_rules_are_suggested() {
     drop(app.run_hermes_chat_action(suggested_in_the_chat(&source)));
 
     assert!(app.hermes.suggest.is_none());
-    let dialog = app.hermes.target_dialog.as_ref().expect("the target dialog");
+    let dialog = app
+        .hermes
+        .target_dialog
+        .as_ref()
+        .expect("the target dialog");
     assert_eq!(Path::new(&dialog.folder), source);
-    let after = dialog.then_suggest.as_ref().expect("the suggestions follow");
+    let after = dialog
+        .then_suggest
+        .as_ref()
+        .expect("the suggestions follow");
     assert_eq!(after.wish.as_deref(), Some("{year}/{kind}/"));
     assert_eq!(app.hermes.filing_config.targets.len(), 1);
 }

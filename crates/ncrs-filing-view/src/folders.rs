@@ -95,9 +95,7 @@ pub fn read_existing(session: &mut Session) -> Task<Message> {
     let roots = roots(session);
     let missing: Vec<((TargetId, PathBuf), PathBuf)> = wanted
         .into_iter()
-        .filter(|key| {
-            !session.existing.contains_key(key) && !session.reading_folders.contains(key)
-        })
+        .filter(|key| !session.existing.contains_key(key) && !session.reading_folders.contains(key))
         .filter_map(|key| {
             let (_, root) = roots.iter().find(|(id, _)| *id == key.0)?;
             let folder = root.join(&key.1);

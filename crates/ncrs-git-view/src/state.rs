@@ -405,7 +405,10 @@ impl State {
             in_diff: self.diff_has_keys(),
             list_covered: self.list_is_covered(),
             dialog_open: self.actions.dialog_open(),
-            cleanup_open: matches!(self.actions.dialog, Some(crate::actions::Dialog::Cleanup(_))),
+            cleanup_open: matches!(
+                self.actions.dialog,
+                Some(crate::actions::Dialog::Cleanup(_))
+            ),
             picker_open: self.picker.is_some(),
             sync_menu_open: self.actions.sync_menu.is_some(),
             area: self.area,
@@ -573,7 +576,10 @@ impl State {
                 .as_ref()
                 .is_some_and(|merge| merge.conflicts.iter().any(|it| it.path == *path)),
             Some(MenuTarget::File { path, .. }) => file_views::row_of_file(self, path).is_none(),
-            Some(MenuTarget::LocalBranch(_) | MenuTarget::RemoteBranch(_) | MenuTarget::Worktree(_)) | None => false,
+            Some(
+                MenuTarget::LocalBranch(_) | MenuTarget::RemoteBranch(_) | MenuTarget::Worktree(_),
+            )
+            | None => false,
         };
         if gone {
             self.actions.menu = None;

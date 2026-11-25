@@ -105,11 +105,18 @@ fn every_folder_becomes_a_rule_with_a_word_only_its_documents_have() {
     assert_eq!(suggestions.model, ModelNote::NotAvailable);
     let schule = &suggestions.items[1];
     let condition = schule.spec.conditions.single_condition().unwrap();
-    assert_eq!((condition.kind, condition.value.as_str()), (ConditionKind::Word, "elternbrief"));
+    assert_eq!(
+        (condition.kind, condition.value.as_str()),
+        (ConditionKind::Word, "elternbrief")
+    );
     assert!(schule.spec.filing_pattern.starts_with("Schule/"));
     assert_eq!(schule.files, 3);
     assert!(!schule.spec.confirmed);
-    assert!(schule.example.as_deref().unwrap().starts_with("Schule/2026/"));
+    assert!(schule
+        .example
+        .as_deref()
+        .unwrap()
+        .starts_with("Schule/2026/"));
 }
 
 #[test]
@@ -187,7 +194,10 @@ fn adopting_saves_exactly_the_ticked_rules_last_and_confirmed() {
     assert!(adopted.spec.confirmed && adopted.spec.enabled);
     assert_eq!(adopted.spec.name.as_deref(), Some("Schule"));
     assert_eq!(adopted.origin, RuleOrigin::Suggestion);
-    assert_eq!(adopted.spec.filing_pattern, suggestions.items[1].spec.filing_pattern);
+    assert_eq!(
+        adopted.spec.filing_pattern,
+        suggestions.items[1].spec.filing_pattern
+    );
 }
 
 #[test]
@@ -249,7 +259,12 @@ fn a_file_without_a_rule_gets_one_that_also_takes_its_like() {
         found.also,
         [setup.path("Q1/scan-014.txt"), setup.path("Q1/scan-025.txt")]
     );
-    assert!(found.rule.example.as_deref().unwrap().starts_with("Abrechnung/2026/"));
+    assert!(found
+        .rule
+        .example
+        .as_deref()
+        .unwrap()
+        .starts_with("Abrechnung/2026/"));
 }
 
 #[test]

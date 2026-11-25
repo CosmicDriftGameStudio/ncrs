@@ -32,7 +32,9 @@ pub enum WaitReason {
 
 pub(super) fn state_of(access: &SortingAccess, target: &SortTarget) -> TargetState {
     let system = system_folders();
-    state_with(target, device_of, &system, || holds_known_file(access, &target.path))
+    state_with(target, device_of, &system, || {
+        holds_known_file(access, &target.path)
+    })
 }
 
 /// Whether `path` is on a volume of its own, as the `own_volume` of a source or
@@ -101,7 +103,10 @@ fn differs_from_system(
     system: &[PathBuf],
 ) -> Option<bool> {
     let device = device_of(path)?;
-    let system_devices: Vec<String> = system.iter().filter_map(|folder| device_of(folder)).collect();
+    let system_devices: Vec<String> = system
+        .iter()
+        .filter_map(|folder| device_of(folder))
+        .collect();
     (!system_devices.is_empty()).then(|| !system_devices.contains(&device))
 }
 
@@ -261,14 +266,24 @@ mod tests {
             };
             source_is_mounted_with(&source, root, device_of, &[PathBuf::from("/")])
         };
-        for place in ["/Users/me/Downloads", "/home/me/Downloads", "/Volumes", "/mnt2/x"] {
+        for place in [
+            "/Users/me/Downloads",
+            "/home/me/Downloads",
+            "/Volumes",
+            "/mnt2/x",
+        ] {
             assert!(is_mounted(place, None, Some("system")), "{place}");
             assert!(is_mounted(place, None, None), "{place}");
             assert!(is_mounted(place, Some(true), Some("usb")), "{place}");
             assert!(!is_mounted(place, Some(true), Some("system")), "{place}");
             assert!(!is_mounted(place, Some(true), None), "{place}");
         }
-        for place in ["/Volumes/Stick/in", "/media/me/stick", "/run/media/me/stick", "/mnt/x"] {
+        for place in [
+            "/Volumes/Stick/in",
+            "/media/me/stick",
+            "/run/media/me/stick",
+            "/mnt/x",
+        ] {
             assert!(!is_mounted(place, None, Some("system")), "{place}");
             assert!(!is_mounted(place, None, None), "{place}");
             assert!(is_mounted(place, None, Some("usb")), "{place}");

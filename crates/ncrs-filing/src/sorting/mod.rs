@@ -24,12 +24,16 @@ pub use plan_run::{
 pub use questions::{answer, leave, open_questions, question_count, Question, QuestionKind};
 pub use read_unknown::{ReadProblem, ReadUnknown};
 pub use ready::{is_on_own_volume, TargetState, WaitReason};
-pub use run::{run, EntryReport, PlaceOutcome, PlaceReport, RunEntry, RunError, RunRequest, SortReport};
+pub use run::{
+    run, EntryReport, PlaceOutcome, PlaceReport, RunEntry, RunError, RunRequest, SortReport,
+};
 pub use suggest::{ModelNote, RuleForFile, SuggestError, Suggested, Suggestions};
 pub use suggest_file::suggest_rule_for;
 pub use suggest_scheme::suggest_scheme;
 pub use suggest_store::{adopt, dismiss};
-pub use watched::{forget_backlog, run_watched, SourceWait, WatchedFiles, WatchedReport, WatchedSkip};
+pub use watched::{
+    forget_backlog, run_watched, SourceWait, WatchedFiles, WatchedReport, WatchedSkip,
+};
 
 #[cfg(test)]
 mod tests;

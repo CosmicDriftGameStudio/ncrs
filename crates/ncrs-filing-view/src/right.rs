@@ -29,12 +29,7 @@ const ROOT_TRAIL: f32 = 220.0;
 /// The steps of the tree a level is set in by.
 const LEVEL: usize = 2;
 
-fn root_label(
-    session: &Session,
-    target: &SortTarget,
-    half_width: f32,
-    ctx: ViewCtx<'_>,
-) -> String {
+fn root_label(session: &Session, target: &SortTarget, half_width: f32, ctx: ViewCtx<'_>) -> String {
     let label = format!(
         "{} {} · {}",
         session.target_number(&target.id),

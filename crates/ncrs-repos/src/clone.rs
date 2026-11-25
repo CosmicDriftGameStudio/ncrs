@@ -35,8 +35,7 @@ fn clone_task(url: String, target: PathBuf) -> Task<Message> {
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                ncrs_git::clone(&url, &target)
-                    .map_err(|error| crate::bulk::error_line(&error))
+                ncrs_git::clone(&url, &target).map_err(|error| crate::bulk::error_line(&error))
             })
             .await
             .unwrap_or_else(|error| Err(error.to_string()))

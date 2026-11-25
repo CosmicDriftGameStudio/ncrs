@@ -32,7 +32,11 @@ pub fn groups<'a>(
 
 fn history_group<'a>(state: &SortingPage, lang: Language, palette: &Palette) -> Group<'a, Message> {
     let runs = &state.runs;
-    let shown = if state.all_runs { runs.len() } else { RUNS_SHOWN };
+    let shown = if state.all_runs {
+        runs.len()
+    } else {
+        RUNS_SHOWN
+    };
     let mut rows: Vec<SettingRow<'a, Message>> = runs
         .iter()
         .take(shown)

@@ -181,9 +181,9 @@ impl Index {
         filter: &str,
         values: impl rusqlite::Params,
     ) -> Result<Vec<Rule>, IndexError> {
-        let mut statement = self
-            .connection()
-            .prepare(&format!("{RULE_COLUMNS} {filter} ORDER BY r.position, r.id"))?;
+        let mut statement = self.connection().prepare(&format!(
+            "{RULE_COLUMNS} {filter} ORDER BY r.position, r.id"
+        ))?;
         let rows = statement
             .query_map(values, RuleRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -244,7 +244,9 @@ impl Index {
             .ok_or(IndexError::RuleNotFound(id))?;
         let (mut ids, slots): (Vec<i64>, Vec<i64>) = tx
             .prepare("SELECT id, position FROM rule WHERE target = ?1 ORDER BY position, id")?
-            .query_map([&target], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
+            .query_map([&target], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })?
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .unzip();

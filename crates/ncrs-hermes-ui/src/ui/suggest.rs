@@ -40,7 +40,10 @@ pub fn dialog<'a>(
     let mut body = Column::new().spacing(GAP_S);
     if let Some(detail) = &state.problem {
         body = body.push(page_kit::error_line(
-            fill_template(lang.text(Msg::SortingSuggestFailed), &[("{detail}", detail)]),
+            fill_template(
+                lang.text(Msg::SortingSuggestFailed),
+                &[("{detail}", detail)],
+            ),
             palette,
         ));
     }
@@ -52,7 +55,10 @@ pub fn dialog<'a>(
     let frame_buttons;
     match (&state.phase, state.file_rule()) {
         (SuggestPhase::Running, _) => {
-            body = body.push(page_kit::hint(lang.text(Msg::SortingSuggestWorking), palette));
+            body = body.push(page_kit::hint(
+                lang.text(Msg::SortingSuggestWorking),
+                palette,
+            ));
             frame_buttons = vec![again_button(state, lang, palette)];
         }
         (SuggestPhase::Failed(error), _) => {
@@ -78,7 +84,14 @@ pub fn dialog<'a>(
             .map(|name| name.to_string_lossy().into_owned()),
         SuggestFor::Target(_) => target.map(|label| format!("{} · {}", label.text, label.path)),
     };
-    let mut frame = Frame::new(lang.text(title), body, DialogSize::Wide, window, lang, palette);
+    let mut frame = Frame::new(
+        lang.text(title),
+        body,
+        DialogSize::Wide,
+        window,
+        lang,
+        palette,
+    );
     if let Some(subtitle) = subtitle {
         frame = frame.subtitle(subtitle);
     }
@@ -93,7 +106,11 @@ pub fn dialog<'a>(
 }
 
 /// A file no rule fits is no failure; anything else says why nothing was proposed.
-fn failure_line<'a>(error: &SuggestError, lang: Language, palette: &Palette) -> Element<'a, Message> {
+fn failure_line<'a>(
+    error: &SuggestError,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
     match error {
         SuggestError::NoPattern => {
             page_kit::hint(lang.text(Msg::SortingSuggestNoneForFile), palette)
@@ -128,21 +145,19 @@ fn scheme_buttons<'a>(
         return buttons;
     }
     let count = state.ticked_count();
-    buttons.push(
-        kit::enter_button(
-            &if count == 1 {
-                lang.text(Msg::SortingTakeRule).to_owned()
-            } else {
-                fill_template(
-                    lang.text(Msg::SortingTakeRules),
-                    &[("{count}", &count.to_string())],
-                )
-            },
-            (count > 0 && !state.saving).then(|| send(SuggestMessage::Adopt)),
-            Tone::Primary,
-            palette,
-        ),
-    );
+    buttons.push(kit::enter_button(
+        &if count == 1 {
+            lang.text(Msg::SortingTakeRule).to_owned()
+        } else {
+            fill_template(
+                lang.text(Msg::SortingTakeRules),
+                &[("{count}", &count.to_string())],
+            )
+        },
+        (count > 0 && !state.saving).then(|| send(SuggestMessage::Adopt)),
+        Tone::Primary,
+        palette,
+    ));
     buttons
 }
 
@@ -174,7 +189,11 @@ fn file_buttons<'a>(
 }
 
 /// What the model did, in a grey note; nothing when it did its part.
-fn model_note<'a>(note: &ModelNote, lang: Language, palette: &Palette) -> Option<Element<'a, Message>> {
+fn model_note<'a>(
+    note: &ModelNote,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
     let text = match note {
         ModelNote::Used => return None,
         ModelNote::NotAvailable => lang.text(Msg::SortingSuggestNoModel).to_owned(),
@@ -227,7 +246,10 @@ fn scheme_rows<'a>(
         rows.push(note);
     }
     if found.items.is_empty() {
-        rows.push(page_kit::hint(lang.text(Msg::SortingSuggestRulesNone), palette));
+        rows.push(page_kit::hint(
+            lang.text(Msg::SortingSuggestRulesNone),
+            palette,
+        ));
         return rows;
     }
     for (at, item) in found.items.iter().enumerate() {
@@ -257,7 +279,10 @@ fn item_row<'a>(
             Some(&format!("{marker}{}", item.name)),
             palette,
         ))
-        .push(container(kit::dim(conditions_short(&item.spec, lang, kinds), palette)).width(Length::Fill))
+        .push(
+            container(kit::dim(conditions_short(&item.spec, lang, kinds), palette))
+                .width(Length::Fill),
+        )
         .push(kit::dim(files_text(item.files, lang), palette))
         .push(kit::button(
             lang.text(Msg::SortingChange),
@@ -275,7 +300,10 @@ fn item_row<'a>(
     ));
     if let Some(example) = &item.example {
         column = column.push(kit::dim(
-            fill_template(lang.text(Msg::SortingSchemeExample), &[("{example}", example)]),
+            fill_template(
+                lang.text(Msg::SortingSchemeExample),
+                &[("{example}", example)],
+            ),
             palette,
         ));
     }
@@ -391,7 +419,9 @@ fn file_rows<'a>(
         lang.text(Msg::SortingSuggestRuleSection),
         &[(
             "{target}",
-            &target.map(|label| label.text.to_uppercase()).unwrap_or_default(),
+            &target
+                .map(|label| label.text.to_uppercase())
+                .unwrap_or_default(),
         )],
     );
     rows.push(page_kit::section(&heading, palette));
@@ -411,19 +441,15 @@ fn file_rows<'a>(
     rows.push(page_kit::form_row(
         lang.text(Msg::SortingRulePattern),
         pattern_field(0, &spec.filing_pattern, palette),
-        found
-            .rule
-            .example
-            .as_ref()
-            .map(|example| {
-                page_kit::hint(
-                    fill_template(
-                        lang.text(Msg::SortingSchemeExample),
-                        &[("{example}", example)],
-                    ),
-                    palette,
-                )
-            }),
+        found.rule.example.as_ref().map(|example| {
+            page_kit::hint(
+                fill_template(
+                    lang.text(Msg::SortingSchemeExample),
+                    &[("{example}", example)],
+                ),
+                palette,
+            )
+        }),
         palette,
     ));
     if !found.also.is_empty() {
@@ -525,16 +551,46 @@ mod tests {
         let window = Size::new(1200.0, 760.0);
         let mut state = Suggest::default();
         for lang in [Language::German, Language::English] {
-            drop(dialog(&state, None, &KindCatalog::default(), window, lang, &palette));
-            state.failed(ncrs_filing::sorting::SuggestError::Index("index missing".to_owned()));
-            drop(dialog(&state, None, &KindCatalog::default(), window, lang, &palette));
+            drop(dialog(
+                &state,
+                None,
+                &KindCatalog::default(),
+                window,
+                lang,
+                &palette,
+            ));
+            state.failed(ncrs_filing::sorting::SuggestError::Index(
+                "index missing".to_owned(),
+            ));
+            drop(dialog(
+                &state,
+                None,
+                &KindCatalog::default(),
+                window,
+                lang,
+                &palette,
+            ));
             state.loaded(crate::suggest::Found::Target(board(0)));
-            drop(dialog(&state, None, &KindCatalog::default(), window, lang, &palette));
+            drop(dialog(
+                &state,
+                None,
+                &KindCatalog::default(),
+                window,
+                lang,
+                &palette,
+            ));
             state.loaded(crate::suggest::Found::Target(Suggestions {
                 items: Vec::new(),
                 ..board(0)
             }));
-            drop(dialog(&state, None, &KindCatalog::default(), window, lang, &palette));
+            drop(dialog(
+                &state,
+                None,
+                &KindCatalog::default(),
+                window,
+                lang,
+                &palette,
+            ));
             state = Suggest::default();
         }
     }

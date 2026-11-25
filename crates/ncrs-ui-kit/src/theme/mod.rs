@@ -391,8 +391,7 @@ pub fn danger_outline_button(
         let disabled = matches!(status, button::Status::Disabled);
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
-            background: hovered
-                .then(|| Background::Color(colors.error.scale_alpha(HOVER_ALPHA))),
+            background: hovered.then(|| Background::Color(colors.error.scale_alpha(HOVER_ALPHA))),
             text_color: if disabled {
                 colors.dim_text
             } else {

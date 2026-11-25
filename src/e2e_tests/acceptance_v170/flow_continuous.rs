@@ -26,7 +26,11 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) -> Arrivals {
     println!(
         "watched: inbox {} files; by rule moved {}/{}",
         files_in(&world.inbox_dir),
-        arrivals.by_rule.iter().filter(|(from, _)| !from.exists()).count(),
+        arrivals
+            .by_rule
+            .iter()
+            .filter(|(from, _)| !from.exists())
+            .count(),
         arrivals.by_rule.len(),
     );
     for (_info, items) in world.index().recent_batches(5).unwrap() {

@@ -81,7 +81,10 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 .collect(),
         );
         if state.marked_commit.as_deref() == Some(commit.id.as_str()) {
-            chips.push((ctx.lang.text(Msg::GitViewCommitMarked).to_owned(), RefChipKind::Tag));
+            chips.push((
+                ctx.lang.text(Msg::GitViewCommitMarked).to_owned(),
+                RefChipKind::Tag,
+            ));
         }
         let shown = commit_row(
             CommitRow {
@@ -101,7 +104,10 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             },
             palette,
         );
-        context_area(shown, Message::OpenMenu(MenuTarget::Commit(commit.id.clone())))
+        context_area(
+            shown,
+            Message::OpenMenu(MenuTarget::Commit(commit.id.clone())),
+        )
     });
     let mut rows = Column::new();
     rows = rows.extend(working);

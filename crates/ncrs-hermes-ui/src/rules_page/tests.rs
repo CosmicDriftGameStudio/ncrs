@@ -284,7 +284,10 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
         Language::English,
         &KindCatalog::built_in(),
     );
-    assert_eq!(sentence, "If the text contains the word “telekom” → Year / Sender");
+    assert_eq!(
+        sentence,
+        "If the text contains the word “telekom” → Year / Sender"
+    );
 
     page.begin_edit(0);
     page.form_mut()

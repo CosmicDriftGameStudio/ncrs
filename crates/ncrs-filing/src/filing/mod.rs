@@ -29,8 +29,8 @@ use std::thread;
 
 use ncrs_core::{NoteLink, INDEX_NOT_OPEN};
 use ncrs_index::{
-    ContentHash, Document, HermesCounts, Index, IndexError, KeyStore, KindCatalog,
-    KindLanguage, RecoveryKey,
+    ContentHash, Document, HermesCounts, Index, IndexError, KeyStore, KindCatalog, KindLanguage,
+    RecoveryKey,
 };
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
@@ -47,9 +47,7 @@ use crate::query_work::QueryAccess;
 use crate::rules_work::RulesAccess;
 use crate::sorting::SortingAccess;
 use crate::tags_work::TagsAccess;
-use ncrs_config::config::{
-    AiSetting, Filing, FilingLocation, SourceSetting, TargetSetting,
-};
+use ncrs_config::config::{AiSetting, Filing, FilingLocation, SourceSetting, TargetSetting};
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;

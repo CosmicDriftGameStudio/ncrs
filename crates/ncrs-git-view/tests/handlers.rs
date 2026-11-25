@@ -799,7 +799,10 @@ async fn a_soft_reset_keeps_the_changes_staged_a_mixed_one_unstaged() {
     let mut state = opened(dir.path()).await;
     run(&mut state, "second", CommitAction::Reset(ResetMode::Soft)).await;
     assert_eq!(head(dir.path()), second);
-    assert_eq!(sh(dir.path(), &["diff", "--cached", "--name-only"]), "a.txt");
+    assert_eq!(
+        sh(dir.path(), &["diff", "--cached", "--name-only"]),
+        "a.txt"
+    );
     send(&mut state, Message::Undo).await;
     run(&mut state, "second", CommitAction::Reset(ResetMode::Mixed)).await;
     assert_eq!(sh(dir.path(), &["diff", "--cached", "--name-only"]), "");
@@ -908,7 +911,11 @@ async fn a_right_click_on_a_commit_moves_the_cursor_to_it() {
     let dir = menu_repo();
     let mut state = opened(dir.path()).await;
     state.area = Area::Sidebar;
-    let sha = state.commit_at(row_of(&state, "second")).unwrap().id.clone();
+    let sha = state
+        .commit_at(row_of(&state, "second"))
+        .unwrap()
+        .id
+        .clone();
     send(&mut state, Message::OpenMenu(MenuTarget::Commit(sha))).await;
     assert_eq!(state.commit_cursor, row_of(&state, "second"));
     assert_eq!(state.area, Area::Commits);
@@ -918,12 +925,28 @@ async fn a_right_click_on_a_commit_moves_the_cursor_to_it() {
 async fn a_commit_menu_closes_when_its_commit_is_gone_after_a_reload() {
     let dir = menu_repo();
     let mut state = opened(dir.path()).await;
-    let sha = state.commit_at(row_of(&state, "second")).unwrap().id.clone();
-    send(&mut state, Message::OpenMenu(MenuTarget::Commit(sha.clone()))).await;
-    state.log.as_mut().unwrap().commits.retain(|commit| commit.id != sha);
+    let sha = state
+        .commit_at(row_of(&state, "second"))
+        .unwrap()
+        .id
+        .clone();
+    send(
+        &mut state,
+        Message::OpenMenu(MenuTarget::Commit(sha.clone())),
+    )
+    .await;
+    state
+        .log
+        .as_mut()
+        .unwrap()
+        .commits
+        .retain(|commit| commit.id != sha);
     send(&mut state, Message::CommitAction(CommitAction::CopySha)).await;
     assert_eq!(state.actions.menu, None);
-    assert_eq!(state.copied_sha, None, "nothing is copied for a commit that is gone");
+    assert_eq!(
+        state.copied_sha, None,
+        "nothing is copied for a commit that is gone"
+    );
 }
 
 #[tokio::test]

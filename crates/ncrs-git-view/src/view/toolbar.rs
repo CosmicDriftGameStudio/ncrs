@@ -9,8 +9,8 @@ use ncrs_ui_kit::kit::{toolbar_button, Tone};
 use ncrs_ui_kit::split_button::split_button;
 use ncrs_ui_kit::theme::spacing;
 
-use crate::cleanup::CleanupMessage;
 use crate::actions::{MenuAction, Operation, SyncBar, Unavailable};
+use crate::cleanup::CleanupMessage;
 use crate::ctx::ViewCtx;
 use crate::git_keys::GitKeys;
 use crate::message::Message;

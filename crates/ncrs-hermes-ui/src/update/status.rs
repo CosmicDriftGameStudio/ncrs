@@ -78,7 +78,9 @@ pub(super) fn open_waiting(hermes: &Hermes, actions: &mut Vec<Action>) {
         .iter()
         .filter(|setting| {
             let questions = hermes.filing_status.questions();
-            questions.iter().any(|asked| asked.source == setting.source.path)
+            questions
+                .iter()
+                .any(|asked| asked.source == setting.source.path)
         })
         .collect();
     actions.push(match asking.as_slice() {

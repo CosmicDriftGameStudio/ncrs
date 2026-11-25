@@ -21,7 +21,6 @@ use crate::message::{MenuEntry, Message};
 use crate::shortcuts::Shortcut;
 use crate::state::State;
 
-
 /// Where the menu opens horizontally; its height follows the row of the cursor.
 const MENU_X: f32 = 280.0;
 /// The title, the bar of the actions, the rule and the column head above the list.
@@ -162,10 +161,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         page = page.push(banner);
     }
     page = match &state.cleanup {
-        Some(cleanup) => page.push(row![
-            list::view(state, ctx),
-            cleanup_pane::view(cleanup, ctx)
-        ].height(Length::Fill)),
+        Some(cleanup) => page.push(
+            row![list::view(state, ctx), cleanup_pane::view(cleanup, ctx)].height(Length::Fill),
+        ),
         None => page.push(list::view(state, ctx)),
     };
     if let Some(run) = state.run() {

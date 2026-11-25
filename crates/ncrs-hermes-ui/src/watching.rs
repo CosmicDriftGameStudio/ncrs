@@ -131,7 +131,10 @@ impl Watching {
                 });
                 for change in done {
                     for source in watched.iter().filter(|source| {
-                        source.roots.iter().any(|root| change.path.starts_with(root))
+                        source
+                            .roots
+                            .iter()
+                            .any(|root| change.path.starts_with(root))
                     }) {
                         self.changed
                             .entry(source.source.clone())
@@ -272,7 +275,7 @@ impl Watching {
 
 #[cfg(test)]
 mod tests {
-    use ncrs_filing::sorting::{SourceWait, SortReport};
+    use ncrs_filing::sorting::{SortReport, SourceWait};
     use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets};
     use ncrs_pipeline::{ChangedPath, RunnerState};
 
@@ -403,10 +406,9 @@ mod tests {
     fn files_that_come_during_a_run_go_into_the_next_run_and_no_second_run_starts() {
         let sources = [source("/in")];
         let mut watching = watching_after_the_start(&sources);
-        watching.collect(
-            &snapshot(&[("/in/a.pdf", ChangeOutcome::Finished)]),
-            || vec![watched("/in")],
-        );
+        watching.collect(&snapshot(&[("/in/a.pdf", ChangeOutcome::Finished)]), || {
+            vec![watched("/in")]
+        });
         assert_eq!(
             paths(&watching.take_due(&sources, never_busy)),
             [changed(&["/in/a.pdf"])]
@@ -433,10 +435,9 @@ mod tests {
     fn a_source_the_filing_tab_works_on_is_skipped_and_stays_due() {
         let sources = [source("/in")];
         let mut watching = watching_after_the_start(&sources);
-        watching.collect(
-            &snapshot(&[("/in/a.pdf", ChangeOutcome::Finished)]),
-            || vec![watched("/in")],
-        );
+        watching.collect(&snapshot(&[("/in/a.pdf", ChangeOutcome::Finished)]), || {
+            vec![watched("/in")]
+        });
 
         let busy = |source: &SortSource| source.path == Path::new("/in");
         assert!(watching.take_due(&sources, busy).is_empty());

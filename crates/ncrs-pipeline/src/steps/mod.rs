@@ -114,9 +114,7 @@ impl IntakeStep {
             // asked for by force.
             DocumentStatus::New => {
                 let stored = index.document_text(id)?;
-                let stored_empty = stored
-                    .as_deref()
-                    .is_some_and(|text| text.trim().is_empty());
+                let stored_empty = stored.as_deref().is_some_and(|text| text.trim().is_empty());
                 if stored_empty {
                     return Ok(false);
                 }

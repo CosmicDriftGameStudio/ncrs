@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use ncrs_fs::search::PathFilter;
-use ncrs_index::{ContentHash, DocumentId, Field, FileStamp, Kinds, Rule, RuleId, SenderAliases, TargetId};
+use ncrs_index::{
+    ContentHash, DocumentId, Field, FileStamp, Kinds, Rule, RuleId, SenderAliases, TargetId,
+};
 use ncrs_intake::{
     canonical_path, decide, has_symlink_ancestor_under, hash_path, Decision, Location,
     LocationMode, LocationTransfer, Place, SortSource, SortTarget, Subject, TargetRules, TextState,
@@ -174,7 +176,14 @@ pub(super) fn plan_watched(
     access: &SortingAccess,
     request: &PlanRequest,
 ) -> Result<SortPlan, PlanError> {
-    plan_over(access, request, PlanFor::Watched, None, &ReadProgress::default(), None)
+    plan_over(
+        access,
+        request,
+        PlanFor::Watched,
+        None,
+        &ReadProgress::default(),
+        None,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -329,7 +338,7 @@ impl<'a> Decider<'a> {
         root: &'a Path,
         request: &'a PlanRequest,
         plan_for: PlanFor,
-        replaced:Option<(&TargetId, Vec<Rule>)>,
+        replaced: Option<(&TargetId, Vec<Rule>)>,
     ) -> Result<Self, PlanError> {
         let targets: Vec<SortTarget> = request
             .source
@@ -386,7 +395,13 @@ impl<'a> Decider<'a> {
     /// `None` for a file that is no row of the plan.
     fn row(&self, file: &Walked) -> Result<Option<Draft>, String> {
         let path = self.root.join(&file.relative);
-        let found = find(self.access, &self.location, &path, file.stamp, self.request.read)?;
+        let found = find(
+            self.access,
+            &self.location,
+            &path,
+            file.stamp,
+            self.request.read,
+        )?;
         let (hash, document, (state, held_by)) = match found {
             Found::Nothing => return Ok(None),
             Found::NotRead(left) => (
@@ -656,7 +671,11 @@ fn movable(mut moves: Vec<(ArchiveMove, Option<PathBuf>)>) -> HashSet<PathBuf> {
             .map(|(found, _)| found.root.join(&found.from))
             .collect();
         let before = moves.len();
-        moves.retain(|(_, held_by)| held_by.as_ref().is_none_or(|holder| leaving.contains(holder)));
+        moves.retain(|(_, held_by)| {
+            held_by
+                .as_ref()
+                .is_none_or(|holder| leaving.contains(holder))
+        });
         let (ordered, _) = order_moves(moves.iter().map(|(found, _)| found.clone()).collect());
         let runs: HashSet<PathBuf> = ordered
             .iter()

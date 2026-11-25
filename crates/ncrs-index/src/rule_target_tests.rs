@@ -110,9 +110,7 @@ fn a_suggestion_discarded_for_one_target_is_still_offered_in_another() {
         confirmed: true,
         ..rule_spec()
     };
-    let RuleSuggestion::Created(id) = index
-        .suggest_rule_in(&spec, evidence(), &first)
-        .unwrap()
+    let RuleSuggestion::Created(id) = index.suggest_rule_in(&spec, evidence(), &first).unwrap()
     else {
         panic!("not created");
     };
@@ -123,9 +121,7 @@ fn a_suggestion_discarded_for_one_target_is_still_offered_in_another() {
         index.suggest_rule_in(&spec, evidence(), &first).unwrap(),
         RuleSuggestion::Discarded
     );
-    let RuleSuggestion::Created(other) = index
-        .suggest_rule_in(&spec, evidence(), &second)
-        .unwrap()
+    let RuleSuggestion::Created(other) = index.suggest_rule_in(&spec, evidence(), &second).unwrap()
     else {
         panic!("not offered for the second target");
     };
@@ -142,7 +138,10 @@ fn a_rule_with_a_target_name_the_index_cannot_read_is_an_error_and_not_main() {
     let id = add(&mut index, "x", &TargetId::main());
     index
         .connection()
-        .execute("UPDATE rule SET target = 'Bad Name' WHERE id = ?1", [id.get()])
+        .execute(
+            "UPDATE rule SET target = 'Bad Name' WHERE id = ?1",
+            [id.get()],
+        )
         .unwrap();
 
     let error = index.rule(id).unwrap_err();
