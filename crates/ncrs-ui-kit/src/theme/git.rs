@@ -46,17 +46,19 @@ pub enum SplitterLook {
     Dragged,
 }
 
-/// The thin bar between two panes: quiet at rest, purple under the pointer and
-/// while it is dragged.
+/// The thin bar between two panes: not filled at rest, purple under the pointer
+/// and while it is dragged.
 pub fn splitter(palette: &Palette, look: SplitterLook) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     move |_theme| {
         let fill = match look {
-            SplitterLook::Idle => colors.border_inactive,
-            SplitterLook::Hovered | SplitterLook::Dragged => purple(&colors),
+            SplitterLook::Idle => None,
+            SplitterLook::Hovered | SplitterLook::Dragged => {
+                Some(Background::Color(purple(&colors)))
+            }
         };
         container::Style {
-            background: Some(Background::Color(fill)),
+            background: fill,
             ..container::Style::default()
         }
     }
@@ -273,21 +275,15 @@ pub fn marked_row(
 // --- splitter, section head, toolbar and menu (#366 panes) ---
 
 /// One dot of the grip of a splitter.
-pub fn splitter_dot(palette: &Palette, look: SplitterLook) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    move |_theme| {
-        let ink = match look {
-            SplitterLook::Idle => colors.dim_text,
-            SplitterLook::Hovered | SplitterLook::Dragged => colors.cursor_text,
-        };
-        container::Style {
-            background: Some(Background::Color(ink)),
-            border: Border {
-                radius: 1.5.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        }
+pub fn splitter_dot(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let ink = palette.cursor_text;
+    move |_theme| container::Style {
+        background: Some(Background::Color(ink)),
+        border: Border {
+            radius: 1.5.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
     }
 }
 

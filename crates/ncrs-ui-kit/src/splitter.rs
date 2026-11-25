@@ -9,7 +9,7 @@ use ncrs_i18n::{fill_template, Language, Msg};
 use crate::kit::{focused, tooltip};
 use crate::palette::Palette;
 use crate::theme::git::{self, SplitterLook};
-use crate::theme::{font_size, size, spacing};
+use crate::theme::{font_size, size, spacing, vertical_rule};
 
 /// What a press of an arrow key moves a pane by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,9 +110,9 @@ pub struct SplitterMessages<M> {
     pub leave: M,
 }
 
-/// The bar, [`size::SPLITTER`] wide and as high as its room: quiet with three
-/// dots as the grip, purple while hovered or dragged. `has_focus` draws the
-/// keyboard focus around it.
+/// The bar, [`size::SPLITTER`] wide and as high as its room: a thin line at
+/// rest, so that it is not taken for a scrollbar, and a purple bar with a grip
+/// while hovered or dragged. `has_focus` draws the keyboard focus around it.
 pub fn splitter<'a, M: Clone + 'a>(
     look: SplitterLook,
     has_focus: bool,
@@ -124,12 +124,16 @@ pub fn splitter<'a, M: Clone + 'a>(
         container(Space::new())
             .width(size::SPLITTER - 2.0)
             .height(size::SPLITTER - 2.0)
-            .style(git::splitter_dot(palette, look))
+            .style(git::splitter_dot(palette))
     };
-    let grip = column![dot(), dot(), dot()]
-        .spacing(spacing::XS)
-        .align_x(alignment::Horizontal::Center);
-    let bar = container(grip)
+    let content: Element<'a, M> = match look {
+        SplitterLook::Idle => vertical_rule(palette.border_inactive),
+        SplitterLook::Hovered | SplitterLook::Dragged => column![dot(), dot(), dot()]
+            .spacing(spacing::XS)
+            .align_x(alignment::Horizontal::Center)
+            .into(),
+    };
+    let bar = container(content)
         .width(size::SPLITTER)
         .height(Length::Fill)
         .align_x(alignment::Horizontal::Center)
