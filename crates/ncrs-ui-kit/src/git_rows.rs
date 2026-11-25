@@ -3,14 +3,13 @@
 
 use iced::mouse::Interaction;
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, mouse_area, row, text, Row, Space};
-use iced::{alignment, Border, Color, Element, Length, Padding};
+use iced::widget::{button, container, mouse_area, row, text, Row, Space};
+use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::format::{estimated_width, fit_end};
-use crate::git_mark::MODIFIED_ORANGE;
 use crate::palette::Palette;
 use crate::theme::{self, font_size, git, size, spacing};
-use crate::tree_list::{LABEL_LEAD, TREE_INDENT};
+use crate::tree_list::TREE_INDENT;
 
 const NUMBER_WIDTH: f32 = 44.0;
 const COUNT_WIDTH: f32 = 90.0;
@@ -537,106 +536,4 @@ pub fn diff_hunk_header<'a, M: 'a>(content: String, palette: &Palette) -> Elemen
     .center_y(size::ROW)
     .width(Length::Fill)
     .into()
-}
-
-/// Room of a worktree row: the name and, under it, the branch.
-pub const WORKTREE_ROW_HEIGHT: f32 = 44.0;
-
-/// A worktree in the sidebar of the Git view.
-#[derive(Debug)]
-pub struct WorktreeRow<M> {
-    pub depth: usize,
-    pub name: String,
-    /// "WIP 7": set while the worktree has unsaved changes.
-    pub wip: Option<String>,
-    /// Commits ahead of and behind the main branch; `None` for the main
-    /// worktree itself.
-    pub distance: Option<(u32, u32)>,
-    /// The branch and what is to say about it, in the dim ink.
-    pub detail: String,
-    pub chosen: bool,
-    pub on_press: M,
-}
-
-/// The name, a chip with the unsaved changes and the distance to main on one
-/// line, the branch and its state dimmed under it.
-pub fn worktree_row<'a, M: Clone + 'a>(
-    worktree: WorktreeRow<M>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let (ink, dim) = if worktree.chosen {
-        (palette.cursor_text, palette.cursor_text)
-    } else {
-        (palette.text, palette.dim_text)
-    };
-    let behind_ink = |behind: u32| {
-        if worktree.chosen {
-            palette.cursor_text
-        } else if behind == 0 {
-            palette.dim_text
-        } else {
-            MODIFIED_ORANGE
-        }
-    };
-    let chip_ink = if worktree.chosen {
-        palette.cursor_text
-    } else {
-        MODIFIED_ORANGE
-    };
-    let small = |content: String, color: Color| {
-        text(content)
-            .size(font_size::SMALL)
-            .color(color)
-            .wrapping(Wrapping::None)
-    };
-    let first = row![text(worktree.name)
-        .size(font_size::BODY)
-        .color(ink)
-        .wrapping(Wrapping::None),]
-    .extend(worktree.wip.map(|wip| {
-        container(small(wip, chip_ink))
-            .padding([0.0, spacing::XS])
-            .style(move |_theme| container::Style {
-                border: Border {
-                    color: chip_ink,
-                    width: spacing::BORDER_WIDTH,
-                    radius: theme::radius::CORNER.into(),
-                },
-                ..container::Style::default()
-            })
-            .into()
-    }))
-    .push(container("").width(Length::Fill))
-    .extend(worktree.distance.map(|(ahead, behind)| {
-        row![
-            small(
-                format!("\u{2191}{ahead}"),
-                if worktree.chosen {
-                    palette.cursor_text
-                } else {
-                    palette.success
-                }
-            ),
-            small(format!("\u{2193}{behind}"), behind_ink(behind)),
-        ]
-        .spacing(spacing::XS)
-        .into()
-    }))
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center);
-    let content = container(column![first, small(worktree.detail, dim)].spacing(2.0))
-        .padding(Padding {
-            left: spacing::CELL_PADDING_X + LABEL_LEAD + TREE_INDENT * worktree.depth as f32,
-            right: spacing::CELL_PADDING_X,
-            ..Padding::ZERO
-        })
-        .clip(true)
-        .center_y(Length::Fill);
-    button(content)
-        .on_press(worktree.on_press)
-        .width(Length::Fill)
-        .height(WORKTREE_ROW_HEIGHT)
-        .padding(0.0)
-        .style(theme::menu_item(palette, worktree.chosen))
-        .into()
 }

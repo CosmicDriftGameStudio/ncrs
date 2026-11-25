@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 use ncrs_config::config::FilingLocation;
+use ncrs_config::repos::ReposSettings;
 use ncrs_i18n::{fill_template, Msg};
 
 use super::models;
@@ -35,6 +36,21 @@ pub fn update(
             path: Some(path),
         } if ctx.sandbox_active => {
             actions.push(Action::GrantFolder { kind, path });
+            Task::none()
+        }
+        SettingsMessage::FolderPicked {
+            kind: kind @ (AddAs::RepoSource | AddAs::RepoSkip),
+            path: Some(path),
+        }
+        | SettingsMessage::FolderGranted {
+            kind: kind @ (AddAs::RepoSource | AddAs::RepoSkip),
+            path,
+            result: Ok(()),
+        } => change_repos(settings, ctx, |current| {
+            repos_with_folder(current, kind, canonical(path))
+        }),
+        SettingsMessage::ScanRepos => {
+            actions.push(Action::ScanRepos);
             Task::none()
         }
         SettingsMessage::FolderPicked {
@@ -186,6 +202,40 @@ fn change_locations(
         return Task::none();
     };
     write_setting(settings, SettingChange::Locations(edit(&current)), ctx)
+}
+
+fn change_repos(
+    settings: &mut Settings,
+    ctx: &Ctx<'_>,
+    edit: impl FnOnce(&ReposSettings) -> ReposSettings,
+) -> Task<Message> {
+    let Some(current) = settings
+        .page
+        .as_ref()
+        .and_then(|state| state.config())
+        .map(|config| config.repos.clone())
+    else {
+        return Task::none();
+    };
+    write_setting(settings, SettingChange::Repos(edit(&current)), ctx)
+}
+
+/// `path` as a search folder, or its name as a name the search skips; what is
+/// there already stays as it is.
+fn repos_with_folder(current: &ReposSettings, kind: AddAs, path: PathBuf) -> ReposSettings {
+    let mut next = current.clone();
+    match kind {
+        AddAs::RepoSource if !next.sources.contains(&path) => next.sources.push(path),
+        AddAs::RepoSkip => {
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|name| !next.skip.contains(name));
+            next.skip.extend(name);
+        }
+        AddAs::RepoSource | AddAs::ReadFolder | AddAs::Indexed | AddAs::Favourite => {}
+    }
+    next
 }
 
 fn confirm_removal(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {

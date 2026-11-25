@@ -121,6 +121,7 @@ key_actions! {
     Notes => "notes",
     NoteOnFile => "note_on_file",
     GitView => "git_view",
+    Repos => "repos",
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
@@ -250,6 +251,7 @@ impl KeyAction {
             | Self::NoteOnFile
             | Self::SearchDocuments
             | Self::GitView
+            | Self::Repos
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -481,6 +483,7 @@ impl KeyAction {
             | Self::AddFavourite
             | Self::NoteOnFile
             | Self::GitView
+            | Self::Repos
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments
@@ -600,6 +603,7 @@ impl KeyAction {
             | Self::AddFavourite
             | Self::NoteOnFile
             | Self::GitView
+            | Self::Repos
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments

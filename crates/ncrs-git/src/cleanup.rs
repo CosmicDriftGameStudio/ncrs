@@ -26,13 +26,17 @@ pub enum KeepReason {
     /// Newly made and still empty (G24): nothing was done on it yet.
     Empty,
     /// Commits that are neither in the default branch nor on the remote.
-    Unpushed { commits: u32 },
+    Unpushed {
+        commits: u32,
+    },
     /// Pushed, but not in the default branch.
     NotMerged,
     /// The remote branch is gone but the state before the fetch is not known,
     /// or the branch moved after the last push.
     AfterLastPush,
-    WorktreeChanges { count: usize },
+    WorktreeChanges {
+        count: usize,
+    },
     MainWorktree,
     CurrentWorktree,
     Detached,
@@ -118,14 +122,15 @@ impl CleanupReport {
 /// The tips of the remote-tracking branches by short name (`origin/feature`).
 /// Take it before a fetch: it is what tells a branch that was merged on the
 /// remote from one that got new commits after its last push.
-pub fn remote_tips(
-    root: &Path,
-    stop: &AtomicBool,
-) -> Result<BTreeMap<String, String>, GitError> {
+pub fn remote_tips(root: &Path, stop: &AtomicBool) -> Result<BTreeMap<String, String>, GitError> {
     let repository = open(root)?;
     let platform = repository.references().map_err(GitError::read)?;
     let mut tips = BTreeMap::new();
-    for reference in platform.remote_branches().map_err(GitError::read)?.flatten() {
+    for reference in platform
+        .remote_branches()
+        .map_err(GitError::read)?
+        .flatten()
+    {
         crate::status::check_stop(stop)?;
         let name = reference.name().shorten().to_string();
         if name.ends_with("/HEAD") {
@@ -160,8 +165,8 @@ fn judge_branch(
         return Err(KeepReason::CurrentBranch);
     }
     if branch.merged {
-        let untouched = !branch.has_upstream
-            && overview.main_tip.as_deref() == Some(branch.tip.as_str());
+        let untouched =
+            !branch.has_upstream && overview.main_tip.as_deref() == Some(branch.tip.as_str());
         return if untouched {
             Err(KeepReason::Empty)
         } else {
@@ -209,7 +214,9 @@ fn judge_worktree(
         return Err(KeepReason::Locked);
     }
     if worktree.wip > 0 {
-        return Err(KeepReason::WorktreeChanges { count: worktree.wip });
+        return Err(KeepReason::WorktreeChanges {
+            count: worktree.wip,
+        });
     }
     let Some(branch) = overview.local.iter().find(|branch| branch.name == name) else {
         return Err(KeepReason::Detached);
@@ -251,7 +258,10 @@ pub fn cleanup_list(
         .collect();
     for branch in &overview.local {
         if checked_out_elsewhere.contains(&branch.name.as_str()) {
-            let offered = list.worktrees.iter().any(|row| row.branch.name == branch.name);
+            let offered = list
+                .worktrees
+                .iter()
+                .any(|row| row.branch.name == branch.name);
             if !offered {
                 list.kept.push(Kept {
                     name: branch.name.clone(),
@@ -305,15 +315,18 @@ impl Git {
             let result = self.delete_scanned_branch(branch);
             if result.is_ok() {
                 let tracking_exists = branch.upstream.as_ref().filter(|name| {
-                    self.try_text(&["rev-parse", "--verify", "-q", &format!("refs/remotes/{name}")])
-                        .is_some()
+                    self.try_text(&[
+                        "rev-parse",
+                        "--verify",
+                        "-q",
+                        &format!("refs/remotes/{name}"),
+                    ])
+                    .is_some()
                 });
                 if plan.delete_remote && branch.reason == CleanupReason::InDefault {
                     if let Some((remote, merge)) = remote_home {
-                        remote_deletes.push((
-                            remote,
-                            merge.trim_start_matches("refs/heads/").to_string(),
-                        ));
+                        remote_deletes
+                            .push((remote, merge.trim_start_matches("refs/heads/").to_string()));
                     }
                 }
                 deleted.push(RecreatedBranch {

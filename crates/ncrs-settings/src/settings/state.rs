@@ -34,6 +34,8 @@ pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";
 pub const SYSTEM_SECTION: &str = "[system]";
 pub const NOTES_SECTION: &str = "[notes]";
+/// Where the Git page keeps its values.
+pub const REPOS_SECTION: &str = "[repos]";
 pub const COLUMNS_SECTION: &str = "[columns]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
@@ -624,6 +626,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::CheckForUpdates(_)
         | SettingChange::FavouritesBar(_)
         | SettingChange::Notes(_)
+        | SettingChange::Repos(_)
         | SettingChange::Load(_)
         | SettingChange::HermesSwitch(_)
         | SettingChange::HermesChatKeepDays(_)

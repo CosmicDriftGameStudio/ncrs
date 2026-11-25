@@ -1,16 +1,19 @@
-//! The buttons of the header: fetch, pull, push, stash and undo, as icons.
+//! The buttons of the header: fetch, pull, push, a new branch, stash and
+//! undo, with their words. Where the actions are off they stay and are
+//! locked; the tooltip says why.
 
 use iced::widget::row;
 use iced::{alignment, Element};
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::kit::{icon_button, Icon, Tone};
+use ncrs_ui_kit::kit::{toolbar_button, Tone};
 use ncrs_ui_kit::theme::spacing;
 
-use crate::actions::{Operation, SyncBar};
+use crate::actions::{MenuAction, Operation, SyncBar, Unavailable};
 use crate::ctx::ViewCtx;
 use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
+use crate::state::State;
 
 /// Shown on the button whose operation is running.
 const BUSY_LABEL: &str = "\u{2026}";
@@ -25,90 +28,127 @@ pub(in crate::view) fn tip(what: &str, shortcut: Shortcut, keys: &GitKeys) -> St
     }
 }
 
-fn counted(count: u32) -> Option<String> {
-    (count > 0).then(|| count.to_string())
+fn counted(word: &str, glyph: &str, count: u32) -> String {
+    if count > 0 {
+        format!("{word} {glyph}{count}")
+    } else {
+        word.to_owned()
+    }
 }
 
-pub fn view<'a>(
-    sync: &'a SyncBar,
-    busy: Option<Operation>,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
+pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let lang = ctx.lang;
-    // The button of the running operation shows that and waits.
-    let label = |operation: Operation, idle: Option<String>| {
+    let busy = state.actions.busy;
+    let idle = SyncBar::default();
+    let sync = state.actions.sync.as_ref().unwrap_or(&idle);
+    let locked_reason = state.actions.unavailable.map(|reason| match reason {
+        Unavailable::GitMissing => Msg::GitViewHintGitMissing,
+        Unavailable::Sandbox => Msg::GitViewHintSandbox,
+    });
+    let word = |operation: Operation, idle_word: String| {
         if busy == Some(operation) {
-            Some(BUSY_LABEL.to_owned())
+            BUSY_LABEL.to_owned()
         } else {
-            idle
+            idle_word
         }
     };
-    let press =
-        |operation: Operation, message: Message| (busy != Some(operation)).then_some(message);
-    let mut bar = row![
-        icon_button(
-            Icon::Download,
-            label(Operation::Fetch, None),
-            &tip(
-                lang.text(Msg::GitViewToolbarFetch),
-                Shortcut::Fetch,
-                ctx.keys
-            ),
-            press(Operation::Fetch, Message::Fetch),
-            Tone::Secondary,
-            palette
+    let action = |operation: Option<Operation>,
+                  label: String,
+                  what: Msg,
+                  shortcut: Shortcut,
+                  message: Message,
+                  tone: Tone| {
+        let enabled = locked_reason.is_none() && operation.is_none_or(|op| busy != Some(op));
+        let shown = match operation {
+            Some(op) => word(op, label),
+            None => label,
+        };
+        let help = match locked_reason {
+            Some(reason) => lang.text(reason).to_owned(),
+            None => tip(lang.text(what), shortcut, ctx.keys),
+        };
+        toolbar_button(
+            &shown,
+            None,
+            &help,
+            enabled.then_some(message),
+            tone,
+            palette,
+        )
+    };
+    let pull_tone = if sync.behind > 0 {
+        Tone::Primary
+    } else {
+        Tone::Secondary
+    };
+    let pull_label = counted(lang.text(Msg::GitViewToolbarPull), "\u{2193}", sync.behind);
+    let push_label = counted(lang.text(Msg::GitViewToolbarPush), "\u{2191}", sync.ahead);
+    let undo_help = match (&sync.undo, locked_reason) {
+        (_, Some(reason)) => lang.text(reason).to_owned(),
+        (Some(what), None) => tip(
+            &fill_template(lang.text(Msg::GitViewToolbarUndo), &[("{what}", what)]),
+            Shortcut::Undo,
+            ctx.keys,
         ),
-        icon_button(
-            Icon::ArrowDownToLine,
-            label(
-                Operation::Pull,
-                counted(sync.behind).map(|count| format!("\u{2193}{count}"))
-            ),
-            &tip(lang.text(Msg::GitViewToolbarPull), Shortcut::Pull, ctx.keys),
-            press(Operation::Pull, Message::Pull),
-            Tone::Secondary,
-            palette
+        (None, None) => lang.text(Msg::GitViewToolbarNothingToUndo).to_owned(),
+    };
+    let undo_enabled =
+        locked_reason.is_none() && sync.undo.is_some() && busy != Some(Operation::Undo);
+    row![
+        action(
+            Some(Operation::Fetch),
+            lang.text(Msg::GitViewToolbarFetch).to_owned(),
+            Msg::GitViewToolbarFetch,
+            Shortcut::Fetch,
+            Message::Fetch,
+            Tone::Secondary
         ),
-        icon_button(
-            Icon::ArrowUpFromLine,
-            label(
-                Operation::Push,
-                counted(sync.ahead).map(|count| format!("\u{2191}{count}"))
-            ),
-            &tip(lang.text(Msg::GitViewToolbarPush), Shortcut::Push, ctx.keys),
-            press(Operation::Push, Message::Push),
-            Tone::Secondary,
-            palette
+        action(
+            Some(Operation::Pull),
+            pull_label,
+            Msg::GitViewToolbarPull,
+            Shortcut::Pull,
+            Message::Pull,
+            pull_tone
         ),
-        icon_button(
-            Icon::Archive,
-            label(Operation::Stash, None),
-            &tip(
-                lang.text(Msg::GitViewToolbarStash),
-                Shortcut::Stash,
-                ctx.keys
+        action(
+            Some(Operation::Push),
+            push_label,
+            Msg::GitViewToolbarPush,
+            Shortcut::Push,
+            Message::Push,
+            Tone::Secondary
+        ),
+        action(
+            None,
+            lang.text(Msg::GitViewToolbarBranch).to_owned(),
+            Msg::GitViewToolbarBranch,
+            Shortcut::NewBranch,
+            Message::MenuPressed(MenuAction::NewBranchFrom),
+            Tone::Secondary
+        ),
+        action(
+            Some(Operation::Stash),
+            lang.text(Msg::GitViewToolbarStash).to_owned(),
+            Msg::GitViewToolbarStash,
+            Shortcut::Stash,
+            Message::Stash,
+            Tone::Secondary
+        ),
+        toolbar_button(
+            &word(
+                Operation::Undo,
+                lang.text(Msg::GitViewToolbarUndoLabel).to_owned()
             ),
-            press(Operation::Stash, Message::Stash),
+            None,
+            &undo_help,
+            undo_enabled.then_some(Message::Undo),
             Tone::Secondary,
             palette
         ),
     ]
     .spacing(spacing::M)
-    .align_y(alignment::Vertical::Center);
-    if let Some(what) = &sync.undo {
-        bar = bar.push(icon_button(
-            Icon::Undo,
-            label(Operation::Undo, None),
-            &tip(
-                &fill_template(lang.text(Msg::GitViewToolbarUndo), &[("{what}", what)]),
-                Shortcut::Undo,
-                ctx.keys,
-            ),
-            press(Operation::Undo, Message::Undo),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    bar.into()
+    .align_y(alignment::Vertical::Center)
+    .into()
 }

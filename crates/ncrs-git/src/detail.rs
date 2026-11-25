@@ -81,7 +81,12 @@ pub fn commit_detail(
             .unwrap_or_default(),
         author_time: commit
             .author()
-            .map(|signature| signature.time().map(|time| time.seconds).unwrap_or_default())
+            .map(|signature| {
+                signature
+                    .time()
+                    .map(|time| time.seconds)
+                    .unwrap_or_default()
+            })
             .unwrap_or_default(),
         committer: commit
             .committer()

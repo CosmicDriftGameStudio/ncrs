@@ -4382,6 +4382,7 @@ dependencies = [
  "ncrs-palette",
  "ncrs-pipeline",
  "ncrs-remote",
+ "ncrs-repos",
  "ncrs-search",
  "ncrs-settings",
  "ncrs-store",
@@ -4568,6 +4569,7 @@ dependencies = [
 name = "ncrs-git"
 version = "0.0.0"
 dependencies = [
+ "getrandom 0.4.3",
  "gix",
  "tempfile",
 ]
@@ -4578,6 +4580,7 @@ version = "0.0.0"
 dependencies = [
  "iced",
  "iced_test",
+ "ncrs-config",
  "ncrs-git",
  "ncrs-i18n",
  "ncrs-ui-kit",
@@ -4822,6 +4825,22 @@ dependencies = [
  "ncrs-ui-kit",
  "russh",
  "tokio",
+]
+
+[[package]]
+name = "ncrs-repos"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "iced_test",
+ "ncrs-config",
+ "ncrs-git",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "serde",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.25.18+spec-1.1.0",
 ]
 
 [[package]]

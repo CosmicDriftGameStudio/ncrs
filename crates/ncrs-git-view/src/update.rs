@@ -18,7 +18,12 @@ use crate::diff_layout::rows_before;
 use crate::handlers;
 use crate::load;
 use crate::message::Message;
-use crate::state::{Area, ColumnDrag, Detail, DiffState, Fold, SidebarItem, State, Subject, PAGE};
+use crate::navigate;
+use crate::picker;
+use crate::state::{
+    remotes_were_chosen, Area, ColumnDrag, Detail, DiffState, Fold, Section, SidebarItem, State,
+    Subject, PAGE,
+};
 use crate::view::{DIFF_ID, FILTER_ID};
 
 /// Lines an arrow key scrolls the diff by.
@@ -44,6 +49,10 @@ pub fn open(state: &mut State, root: PathBuf, name: String, ctx: &Ctx) -> Task<M
             .iter()
             .filter_map(|key| Fold::from_key(key))
             .collect();
+        state.remotes_chosen = remotes_were_chosen(&ctx.folded);
+        if !state.remotes_chosen {
+            state.collapsed.insert(Fold::Section(Section::Remotes));
+        }
     }
     state.problem = None;
     load::everything(state)
@@ -74,7 +83,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             match *result {
                 Ok(log) => {
                     state.log = Some(log);
-                    quiet(ensure_detail(state))
+                    let jump = match state.pending_jump.take() {
+                        Some(sha) => navigate::jump_to(state, sha),
+                        None => Task::none(),
+                    };
+                    quiet(Task::batch([ensure_detail(state), jump]))
                 }
                 Err(reason) => failed(state, ctx, &reason),
             }
@@ -85,13 +98,14 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             }
             match *result {
                 Ok(info) => {
+                    let sha = info.id.clone();
                     state.file_cursor = 0;
                     state.detail = Some(Detail {
                         subject: Subject::Commit(info.id.clone()),
                         files: info.files.clone(),
                         info: Some(info),
                     });
-                    quiet(Task::none())
+                    quiet(load::containing(state, sha))
                 }
                 Err(reason) => failed(state, ctx, &reason),
             }
@@ -214,6 +228,14 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             shown.ignore_whitespace = !shown.ignore_whitespace;
             quiet(reload_diff(state))
         }
+        Message::Up if state.picker.is_some() => {
+            picker::move_cursor(state, -1);
+            quiet(Task::none())
+        }
+        Message::Down if state.picker.is_some() => {
+            picker::move_cursor(state, 1);
+            quiet(Task::none())
+        }
         Message::Up => quiet(move_cursor(state, -1)),
         Message::Down => quiet(move_cursor(state, 1)),
         // On a group the arrows fold it first; otherwise they move
@@ -221,14 +243,14 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::Left => {
             let folded = fold_at_cursor(state, true);
             if folded.is_none() && state.area != Area::Sidebar {
-                state.area = state.area.previous();
+                state.area = state.area.previous_list();
             }
             (Task::none(), folded)
         }
         Message::Right => {
             let folded = fold_at_cursor(state, false);
             if folded.is_none() && state.area != Area::Detail {
-                state.area = state.area.next();
+                state.area = state.area.next_list();
             }
             (Task::none(), folded)
         }
@@ -325,6 +347,27 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::Retry
         | Message::ToggleNoticeDetails
         | Message::DismissNotice) => handlers::act(state, forwarded, ctx),
+        moved @ (Message::OpenPicker(_)
+        | Message::PickerQuery(_)
+        | Message::PickerPressed(_)
+        | Message::PickerEnterWithStash
+        | Message::PickerNewBranch
+        | Message::PickerSubmit
+        | Message::SplitPressed(_)
+        | Message::SplitHover(_)
+        | Message::SplitLeave
+        | Message::SplitReset(_)
+        | Message::SplitNudge(..)
+        | Message::PaneMoved(_)
+        | Message::PaneReleased
+        | Message::JumpToHead
+        | Message::JumpToWip
+        | Message::JumpToCommit(_)
+        | Message::GoToParent
+        | Message::CopySha
+        | Message::ToggleTreeKey
+        | Message::ChipPressed(_)
+        | Message::ContainingLoaded(..)) => navigate::handle(state, moved, ctx),
     }
 }
 
@@ -351,13 +394,15 @@ pub fn ensure_detail(state: &mut State) -> Task<Message> {
         return Task::none();
     }
     state.detail = None;
+    state.containing = None;
+    state.copied_sha = None;
     match subject {
         Subject::Working => load::working_changes(state),
         Subject::Commit(sha) => load::commit_detail(state, sha),
     }
 }
 
-fn load_more(state: &mut State) -> Task<Message> {
+pub fn load_more(state: &mut State) -> Task<Message> {
     if !state.log.as_ref().is_some_and(|log| log.has_more) {
         return Task::none();
     }
@@ -368,6 +413,9 @@ fn load_more(state: &mut State) -> Task<Message> {
 /// Folds `fold` if it is open and unfolds it if it is folded; the action tells
 /// the app what to remember.
 fn toggle_fold(state: &mut State, fold: Fold) -> Option<Action> {
+    if fold == Fold::Section(Section::Remotes) {
+        state.remotes_chosen = true;
+    }
     if !state.collapsed.remove(&fold) {
         state.collapsed.insert(fold);
     }
@@ -450,6 +498,7 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
             let index = state.file_cursor;
             quiet(open_diff(state, index))
         }
+        Area::SidebarSplit | Area::DetailSplit => quiet(Task::none()),
     }
 }
 
@@ -485,6 +534,7 @@ fn move_cursor(state: &mut State, delta: isize) -> Task<Message> {
             state.file_cursor = step(state.file_cursor, delta, len);
             Task::none()
         }
+        Area::SidebarSplit | Area::DetailSplit => Task::none(),
     }
 }
 
@@ -568,6 +618,9 @@ fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
 }
 
 fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
+    if state.picker.is_some() {
+        return quiet(picker::close(state));
+    }
     if state.actions.dialog_open() {
         return handlers::act(state, Message::CloseDialog, ctx);
     }

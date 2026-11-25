@@ -11,7 +11,7 @@
 
 // The CI runs `ui_tests` only on macOS, where the reference images were made.
 mod ui_tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use iced::widget::text_editor;
     use iced::{Point, Size};
@@ -22,10 +22,14 @@ mod ui_tests {
     };
     use ncrs_git_view::actions::{
         ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
-        NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar,
+        NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar, Unavailable,
     };
-    use ncrs_git_view::state::{Area, Detail, Subject};
-    use ncrs_git_view::{update, view, Ctx, Message, State, ViewCtx};
+    use ncrs_git_view::panes::PaneDrag;
+    use ncrs_git_view::picker::Picker;
+    use ncrs_git_view::state::{Area, Detail, Fold, Section, Subject};
+    use ncrs_git_view::{
+        update, view, Ctx, Message, PaneWidths, PickerKind, RepoEntry, Split, State, ViewCtx,
+    };
     use ncrs_i18n::Language;
     use ncrs_ui_kit::format::DateFormat;
     use ncrs_ui_kit::git_rows::CommitColumns;
@@ -74,7 +78,9 @@ mod ui_tests {
             has_upstream: true,
             ahead,
             behind,
+            upstream: Some(format!("origin/{name}")),
             merged: false,
+            ..BranchInfo::default()
         }
     }
 
@@ -93,6 +99,7 @@ mod ui_tests {
             added,
             removed,
             binary: false,
+            untracked: false,
         }
     }
 
@@ -150,17 +157,44 @@ mod ui_tests {
                 "v1.3.0".to_owned(),
             ],
             stashes: 3,
-            worktrees: vec![WorktreeInfo {
-                path: PathBuf::from("/repo"),
-                branch: Some("main".to_owned()),
-                head_short: None,
-                wip: 7,
-                ahead: 1,
-                behind: 2,
-                merged: false,
-                is_main: true,
-                is_current: true,
-            }],
+            worktrees: vec![
+                WorktreeInfo {
+                    path: PathBuf::from("/repo"),
+                    branch: Some("main".to_owned()),
+                    head_short: None,
+                    wip: 7,
+                    ahead: 1,
+                    behind: 2,
+                    upstream_ahead: 1,
+                    upstream_behind: 2,
+                    merged: false,
+                    is_main: true,
+                    is_current: true,
+                    ..WorktreeInfo::default()
+                },
+                WorktreeInfo {
+                    path: PathBuf::from("/work/kassenbuch-rechnungs-export"),
+                    branch: Some("feature/rechnungs-export".to_owned()),
+                    wip: 2,
+                    ahead: 3,
+                    upstream_ahead: 3,
+                    ..WorktreeInfo::default()
+                },
+                WorktreeInfo {
+                    path: PathBuf::from("/work/kassenbuch-rundung"),
+                    branch: Some("fix/rundung".to_owned()),
+                    merged: true,
+                    upstream_behind: 4,
+                    ..WorktreeInfo::default()
+                },
+                WorktreeInfo {
+                    path: PathBuf::from("/work/kassenbuch-v1.3"),
+                    branch: None,
+                    head_short: Some("9f2c1ab".to_owned()),
+                    ..WorktreeInfo::default()
+                },
+            ],
+            ..RefsOverview::default()
         };
         drop(update(
             &mut state,
@@ -196,8 +230,11 @@ mod ui_tests {
                 id: first.id,
                 short: first.short,
                 parents: Vec::new(),
-                author: first.author,
+                author: first.author.clone(),
                 time: first.time,
+                author_time: first.time,
+                committer: first.author,
+                committer_time: first.time,
                 message: "Rechnungen als PDF exportieren\n\nDer Export nimmt die gewählten Rechnungen und legt sie als eine PDF-Datei je Kunde ab.\n\n- Vorlage mit Briefkopf aus den Einstellungen\n- Fehlende Anschrift wird vor dem Export gemeldet".to_owned(),
                 files: Vec::new(),
             }),
@@ -356,13 +393,31 @@ mod ui_tests {
 
     /// With the pointer over `hover`, so a tooltip shows.
     fn picture_at(state: &State, reference: &str, hover: Option<Point>) {
-        let palette = ThemePreset::Cosmic.palette();
+        picture_in(
+            state,
+            reference,
+            hover,
+            PaneWidths::STANDARD,
+            ThemePreset::Cosmic,
+        );
+    }
+
+    fn picture_in(
+        state: &State,
+        reference: &str,
+        hover: Option<Point>,
+        panes: PaneWidths,
+        preset: ThemePreset,
+    ) {
+        let palette = preset.palette();
         let ctx = ViewCtx {
             lang: Language::German,
             palette: &palette,
             date_format: DateFormat::Iso,
             window: WINDOW,
             columns: CommitColumns::STANDARD,
+            panes,
+            home: Path::new("/Users/marc"),
             keys: &ncrs_git_view::GitKeys::default(),
         };
         let mut simulator = Simulator::with_size(
@@ -508,13 +563,13 @@ mod ui_tests {
 
     #[test]
     fn remote_branch_menu_picture() {
-        let state = with_menu(MenuTarget::RemoteBranch(1), 9);
+        let state = with_menu(MenuTarget::RemoteBranch(1), 15);
         picture(&state, "tests/snapshots/git-branch-menu-remote-cosmic");
     }
 
     #[test]
     fn stash_menu_picture() {
-        let state = with_menu(MenuTarget::Stash(0), 19);
+        let state = with_menu(MenuTarget::Stash(0), 24);
         picture(&state, "tests/snapshots/git-stash-menu-cosmic");
     }
 
@@ -647,7 +702,195 @@ mod ui_tests {
         on_commit(&mut state);
         state.actions.sync = Some(sync());
         state.area = Area::Sidebar;
-        state.sidebar_cursor = 18;
+        state.sidebar_cursor = 23;
         picture(&state, "tests/snapshots/git-stash-list-cosmic");
+    }
+
+    /// A branch list and a repository list with enough rows to scroll.
+    fn open_picker(kind: PickerKind, query: &str, cursor: usize) -> State {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.picker = Some(Picker {
+            kind,
+            query: query.to_owned(),
+            cursor,
+            repositories: vec![
+                RepoEntry {
+                    name: "kassenbuch".to_owned(),
+                    path: PathBuf::from("/repo"),
+                },
+                RepoEntry {
+                    name: "kassenbuch-rechnungs-export".to_owned(),
+                    path: PathBuf::from("/work/kassenbuch-rechnungs-export"),
+                },
+                RepoEntry {
+                    name: "buchhaltung-web".to_owned(),
+                    path: PathBuf::from("/work/buchhaltung-web"),
+                },
+                RepoEntry {
+                    name: "steuer-tabellen".to_owned(),
+                    path: PathBuf::from("/work/steuer-tabellen"),
+                },
+            ],
+        });
+        state
+    }
+
+    #[test]
+    fn header_behind_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        picture(&state, "tests/snapshots/git-header-behind-cosmic");
+    }
+
+    #[test]
+    fn header_up_to_date_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.actions.local = None;
+        state.actions.sync = Some(SyncBar {
+            ahead: 0,
+            behind: 0,
+            undo: None,
+        });
+        if let Some(overview) = state.overview.as_mut() {
+            for branch in &mut overview.local {
+                branch.ahead = 0;
+                branch.behind = 0;
+            }
+            for worktree in &mut overview.worktrees {
+                worktree.wip = 0;
+            }
+        }
+        picture(&state, "tests/snapshots/git-header-up-to-date-cosmic");
+    }
+
+    #[test]
+    fn header_sandbox_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.actions.sync = None;
+        state.actions.local = None;
+        state.actions.unavailable = Some(Unavailable::Sandbox);
+        picture_at(
+            &state,
+            "tests/snapshots/git-header-sandbox-cosmic",
+            Some(Point::new(700.0, 20.0)),
+        );
+    }
+
+    #[test]
+    fn branch_picker_picture() {
+        let state = open_picker(PickerKind::Branch, "", 1);
+        picture(&state, "tests/snapshots/git-branch-picker-cosmic");
+    }
+
+    #[test]
+    fn branch_picker_filtered_picture() {
+        let state = open_picker(PickerKind::Branch, "rund", 0);
+        picture(&state, "tests/snapshots/git-branch-picker-filtered-cosmic");
+    }
+
+    #[test]
+    fn repo_picker_picture() {
+        let state = open_picker(PickerKind::Repository, "", 2);
+        picture(&state, "tests/snapshots/git-repo-picker-cosmic");
+    }
+
+    #[test]
+    fn splitter_resized_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.area = Area::SidebarSplit;
+        picture_in(
+            &state,
+            "tests/snapshots/git-splitter-resized-cosmic",
+            None,
+            PaneWidths {
+                sidebar: 380,
+                detail: 560,
+            },
+            ThemePreset::Cosmic,
+        );
+    }
+
+    #[test]
+    fn splitter_dragged_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        let widths = PaneWidths {
+            sidebar: 372,
+            detail: 450,
+        };
+        state.pane_drag = Some(PaneDrag {
+            split: Split::Sidebar,
+            start: PaneWidths::STANDARD,
+            origin: Some(300.0),
+            current: widths,
+        });
+        picture(&state, "tests/snapshots/git-splitter-dragged-cosmic");
+    }
+
+    #[test]
+    fn head_row_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        if let Some(log) = state.log.as_mut() {
+            log.head = log.commits.get(3).map(|head| head.id.clone());
+        }
+        state.commit_cursor = 5;
+        picture(&state, "tests/snapshots/git-head-row-cosmic");
+    }
+
+    #[test]
+    fn detail_full_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        let second = commit(1);
+        let third = commit(2);
+        if let Some(info) = state
+            .detail
+            .as_mut()
+            .and_then(|detail| detail.info.as_mut())
+        {
+            info.parents = vec![second.id.clone(), third.id];
+            info.committer = "Tobias Engel".to_owned();
+            info.committer_time += 3_600;
+        }
+        let shown = commit(0).id;
+        state.containing = Some((
+            shown,
+            vec![
+                label("main", RefKind::Branch),
+                label("origin/main", RefKind::Remote),
+                label("feature/rechnungs-export", RefKind::Branch),
+                label("release/1.4", RefKind::Branch),
+            ],
+        ));
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-detail-full-cosmic");
+    }
+
+    #[test]
+    fn sidebar_sections_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.area = Area::Sidebar;
+        state.sidebar_cursor = 7;
+        state.collapsed.insert(Fold::Section(Section::Tags));
+        picture(&state, "tests/snapshots/git-sidebar-sections-cosmic");
+    }
+
+    #[test]
+    fn dracula_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        picture_in(
+            &state,
+            "tests/snapshots/git-overview-dracula",
+            None,
+            PaneWidths::STANDARD,
+            ThemePreset::Dracula,
+        );
     }
 }

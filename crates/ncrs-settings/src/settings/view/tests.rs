@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::facts::{DocumentsFacts, FavouritesFacts};
+use crate::facts::{DocumentsFacts, FavouritesFacts, ReposScanFacts};
 use crate::message::{SettingChange, SettingField};
 use ncrs_config::config::{
     AiEndpointProblem, AiProviderChoice, AiProviderName, Filing, OwnDetail, ProgramLine,
@@ -46,6 +46,7 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
             entitlement: ncrs_store::Entitlement::Unrestricted,
             facts: DocumentsFacts::default(),
             favourites: FavouritesFacts::default(),
+            repos_scan: ReposScanFacts::default(),
             lang: Language::EnglishFuturama,
             palette: &palette,
         };
@@ -88,6 +89,7 @@ fn the_full_version_page_is_nowhere_when_nothing_is_locked() {
             entitlement,
             facts: DocumentsFacts::default(),
             favourites: FavouritesFacts::default(),
+            repos_scan: ReposScanFacts::default(),
             lang: Language::English,
             palette: &palette,
         };
@@ -120,6 +122,7 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
         entitlement: ncrs_store::Entitlement::TrialNotStarted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang: Language::English,
         palette: &palette,
     };
@@ -586,6 +589,7 @@ fn rows_of(feature: SettingsFeature, state: &SettingsState, lang: Language) -> V
         entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang,
         palette: &palette,
     };
@@ -653,6 +657,7 @@ fn ai_view<'a>(
         entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang,
         palette,
     }

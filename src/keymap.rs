@@ -138,6 +138,7 @@ impl KeyActionMessage for KeyAction {
             Self::Notes => Message::OpenNotes,
             Self::NoteOnFile => Message::NoteOnFile,
             Self::GitView => Message::OpenGitView,
+            Self::Repos => Message::OpenRepos,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
@@ -245,6 +246,26 @@ mod tests {
             let taken = clashes(&GitKeys::defaults_for(mac), &default_bindings_for(mac));
             assert!(taken.is_empty(), "mac: {mac}: {taken:?}");
         }
+    }
+
+    #[test]
+    fn no_repos_shortcut_is_taken_by_the_app_keymap() {
+        use crate::repos_keys::clashes;
+        use ncrs_repos::ReposKeys;
+        for mac in [true, false] {
+            let taken = clashes(&ReposKeys::defaults_for(mac), &default_bindings_for(mac));
+            assert!(taken.is_empty(), "mac: {mac}: {taken:?}");
+        }
+    }
+
+    #[test]
+    fn a_repos_key_set_in_the_config_is_checked_against_the_app_keymap() {
+        let (_dir, path) = written("[keys.repos]\nfetch = \"primary+shift+n\"\n");
+        let config = config::load(&path).unwrap();
+        let clash =
+            crate::repos_keys::resolve(&config.repos_keys, &config.keymap, cfg!(target_os = "macos"));
+        // Cmd+Shift+N is note_on_file on a Mac, Ctrl+Shift+N elsewhere.
+        assert!(clash.is_err(), "{clash:?}");
     }
 
     #[test]

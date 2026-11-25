@@ -176,6 +176,10 @@ pub enum Message {
     // --- The Git tab, opened from the command list or the folder context menu ---
     GitView(GitTabId, ncrs_git_view::Message),
     OpenGitView,
+    // --- The Repos tab, every repository of the machine in one list ---
+    Repos(ncrs_repos::Message),
+    OpenRepos,
+    CloseRepos,
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),
     /// The note on the file under the cursor, made when there is none.
@@ -306,6 +310,7 @@ pub enum ShownTab {
     Viewer,
     Notes,
     Git(GitTabId),
+    Repos,
     Filing,
     Hermes,
 }

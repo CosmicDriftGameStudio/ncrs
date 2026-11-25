@@ -14201,6 +14201,714 @@
       "context": "Note under the title of the Git list in the keyboard shortcuts dialog: these keys cannot be changed here. [keys.git] is the name of a table in the config file; keep it as it is.",
       "en": "Shown only. Change these keys in the [keys.git] table of the config file.",
       "de": "Nur zur Ansicht. Diese Tasten ändert man in der Tabelle [keys.git] der Konfigurationsdatei."
+    },
+    {
+      "key": "git_view.undo_ignored",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A pattern was added to the ignore file. {pattern} is the pattern, e.g. *.log.",
+      "en": "ignored {pattern}",
+      "de": "{pattern} ignoriert"
+    },
+    {
+      "key": "git_view.undo_created_tag",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A tag was created. {name} is its name. Tag is the Git word and stays.",
+      "en": "created tag {name}",
+      "de": "Tag {name} angelegt"
+    },
+    {
+      "key": "git_view.undo_cherry_picked",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A commit was copied onto the branch (cherry-pick). {title} is its title. Cherry-pick is the Git word and stays.",
+      "en": "cherry-picked “{title}”",
+      "de": "Cherry-Pick von „{title}“"
+    },
+    {
+      "key": "git_view.undo_reverted",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A commit was reverted, that is a new commit undoes its changes. {title} is the title of the reverted commit. Revert is the Git word and stays.",
+      "en": "reverted “{title}”",
+      "de": "„{title}“ zurückgenommen (Revert)"
+    },
+    {
+      "key": "git_view.undo_reset",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". A branch was moved to another commit (reset). {branch} is the branch, {sha} the short id of the commit it was moved to. Reset is the Git word and stays.",
+      "en": "reset {branch} to {sha}",
+      "de": "{branch} auf {sha} zurückgesetzt"
+    },
+    {
+      "key": "git_view.undo_cleaned_up",
+      "context": "Git tab, toolbar: what the undo button would take back, shown after \"Undo: \". Several branches were deleted together by the clean up. {count} is how many, at least 1.",
+      "en": "cleaned up {count} branch(es)",
+      "de": "{count} Branch(es) aufgeräumt"
+    },
+    {
+      "key": "git_view.picker_group_local",
+      "context": "Git tab, branch list: small heading over the branches of this computer. Shown in upper case.",
+      "en": "Local",
+      "de": "Lokal"
+    },
+    {
+      "key": "git_view.picker_group_remote",
+      "context": "Git tab, branch list: small heading over the branches that live on a server (remote). Shown in upper case.",
+      "en": "Remote",
+      "de": "Remote"
+    },
+    {
+      "key": "git_view.picker_new_branch",
+      "context": "Git tab, branch list: last row, it starts a new branch at the commit that is checked out instead of switching. The key of the action is shown at its right.",
+      "en": "New branch from here…",
+      "de": "Neuer Branch von hier…"
+    },
+    {
+      "key": "git_view.picker_hint_move",
+      "context": "Git tab, open picker list, hint under the rows after the key caps up/down arrow: moves the highlight. One or two words.",
+      "en": "Move",
+      "de": "Bewegen"
+    },
+    {
+      "key": "git_view.picker_hint_open",
+      "context": "Git tab, open repository list, hint after the Enter key cap: opens the highlighted repository.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "git_view.picker_hint_switch",
+      "context": "Git tab, open branch list, hint after the Enter key cap: switches to the highlighted branch (checkout).",
+      "en": "Switch",
+      "de": "Wechseln"
+    },
+    {
+      "key": "git_view.picker_hint_stash",
+      "context": "Git tab, open branch list, hint after the Cmd+Enter key cap: puts the local changes aside (stash) and then switches to the highlighted branch.",
+      "en": "Stash and switch",
+      "de": "Ablegen und wechseln"
+    },
+    {
+      "key": "git_view.picker_hint_close",
+      "context": "Git tab, open picker list, hint after the Esc key cap: closes the list.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "git_view.worktree_path",
+      "context": "Git tab, header: dim text after the state chips, the folder of the worktree that this tab shows. {path} is the folder, written with ~ for the home folder. Worktree is the Git word for a second working folder of one repository.",
+      "en": "Worktree {path}",
+      "de": "Worktree {path}"
+    },
+    {
+      "key": "git_view.toolbar_branch",
+      "context": "Git tab, toolbar button that asks for the name of a new branch. One word.",
+      "en": "Branch",
+      "de": "Branch"
+    },
+    {
+      "key": "git_view.toolbar_undo_label",
+      "context": "Git tab, toolbar button that takes back the last Git action. One word.",
+      "en": "Undo",
+      "de": "Zurück"
+    },
+    {
+      "key": "git_view.toolbar_nothing_to_undo",
+      "context": "Git tab, tooltip of the locked Undo button: there is no Git action of this tab to take back.",
+      "en": "Nothing to undo",
+      "de": "Nichts zurückzunehmen"
+    },
+    {
+      "key": "git_view.detail_author",
+      "context": "Git tab, detail pane, label of a fact line: who wrote the commit. The name and the date follow. One word.",
+      "en": "Author",
+      "de": "Autor"
+    },
+    {
+      "key": "git_view.detail_committer",
+      "context": "Git tab, detail pane, label of a fact line: who committed it, shown only when that differs from the author (after a cherry-pick or rebase).",
+      "en": "Committer",
+      "de": "Committer"
+    },
+    {
+      "key": "git_view.detail_parent",
+      "context": "Git tab, detail pane, label of a fact line: the commit before this one, shown as a link that jumps to it.",
+      "en": "Parent",
+      "de": "Eltern"
+    },
+    {
+      "key": "git_view.detail_parents",
+      "context": "Git tab, detail pane, label of a fact line of a merge commit: the commits before it, each a link that jumps to it.",
+      "en": "Parents",
+      "de": "Eltern"
+    },
+    {
+      "key": "git_view.detail_sha",
+      "context": "Git tab, detail pane, label of a fact line: the short id of the commit, with the key that copies the full one. SHA is the Git word and stays.",
+      "en": "SHA",
+      "de": "SHA"
+    },
+    {
+      "key": "git_view.detail_branches",
+      "context": "Git tab, detail pane, label of a fact line: the branches that contain this commit, as chips.",
+      "en": "Branches",
+      "de": "Branches"
+    },
+    {
+      "key": "git_view.sha_copied",
+      "context": "Git tab, right end of the status line after the key that copies the id of the commit. {sha} is the short id.",
+      "en": "Copied {sha}",
+      "de": "{sha} kopiert"
+    },
+    {
+      "key": "git_view.status_picker",
+      "context": "Git tab: status line while a picker list in the header is open. Keep the key names as they are on the keyboard.",
+      "en": "Type to search · ↑↓ choose · Enter confirms · Esc closes the list",
+      "de": "Tippen sucht · ↑↓ wählen · Enter bestätigt · Esc schließt die Liste"
+    },
+    {
+      "key": "git_view.status_splitter",
+      "context": "Git tab: status line while a splitter bar between two panes has the keys. Keep the key names as they are on the keyboard.",
+      "en": "←→ move the bar by 16 px · ⇧←→ by 64 px · Home standard width · Tab next area · Esc closes",
+      "de": "←→ Balken um 16 px · ⇧←→ um 64 px · Pos1 Standardbreite · Tab nächster Bereich · Esc schließt"
+    },
+    {
+      "key": "git_view.status_commits_keys",
+      "context": "Git tab: status line while the commit list has the keys. {head} jumps to the checked-out commit, {wip} to the local changes, {parent} to the parent commit, {copy} copies the SHA; each is the key as written on the keyboard.",
+      "en": "↑↓ choose · Enter to the files · {head} HEAD · {wip} local changes · {parent} parent · {copy} copy SHA · Tab next area · / filter · Esc closes",
+      "de": "↑↓ wählen · Enter zu den Dateien · {head} HEAD · {wip} lokale Änderungen · {parent} Eltern · {copy} SHA kopieren · Tab nächster Bereich · / Filter · Esc schließt"
+    },
+    {
+      "key": "git_view.command_repo_picker",
+      "context": "Command list (F1), Git tab: opens the list of repositories in the header.",
+      "en": "Git: choose repository",
+      "de": "Git: Repository wählen"
+    },
+    {
+      "key": "git_view.command_branch_picker",
+      "context": "Command list (F1), Git tab: opens the list of branches in the header, to switch to one.",
+      "en": "Git: choose branch",
+      "de": "Git: Branch wählen"
+    },
+    {
+      "key": "git_view.command_jump_head",
+      "context": "Command list (F1), Git tab: puts the cursor of the commit list on the commit that is checked out (HEAD).",
+      "en": "Git: jump to HEAD",
+      "de": "Git: zu HEAD springen"
+    },
+    {
+      "key": "git_view.command_jump_wip",
+      "context": "Command list (F1), Git tab: goes to the local changes that are not committed yet (WIP).",
+      "en": "Git: jump to local changes",
+      "de": "Git: zu lokalen Änderungen springen"
+    },
+    {
+      "key": "git_view.command_copy_sha",
+      "context": "Command list (F1), Git tab: copies the full id (SHA) of the chosen commit.",
+      "en": "Git: copy SHA",
+      "de": "Git: SHA kopieren"
+    },
+    {
+      "key": "git_view.command_parent",
+      "context": "Command list (F1), Git tab: jumps to the parent commit of the chosen commit.",
+      "en": "Git: go to parent commit",
+      "de": "Git: zum Eltern-Commit"
+    },
+    {
+      "key": "git_view.command_toggle_tree",
+      "context": "Command list (F1), Git tab: switches the file list of the detail pane between a list of paths and a tree of folders.",
+      "en": "Git: toggle path/tree of files",
+      "de": "Git: Dateien als Pfad/Baum umschalten"
+    },
+    {
+      "key": "repos.title",
+      "context": "Heading of the Repos tab and its tab title; the tab lists every Git repository on this computer.",
+      "en": "Repositories",
+      "de": "Repositories"
+    },
+    {
+      "key": "repos.summary",
+      "context": "Line next to the heading of the Repos tab: how many repositories there are, how many have local changes and how many are behind their remote.",
+      "en": "{total} repositories · {changed} with changes · {behind} behind",
+      "de": "{total} Repositories · {changed} mit Änderungen · {behind} im Rückstand"
+    },
+    {
+      "key": "repos.scan",
+      "context": "Button in the Repos tab that searches the project folders for repositories now.",
+      "en": "Search now",
+      "de": "Jetzt durchsuchen"
+    },
+    {
+      "key": "repos.scanning",
+      "context": "The same button while the search runs; pressing it again stops the search.",
+      "en": "Searching …",
+      "de": "Suche läuft …"
+    },
+    {
+      "key": "repos.add",
+      "context": "Button in the Repos tab that opens a folder dialog to add one repository by hand.",
+      "en": "Add repository",
+      "de": "Repository hinzufügen"
+    },
+    {
+      "key": "repos.search_placeholder",
+      "context": "Placeholder of the filter field in the Repos tab; typing narrows the list by name or folder.",
+      "en": "Filter repositories",
+      "de": "Repositories filtern"
+    },
+    {
+      "key": "repos.selected",
+      "context": "Count of the repositories that are ticked in the Repos tab, shown in the bar of the bulk actions.",
+      "en": "{n} selected",
+      "de": "{n} gewählt"
+    },
+    {
+      "key": "repos.only_needs_action",
+      "context": "Tick box in the Repos tab: shows only repositories that are behind, ahead or have local changes.",
+      "en": "Only those that need action",
+      "de": "Nur mit offener Aufgabe"
+    },
+    {
+      "key": "repos.open_in_tabs",
+      "context": "Button and menu entry in the Repos tab: opens each ticked repository in a Git tab of its own.",
+      "en": "Open in tabs",
+      "de": "In Tabs öffnen"
+    },
+    {
+      "key": "repos.group_favourites",
+      "context": "Title of the first group of the Repos list: the repositories marked with a star.",
+      "en": "★ Favourites",
+      "de": "★ Favoriten"
+    },
+    {
+      "key": "repos.group_open",
+      "context": "Title of the group of the Repos list with the repositories that are shown in a Git tab right now.",
+      "en": "Open in a tab",
+      "de": "In einem Tab geöffnet"
+    },
+    {
+      "key": "repos.group_unreachable",
+      "context": "Title of the group of the Repos list with repositories whose folder is gone or cannot be read.",
+      "en": "Not reachable",
+      "de": "Nicht erreichbar"
+    },
+    {
+      "key": "repos.group_found_in",
+      "context": "Title of a group of the Repos list: the repositories the search found below this project folder.",
+      "en": "Found in {folder}",
+      "de": "Gefunden in {folder}"
+    },
+    {
+      "key": "repos.group_added",
+      "context": "Title of the group of the Repos list with repositories added by hand or learned from a file panel.",
+      "en": "Added by hand or from a panel",
+      "de": "Von Hand oder aus einem Panel hinzugefügt"
+    },
+    {
+      "key": "repos.for_favourites",
+      "context": "Label before the bulk action buttons of the Repos tab when nothing is ticked: they act on the favourites.",
+      "en": "On ★ favourites ({n}):",
+      "de": "Für ★ Favoriten ({n}):"
+    },
+    {
+      "key": "repos.for_selected",
+      "context": "Label before the bulk action buttons of the Repos tab when repositories are ticked: they act on those.",
+      "en": "On {n} selected:",
+      "de": "Für {n} gewählte:"
+    },
+    {
+      "key": "repos.action_switch_default",
+      "context": "Bulk action button and command in the Repos tab: switches each repository to its default branch.",
+      "en": "To default branch",
+      "de": "Auf Standard-Branch"
+    },
+    {
+      "key": "repos.action_pull_ff",
+      "context": "Bulk action button and command in the Repos tab: pulls each repository, only when no merge is needed (fast-forward).",
+      "en": "Pull (ff only)",
+      "de": "Pull (nur ff)"
+    },
+    {
+      "key": "repos.action_both",
+      "context": "Bulk action button and command in the Repos tab: switches to the default branch, then pulls it fast-forward.",
+      "en": "Switch and pull",
+      "de": "Wechseln und pullen"
+    },
+    {
+      "key": "repos.retry_failed",
+      "context": "Button in the result bar of a bulk action in the Repos tab: runs the action again on the repositories that failed.",
+      "en": "Retry failed",
+      "de": "Fehlgeschlagene wiederholen"
+    },
+    {
+      "key": "repos.only_problems",
+      "context": "Button in the result bar of a bulk action: shows only the repositories that were skipped or failed.",
+      "en": "Only problems",
+      "de": "Nur Probleme"
+    },
+    {
+      "key": "repos.all_results",
+      "context": "The same button after it was pressed: shows the result of every repository again.",
+      "en": "All results",
+      "de": "Alle Ergebnisse"
+    },
+    {
+      "key": "repos.empty",
+      "context": "Text in the empty Repos list: no repository found yet, with the way to get some.",
+      "en": "No repositories yet. Add a project folder in Settings → Git or add a repository by hand.",
+      "de": "Noch keine Repositories. Lege in den Einstellungen unter Git einen Projektordner fest oder füge eins von Hand hinzu."
+    },
+    {
+      "key": "repos.folder_gone",
+      "context": "Result of a bulk action for a repository whose folder does not exist any more.",
+      "en": "Folder is gone",
+      "de": "Ordner nicht mehr da"
+    },
+    {
+      "key": "repos.save_failed",
+      "context": "Message in the Repos tab when the list of repositories could not be written to its file; the reason follows.",
+      "en": "Could not save the list: {reason}",
+      "de": "Die Liste konnte nicht gespeichert werden: {reason}"
+    },
+    {
+      "key": "repos.not_a_repo",
+      "context": "Message in the Repos tab when the folder picked to add is not inside a Git repository.",
+      "en": "{folder} is not a Git repository",
+      "de": "{folder} ist kein Git-Repository"
+    },
+    {
+      "key": "repos.select_all",
+      "context": "Command in the command list (F1), Repos tab: ticks every repository of the list, or none when all are ticked.",
+      "en": "Repos: select all",
+      "de": "Repos: alle wählen"
+    },
+    {
+      "key": "repos.toggle_favourite",
+      "context": "Menu entry and command in the Repos tab: marks the repository as a favourite or takes the star away.",
+      "en": "Favourite on/off",
+      "de": "Favorit an/aus"
+    },
+    {
+      "key": "repos.remove",
+      "context": "Button, menu entry and command in the Repos tab: takes a repository, whose folder is gone, off the list.",
+      "en": "Remove from list",
+      "de": "Aus der Liste entfernen"
+    },
+    {
+      "key": "repos.open",
+      "context": "Menu entry in the Repos tab: shows the repository in a Git tab.",
+      "en": "Open in Git tab",
+      "de": "Im Git-Tab öffnen"
+    },
+    {
+      "key": "repos.never_fetched",
+      "context": "Column of the Repos list that shows when a repository last fetched: the repository never did.",
+      "en": "never",
+      "de": "nie"
+    },
+    {
+      "key": "repos.hint",
+      "context": "Hint in the status bar of the Repos tab: nothing runs until a button of the bulk actions is pressed.",
+      "en": "Nothing is changed until you press an action. Space ticks, * marks a favourite.",
+      "de": "Nichts wird geändert, bis du eine Aktion drückst. Leertaste wählt, * markiert einen Favoriten."
+    },
+    {
+      "key": "repos.run_hint",
+      "context": "Hint in the status bar of the Repos tab after a bulk action ended: Escape closes the result.",
+      "en": "Esc closes the result.",
+      "de": "Esc schließt das Ergebnis."
+    },
+    {
+      "key": "repos.run_progress",
+      "context": "Status bar of the Repos tab while a bulk action runs: how many repositories are done and how many run now.",
+      "en": "{done} of {total} done · {running} running",
+      "de": "{done} von {total} fertig · {running} laufen"
+    },
+    {
+      "key": "repos.log_title",
+      "context": "Title of the log line under the list of the Repos tab while or after a bulk action.",
+      "en": "Log",
+      "de": "Protokoll"
+    },
+    {
+      "key": "repos.log_nothing",
+      "context": "Log line of the Repos tab before the first command of a bulk action has ended.",
+      "en": "Nothing has run yet",
+      "de": "Noch nichts gelaufen"
+    },
+    {
+      "key": "repos.mode",
+      "context": "Short name of the Repos tab at the left of its status bar, in capitals.",
+      "en": "REPOS",
+      "de": "REPOS"
+    },
+    {
+      "key": "repos.result_running",
+      "context": "Result column of a bulk action in the Repos tab: this repository is being worked on.",
+      "en": "running …",
+      "de": "läuft …"
+    },
+    {
+      "key": "repos.result_updated",
+      "context": "Result column of a bulk action in the Repos tab: the repository was updated by this many commits.",
+      "en": "{n} commits taken over",
+      "de": "{n} Commits übernommen"
+    },
+    {
+      "key": "repos.result_current",
+      "context": "Result column of a bulk action in the Repos tab: there was nothing to update.",
+      "en": "already up to date",
+      "de": "schon aktuell"
+    },
+    {
+      "key": "repos.result_switched",
+      "context": "Result column of a bulk action in the Repos tab: the branch was switched, then this many commits taken over.",
+      "en": "{from} → {to}, {n} commits taken over",
+      "de": "{from} → {to}, {n} Commits übernommen"
+    },
+    {
+      "key": "repos.result_worktree",
+      "context": "Result column of a bulk action in the Repos tab: a linked worktree is left alone.",
+      "en": "worktree, left alone",
+      "de": "Worktree, übergangen"
+    },
+    {
+      "key": "repos.result_local_changes",
+      "context": "Result column of a bulk action in the Repos tab: skipped because of this many files with local changes.",
+      "en": "{n} local changes, skipped",
+      "de": "{n} lokale Änderungen, übersprungen"
+    },
+    {
+      "key": "repos.result_ahead",
+      "context": "Result column of a bulk action in the Repos tab: skipped because the branch has own commits and would need a merge.",
+      "en": "{n} own commits, needs a merge, skipped",
+      "de": "{n} eigene Commits, bräuchte Merge, übersprungen"
+    },
+    {
+      "key": "repos.result_no_access",
+      "context": "Result column of a bulk action in the Repos tab: the remote asked for a login, which background runs never give.",
+      "en": "no access to {remote}",
+      "de": "kein Zugriff auf {remote}"
+    },
+    {
+      "key": "repos.result_failed",
+      "context": "Result column of a bulk action in the Repos tab: the command failed; the log line shows what git said.",
+      "en": "failed",
+      "de": "fehlgeschlagen"
+    },
+    {
+      "key": "settings.feature_git",
+      "context": "Name of the Git page in the list of settings pages: where the Repos tab searches and how bulk actions behave.",
+      "en": "Git",
+      "de": "Git"
+    },
+    {
+      "key": "settings.feature_git_intro",
+      "context": "Intro text at the top of the Git settings page, above the groups of settings.",
+      "en": "Where ncrs looks for Git repositories, what it leaves out, and how the actions on many repositories behave.",
+      "de": "Wo ncrs nach Git-Repositories sucht, was es auslässt und wie sich die Aktionen auf mehrere Repositories verhalten."
+    },
+    {
+      "key": "settings.git_title_sources",
+      "context": "Title of the group on the Git settings page that lists the project folders searched for repositories.",
+      "en": "Project folders",
+      "de": "Projektordner"
+    },
+    {
+      "key": "settings.git_title_search",
+      "context": "Title of the group on the Git settings page with how deep and where the search looks.",
+      "en": "Search",
+      "de": "Suche"
+    },
+    {
+      "key": "settings.git_title_skip",
+      "context": "Title of the group on the Git settings page with the places and folder names the search does not enter.",
+      "en": "Left out",
+      "de": "Ausgelassen"
+    },
+    {
+      "key": "settings.git_title_bulk",
+      "context": "Title of the group on the Git settings page with how the actions on many repositories behave.",
+      "en": "Actions on many repositories",
+      "de": "Aktionen auf mehrere Repositories"
+    },
+    {
+      "key": "settings.git_sources_empty",
+      "context": "Text under the empty list of project folders on the Git settings page.",
+      "en": "No project folder yet. Add the folder that holds your repositories.",
+      "de": "Noch kein Projektordner. Füge den Ordner hinzu, in dem deine Repositories liegen."
+    },
+    {
+      "key": "settings.git_scan_now",
+      "context": "Button on the Git settings page that starts the search for repositories right away.",
+      "en": "Search now",
+      "de": "Jetzt durchsuchen"
+    },
+    {
+      "key": "settings.git_row_scan_home",
+      "context": "Label of the switch on the Git settings page that adds the home folder to the places searched.",
+      "en": "Search the home folder",
+      "de": "Persönlichen Ordner durchsuchen"
+    },
+    {
+      "key": "settings.git_row_scan_home_note",
+      "context": "Note under the switch to search the home folder: it happens once at the first start of the Repos tab.",
+      "en": "Once when the Repos tab opens for the first time, then only when you ask.",
+      "de": "Einmal beim ersten Öffnen des Repos-Tabs, danach nur auf Wunsch."
+    },
+    {
+      "key": "settings.git_row_depth",
+      "context": "Label of the choice on the Git settings page: how many folder levels below a project folder the search goes.",
+      "en": "Search depth",
+      "de": "Suchtiefe"
+    },
+    {
+      "key": "settings.git_row_depth_note",
+      "context": "Note under the search depth choice: what a level is.",
+      "en": "Folder levels below a project folder. Deeper takes longer.",
+      "de": "Ordnerebenen unter einem Projektordner. Tiefer dauert länger."
+    },
+    {
+      "key": "settings.git_row_learn",
+      "context": "Label of the switch on the Git settings page: repositories opened in a file panel join the Repos list.",
+      "en": "Learn repositories from the panels",
+      "de": "Repositories aus den Panels lernen"
+    },
+    {
+      "key": "settings.git_row_learn_note",
+      "context": "Note under the switch to learn repositories from the panels: what happens to a repository that is entered.",
+      "en": "A repository you enter in a panel is added to the list.",
+      "de": "Ein Repository, in das du in einem Panel gehst, kommt in die Liste."
+    },
+    {
+      "key": "settings.git_row_skip_cloud",
+      "context": "Label of the switch on the Git settings page: the search does not enter folders of cloud storage.",
+      "en": "Skip cloud folders",
+      "de": "Cloud-Ordner auslassen"
+    },
+    {
+      "key": "settings.git_row_skip_cloud_note",
+      "context": "Note under the switch to skip cloud folders: why, since entering them can download files.",
+      "en": "iCloud, OneDrive, Dropbox and the like: entering them can start downloads.",
+      "de": "iCloud, OneDrive, Dropbox und ähnliche: Hineingehen kann Downloads auslösen."
+    },
+    {
+      "key": "settings.git_row_skip_network",
+      "context": "Label of the switch on the Git settings page: the search does not enter network drives.",
+      "en": "Skip network drives",
+      "de": "Netzlaufwerke auslassen"
+    },
+    {
+      "key": "settings.git_row_skip_network_note",
+      "context": "Note under the switch to skip network drives: why, since they can be slow or asleep.",
+      "en": "Network drives can be slow or not there at all.",
+      "de": "Netzlaufwerke können langsam sein oder gar nicht da."
+    },
+    {
+      "key": "settings.git_row_default_branch",
+      "context": "Label of an info row on the Git settings page: which branch the action to the default branch switches to.",
+      "en": "Default branch",
+      "de": "Standard-Branch"
+    },
+    {
+      "key": "settings.git_default_branch_value",
+      "context": "Value of the default branch info row: it is read from each repository, not set here.",
+      "en": "read from each repository",
+      "de": "wird je Repository gelesen"
+    },
+    {
+      "key": "settings.git_row_concurrency",
+      "context": "Label of the choice on the Git settings page: how many repositories an action works on at the same time.",
+      "en": "At the same time",
+      "de": "Gleichzeitig"
+    },
+    {
+      "key": "settings.git_row_concurrency_note",
+      "context": "Note under the concurrency choice: more is faster but loads the network and the disk.",
+      "en": "Repositories handled in parallel by one action.",
+      "de": "Repositories, die eine Aktion gleichzeitig bearbeitet."
+    },
+    {
+      "key": "settings.git_row_local_changes",
+      "context": "Label of an info row on the Git settings page: what an action does with repositories that have local changes.",
+      "en": "Local changes",
+      "de": "Lokale Änderungen"
+    },
+    {
+      "key": "settings.git_local_changes_value",
+      "context": "Value of the local changes info row: such repositories are skipped, never touched.",
+      "en": "the repository is skipped",
+      "de": "das Repository wird übersprungen"
+    },
+    {
+      "key": "repos.clone",
+      "context": "Button in the Repos tab that opens the dialog to clone a repository from an address into a folder.",
+      "en": "Clone repository",
+      "de": "Repository klonen"
+    },
+    {
+      "key": "repos.clone_title",
+      "context": "Title of the dialog in the Repos tab that clones a repository from an address.",
+      "en": "Clone a repository",
+      "de": "Repository klonen"
+    },
+    {
+      "key": "repos.clone_url",
+      "context": "Label above the address field of the clone dialog in the Repos tab: where the repository comes from.",
+      "en": "Address of the repository",
+      "de": "Adresse des Repositorys"
+    },
+    {
+      "key": "repos.clone_url_placeholder",
+      "context": "Placeholder of the address field of the clone dialog in the Repos tab; the address may be https or ssh.",
+      "en": "https://host/name.git or git@host:name.git",
+      "de": "https://host/name.git oder git@host:name.git"
+    },
+    {
+      "key": "repos.clone_into",
+      "context": "Label of the folder in the clone dialog of the Repos tab: the folder that gets a new folder for the clone, followed by the button to choose another one.",
+      "en": "Clone into",
+      "de": "Klonen nach"
+    },
+    {
+      "key": "repos.clone_choose",
+      "context": "Button in the clone dialog of the Repos tab that opens a folder dialog to choose the folder the clone goes into.",
+      "en": "Choose folder",
+      "de": "Ordner wählen"
+    },
+    {
+      "key": "repos.clone_run",
+      "context": "Confirm button of the clone dialog in the Repos tab; Enter presses it. Verb, imperative.",
+      "en": "Clone",
+      "de": "Klonen"
+    },
+    {
+      "key": "repos.clone_running",
+      "context": "Line in the clone dialog of the Repos tab while git copies the repository; the dialog cannot be closed until it ends. Placeholder is the address.",
+      "en": "Cloning {url} ...",
+      "de": "{url} wird geklont ..."
+    },
+    {
+      "key": "repos.clone_target_missing",
+      "context": "Problem line in the clone dialog of the Repos tab when the chosen folder does not exist. Placeholder is the folder.",
+      "en": "The folder {folder} does not exist.",
+      "de": "Der Ordner {folder} existiert nicht."
+    },
+    {
+      "key": "settings.git_row_last_scan",
+      "context": "Label of an info row on the Git settings page: when the last search for repositories ran and what it found.",
+      "en": "Last search",
+      "de": "Letzte Suche"
+    },
+    {
+      "key": "settings.git_last_scan_value",
+      "context": "Value of the info row of the last search on the Git settings page. Placeholders are the time (relative, like 'yesterday'), the number of repositories found and the duration in milliseconds.",
+      "en": "{when}: {count} repositories found in {millis} ms",
+      "de": "{when}: {count} Repositories gefunden in {millis} ms"
+    },
+    {
+      "key": "settings.git_last_scan_never",
+      "context": "Value of the info row of the last search on the Git settings page while no search has run yet.",
+      "en": "Not searched yet",
+      "de": "Noch nicht durchsucht"
+    },
+    {
+      "key": "action.repos",
+      "context": "Entry of the command list that runs the key action repos: it opens the Repos tab with the list of all repositories. Also the label of the tab in the tab strip. Noun, plural.",
+      "en": "Repositories",
+      "de": "Repositories"
     }
   ]
 }

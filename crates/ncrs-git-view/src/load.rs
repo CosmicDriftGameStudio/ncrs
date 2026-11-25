@@ -135,3 +135,17 @@ pub fn job(root: PathBuf, job: Job) -> Task<Message> {
 pub fn everything(state: &mut State) -> Task<Message> {
     Task::batch([refs(state), log(state), actions(state)])
 }
+
+/// Reads which branches contain `sha`; it follows the detail, which does not wait for it.
+pub fn containing(state: &mut State, sha: String) -> Task<Message> {
+    let Some(root) = root_of(state) else {
+        return Task::none();
+    };
+    let (generation, stop) = state.loads.containing.begin();
+    let id = sha.clone();
+    blocking(
+        stop,
+        move |cancelled| ncrs_git::branches_containing(&root, &sha, cancelled),
+        move |result| Message::ContainingLoaded(generation, id.clone(), Box::new(result)),
+    )
+}

@@ -17,7 +17,28 @@ impl App {
                 .map(|folder| settings.folded_in(&folder.to_string_lossy()).to_vec())
                 .unwrap_or_default(),
             columns: self.git_columns(),
+            panes: self.git_panes(),
+            repositories: self.git_known_repositories(),
         }
+    }
+
+    /// The repositories of the open Git tabs, for the repository list of the header.
+    fn git_known_repositories(&self) -> Vec<ncrs_git_view::RepoEntry> {
+        self.git_tabs
+            .iter()
+            .filter_map(|(_, state)| {
+                Some(ncrs_git_view::RepoEntry {
+                    name: state.name.clone(),
+                    path: state.root.clone()?,
+                })
+            })
+            .collect()
+    }
+
+    /// The panes the user dragged to; the standard widths where none were.
+    fn git_panes(&self) -> ncrs_git_view::PaneWidths {
+        let settings = &self.git_view_settings;
+        ncrs_git_view::PaneWidths::saved(settings.sidebar_width, settings.detail_width)
     }
 
     /// The commit columns the user dragged to; the standard width where none was.
@@ -46,6 +67,8 @@ impl App {
             date_format: self.columns.date_format,
             window: self.window_size,
             columns: self.git_columns(),
+            panes: self.git_panes(),
+            home: &self.home,
             keys: &self.git_keys,
         };
         let content: Element<'_, Message> = match self
@@ -76,7 +99,7 @@ impl App {
 
     /// Shows the Git tab of the repository at `root`, opening one if it has
     /// none, and reads the repository.
-    fn open_git_tab_at(&mut self, root: PathBuf) -> Task<Message> {
+    pub(in crate::app) fn open_git_tab_at(&mut self, root: PathBuf) -> Task<Message> {
         let name = root
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -133,6 +156,15 @@ impl App {
                     .with_folded(&root.to_string_lossy(), folded);
                 self.save_git_view(changed)
             }
+            Ask::PanesResized(widths) => {
+                let changed = ncrs_config::git_view::GitViewSettings {
+                    sidebar_width: Some(widths.sidebar),
+                    detail_width: Some(widths.detail),
+                    ..self.git_view_settings.clone()
+                };
+                self.save_git_view(changed)
+            }
+            Ask::OpenRepository(root) => self.open_git_tab_at(root),
             Ask::ColumnsResized(columns) => {
                 let changed = ncrs_config::git_view::GitViewSettings {
                     author_width: Some(columns.author),

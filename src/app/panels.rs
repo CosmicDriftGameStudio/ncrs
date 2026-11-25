@@ -442,10 +442,26 @@ impl App {
             lang: self.lang,
             saved_servers: &saved_servers,
         };
+        let roots_before = self.panels_git_roots();
         let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
         let mapped = task.map(Message::Panel);
         let acted = self.run_panel_actions(actions);
-        Task::batch([mapped, acted])
+        let learned: Vec<Task<Message>> = self
+            .panels_git_roots()
+            .into_iter()
+            .zip(roots_before)
+            .filter(|(now, before)| now != before)
+            .map(|(now, _)| self.learn_repo_of_panel(now))
+            .collect();
+        Task::batch([mapped, acted, Task::batch(learned)])
+    }
+
+    /// The repository each panel shows, left then right.
+    fn panels_git_roots(&self) -> [Option<PathBuf>; 2] {
+        [
+            self.panels.left.git.root.clone(),
+            self.panels.right.git.root.clone(),
+        ]
     }
 
     pub(in crate::app) fn run_panel_actions(

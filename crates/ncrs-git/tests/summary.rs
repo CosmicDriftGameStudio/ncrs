@@ -36,7 +36,10 @@ fn counts_distance_to_the_upstream_and_changed_files() {
     let summary = repo_summary(repo.path(), &go()).unwrap();
     assert_eq!(summary.branch.as_deref(), Some("main"));
     assert_eq!((summary.ahead, summary.behind), (2, 1));
-    assert_eq!(summary.changed, 3, "a.txt, loose.txt and .gitignore; the ignored file is not counted");
+    assert_eq!(
+        summary.changed, 3,
+        "a.txt, loose.txt and .gitignore; the ignored file is not counted"
+    );
     assert!(summary.fetched_at.is_some());
     assert_eq!(summary.main_worktree, None);
 }
@@ -45,7 +48,10 @@ fn counts_distance_to_the_upstream_and_changed_files() {
 fn the_default_branch_follows_origin_head_else_main_else_master() {
     let (origin, repo) = with_origin();
     assert_eq!(
-        repo_summary(repo.path(), &go()).unwrap().default_branch.as_deref(),
+        repo_summary(repo.path(), &go())
+            .unwrap()
+            .default_branch
+            .as_deref(),
         Some("main"),
         "no origin/HEAD yet: main"
     );
@@ -53,22 +59,37 @@ fn the_default_branch_follows_origin_head_else_main_else_master() {
     repo.sh(&["push", "-q", "origin", "develop"]);
     repo.sh(&["remote", "set-head", "origin", "develop"]);
     assert_eq!(
-        repo_summary(repo.path(), &go()).unwrap().default_branch.as_deref(),
+        repo_summary(repo.path(), &go())
+            .unwrap()
+            .default_branch
+            .as_deref(),
         Some("develop")
     );
-    assert_eq!(refs(repo.path(), &go()).unwrap().main_branch.as_deref(), Some("develop"));
+    assert_eq!(
+        refs(repo.path(), &go()).unwrap().main_branch.as_deref(),
+        Some("develop")
+    );
 
-    git_cli::sh(origin.path(), &["symbolic-ref", "HEAD", "refs/heads/develop"]);
+    git_cli::sh(
+        origin.path(),
+        &["symbolic-ref", "HEAD", "refs/heads/develop"],
+    );
     let clone = clone_of(&origin);
     assert_eq!(
-        repo_summary(clone.path(), &go()).unwrap().default_branch.as_deref(),
+        repo_summary(clone.path(), &go())
+            .unwrap()
+            .default_branch
+            .as_deref(),
         Some("develop"),
         "a clone learns it from the remote"
     );
 
     let plain = repo_with_master();
     assert_eq!(
-        repo_summary(plain.path(), &go()).unwrap().default_branch.as_deref(),
+        repo_summary(plain.path(), &go())
+            .unwrap()
+            .default_branch
+            .as_deref(),
         Some("master")
     );
 }
@@ -84,7 +105,14 @@ fn a_linked_worktree_belongs_to_its_repository() {
     let repo = repo();
     let linked = tempfile::TempDir::new().unwrap();
     let folder = linked.path().join("wt");
-    repo.sh(&["worktree", "add", "-q", "-b", "feature", folder.to_str().unwrap()]);
+    repo.sh(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "feature",
+        folder.to_str().unwrap(),
+    ]);
 
     let main = repo_summary(repo.path(), &go()).unwrap();
     assert_eq!(main.worktrees.len(), 1);
@@ -110,5 +138,8 @@ fn a_repository_that_never_fetched_has_no_fetch_time() {
 fn a_stopped_summary_says_so() {
     let repo = repo();
     let stop = Arc::new(AtomicBool::new(true));
-    assert_eq!(repo_summary(repo.path(), &stop), Err(ncrs_git::GitError::Interrupted));
+    assert_eq!(
+        repo_summary(repo.path(), &stop),
+        Err(ncrs_git::GitError::Interrupted)
+    );
 }

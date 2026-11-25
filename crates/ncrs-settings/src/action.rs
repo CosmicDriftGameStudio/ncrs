@@ -34,6 +34,8 @@ pub enum Action {
     Protection(usize),
     /// The system folder dialog for a read folder.
     PickFolder(AddAs),
+    /// The Repos tab scans its folders now.
+    ScanRepos,
     /// A picked folder joins the favourites, at the end.
     AddFavourite(PathBuf),
     /// A move or removal on the Favourites page.

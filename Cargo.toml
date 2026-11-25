@@ -108,6 +108,8 @@ ncrs-notes = { path = "crates/ncrs-notes", version = "0.0.0" }
 # The Git tab, and the Git layer it reads the repository through.
 ncrs-git-view = { path = "crates/ncrs-git-view", version = "0.0.0" }
 ncrs-git = { path = "crates/ncrs-git", version = "0.0.0" }
+# The Repos tab: every repository of the machine in one list.
+ncrs-repos = { path = "crates/ncrs-repos", version = "0.0.0" }
 # The filing tab: a source folder planned live into the write folder.
 ncrs-filing-view = { path = "crates/ncrs-filing-view", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.

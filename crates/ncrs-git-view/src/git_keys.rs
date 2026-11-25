@@ -2,34 +2,23 @@
 //! them from the config and hands them to the tab; the key handler, the menus
 //! and the tooltips read them.
 
-use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
+use ncrs_config::keymap::{ChordTable, ChordTableError, TabActions};
+
+pub use ncrs_config::keymap::chord_label;
+pub use ncrs_config::keymap::{Chord, KeyOverride};
 
 use crate::shortcuts::Shortcut;
 
-/// The modifiers held and the key pressed.
-pub type Chord = (Modifiers, Key);
-
-/// One line of `[keys.git]`: the name of an action and the keys written for it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyOverride {
-    pub action: String,
-    pub chords: Vec<Chord>,
-}
-
 /// Why `[keys.git]` cannot be applied: the place of the line in the
 /// overrides, and what is wrong with it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GitKeysError {
-    pub place: usize,
-    pub reason: String,
-}
+pub type GitKeysError = ChordTableError;
 
 /// The keys of every Git action, the first one of an action is the one shown.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GitKeys {
     /// By [`Shortcut::index`].
-    chords: Vec<Vec<Chord>>,
+    table: ChordTable,
 }
 
 impl Default for GitKeys {
@@ -48,10 +37,12 @@ impl GitKeys {
             Modifiers::CTRL
         };
         Self {
-            chords: Shortcut::ALL
-                .iter()
-                .map(|shortcut| vec![shortcut.default_chord(command)])
-                .collect(),
+            table: ChordTable::new(
+                Shortcut::ALL
+                    .iter()
+                    .map(|shortcut| vec![shortcut.default_chord(command)])
+                    .collect(),
+            ),
         }
     }
 
@@ -59,113 +50,35 @@ impl GitKeys {
     /// action loses its default key and gets exactly the listed ones, `[]`
     /// leaves it without a key. Two actions on one key are refused.
     pub fn with_overrides(overrides: &[KeyOverride], mac: bool) -> Result<Self, GitKeysError> {
-        let mut keys = Self::defaults_for(mac);
-        let mut rebound: Vec<Shortcut> = Vec::new();
-        for (place, entry) in overrides.iter().enumerate() {
-            let shortcut = Shortcut::from_name(&entry.action).ok_or_else(|| GitKeysError {
-                place,
-                reason: format!("unknown action {:?}", entry.action),
-            })?;
-            if let Some(slot) = keys.chords.get_mut(shortcut.index()) {
-                slot.clone_from(&entry.chords);
-            }
-            rebound.push(shortcut);
-        }
-        for (place, entry) in overrides.iter().enumerate() {
-            let Some(shortcut) = Shortcut::from_name(&entry.action) else {
-                continue;
-            };
-            for chord in &entry.chords {
-                let holder = Shortcut::ALL
-                    .iter()
-                    .copied()
-                    .find(|other| *other != shortcut && keys.holds(*other, chord));
-                if let Some(other) = holder {
-                    return Err(GitKeysError {
-                        place,
-                        reason: format!("already bound to {} in [keys.git]", other.name()),
-                    });
-                }
-            }
-        }
-        Ok(keys)
-    }
-
-    fn holds(&self, shortcut: Shortcut, chord: &Chord) -> bool {
-        self.chords(shortcut)
-            .iter()
-            .any(|(held, key)| *held == chord.0 && same_key(key, &chord.1))
+        let place_of = |name: &str| Shortcut::from_name(name).map(Shortcut::index);
+        let name_of = |index: usize| Shortcut::ALL.get(index).map_or("", |s| s.name());
+        let table = Self::defaults_for(mac).table.with_overrides(
+            overrides,
+            &TabActions {
+                table: "git",
+                place_of,
+                name_of,
+            },
+        )?;
+        Ok(Self { table })
     }
 
     /// The keys of one action, the one shown first.
     pub fn chords(&self, shortcut: Shortcut) -> &[Chord] {
-        self.chords.get(shortcut.index()).map_or(&[], Vec::as_slice)
+        self.table.chords(shortcut.index())
     }
 
     /// The action a press stands for.
     pub fn pressed(&self, key: &Key, modifiers: Modifiers) -> Option<Shortcut> {
-        Shortcut::ALL
-            .iter()
-            .copied()
-            .find(|shortcut| self.holds(*shortcut, &(modifiers, key.clone())))
+        let index = self.table.pressed(key, modifiers)?;
+        Shortcut::ALL.get(index).copied()
     }
 
     /// The first key of the action as this platform spells it: `⇧⌘E` on a
     /// Mac, `Ctrl+Shift+E` elsewhere; empty for an action without a key.
     pub fn label(&self, shortcut: Shortcut) -> String {
-        self.chords(shortcut)
-            .first()
-            .map(|(held, key)| chord_label(*held, key))
-            .unwrap_or_default()
+        self.table.label(shortcut.index())
     }
-}
-
-/// Letters ignore case: a press with Shift arrives as the capital.
-fn same_key(left: &Key, right: &Key) -> bool {
-    match (left, right) {
-        (Key::Character(a), Key::Character(b)) => a.eq_ignore_ascii_case(b),
-        _ => left == right,
-    }
-}
-
-fn chord_label(held: Modifiers, key: &Key) -> String {
-    let key_name = match key {
-        Key::Character(character) => character.to_uppercase(),
-        Key::Named(Named::Enter) => "\u{21b5}".to_owned(),
-        Key::Named(Named::Backspace) => "\u{232b}".to_owned(),
-        Key::Named(Named::ArrowLeft) => "\u{2190}".to_owned(),
-        Key::Named(Named::ArrowRight) => "\u{2192}".to_owned(),
-        Key::Named(Named::ArrowUp) => "\u{2191}".to_owned(),
-        Key::Named(Named::ArrowDown) => "\u{2193}".to_owned(),
-        Key::Named(named) => format!("{named:?}"),
-        Key::Unidentified => String::new(),
-    };
-    let mut label = String::new();
-    if cfg!(target_os = "macos") {
-        for (is_held, symbol) in [
-            (held.control(), '\u{2303}'),
-            (held.alt(), '\u{2325}'),
-            (held.shift(), '\u{21e7}'),
-            (held.logo(), '\u{2318}'),
-        ] {
-            if is_held {
-                label.push(symbol);
-            }
-        }
-    } else {
-        for (is_held, name) in [
-            (held.control(), "Ctrl+"),
-            (held.alt(), "Alt+"),
-            (held.shift(), "Shift+"),
-            (held.logo(), "Super+"),
-        ] {
-            if is_held {
-                label.push_str(name);
-            }
-        }
-    }
-    label.push_str(&key_name);
-    label
 }
 
 #[cfg(test)]

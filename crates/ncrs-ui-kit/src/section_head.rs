@@ -23,7 +23,7 @@ pub struct SectionHead<'a, M> {
 }
 
 pub fn section_head<'a, M: Clone + 'a>(
-    head: SectionHead<'a, M>,
+    head: SectionHead<'_, M>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let colors = *palette;

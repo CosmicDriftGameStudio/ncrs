@@ -122,6 +122,11 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
         line_at(source.as_bytes(), offset)
     })
     .map_err(|err| invalid(err.span, err.reason))?;
+    config.repos_keys = TabKeys::from_section(&config.keys, "repos", |offset| {
+        line_at(source.as_bytes(), offset)
+    })
+    .map_err(|err| invalid(err.span, err.reason))?;
+    config.repos = crate::repos::resolve_repos(&config.repos_section);
     if !config.theme.entries.is_empty() {
         let vscode = load_vscode(&config.theme, path, home);
         let configured =
@@ -249,6 +254,8 @@ pub fn resolve_git_view(section: &GitViewSection) -> GitViewSettings {
         author_width: pixels(section.author_width),
         date_width: pixels(section.date_width),
         sha_width: pixels(section.sha_width),
+        sidebar_width: pixels(section.sidebar_width),
+        detail_width: pixels(section.detail_width),
         folded: section
             .folded
             .iter()

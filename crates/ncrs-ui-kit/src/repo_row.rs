@@ -189,12 +189,12 @@ pub fn repo_row<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     let fade = |ink: Color| if item.unreachable { faint(ink) } else { ink };
-    let (text_ink, dim_ink) = if item.cursor {
+    let (base_text, base_dim) = if item.cursor {
         (palette.cursor_text, palette.cursor_text)
     } else {
         (palette.text, palette.dim_text)
     };
-    let (text_ink, dim_ink) = (fade(text_ink), fade(dim_ink));
+    let (text_ink, dim_ink) = (fade(base_text), fade(base_dim));
     let fixed = |width: f32, content: Element<'a, M>| cell(Length::Fixed(width), content);
     let nothing = || Space::new().into();
 
@@ -368,8 +368,8 @@ pub fn result_banner<'a, M: Clone + 'a>(
         );
     }
     line = line.push(Space::new().width(Length::Fill));
-    if let Some(buttons) = buttons {
-        line = line.push(buttons);
+    if let Some(extra) = buttons {
+        line = line.push(extra);
     }
     line = line.push(kit::button(
         lang.text(Msg::DialogClose),

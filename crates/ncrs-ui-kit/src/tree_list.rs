@@ -57,6 +57,12 @@ pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Ele
     tree_row_with_lock(row_of, false, None, palette)
 }
 
+/// [`tree_row`] with the label in bold: the one that is in use, such as the
+/// branch that is checked out.
+pub fn tree_row_strong<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Element<'a, M> {
+    tree_row_styled(row_of, false, None, true, palette)
+}
+
 /// The size of the lock after the label of a locked row.
 const LOCK_SIZE: f32 = 12.0;
 
@@ -81,6 +87,16 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     row_of: TreeRow<M>,
     locked: bool,
     on_lock: Option<M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    tree_row_styled(row_of, locked, on_lock, false, palette)
+}
+
+fn tree_row_styled<'a, M: Clone + 'a>(
+    row_of: TreeRow<M>,
+    locked: bool,
+    on_lock: Option<M>,
+    strong: bool,
     palette: &Palette,
 ) -> Element<'a, M> {
     let ink = if row_of.chosen {
@@ -112,12 +128,15 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
                 .width(LEAD_WIDTH),
         );
     }
-    line = line.push(
-        text(row_of.label)
-            .size(font_size::BODY)
-            .color(ink)
-            .wrapping(Wrapping::None),
-    );
+    let label = text(row_of.label)
+        .size(font_size::BODY)
+        .color(ink)
+        .wrapping(Wrapping::None);
+    line = line.push(if strong {
+        label.font(crate::APP_FONT_BOLD)
+    } else {
+        label
+    });
     if locked {
         let lock = lock_mark(palette.success);
         line = line.push(match on_lock {

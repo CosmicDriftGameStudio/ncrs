@@ -93,7 +93,12 @@ pub fn file_history(
                     .map(|signature| signature.name.to_string())
                     .unwrap_or_default(),
                 time: commit.time().map(|time| time.seconds).unwrap_or_default(),
-                summary: message.lines().next().unwrap_or_default().trim().to_string(),
+                summary: message
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
                 refs: labels.get(&info.id).cloned().unwrap_or_default(),
                 graph: GraphRow::default(),
             },

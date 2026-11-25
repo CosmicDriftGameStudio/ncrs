@@ -151,7 +151,8 @@ fn keys_without_modal(
     // (`TabInPage`). The System page's own filter, a dialog or a menu keep the key.
     let page_tab_stop = (prompt.monitor
         && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
-        || prompt.settings;
+        || prompt.settings
+        || (prompt.repos && !prompt.repos_text && !prompt.repos_menu);
     if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
         if let Some(message) = page_tab_message(key_modifiers) {
             return Some(message);

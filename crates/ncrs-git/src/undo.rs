@@ -219,7 +219,8 @@ impl Git {
             }
             UndoAction::RecreateBranches(branches) => self.recreate_branches(branches),
             UndoAction::DeleteTag { name, sha } => {
-                let current = self.try_text(&["rev-parse", "--verify", "-q", &format!("refs/tags/{name}")]);
+                let current =
+                    self.try_text(&["rev-parse", "--verify", "-q", &format!("refs/tags/{name}")]);
                 if current.as_deref() != Some(sha.as_str()) {
                     return Err(ActionError::UndoNotSafe(format!(
                         "tag {name} was moved or removed since"
@@ -235,7 +236,14 @@ impl Git {
                 index_after,
                 saved,
                 hard,
-            } => self.undo_reset(previous_head, new_head, index_before, index_after, saved, *hard),
+            } => self.undo_reset(
+                previous_head,
+                new_head,
+                index_before,
+                index_after,
+                saved,
+                *hard,
+            ),
             UndoAction::RecreateBranch { name, sha } => {
                 if self
                     .try_text(&["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")])

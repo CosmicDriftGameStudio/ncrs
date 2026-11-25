@@ -28,6 +28,7 @@ pub fn write_setting_change(
         SettingChange::CheckForUpdates(enabled) => config::write_check_for_updates(path, enabled),
         SettingChange::FavouritesBar(shown) => config::write_favourites_bar(path, shown),
         SettingChange::Notes(settings) => config::write_notes_settings(path, &settings),
+        SettingChange::Repos(settings) => config::write_repos(path, &settings),
         SettingChange::Load(load) => config::write_filing_load(path, load),
         SettingChange::HermesSwitch(enabled) => config::write_hermes_enabled(path, enabled),
         SettingChange::HermesChatKeepDays(days) => config::write_hermes_chat_keep_days(path, days),

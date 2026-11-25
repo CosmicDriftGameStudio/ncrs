@@ -14,8 +14,8 @@ pub fn literal_pattern(relative_path: &str) -> String {
     let slashed = relative_path.replace('\\', "/");
     let mut pattern = String::from("/");
     for (index, letter) in slashed.trim_start_matches('/').chars().enumerate() {
-        let needs_escape = matches!(letter, '*' | '?' | '[' | '!' | '#' | '\\')
-            || (letter == ' ' && index == 0);
+        let needs_escape =
+            matches!(letter, '*' | '?' | '[' | '!' | '#' | '\\') || (letter == ' ' && index == 0);
         if needs_escape {
             pattern.push('\\');
         }
@@ -45,7 +45,11 @@ impl Git {
         if existing.lines().any(|known| known.trim_end() == line) {
             return Ok(None);
         }
-        let newline = if existing.contains("\r\n") { "\r\n" } else { "\n" };
+        let newline = if existing.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let mut saved = self.save_files(&[IGNORE_FILE.to_string()])?;
         let mut file = fs::OpenOptions::new()
             .create(true)

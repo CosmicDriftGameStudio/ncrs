@@ -11,6 +11,8 @@ pub enum SettingsFeature {
     Columns,
     Favourites,
     Notes,
+    /// The repo manager: where it looks for repositories and how its bulk actions run.
+    Git,
     System,
     Updates,
     /// The trial and the purchase of the App Store build.
@@ -40,7 +42,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -52,6 +54,7 @@ impl SettingsFeature {
         Self::Columns,
         Self::Favourites,
         Self::Notes,
+        Self::Git,
         Self::Index,
         Self::ReadErrors,
         Self::Reports,
@@ -87,9 +90,12 @@ impl SettingsFeature {
             | Self::System
             | Self::Updates
             | Self::FullVersion => SettingsGroup::General,
-            Self::Programs | Self::Servers | Self::Columns | Self::Favourites | Self::Notes => {
-                SettingsGroup::Files
-            }
+            Self::Programs
+            | Self::Servers
+            | Self::Columns
+            | Self::Favourites
+            | Self::Notes
+            | Self::Git => SettingsGroup::Files,
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
             Self::Ai
             | Self::Reviews
@@ -133,6 +139,7 @@ mod tests {
                 Columns,
                 Favourites,
                 Notes,
+                Git,
                 Index,
                 ReadErrors,
                 Reports,
@@ -157,6 +164,7 @@ mod tests {
             (Columns, SettingsGroup::Files),
             (Favourites, SettingsGroup::Files),
             (Notes, SettingsGroup::Files),
+            (Git, SettingsGroup::Files),
             (Index, SettingsGroup::Documents),
             (ReadErrors, SettingsGroup::Documents),
             (Reports, SettingsGroup::Documents),

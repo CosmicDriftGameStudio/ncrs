@@ -22,8 +22,14 @@ pub fn branches_containing(
     let platform = repository.references().map_err(GitError::read)?;
     let mut found = Vec::new();
     let sources = [
-        (platform.local_branches().map_err(GitError::read)?, RefKind::Branch),
-        (platform.remote_branches().map_err(GitError::read)?, RefKind::Remote),
+        (
+            platform.local_branches().map_err(GitError::read)?,
+            RefKind::Branch,
+        ),
+        (
+            platform.remote_branches().map_err(GitError::read)?,
+            RefKind::Remote,
+        ),
     ];
     for (references, kind) in sources {
         for reference in references.flatten() {

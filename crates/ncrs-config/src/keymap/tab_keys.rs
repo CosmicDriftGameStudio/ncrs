@@ -3,7 +3,7 @@ use super::*;
 use crate::config::{KeyEntry, KeySection};
 
 /// The tabs that read a `[keys.<tab>]` table. A second tab is one more name.
-pub const TAB_KEY_TABLES: [&str; 1] = ["git"];
+pub const TAB_KEY_TABLES: [&str; 2] = ["git", "repos"];
 
 /// One line of a `[keys.<tab>]` table, read for its keys. Whether the name
 /// is an action of the tab is for the tab to say.

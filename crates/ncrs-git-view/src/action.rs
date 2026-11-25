@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use ncrs_ui_kit::git_rows::CommitColumns;
 
+use crate::panes::PaneWidths;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// The tab is to go.
@@ -19,4 +21,8 @@ pub enum Action {
     FoldsChanged { root: PathBuf, folded: Vec<String> },
     /// The commit columns were dragged to these widths; the app remembers them.
     ColumnsResized(CommitColumns),
+    /// The sidebar or the detail pane was dragged or keyed to another width; the app remembers it.
+    PanesResized(PaneWidths),
+    /// Show the repository at this folder in a Git tab of its own.
+    OpenRepository(PathBuf),
 }

@@ -15,6 +15,15 @@ impl App {
 
     /// The Git actions, while a Git tab is shown that offers them.
     pub(in crate::app) fn command_palette_git_commands(&self) -> Vec<GitCommandEntry> {
+        if self.repos_shown() {
+            return ncrs_repos::commands(self.lang, &self.repos_keys)
+                .into_iter()
+                .map(|(label, shortcut)| GitCommandEntry {
+                    label,
+                    shortcut: Some(shortcut).filter(|key| !key.is_empty()),
+                })
+                .collect();
+        }
         let offered = self
             .shown_git_tab()
             .and_then(|id| self.git_tabs.get(id))
@@ -139,6 +148,12 @@ impl App {
             // up.
             Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
             Some(CommandPaletteAction::RunGit(place)) => {
+                if self.repos_shown() {
+                    return match ncrs_repos::message_of_command(place) {
+                        Some(repos_message) => task.chain(self.update_repos(repos_message)),
+                        None => task,
+                    };
+                }
                 let sent = self
                     .shown_git_tab()
                     .zip(ncrs_git_view::message_of_command(place));

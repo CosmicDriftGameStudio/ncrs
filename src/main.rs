@@ -53,6 +53,7 @@ pub use ncrs_hermes_ui::{
 pub use ncrs_i18n as i18n;
 pub use ncrs_jobs as jobs;
 mod git_keys;
+mod repos_keys;
 mod keymap;
 pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]

@@ -15,6 +15,7 @@ impl App {
         settings_ui::SettingsView {
             facts: self.documents_facts(&overview, state),
             favourites: self.favourites_facts(),
+            repos_scan: self.repos_scan_facts(),
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
@@ -198,6 +199,7 @@ impl App {
             Ask::OpenChat { area } => self.open_chat_from_settings(area),
             Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
             Ask::NotesRecovery => self.update_notes(ncrs_notes::Message::RecoveryRequested),
+            Ask::ScanRepos => self.scan_repos(),
             Ask::NotesRestore(text) => self.update_notes(ncrs_notes::Message::Restore(text)),
             Ask::NotesSyncNow => self.update_notes(ncrs_notes::Message::SyncNow),
             Ask::Store(button) => self.press_store_button(button),
@@ -450,6 +452,10 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::Repos(settings) => {
+                self.repos_settings = settings;
+                Task::none()
+            }
             SettingChange::GitView(settings) => {
                 self.git_view_settings = settings;
                 Task::none()

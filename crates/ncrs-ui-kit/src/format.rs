@@ -425,6 +425,19 @@ pub fn middle_cut(text: &str, max_chars: usize) -> Option<MiddleCut> {
     })
 }
 
+/// `path` with the home folder written `~`; a path outside it, or no known
+/// home, stays whole.
+pub fn home_relative(path: &Path, home: &Path) -> String {
+    if home.as_os_str().is_empty() {
+        return path.display().to_string();
+    }
+    match path.strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Err(_) => path.display().to_string(),
+    }
+}
+
 /// `text` with the middle cut out so at most `max_chars` characters remain, for
 /// paths: the end stays, so the last component (the file name) is visible.
 pub fn ellipsize_middle(text: &str, max_chars: usize) -> String {

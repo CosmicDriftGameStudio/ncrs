@@ -105,6 +105,8 @@ impl App {
 
         let below_title_bar = if self.filing_shown() {
             self.filing_area()
+        } else if self.repos_shown() {
+            self.repos_area()
         } else if self.git_shown() {
             self.git_area()
         } else if self.notes_shown() {

@@ -207,6 +207,7 @@ impl App {
             viewer: self.viewer.is_open(),
             notes: self.notes.is_open(),
             filing: self.filing_view.session.is_some(),
+            repos: self.repos.is_some(),
             git: self.git_tabs.ids(),
             hermes: self.hermes_chat.open,
         }
@@ -230,6 +231,10 @@ impl App {
 
     pub(in crate::app) fn git_shown(&self) -> bool {
         self.shown_git_tab().is_some()
+    }
+
+    pub(in crate::app) fn repos_shown(&self) -> bool {
+        self.repos.is_some() && self.shown_tab == ShownTab::Repos
     }
 
     pub(in crate::app) fn filing_shown(&self) -> bool {
@@ -265,6 +270,12 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::Notes,
                 active: self.shown_tab == ShownTab::Notes,
+            });
+        }
+        if self.repos.is_some() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Repos,
+                active: self.shown_tab == ShownTab::Repos,
             });
         }
         for (id, state) in self.git_tabs.iter() {

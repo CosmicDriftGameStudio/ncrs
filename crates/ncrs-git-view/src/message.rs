@@ -1,11 +1,16 @@
 //! What happens in the Git tab.
 
-use ncrs_git::{ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefsOverview};
+use ncrs_git::{
+    ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefLabel, RefsOverview,
+};
 
 use ncrs_ui_kit::git_rows::CommitColumn;
+use ncrs_ui_kit::splitter::{Direction, Step};
 
 use crate::actions::{ChangeSide, ConflictAction, MenuAction, MenuTarget, Side};
 use crate::job::Finished;
+use crate::panes::Split;
+use crate::picker::PickerKind;
 use crate::snapshot::Snapshot;
 use crate::state::Fold;
 
@@ -17,6 +22,8 @@ pub enum Message {
     DetailLoaded(u64, Box<Result<CommitDetail, String>>),
     WorkingLoaded(u64, Result<Vec<ChangedFile>, String>),
     DiffLoaded(u64, Box<Result<FileDiff, String>>),
+    /// The branches that contain the shown commit; they come after the detail.
+    ContainingLoaded(u64, String, Box<Result<Vec<RefLabel>, String>>),
     /// What the actions show, read anew; the error says why there are none.
     ActionsLoaded(u64, Box<Result<Snapshot, ActionError>>),
     /// A call to git that was started by an action has ended.
@@ -107,4 +114,40 @@ pub enum Message {
     Retry,
     ToggleNoticeDetails,
     DismissNotice,
+    /// Opens the list of the repository or branch picker; a second press closes it.
+    OpenPicker(PickerKind),
+    PickerQuery(String),
+    /// A press on a row of the open picker: the place among all its rows.
+    PickerPressed(usize),
+    /// Enter with the key for "and stash": switch the branch and put the local changes aside.
+    PickerEnterWithStash,
+    /// The key for a new branch while a picker is open.
+    PickerNewBranch,
+    /// The enter of the search field; the key handler has taken the key already.
+    PickerSubmit,
+    SplitPressed(Split),
+    SplitHover(Split),
+    SplitLeave,
+    SplitReset(Split),
+    SplitNudge(Split, Step, Direction),
+    /// The pointer moved to this x while a splitter is dragged.
+    PaneMoved(f32),
+    PaneReleased,
+    JumpToHead,
+    JumpToWip,
+    JumpToCommit(String),
+    GoToParent,
+    CopySha,
+    /// The key that switches the file list between paths and a tree.
+    ToggleTreeKey,
+    ChipPressed(Chip),
+}
+
+/// The state chips of the head that jump somewhere when pressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chip {
+    Behind,
+    Ahead,
+    Changes,
+    Conflicts,
 }

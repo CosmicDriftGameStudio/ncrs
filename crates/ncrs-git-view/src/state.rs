@@ -5,27 +5,37 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use ncrs_git::{ChangedFile, CommitDetail, FileDiff, Log, LogCommit, RefsOverview, WorktreeInfo};
+use ncrs_git::{
+    ChangedFile, CommitDetail, FileDiff, Log, LogCommit, RefLabel, RefsOverview, WorktreeInfo,
+};
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
 use crate::actions::Actions;
+use crate::panes::{PaneDrag, Split};
+use crate::picker::Picker;
 
 /// Commits asked for at once; the next page asks for this many more.
 pub const PAGE: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Area {
     Sidebar,
+    /// The bar between the sidebar and the commit list; the arrow keys move it.
+    SidebarSplit,
     #[default]
     Commits,
+    DetailSplit,
     Detail,
 }
 
 impl Area {
+    /// The next stop of Tab, the splitters included.
     pub fn next(self) -> Self {
         match self {
-            Self::Sidebar => Self::Commits,
-            Self::Commits => Self::Detail,
+            Self::Sidebar => Self::SidebarSplit,
+            Self::SidebarSplit => Self::Commits,
+            Self::Commits => Self::DetailSplit,
+            Self::DetailSplit => Self::Detail,
             Self::Detail => Self::Sidebar,
         }
     }
@@ -33,8 +43,34 @@ impl Area {
     pub fn previous(self) -> Self {
         match self {
             Self::Sidebar => Self::Detail,
-            Self::Commits => Self::Sidebar,
-            Self::Detail => Self::Commits,
+            Self::SidebarSplit => Self::Sidebar,
+            Self::Commits => Self::SidebarSplit,
+            Self::DetailSplit => Self::Commits,
+            Self::Detail => Self::DetailSplit,
+        }
+    }
+
+    /// The next list to the right, where the arrow keys go; the splitters are skipped.
+    pub fn next_list(self) -> Self {
+        match self {
+            Self::Sidebar | Self::SidebarSplit => Self::Commits,
+            Self::Commits | Self::DetailSplit | Self::Detail => Self::Detail,
+        }
+    }
+
+    pub fn previous_list(self) -> Self {
+        match self {
+            Self::Sidebar | Self::SidebarSplit | Self::Commits => Self::Sidebar,
+            Self::DetailSplit | Self::Detail => Self::Commits,
+        }
+    }
+
+    /// The splitter this area is, if it is one.
+    pub const fn split(self) -> Option<Split> {
+        match self {
+            Self::SidebarSplit => Some(Split::Sidebar),
+            Self::DetailSplit => Some(Split::Detail),
+            Self::Sidebar | Self::Commits | Self::Detail => None,
         }
     }
 }
@@ -56,6 +92,15 @@ pub enum Fold {
 }
 
 const REMOTE_KEY_PREFIX: &str = "remote:";
+/// Remembered once the user has opened or shut "Remotes" themselves; until
+/// then the group starts shut.
+const REMOTES_SEEN_KEY: &str = "seen:remotes";
+
+/// Whether the remembered folds say the user has chosen for "Remotes" already.
+pub fn remotes_were_chosen(keys: &[String]) -> bool {
+    keys.iter()
+        .any(|key| key == REMOTES_SEEN_KEY || key == "remotes")
+}
 
 impl Fold {
     /// How the app remembers it.
@@ -213,6 +258,7 @@ pub struct Loads {
     pub detail: Slot,
     pub diff: Slot,
     pub actions: Slot,
+    pub containing: Slot,
 }
 
 #[derive(Debug, Default)]
@@ -228,6 +274,20 @@ pub struct State {
     pub collapsed: HashSet<Fold>,
     /// A commit column being dragged to another width.
     pub column_drag: Option<ColumnDrag>,
+    /// A splitter being dragged.
+    pub pane_drag: Option<PaneDrag>,
+    /// The splitter the pointer is on.
+    pub hovered_split: Option<Split>,
+    /// The repository or branch picker that is open.
+    pub picker: Option<Picker>,
+    /// The user has opened or shut "Remotes" at least once.
+    pub remotes_chosen: bool,
+    /// The branches that contain the commit of the detail pane, with its id.
+    pub containing: Option<(String, Vec<RefLabel>)>,
+    /// The commit to go to as soon as the list has been read far enough.
+    pub pending_jump: Option<String>,
+    /// The id of the commit whose SHA was copied last, for the status line.
+    pub copied_sha: Option<String>,
     pub sidebar_cursor: usize,
     pub commit_cursor: usize,
     pub file_cursor: usize,
@@ -252,6 +312,7 @@ impl State {
         self.loads.detail.cancel();
         self.loads.diff.cancel();
         self.loads.actions.cancel();
+        self.loads.containing.cancel();
         *self = Self::default();
     }
 
@@ -262,6 +323,18 @@ impl State {
         self.loads.detail.cancel();
         self.loads.diff.cancel();
         self.loads.actions.cancel();
+        self.loads.containing.cancel();
+    }
+
+    /// What the keys of the tab need to know.
+    pub fn key_context(&self) -> crate::keys::KeyContext {
+        crate::keys::KeyContext {
+            filter_focused: self.filter_focused,
+            in_diff: self.diff.is_some(),
+            dialog_open: self.actions.dialog_open(),
+            picker_open: self.picker.is_some(),
+            area: self.area,
+        }
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
@@ -276,6 +349,10 @@ impl State {
         items.push(SidebarItem::Header(Section::Local));
         if !is_folded(Section::Local) {
             items.extend((0..overview.local.len()).map(SidebarItem::Local));
+        }
+        items.push(SidebarItem::Header(Section::Worktrees));
+        if !is_folded(Section::Worktrees) {
+            items.extend((0..overview.worktrees.len()).map(SidebarItem::Worktree));
         }
         items.push(SidebarItem::Header(Section::Remotes));
         if !is_folded(Section::Remotes) {
@@ -302,10 +379,6 @@ impl State {
         if !is_folded(Section::Stashes) {
             items.extend((0..self.actions.stashes.len()).map(SidebarItem::Stash));
         }
-        items.push(SidebarItem::Header(Section::Worktrees));
-        if !is_folded(Section::Worktrees) {
-            items.extend((0..overview.worktrees.len()).map(SidebarItem::Worktree));
-        }
         items
     }
 
@@ -326,6 +399,9 @@ impl State {
     /// The folded groups as the app remembers them, in a fixed order.
     pub fn folded_keys(&self) -> Vec<String> {
         let mut keys: Vec<String> = self.collapsed.iter().map(Fold::key).collect();
+        if self.remotes_chosen {
+            keys.push(REMOTES_SEEN_KEY.to_owned());
+        }
         keys.sort();
         keys
     }

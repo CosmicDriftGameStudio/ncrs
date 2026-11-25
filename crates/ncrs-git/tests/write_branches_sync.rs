@@ -172,14 +172,21 @@ fn switching_to_the_default_branch_uses_origin_head_and_makes_a_missing_local_br
     repo.sh(&["push", "-q", "origin", "feat"]);
     git_cli::sh(origin.path(), &["symbolic-ref", "HEAD", "refs/heads/feat"]);
 
-    assert_eq!(repo.git.switch_to_default().unwrap(), "main", "no origin/HEAD here yet: main");
+    assert_eq!(
+        repo.git.switch_to_default().unwrap(),
+        "main",
+        "no origin/HEAD here yet: main"
+    );
     let clone = clone_of(&origin);
     clone.git.checkout("main").unwrap();
     assert_eq!(clone.git.switch_to_default().unwrap(), "feat");
     assert_eq!(clone.git.current_branch().as_deref(), Some("feat"));
 
     let fresh = git_cli::TempDir::new().unwrap();
-    git_cli::sh(fresh.path(), &["clone", "-q", origin.path().to_str().unwrap(), "."]);
+    git_cli::sh(
+        fresh.path(),
+        &["clone", "-q", origin.path().to_str().unwrap(), "."],
+    );
     git_cli::sh(fresh.path(), &["checkout", "-q", "main"]);
     git_cli::sh(fresh.path(), &["branch", "-D", "feat"]);
     let git = ncrs_git::Git::open(fresh.path()).unwrap();

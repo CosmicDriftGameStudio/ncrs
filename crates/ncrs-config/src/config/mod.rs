@@ -38,6 +38,7 @@ use crate::palette::{
 use crate::panel_columns::{
     columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
 };
+use crate::repos::{ReposSection, ReposSettings};
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
 use ncrs_ai::ConsentedOrigins;
@@ -143,6 +144,15 @@ pub struct Config {
     /// The `[keys.git]` table, read for its keys; the Git tab says which names are actions.
     #[serde(skip)]
     pub git_keys: TabKeys,
+    /// The `[keys.repos]` table, read for its keys; the repos tab says which names are actions.
+    #[serde(skip)]
+    pub repos_keys: TabKeys,
+    /// The `[repos]` section as written; `load` checks it into `repos`.
+    #[serde(default, rename = "repos")]
+    pub repos_section: ReposSection,
+    /// Where the repo manager looks and how its bulk actions run.
+    #[serde(skip)]
+    pub repos: ReposSettings,
     /// The `[theme]` section as written; `load` turns it into `palette`.
     #[serde(default)]
     pub theme: ThemeSection,
@@ -248,6 +258,7 @@ mod error;
 pub mod instance_lock;
 mod loading;
 mod paths;
+mod repos_writes;
 mod resolving;
 mod sections;
 mod setting_writes;
@@ -266,6 +277,7 @@ pub use self::paths::{
     default_state_path, default_view_copies_dir, portable_data_dir, portable_data_dir_of,
     use_data_dir,
 };
+pub use self::repos_writes::{repos_settings, write_repos};
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{

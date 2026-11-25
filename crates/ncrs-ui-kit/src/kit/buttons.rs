@@ -287,30 +287,30 @@ pub fn toolbar_button<'a, M: Clone + 'a>(
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let key_ink = match tone {
+    let tone_ink = match tone {
         Tone::Secondary => palette.dim_text,
         Tone::Primary => palette.primary_button().1.scale_alpha(KEY_ON_FILL_ALPHA),
         Tone::Danger => palette.cursor_text.scale_alpha(KEY_ON_FILL_ALPHA),
     };
     let key_ink = if on_press.is_none() {
-        key_ink.scale_alpha(DISABLED_OPACITY)
+        tone_ink.scale_alpha(DISABLED_OPACITY)
     } else {
-        key_ink
+        tone_ink
     };
     let mut content = Row::new()
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center)
         .push(label_text(label));
-    if let Some(key) = key {
+    if let Some(shown_key) = key {
         content = content.push(
-            text(key.to_owned())
+            text(shown_key.to_owned())
                 .size(font_size::SMALL)
                 .color(key_ink)
                 .wrapping(Wrapping::None),
         );
     }
     let shown_tip = match key {
-        Some(key) => format!("{tip} ({key})"),
+        Some(shown_key) => format!("{tip} ({shown_key})"),
         None => tip.to_owned(),
     };
     super::tooltip(

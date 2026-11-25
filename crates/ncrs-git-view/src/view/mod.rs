@@ -1,28 +1,32 @@
-//! The Git tab: header with the filter, sidebar, commit list and detail pane,
-//! or the diff of one file in their place.
+//! The Git tab: header with the pickers, the toolbar and the filter, sidebar,
+//! commit list and detail pane with a splitter on each side, or the diff of
+//! one file in their place.
 
 mod changes;
 mod commits;
 mod detail;
 mod diff;
+mod header;
 mod merge;
 mod overlay;
 mod sidebar;
 mod toolbar;
 
-use iced::widget::{column, container, row, stack, Space};
-use iced::{alignment, Element, Length};
+use iced::widget::{column, container, row, stack};
+use iced::{Element, Length, Padding};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::action_rows::BANNER_HEIGHT;
 use ncrs_ui_kit::git_rows::drag_capture;
-use ncrs_ui_kit::kit::text_field;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
-use ncrs_ui_kit::page_text::{page_heading, page_line};
+use ncrs_ui_kit::page_text::page_line;
+use ncrs_ui_kit::splitter::{splitter, width_label, SplitterMessages};
+use ncrs_ui_kit::theme::git::SplitterLook;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
 use crate::actions::Unavailable;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
+use crate::panes::{PaneWidths, Split};
 use crate::shortcuts::Shortcut;
 use crate::state::{Area, State};
 pub use overlay::{NAME_ID, RENAME_ID};
@@ -30,13 +34,14 @@ pub use overlay::{NAME_ID, RENAME_ID};
 /// The ids of the fields and scroll areas, for the focus and scroll tasks.
 pub const FILTER_ID: &str = "git-filter";
 pub const DIFF_ID: &str = "git-diff";
-const COMMITS_ID: &str = "git-commits";
+pub const COMMITS_ID: &str = "git-commits";
 const DETAIL_ID: &str = "git-detail";
 const SIDEBAR_ID: &str = "git-sidebar";
-/// Below this window width the detail pane is as wide as the sidebar and the
-/// commit list drops its SHA column, so the message keeps its room. Windows of
-/// 1400 and more keep the full layout.
+/// Below this window width the detail pane is as wide as the sidebar at most
+/// and the commit list drops its SHA column, so the message keeps its room.
 const NARROW_WIDTH: f32 = 1400.0;
+/// What the label with the width of a dragged bar takes at most.
+const SPLIT_LABEL_WIDTH: f32 = 90.0;
 
 fn is_narrow(ctx: ViewCtx<'_>) -> bool {
     ctx.window.width < NARROW_WIDTH
@@ -65,25 +70,30 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             &[("{count}", &log.commits.len().to_string())],
         )
     });
+    let copied = state
+        .copied_sha
+        .as_ref()
+        .map(|short| fill_template(ctx.lang.text(Msg::GitViewShaCopied), &[("{sha}", short)]));
+    let right = copied.or(loaded);
     let bar = PageStatusBar {
         mode: ctx.lang.text(Msg::GitViewMode),
         line,
-        right: loaded.as_deref(),
+        right: right.as_deref(),
     };
     let body: Element<'a, Message> = match &state.diff {
         Some(shown) => diff::view(shown, state.detail.as_ref(), ctx),
         None => row![
-            container(sidebar::view(state, ctx)).width(size::SIDE_PANE),
-            theme::vertical_rule(palette.border_inactive),
+            container(sidebar::view(state, ctx)).width(sidebar_width(ctx, state)),
+            splitter_between(Split::Sidebar, state, ctx),
             container(middle_pane(state, ctx)).width(Length::Fill),
-            theme::vertical_rule(palette.border_inactive),
+            splitter_between(Split::Detail, state, ctx),
             container(detail_pane(state, ctx)).width(detail_width(state, ctx)),
         ]
         .height(Length::Fill)
         .into(),
     };
     let mut top = column![
-        header(state, ctx),
+        header::view(state, ctx),
         theme::horizontal_rule(palette.border_inactive),
     ]
     .width(Length::Fill)
@@ -118,6 +128,16 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ]
         .into();
     }
+    if state.pane_drag.is_some() {
+        let mut layers = stack![
+            page,
+            drag_capture(Message::PaneMoved, Message::PaneReleased)
+        ];
+        if let Some(label) = drag_label(state, ctx) {
+            layers = layers.push(label);
+        }
+        return layers.into();
+    }
     overlay::over(page.into(), state, ctx)
 }
 
@@ -151,7 +171,7 @@ fn middle_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 /// How far down the body starts: the header, its rule and the banners.
 fn body_top(state: &State) -> f32 {
     let banner = |present: bool| if present { BANNER_HEIGHT } else { 0.0 };
-    size::HEADER
+    size::PICKER_HEADER
         + spacing::BORDER_WIDTH
         + if state.actions.unavailable.is_some() {
             size::ROW
@@ -170,25 +190,87 @@ fn detail_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
 }
 
+/// The widths as shown: the ones being dragged, else the remembered ones.
+fn panes_in_view(state: &State, ctx: ViewCtx<'_>) -> PaneWidths {
+    state.pane_drag.map_or(ctx.panes, |drag| drag.current)
+}
+
+pub fn sidebar_width(ctx: ViewCtx<'_>, state: &State) -> f32 {
+    panes_in_view(state, ctx).width(Split::Sidebar)
+}
+
+/// A narrow window keeps the detail pane to the width of the sidebar at most,
+/// so the commit list keeps its room.
 fn detail_width(state: &State, ctx: ViewCtx<'_>) -> f32 {
-    if !matches!(pane_of(state), Pane::Commit) {
-        return size::SIDE_PANE * 1.5;
-    }
-    if is_narrow(ctx) {
-        size::SIDE_PANE
+    let wanted = panes_in_view(state, ctx).width(Split::Detail);
+    if matches!(pane_of(state), Pane::Commit) && is_narrow(ctx) {
+        wanted.min(size::SIDE_PANE)
     } else {
-        size::SIDE_PANE * 1.5
+        wanted
     }
 }
 
-/// How wide the commit list is: what the sidebar, the detail pane and the rules between leave.
+/// How wide the commit list is: what the sidebar, the detail pane and the bars between leave.
 fn commits_pane_width(state: &State, ctx: ViewCtx<'_>) -> f32 {
-    ctx.window.width - size::SIDE_PANE - detail_width(state, ctx) - 2.0 * spacing::BORDER_WIDTH
+    ctx.window.width - sidebar_width(ctx, state) - detail_width(state, ctx) - 2.0 * size::SPLITTER
+}
+
+fn splitter_between<'a>(split: Split, state: &State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let look = if state.pane_drag.is_some_and(|drag| drag.split == split) {
+        SplitterLook::Dragged
+    } else if state.hovered_split == Some(split) {
+        SplitterLook::Hovered
+    } else {
+        SplitterLook::Idle
+    };
+    let at = match split {
+        Split::Sidebar => Area::SidebarSplit,
+        Split::Detail => Area::DetailSplit,
+    };
+    splitter(
+        look,
+        state.area == at,
+        SplitterMessages {
+            press: Message::SplitPressed(split),
+            reset: Message::SplitReset(split),
+            hover: Message::SplitHover(split),
+            leave: Message::SplitLeave,
+        },
+        ctx.lang,
+        ctx.palette,
+    )
+}
+
+/// The width of the bar being dragged, near the bar.
+fn drag_label<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message>> {
+    let drag = state.pane_drag?;
+    let widths = drag.current;
+    let left = match drag.split {
+        Split::Sidebar => widths.width(Split::Sidebar) + spacing::M,
+        Split::Detail => {
+            ctx.window.width - widths.width(Split::Detail) - SPLIT_LABEL_WIDTH - spacing::M
+        }
+    };
+    Some(
+        container(width_label(widths.width(drag.split), ctx.lang, ctx.palette))
+            .padding(Padding {
+                left: left.max(0.0),
+                top: body_top(state) + spacing::M,
+                ..Padding::ZERO
+            })
+            .into(),
+    )
 }
 
 /// The keys of the focus; with the actions on, the keys of the actions too.
 fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
     let key = |shortcut: Shortcut| shortcut.label(ctx.keys);
+    if state.picker.is_some() {
+        return ctx.lang.text(Msg::GitViewStatusPicker).to_owned();
+    }
+    if state.diff.is_none() && state.area.split().is_some() {
+        return ctx.lang.text(Msg::GitViewStatusSplitter).to_owned();
+    }
     let acting = state.actions.sync.is_some() && state.diff.is_none() && !state.filter_focused;
     if acting && state.actions.merge.is_some() && state.area != Area::Sidebar {
         return fill_template(
@@ -222,6 +304,17 @@ fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
             ],
         );
     }
+    if state.diff.is_none() && !state.filter_focused && state.area == Area::Commits {
+        return fill_template(
+            ctx.lang.text(Msg::GitViewStatusCommitsKeys),
+            &[
+                ("{head}", &key(Shortcut::JumpHead)),
+                ("{wip}", &key(Shortcut::JumpWip)),
+                ("{parent}", &key(Shortcut::GoParent)),
+                ("{copy}", &key(Shortcut::CopySha)),
+            ],
+        );
+    }
     ctx.lang.text(hint_of(state)).to_owned()
 }
 
@@ -234,58 +327,7 @@ fn hint_of(state: &State) -> Msg {
     }
     match state.area {
         Area::Sidebar => Msg::GitViewStatusSidebar,
-        Area::Commits => Msg::GitViewStatusCommits,
+        Area::Commits | Area::SidebarSplit | Area::DetailSplit => Msg::GitViewStatusCommits,
         Area::Detail => Msg::GitViewStatusDetail,
     }
-}
-
-fn header<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let palette = ctx.palette;
-    let branch = state
-        .overview
-        .as_ref()
-        .map(
-            |overview| match overview.local.iter().find(|branch| branch.is_current) {
-                Some(branch) => format!(
-                    "{} \u{2191}{} \u{2193}{}",
-                    branch.name, branch.ahead, branch.behind
-                ),
-                None => state
-                    .current_worktree()
-                    .and_then(|worktree| worktree.head_short.clone())
-                    .map(|short| {
-                        fill_template(
-                            ctx.lang.text(Msg::GitViewWorktreeDetachedAt),
-                            &[("{sha}", &short)],
-                        )
-                    })
-                    .unwrap_or_default(),
-            },
-        )
-        .unwrap_or_default();
-    let filter = text_field(
-        ctx.lang.text(Msg::GitViewFilterPlaceholder),
-        &state.filter,
-        FILTER_ID,
-        Some(Message::FilterChanged),
-        Message::FilterSubmit,
-        palette,
-    );
-    let mut line = row![
-        page_heading(&state.name, palette),
-        page_line(branch, font_size::BODY, palette.dim_text),
-    ]
-    .spacing(spacing::L)
-    .align_y(alignment::Vertical::Center);
-    if let Some(sync) = &state.actions.sync {
-        line = line.push(toolbar::view(sync, state.actions.busy, ctx));
-    }
-    container(
-        line.push(Space::new().width(Length::Fill))
-            .push(container(filter).width(size::FIELD_WIDE)),
-    )
-    .padding([0.0, spacing::XXL])
-    .height(size::HEADER)
-    .center_y(size::HEADER)
-    .into()
 }

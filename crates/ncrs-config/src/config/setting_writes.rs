@@ -4,10 +4,11 @@ use super::*;
 /// what it becomes, `None` to drop its line. Only the `*_setting` functions
 /// below build one; what they cannot rule out the loader catches before the
 /// file is replaced.
+#[derive(Debug)]
 pub struct Setting {
-    tables: &'static [&'static str],
-    key: &'static str,
-    value: Option<toml_edit::Value>,
+    pub tables: &'static [&'static str],
+    pub key: &'static str,
+    pub value: Option<toml_edit::Value>,
 }
 
 pub const THEME_TABLE: &str = "theme";
@@ -221,7 +222,7 @@ pub fn columns_settings(columns: &PanelColumns) -> [Setting; 6] {
 
 /// The whole `[git_view]` section; a width left to the standard and nothing
 /// folded drop their lines.
-pub fn git_view_settings(settings: &GitViewSettings) -> [Setting; 4] {
+pub fn git_view_settings(settings: &GitViewSettings) -> [Setting; 6] {
     let width = |key: &'static str, pixels: Option<u16>| Setting {
         tables: &[GIT_VIEW_TABLE],
         key,
@@ -241,6 +242,8 @@ pub fn git_view_settings(settings: &GitViewSettings) -> [Setting; 4] {
         width("author_width", settings.author_width),
         width("date_width", settings.date_width),
         width("sha_width", settings.sha_width),
+        width("sidebar_width", settings.sidebar_width),
+        width("detail_width", settings.detail_width),
         Setting {
             tables: &[GIT_VIEW_TABLE],
             key: "folded",

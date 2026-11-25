@@ -37,6 +37,8 @@ pub enum SettingChange {
     FavouritesBar(bool),
     /// The notes settings besides their folder, all of them as they are to be written.
     Notes(ncrs_core::notes_sync::NotesSettings),
+    /// The `[repos]` settings of the Repos tab, all of them as they are to be written.
+    Repos(ncrs_config::repos::ReposSettings),
     Load(Load),
     /// The `[hermes]` switch: off, nothing is watched and no model is called.
     HermesSwitch(bool),
@@ -215,6 +217,8 @@ pub enum SettingsMessage {
     RemoveFolder(PathBuf),
     /// The read folder stays but no longer files its new files by itself.
     StopContinuous(PathBuf),
+    /// "Search now" on the Git page: the Repos tab scans the folders again.
+    ScanRepos,
     /// Opens the dialog of this read folder, or closes it.
     EditFolder(Option<PathBuf>),
     /// The folder with this path takes the values of the location.

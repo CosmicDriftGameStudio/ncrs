@@ -10,7 +10,11 @@ use ncrs_i18n::Language;
 
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns, COMMIT_COLUMN_MAX};
 
-use crate::state::{remote_groups, Area, Section, SidebarItem, Subject};
+use ncrs_ui_kit::splitter::{Direction, Step};
+
+use crate::keys::KeyContext;
+use crate::panes::Split;
+use crate::state::{remote_groups, Area, Fold, Section, SidebarItem, Subject};
 use crate::{git_view_key, open, tab_title, update, Action, Ctx, GitKeys, Message, State};
 
 const CTX: Ctx = Ctx::new(Language::English);
@@ -37,6 +41,7 @@ fn changed(path: &str) -> ChangedFile {
         added: 1,
         removed: 0,
         binary: false,
+        untracked: false,
     }
 }
 
@@ -51,6 +56,7 @@ fn worktree(path: &str, wip: usize, is_current: bool) -> WorktreeInfo {
         merged: false,
         is_main: is_current,
         is_current,
+        ..WorktreeInfo::default()
     }
 }
 
@@ -96,6 +102,9 @@ fn show_detail(state: &mut State, sha: &str, files: &[&str]) {
         parents: Vec::new(),
         author: "Test".to_owned(),
         time: 0,
+        author_time: 0,
+        committer: String::new(),
+        committer_time: 0,
         message: "title\n\nbody".to_owned(),
         files: files.iter().map(|path| changed(path)).collect(),
     };
@@ -148,11 +157,15 @@ fn tab_walks_through_the_areas_and_back() {
     let mut state = opened(&["aaaaaaa"], 0);
     assert_eq!(state.area, Area::Commits);
     send(&mut state, Message::NextArea);
+    assert_eq!(state.area, Area::DetailSplit);
+    send(&mut state, Message::NextArea);
     assert_eq!(state.area, Area::Detail);
     send(&mut state, Message::NextArea);
     assert_eq!(state.area, Area::Sidebar);
+    send(&mut state, Message::NextArea);
+    assert_eq!(state.area, Area::SidebarSplit);
     send(&mut state, Message::PreviousArea);
-    assert_eq!(state.area, Area::Detail);
+    assert_eq!(state.area, Area::Sidebar);
 }
 
 #[test]
@@ -179,6 +192,9 @@ fn an_answer_of_an_older_read_is_dropped() {
         parents: Vec::new(),
         author: String::new(),
         time: 0,
+        author_time: 0,
+        committer: String::new(),
+        committer_time: 0,
         message: String::new(),
         files: vec![changed("a.txt")],
     };
@@ -340,98 +356,137 @@ fn the_tab_is_titled_with_the_repository_and_has_none_while_closed() {
     assert_eq!(tab_title(&state, Language::English), None);
 }
 
+fn pressed(key: Key, held: Modifiers, context: KeyContext) -> Option<Message> {
+    git_view_key(&GitKeys::default(), &key, held, context)
+}
+
+fn character(letter: &str) -> Key {
+    Key::Character(letter.into())
+}
+
 #[test]
 fn keys_map_to_messages_and_the_filter_keeps_the_letters() {
     let none = Modifiers::empty();
+    let plain = KeyContext::default();
+    let in_diff = KeyContext {
+        in_diff: true,
+        ..plain
+    };
+    let typing = KeyContext {
+        filter_focused: true,
+        ..plain
+    };
+    let dialog = KeyContext {
+        dialog_open: true,
+        ..plain
+    };
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Named(Named::ArrowDown),
-            none,
-            false,
-            false,
-            false
-        ),
+        pressed(Key::Named(Named::ArrowDown), none, plain),
         Some(Message::Down)
     );
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Character("/".into()),
-            none,
-            false,
-            false,
-            false
-        ),
+        pressed(character("/"), none, plain),
         Some(Message::FocusFilter)
     );
+    assert_eq!(pressed(character("n"), none, plain), None);
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Character("n".into()),
-            none,
-            false,
-            false,
-            false
-        ),
-        None
-    );
-    assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Character("n".into()),
-            none,
-            false,
-            true,
-            false
-        ),
+        pressed(character("n"), none, in_diff),
         Some(Message::NextHunk)
     );
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Named(Named::ArrowDown),
-            Modifiers::COMMAND,
-            false,
-            true,
-            false
-        ),
+        pressed(Key::Named(Named::ArrowDown), Modifiers::COMMAND, in_diff),
         Some(Message::NextFile)
     );
-    assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Named(Named::ArrowDown),
-            none,
-            true,
-            false,
-            false
-        ),
-        None
-    );
+    assert_eq!(pressed(Key::Named(Named::ArrowDown), none, typing), None);
     // A dialog over the tab takes every key but Enter.
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Named(Named::Enter),
-            none,
-            false,
-            false,
-            true
-        ),
+        pressed(Key::Named(Named::Enter), none, dialog),
         Some(Message::Enter)
     );
+    assert_eq!(pressed(Key::Named(Named::ArrowDown), none, dialog), None);
+}
+
+#[test]
+fn the_jump_keys_do_not_fire_while_typing_and_work_otherwise() {
+    let none = Modifiers::empty();
+    let plain = KeyContext::default();
+    let typing = KeyContext {
+        filter_focused: true,
+        ..plain
+    };
     assert_eq!(
-        git_view_key(
-            &GitKeys::default(),
-            &Key::Named(Named::ArrowDown),
-            none,
-            false,
-            false,
-            true
-        ),
-        None
+        pressed(character("h"), none, plain),
+        Some(Message::JumpToHead)
     );
+    assert_eq!(
+        pressed(character("w"), none, plain),
+        Some(Message::JumpToWip)
+    );
+    assert_eq!(
+        pressed(character("t"), none, plain),
+        Some(Message::ToggleTreeKey)
+    );
+    assert_eq!(
+        pressed(Key::Named(Named::Backspace), none, plain),
+        Some(Message::GoToParent)
+    );
+    for letter in ["h", "w", "t"] {
+        assert_eq!(pressed(character(letter), none, typing), None);
+    }
+}
+
+#[test]
+fn an_open_picker_keeps_the_arrows_enter_and_its_two_keys() {
+    let none = Modifiers::empty();
+    let open = KeyContext {
+        picker_open: true,
+        ..KeyContext::default()
+    };
+    assert_eq!(
+        pressed(Key::Named(Named::ArrowDown), none, open),
+        Some(Message::Down)
+    );
+    assert_eq!(
+        pressed(Key::Named(Named::Enter), none, open),
+        Some(Message::PickerSubmit)
+    );
+    // Cmd+Enter commits elsewhere and means "stash and switch" here.
+    assert_eq!(
+        pressed(Key::Named(Named::Enter), Modifiers::COMMAND, open),
+        Some(Message::PickerEnterWithStash)
+    );
+    // The letters go to the search field.
+    assert_eq!(pressed(character("h"), none, open), None);
+}
+
+#[test]
+fn a_focused_splitter_moves_by_16_and_with_shift_by_64() {
+    for (area, split) in [
+        (Area::SidebarSplit, Split::Sidebar),
+        (Area::DetailSplit, Split::Detail),
+    ] {
+        let on_bar = KeyContext {
+            area,
+            ..KeyContext::default()
+        };
+        let right_means = if split == Split::Sidebar {
+            Direction::Wider
+        } else {
+            Direction::Narrower
+        };
+        assert_eq!(
+            pressed(Key::Named(Named::ArrowRight), Modifiers::empty(), on_bar),
+            Some(Message::SplitNudge(split, Step::Fine, right_means))
+        );
+        assert_eq!(
+            pressed(Key::Named(Named::ArrowRight), Modifiers::SHIFT, on_bar),
+            Some(Message::SplitNudge(split, Step::Coarse, right_means))
+        );
+        assert_eq!(
+            pressed(Key::Named(Named::Home), Modifiers::empty(), on_bar),
+            Some(Message::SplitReset(split))
+        );
+    }
 }
 
 #[test]
@@ -570,7 +625,9 @@ fn folded_groups_come_back_when_the_repository_is_opened_again() {
     };
     let mut reopened = State::default();
     drop(open(&mut reopened, root, "repo".to_owned(), &remembered));
-    assert_eq!(reopened.collapsed, state.collapsed);
+    let mut expected = state.collapsed.clone();
+    expected.insert(Fold::Section(Section::Remotes));
+    assert_eq!(reopened.collapsed, expected);
 
     let mut other = State::default();
     drop(open(
@@ -579,7 +636,44 @@ fn folded_groups_come_back_when_the_repository_is_opened_again() {
         "elsewhere".to_owned(),
         &Ctx::new(Language::English),
     ));
-    assert!(other.collapsed.is_empty());
+    assert_eq!(
+        other.collapsed,
+        [Fold::Section(Section::Remotes)].into_iter().collect()
+    );
+}
+
+#[test]
+fn remotes_start_shut_until_the_user_has_chosen() {
+    let mut fresh = State::default();
+    drop(open(&mut fresh, PathBuf::from("/a"), "a".to_owned(), &CTX));
+    let (generation, _) = fresh.loads.refs.begin();
+    drop(update(
+        &mut fresh,
+        Message::RefsLoaded(generation, Box::new(Ok(RefsOverview::default()))),
+        &CTX,
+    ));
+    assert!(fresh.collapsed.contains(&Fold::Section(Section::Remotes)));
+
+    let chosen = Ctx {
+        folded: vec!["seen:remotes".to_owned()],
+        ..Ctx::new(Language::English)
+    };
+    let mut kept_open = State::default();
+    drop(open(
+        &mut kept_open,
+        PathBuf::from("/a"),
+        "a".to_owned(),
+        &chosen,
+    ));
+    assert!(kept_open.collapsed.is_empty());
+
+    with_remotes(&mut fresh, &["origin/main"]);
+    let Some(Action::FoldsChanged { folded, .. }) =
+        press_row(&mut fresh, SidebarItem::Header(Section::Remotes))
+    else {
+        panic!("opening a group asks the app to remember");
+    };
+    assert!(folded.contains(&"seen:remotes".to_owned()));
 }
 
 #[test]
@@ -614,4 +708,169 @@ fn dragging_a_column_header_resizes_it_and_reports_the_width_once() {
     send(&mut state, Message::Escape);
     assert!(state.column_drag.is_none());
     assert_eq!(state.columns_in_view(standard), standard);
+}
+
+fn with_branches(state: &mut State, names: &[&str]) {
+    let mut overview = state.overview.clone().expect("refs are loaded");
+    overview.local = names
+        .iter()
+        .enumerate()
+        .map(|(at, name)| ncrs_git::BranchInfo {
+            name: (*name).to_owned(),
+            is_current: at == 0,
+            ..ncrs_git::BranchInfo::default()
+        })
+        .collect();
+    let (generation, _) = state.loads.refs.begin();
+    drop(update(
+        state,
+        Message::RefsLoaded(generation, Box::new(Ok(overview))),
+        &CTX,
+    ));
+}
+
+#[test]
+fn the_branch_picker_filters_and_enter_switches() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_branches(&mut state, &["main", "fix/rundung", "release/1.4"]);
+    drop(send(
+        &mut state,
+        Message::OpenPicker(crate::picker::PickerKind::Branch),
+    ));
+    send(&mut state, Message::PickerQuery("rund".to_owned()));
+    let rows = crate::picker::visible(&state);
+    assert_eq!(rows.len(), 2, "the match and the row for a new branch");
+    send(&mut state, Message::PickerSubmit);
+    assert!(state.picker.is_none());
+    assert!(state.actions.busy.is_some());
+}
+
+#[test]
+fn a_locked_picker_keeps_its_list_open_and_starts_nothing() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    with_branches(&mut state, &["main", "fix/rundung"]);
+    state.actions.unavailable = Some(crate::actions::Unavailable::Sandbox);
+    drop(send(
+        &mut state,
+        Message::OpenPicker(crate::picker::PickerKind::Branch),
+    ));
+    send(&mut state, Message::PickerQuery("fix".to_owned()));
+    send(&mut state, Message::PickerSubmit);
+    assert!(state.picker.is_some());
+    assert!(state.actions.busy.is_none());
+}
+
+#[test]
+fn the_repository_picker_opens_another_repository_but_not_the_same() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    let ctx = Ctx {
+        repositories: vec![crate::picker::RepoEntry {
+            name: "other".to_owned(),
+            path: PathBuf::from("/other"),
+        }],
+        ..Ctx::new(Language::English)
+    };
+    drop(update(
+        &mut state,
+        Message::OpenPicker(crate::picker::PickerKind::Repository),
+        &ctx,
+    ));
+    let rows = crate::picker::visible(&state);
+    let other = rows
+        .iter()
+        .find(|row| row.label == "other")
+        .expect("the known repository is listed");
+    let (_, action) = update(&mut state, Message::PickerPressed(other.id), &ctx);
+    assert_eq!(
+        action,
+        Some(Action::OpenRepository(PathBuf::from("/other")))
+    );
+
+    drop(update(
+        &mut state,
+        Message::OpenPicker(crate::picker::PickerKind::Repository),
+        &ctx,
+    ));
+    let current = crate::picker::visible(&state)
+        .into_iter()
+        .find(|row| row.current)
+        .expect("the open repository is listed");
+    let (_, picked) = update(&mut state, Message::PickerPressed(current.id), &ctx);
+    assert_eq!(picked, None);
+}
+
+#[test]
+fn a_dragged_splitter_stays_in_bounds_and_reports_once_on_release() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    send(&mut state, Message::SplitPressed(Split::Sidebar));
+    send(&mut state, Message::PaneMoved(100.0));
+    assert_eq!(
+        send(&mut state, Message::PaneMoved(2_000.0)),
+        None,
+        "moving reports nothing"
+    );
+    let Some(Action::PanesResized(widths)) = send(&mut state, Message::PaneReleased) else {
+        panic!("the release reports the widths");
+    };
+    assert_eq!(f32::from(widths.sidebar), crate::panes::SIDEBAR_BOUNDS.max);
+    assert_eq!(send(&mut state, Message::PaneReleased), None);
+}
+
+#[test]
+fn a_double_click_resets_a_splitter_and_the_keys_nudge_it() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    let wide = Ctx {
+        panes: crate::PaneWidths {
+            sidebar: 400,
+            detail: 450,
+        },
+        ..Ctx::new(Language::English)
+    };
+    let (_, action) = update(&mut state, Message::SplitReset(Split::Sidebar), &wide);
+    assert_eq!(
+        action,
+        Some(Action::PanesResized(crate::PaneWidths::STANDARD))
+    );
+    let (_, nudged) = update(
+        &mut state,
+        Message::SplitNudge(Split::Detail, Step::Fine, Direction::Wider),
+        &CTX,
+    );
+    let Some(Action::PanesResized(widths)) = nudged else {
+        panic!("a nudge reports the widths");
+    };
+    assert_eq!(widths.detail, 466,);
+}
+
+#[test]
+fn the_jump_keys_find_the_head_and_the_parent() {
+    let mut state = opened(&["aaaaaaa", "bbbbbbb", "ccccccc"], 0);
+    if let Some(log) = state.log.as_mut() {
+        log.head = Some("ccccccc".to_owned());
+    }
+    send(&mut state, Message::JumpToHead);
+    assert_eq!(state.commit_cursor, 2);
+    send(&mut state, Message::JumpToCommit("aaaaaaa".to_owned()));
+    assert_eq!(state.commit_cursor, 0);
+    send(&mut state, Message::JumpToCommit("zzzzzzz".to_owned()));
+    assert_eq!(state.commit_cursor, 0, "an unknown commit changes nothing");
+    assert_eq!(state.pending_jump, None);
+}
+
+#[test]
+fn a_commit_not_loaded_yet_is_waited_for() {
+    let mut state = opened(&["aaaaaaa"], 0);
+    if let Some(log) = state.log.as_mut() {
+        log.has_more = true;
+    }
+    send(&mut state, Message::JumpToCommit("ddddddd".to_owned()));
+    assert_eq!(state.pending_jump.as_deref(), Some("ddddddd"));
+}
+
+#[test]
+fn the_sidebar_lists_the_worktrees_after_the_branches() {
+    let state = opened(&["aaaaaaa"], 0);
+    let items = state.sidebar_items();
+    assert_eq!(items.first(), Some(&SidebarItem::Header(Section::Local)));
+    assert!(items.contains(&SidebarItem::Header(Section::Worktrees)));
 }

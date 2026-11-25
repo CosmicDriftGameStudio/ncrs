@@ -42,7 +42,10 @@ fn a_tag_is_made_and_undone_and_a_bad_name_is_refused() {
     repo.git.create_tag("a..b", &sha).unwrap_err();
     repo.git.create_tag("-x", &sha).unwrap_err();
     repo.git.create_tag("v1", &sha).unwrap();
-    assert!(repo.git.create_tag("v1", &sha).is_err(), "an existing tag stays");
+    assert!(
+        repo.git.create_tag("v1", &sha).is_err(),
+        "an existing tag stays"
+    );
 }
 
 #[test]
@@ -50,7 +53,10 @@ fn undoing_a_tag_that_moved_is_refused() {
     let (repo, sha) = with_side_commit();
     let undo = repo.git.create_tag("v1", &sha).unwrap();
     repo.sh(&["tag", "-f", "v1", "main"]);
-    assert!(matches!(repo.git.undo(&undo), Err(ActionError::UndoNotSafe(_))));
+    assert!(matches!(
+        repo.git.undo(&undo),
+        Err(ActionError::UndoNotSafe(_))
+    ));
 }
 
 #[test]
@@ -79,7 +85,10 @@ fn a_conflicting_cherry_pick_stops_and_can_be_aborted_or_continued() {
     let picked = repo.git.cherry_pick(&sha).unwrap();
     assert!(matches!(picked.outcome, IntegrateOutcome::Conflicts(_)));
     assert!(picked.undo.is_none());
-    assert_eq!(repo.git.integration_detail().map(|found| found.kind), Some(Integration::CherryPick));
+    assert_eq!(
+        repo.git.integration_detail().map(|found| found.kind),
+        Some(Integration::CherryPick)
+    );
 
     repo.git.abort_integration().unwrap();
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), before);
@@ -88,7 +97,10 @@ fn a_conflicting_cherry_pick_stops_and_can_be_aborted_or_continued() {
     repo.git.cherry_pick(&sha).unwrap();
     write(repo.path(), "a.txt", "one\nBOTH\nthree\n");
     repo.sh(&["add", "a.txt"]);
-    assert_eq!(repo.git.continue_integration().unwrap(), IntegrateOutcome::Completed);
+    assert_eq!(
+        repo.git.continue_integration().unwrap(),
+        IntegrateOutcome::Completed
+    );
     assert_eq!(read(repo.path(), "a.txt"), "one\nBOTH\nthree\n");
 }
 
@@ -123,7 +135,10 @@ fn a_conflicting_revert_can_be_aborted() {
     let before = repo.sh(&["rev-parse", "HEAD"]);
     let reverted = repo.git.revert(&sha).unwrap();
     assert!(matches!(reverted.outcome, IntegrateOutcome::Conflicts(_)));
-    assert_eq!(repo.git.integration_detail().map(|found| found.kind), Some(Integration::Revert));
+    assert_eq!(
+        repo.git.integration_detail().map(|found| found.kind),
+        Some(Integration::Revert)
+    );
     repo.git.abort_integration().unwrap();
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), before);
 }
@@ -147,7 +162,10 @@ fn soft_reset_keeps_files_and_index_and_undoes() {
     let head = repo.sh(&["rev-parse", "HEAD"]);
     let undo = repo.git.reset(ResetMode::Soft, &base).unwrap();
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), base);
-    assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "a.txt\nb.txt\nnew.txt");
+    assert_eq!(
+        repo.sh(&["diff", "--cached", "--name-only"]),
+        "a.txt\nb.txt\nnew.txt"
+    );
     repo.git.undo(&undo).unwrap();
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), head);
     assert_eq!(repo.sh(&["diff", "--cached", "--name-only"]), "new.txt");
@@ -170,11 +188,18 @@ fn hard_reset_throws_changes_away_and_the_undo_brings_them_back() {
     let (repo, base) = busy_repo();
     let head = repo.sh(&["rev-parse", "HEAD"]);
     let loss = repo.git.reset_loss(&base).unwrap();
-    assert_eq!((loss.commits, loss.changed_files), (2, 2), "a.txt edited and new.txt staged; loose.txt is untracked");
+    assert_eq!(
+        (loss.commits, loss.changed_files),
+        (2, 2),
+        "a.txt edited and new.txt staged; loose.txt is untracked"
+    );
 
     let undo = repo.git.reset(ResetMode::Hard, &base).unwrap();
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), base);
-    assert!(!repo.path().join("new.txt").exists(), "a staged-only file is deleted by --hard");
+    assert!(
+        !repo.path().join("new.txt").exists(),
+        "a staged-only file is deleted by --hard"
+    );
     assert_eq!(read(repo.path(), "loose.txt"), "untracked\n");
 
     repo.git.undo(&undo).unwrap();
@@ -189,7 +214,10 @@ fn the_undo_of_a_reset_is_refused_once_head_moved() {
     let (repo, base) = busy_repo();
     let undo = repo.git.reset(ResetMode::Mixed, &base).unwrap();
     repo.commit_file("c.txt", "c\n", "moved on");
-    assert!(matches!(repo.git.undo(&undo), Err(ActionError::UndoNotSafe(_))));
+    assert!(matches!(
+        repo.git.undo(&undo),
+        Err(ActionError::UndoNotSafe(_))
+    ));
 }
 
 #[cfg(unix)]

@@ -48,7 +48,11 @@ fn two_commits_are_compared_with_a_rename() {
         paths(&files),
         vec![
             ("new.txt".to_string(), ChangeKind::Added, None),
-            ("renamed.txt".to_string(), ChangeKind::Renamed, Some("a.txt".to_string())),
+            (
+                "renamed.txt".to_string(),
+                ChangeKind::Renamed,
+                Some("a.txt".to_string())
+            ),
         ]
     );
     let diff = compare_diff(repo.path(), &from, Some(&to), "new.txt", None, false, &go()).unwrap();
@@ -95,7 +99,10 @@ fn the_branches_that_contain_a_commit_are_listed() {
     let _ = origin;
 
     let in_base = branches_containing(repo.path(), &base, &go()).unwrap();
-    let names: Vec<_> = in_base.iter().map(|label| (label.name.as_str(), label.kind)).collect();
+    let names: Vec<_> = in_base
+        .iter()
+        .map(|label| (label.name.as_str(), label.kind))
+        .collect();
     assert_eq!(
         names,
         vec![
@@ -107,7 +114,10 @@ fn the_branches_that_contain_a_commit_are_listed() {
     );
     let in_side = branches_containing(repo.path(), &side_commit, &go()).unwrap();
     assert_eq!(
-        in_side.iter().map(|label| label.name.as_str()).collect::<Vec<_>>(),
+        in_side
+            .iter()
+            .map(|label| label.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["side", "origin/side"]
     );
 }
@@ -122,7 +132,14 @@ fn branches_know_their_upstream_tip_and_when_it_is_gone() {
     repo.sh(&["branch", "plain"]);
 
     let overview = refs(repo.path(), &go()).unwrap();
-    let find = |name: &str| overview.local.iter().find(|branch| branch.name == name).unwrap().clone();
+    let find = |name: &str| {
+        overview
+            .local
+            .iter()
+            .find(|branch| branch.name == name)
+            .unwrap()
+            .clone()
+    };
     assert_eq!(find("feat").upstream.as_deref(), Some("origin/feat"));
     assert!(!find("feat").upstream_gone);
     assert_eq!(find("feat").tip, repo.sh(&["rev-parse", "feat"]));
@@ -134,7 +151,11 @@ fn branches_know_their_upstream_tip_and_when_it_is_gone() {
     other.sh(&["push", "-q", "origin", "--delete", "feat"]);
     repo.git.fetch(None).unwrap();
     let gone = refs(repo.path(), &go()).unwrap();
-    let feat = gone.local.iter().find(|branch| branch.name == "feat").unwrap();
+    let feat = gone
+        .local
+        .iter()
+        .find(|branch| branch.name == "feat")
+        .unwrap();
     assert!(feat.upstream_gone && feat.has_upstream);
 }
 
@@ -153,10 +174,18 @@ fn a_worktree_shows_its_distance_to_its_own_upstream() {
     sh(&folder, &["commit", "-q", "-m", "w2"]);
 
     let overview = refs(repo.path(), &go()).unwrap();
-    let linked = overview.worktrees.iter().find(|found| !found.is_main).unwrap();
+    let linked = overview
+        .worktrees
+        .iter()
+        .find(|found| !found.is_main)
+        .unwrap();
     assert_eq!(linked.upstream.as_deref(), Some("origin/feat"));
     assert_eq!((linked.upstream_ahead, linked.upstream_behind), (2, 0));
-    assert_eq!((linked.ahead, linked.behind), (2, 0), "the distance to main stays as it was");
+    assert_eq!(
+        (linked.ahead, linked.behind),
+        (2, 0),
+        "the distance to main stays as it was"
+    );
     assert!(!linked.locked);
     assert!(linked.head.is_some());
 }
@@ -167,9 +196,16 @@ fn a_commit_detail_has_author_and_committer_apart() {
     write(repo.path(), "x.txt", "x\n");
     repo.sh(&["add", "x.txt"]);
     repo.sh(&[
-        "-c", "user.name=Committer", "-c", "user.email=c@example.com",
-        "commit", "-q", "-m", "by two people",
-        "--author=Writer <w@example.com>", "--date=2020-01-01T00:00:00+0000",
+        "-c",
+        "user.name=Committer",
+        "-c",
+        "user.email=c@example.com",
+        "commit",
+        "-q",
+        "-m",
+        "by two people",
+        "--author=Writer <w@example.com>",
+        "--date=2020-01-01T00:00:00+0000",
     ]);
     let detail = commit_detail(repo.path(), &head(&repo), &go()).unwrap();
     assert_eq!(detail.author, "Writer");
@@ -192,7 +228,13 @@ fn a_file_history_follows_the_file_across_a_rename_and_pages() {
     let rows: Vec<_> = history
         .commits
         .iter()
-        .map(|row| (row.commit.summary.as_str(), row.path_at_commit.as_str(), row.old_path.as_deref()))
+        .map(|row| {
+            (
+                row.commit.summary.as_str(),
+                row.path_at_commit.as_str(),
+                row.old_path.as_deref(),
+            )
+        })
         .collect();
     assert_eq!(
         rows,
@@ -209,7 +251,10 @@ fn a_file_history_follows_the_file_across_a_rename_and_pages() {
     assert_eq!(page.commits.len(), 2);
     assert!(page.has_more);
     assert_eq!(page.commits[..], history.commits[..2]);
-    assert!(file_history(repo.path(), "nope.txt", 10, &go()).unwrap().commits.is_empty());
+    assert!(file_history(repo.path(), "nope.txt", 10, &go())
+        .unwrap()
+        .commits
+        .is_empty());
 }
 
 #[test]
@@ -226,12 +271,22 @@ fn blame_names_the_commit_of_every_line_and_follows_renames() {
     let by_line: Vec<_> = result
         .lines
         .iter()
-        .map(|line| (line.line_no, line.text.as_str(), result.groups[line.group].sha.as_str()))
+        .map(|line| {
+            (
+                line.line_no,
+                line.text.as_str(),
+                result.groups[line.group].sha.as_str(),
+            )
+        })
         .collect();
     assert_eq!(by_line[0], (1, "one", first.as_str()));
     assert_eq!(by_line[1], (2, "TWO", second.as_str()));
     assert_eq!(by_line[2], (3, "three", first.as_str()));
-    assert_eq!(by_line.len(), 4, "the last line was added in the second commit");
+    assert_eq!(
+        by_line.len(),
+        4,
+        "the last line was added in the second commit"
+    );
     assert_eq!(by_line[3].2, second);
     let group = &result.groups[result.lines[0].group];
     assert_eq!(group.path_then.as_deref(), Some("a.txt"));
@@ -239,7 +294,10 @@ fn blame_names_the_commit_of_every_line_and_follows_renames() {
     assert_eq!(group.summary, "first");
 
     let earlier = blame(repo.path(), "a.txt", Some(&first), &go()).unwrap();
-    assert!(earlier.groups.iter().all(|earlier_group| earlier_group.sha == first));
+    assert!(earlier
+        .groups
+        .iter()
+        .all(|earlier_group| earlier_group.sha == first));
 }
 
 #[test]

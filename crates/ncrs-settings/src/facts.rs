@@ -74,3 +74,27 @@ pub struct FavouritesFacts {
     /// The key that adds the current folder, when one is bound.
     pub add_key: Option<String>,
 }
+
+/// The last search of the Repos tab, for the Git page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LastRepoScan {
+    pub at: std::time::SystemTime,
+    pub repos: u64,
+    pub millis: u64,
+}
+
+/// What the Git page shows of the Repos tab: the clock and the last search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReposScanFacts {
+    pub now: std::time::SystemTime,
+    pub last: Option<LastRepoScan>,
+}
+
+impl Default for ReposScanFacts {
+    fn default() -> Self {
+        Self {
+            now: std::time::UNIX_EPOCH,
+            last: None,
+        }
+    }
+}

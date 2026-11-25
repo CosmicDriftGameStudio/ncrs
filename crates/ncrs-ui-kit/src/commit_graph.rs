@@ -69,7 +69,7 @@ impl GraphProgram {
     }
 }
 
-pub(crate) fn lane_x(lane: usize) -> f32 {
+pub fn lane_x(lane: usize) -> f32 {
     LANE_WIDTH * lane as f32 + LANE_WIDTH / 2.0
 }
 

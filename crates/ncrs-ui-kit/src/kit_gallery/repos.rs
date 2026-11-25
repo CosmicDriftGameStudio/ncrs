@@ -6,6 +6,7 @@ use iced::{Element, Length, Size};
 use iced_test::Simulator;
 use ncrs_i18n::Language;
 
+use super::matches_picture;
 use crate::git_state::{outcome_mark, RunOutcome};
 use crate::kit::{self, Check, Tone};
 use crate::palette::{Palette, ThemePreset};
@@ -13,7 +14,6 @@ use crate::repo_row::{
     path_tail, repo_changes, repo_header, repo_row, repo_standing, result_banner, BranchTag,
     RepoColumns, RepoRow, RunSummary,
 };
-use super::matches_picture;
 use crate::snapshot_support::ReferenceSnapshot as _;
 use crate::theme::{self, spacing};
 

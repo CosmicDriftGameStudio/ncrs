@@ -111,6 +111,8 @@ pub struct InputState {
     pub filing: bool,
     /// The Git tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
     pub git: Option<GitTabId>,
+    /// The Repos tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
+    pub repos: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
@@ -170,6 +172,7 @@ impl InputState {
                 Message::Settings(SettingsMessage::FocusKey(FocusKey::Escape)),
             ),
             (self.notes, Message::Notes(ncrs_notes::Message::Escape)),
+            (self.repos, Message::Repos(ncrs_repos::Message::Escape)),
             (
                 self.git.is_some(),
                 Message::GitView(self.git.unwrap_or_default(), ncrs_git_view::Message::Escape),
@@ -244,7 +247,7 @@ impl InputState {
                     && !self.permissions_dialog
                     && !self.batch_rename_dialog
                     && !self.settings;
-                if self.viewer || self.notes || self.filing || self.git.is_some() {
+                if self.viewer || self.notes || self.filing || self.repos || self.git.is_some() {
                     return None;
                 }
                 if self.monitor {
@@ -518,7 +521,7 @@ mod tests {
     #[test]
     fn every_overlay_escape_closes_also_blocks_the_tap() {
         type OpenOverlay = fn(&mut InputState);
-        let overlays: [(&str, OpenOverlay); 13] = [
+        let overlays: [(&str, OpenOverlay); 14] = [
             ("monitor_filter", |input| {
                 input.monitor = true;
                 input.monitor_filter = true;
@@ -538,6 +541,7 @@ mod tests {
             }),
             ("settings", |input| input.settings = true),
             ("notes", |input| input.notes = true),
+            ("repos", |input| input.repos = true),
             ("filing_renaming", |input| {
                 input.filing = true;
                 input.filing_renaming = true;

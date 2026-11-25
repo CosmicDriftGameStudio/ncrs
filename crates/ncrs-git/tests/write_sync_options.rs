@@ -49,7 +49,10 @@ fn fast_forward_only_refuses_diverged_branches_and_changes_nothing() {
     let (_origin, repo) = diverged();
     let head = repo.sh(&["rev-parse", "HEAD"]);
     let result = repo.git.pull(Some(PullStrategy::FastForwardOnly));
-    assert!(matches!(result, Err(ActionError::NotFastForward { .. })), "{result:?}");
+    assert!(
+        matches!(result, Err(ActionError::NotFastForward { .. })),
+        "{result:?}"
+    );
     assert_eq!(repo.sh(&["rev-parse", "HEAD"]), head);
     assert_eq!(repo.git.integration_in_progress(), None);
 }
@@ -75,7 +78,10 @@ fn force_push_shows_what_it_replaces_and_pushes_with_a_lease() {
     repo.commit_file("mine.txt", "m\n", "mine");
 
     let plan = repo.git.prepare_force_push().unwrap();
-    assert_eq!((plan.remote.as_str(), plan.target.as_str()), ("origin", "main"));
+    assert_eq!(
+        (plan.remote.as_str(), plan.target.as_str()),
+        ("origin", "main")
+    );
     assert_eq!(plan.lost, 1);
     assert_eq!(plan.lost_titles, vec!["theirs one".to_string()]);
     assert!(matches!(repo.git.push(), Err(ActionError::Rejected { .. })));
@@ -152,7 +158,12 @@ fn a_hanging_remote_is_killed_at_the_timeout() {
         }
     });
     let (_origin, repo) = with_origin();
-    repo.sh(&["remote", "set-url", "origin", &format!("git://127.0.0.1:{port}/repo")]);
+    repo.sh(&[
+        "remote",
+        "set-url",
+        "origin",
+        &format!("git://127.0.0.1:{port}/repo"),
+    ]);
     let git = Git::open_unattended(repo.path())
         .unwrap()
         .with_timeout(Duration::from_millis(600));

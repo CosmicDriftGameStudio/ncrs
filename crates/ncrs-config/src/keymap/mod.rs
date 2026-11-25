@@ -38,6 +38,7 @@ impl Binding {
 
 mod action;
 mod bindings;
+mod chord_table;
 mod chords;
 mod defaults;
 mod tab_keys;
@@ -53,6 +54,7 @@ pub use self::chords::{
 use self::defaults::*;
 pub use self::defaults::{default_bindings_for, sort_binding};
 pub use self::tab_keys::{TabKeyEntry, TabKeys, TabKeysError, TAB_KEY_TABLES};
+pub use self::chord_table::{chord_label, same_key, Chord, ChordTable, ChordTableError, KeyOverride, TabActions};
 
 #[cfg(test)]
 mod tests;

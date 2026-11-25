@@ -51,6 +51,12 @@ pub enum Job {
     },
     Checkout(String),
     CheckoutRemote(String),
+    /// Puts the local changes on the stash, then switches to `branch`; `remote` for a remote branch.
+    StashAndCheckout {
+        message: String,
+        branch: String,
+        remote: bool,
+    },
     DeleteBranch {
         name: String,
         force: bool,
@@ -134,6 +140,7 @@ impl Job {
             Self::CreateBranch { .. }
             | Self::Checkout(_)
             | Self::CheckoutRemote(_)
+            | Self::StashAndCheckout { .. }
             | Self::DeleteBranch { .. }
             | Self::RenameBranch { .. }
             | Self::DeleteOnRemote { .. } => Operation::Branch,
@@ -191,6 +198,19 @@ impl Job {
                 .map(|()| Done::Plain),
             Self::Checkout(name) => git.checkout(name).map(|()| Done::Plain),
             Self::CheckoutRemote(name) => git.checkout_remote_branch(name).map(|()| Done::Plain),
+            Self::StashAndCheckout {
+                message,
+                branch,
+                remote,
+            } => {
+                git.stash_push(message, true)?;
+                if *remote {
+                    git.checkout_remote_branch(branch)
+                } else {
+                    git.checkout(branch)
+                }
+                .map(|()| Done::Plain)
+            }
             Self::DeleteBranch { name, force } => git
                 .delete_branch(name, *force)
                 .map(|record| Done::Undoable(Some(record))),

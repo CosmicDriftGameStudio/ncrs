@@ -5,10 +5,10 @@ use std::time::{Duration, UNIX_EPOCH};
 use iced::widget::{column, container, Column};
 use iced::{Element, Length};
 use ncrs_git::{LogCommit, RefKind, SegmentHalf};
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::Msg;
 use ncrs_ui_kit::commit_graph::{graph_cell, GraphCell, GraphLine, LineHalf, LANE_WIDTH};
 use ncrs_ui_kit::format;
-use ncrs_ui_kit::git_lines::summarize_refs;
+use ncrs_ui_kit::git_lines::{summarize_refs, wip_row, WipRow};
 use ncrs_ui_kit::git_rows::{
     commit_header, commit_message_width, commit_row, CommitRow, RefChipKind,
 };
@@ -42,31 +42,17 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     );
     let working = state.has_working_row().then(|| {
         let count = state.current_worktree().map_or(0, |worktree| worktree.wip);
-        let empty = GraphCell {
-            lane: 0,
-            lines: Vec::new(),
-            merge: false,
-            dimmed: false,
-        };
-        commit_row(
-            CommitRow {
-                graph: graph_cell(empty, lanes, palette),
-                chips: Vec::new(),
-                message: fill_template(
-                    ctx.lang.text(Msg::GitViewWorkingCopy),
-                    &[("{count}", &count.to_string())],
-                ),
-                author: String::new(),
-                date: String::new(),
-                sha: String::new(),
-                columns,
-                message_width,
-                show_sha,
+        wip_row(
+            WipRow {
+                changed: u32::try_from(count).unwrap_or(u32::MAX),
+                staged: 0,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
-                dimmed: false,
-                is_head: false,
+                lanes,
+                columns,
+                show_sha,
                 on_press: Message::CommitPressed(0),
             },
+            ctx.lang,
             palette,
         )
     });
@@ -142,7 +128,7 @@ fn notice<'a>(ctx: ViewCtx<'a>, text: Msg) -> Element<'a, Message> {
     .into()
 }
 
-fn chip_kind(kind: RefKind) -> RefChipKind {
+pub fn chip_kind(kind: RefKind) -> RefChipKind {
     match kind {
         RefKind::Branch => RefChipKind::Branch,
         RefKind::Remote => RefChipKind::Remote,

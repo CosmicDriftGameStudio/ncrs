@@ -9,6 +9,7 @@ pub mod git_view;
 pub mod keymap;
 pub mod palette;
 pub mod panel_columns;
+pub mod repos;
 pub mod settings_page;
 pub mod system_monitor;
 pub mod vscode_theme;

@@ -143,7 +143,10 @@ pub fn refs(root: &std::path::Path, stop: &Arc<AtomicBool>) -> Result<RefsOvervi
 
     Ok(RefsOverview {
         main_branch: main.as_ref().map(|found| found.name.clone()),
-        main_tip: main.as_ref().and_then(DefaultBranch::tip).map(|id| id.to_string()),
+        main_tip: main
+            .as_ref()
+            .and_then(DefaultBranch::tip)
+            .map(|id| id.to_string()),
         local,
         remote,
         tags,
@@ -161,7 +164,10 @@ fn unmerged_against(
     stop: &Arc<AtomicBool>,
 ) -> Result<Option<u32>, GitError> {
     let mut fewest: Option<u32> = None;
-    for hidden in [default.local_tip, default.remote_tip].into_iter().flatten() {
+    for hidden in [default.local_tip, default.remote_tip]
+        .into_iter()
+        .flatten()
+    {
         if let Some(count) = count_commits_strict(repository, tip, hidden, stop)? {
             fewest = Some(fewest.map_or(count, |known| known.min(count)));
         }

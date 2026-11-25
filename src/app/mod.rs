@@ -181,6 +181,7 @@ mod hermes_pages;
 mod keys;
 mod monitor;
 mod notes;
+mod repos;
 mod ops;
 mod palette;
 mod panels;
@@ -270,6 +271,12 @@ pub struct App {
     keymap: Arc<Keymap>,
     /// The keys of the Git tab: the built-in ones, or those of `[keys.git]`.
     git_keys: Arc<ncrs_git_view::GitKeys>,
+    /// The keys of the Repos tab: the built-in ones, or those of `[keys.repos]`.
+    repos_keys: Arc<ncrs_repos::ReposKeys>,
+    /// The Repos tab, open or not.
+    repos: Option<ncrs_repos::State>,
+    /// `[repos]` of the config.
+    repos_settings: ncrs_config::repos::ReposSettings,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
     /// The question whether to remove the Hermes index and begin again.
@@ -579,12 +586,16 @@ pub struct PromptKeyState {
     pub filing_renaming: bool,
     /// A Git tab is up: its keys move in its lists and Escape goes back.
     pub git: Option<GitTabId>,
-    /// The filter field of the Git tab has the keyboard.
-    pub git_filter: bool,
-    /// A diff is shown in the Git tab.
-    pub git_diff: bool,
-    /// A dialog is over the Git tab: it takes the keys.
-    pub git_dialog: bool,
+    /// The Repos tab is up: its keys move in the list and Escape goes back.
+    pub repos: bool,
+    /// The Repos tab has a text field: the filter with the focus or the clone dialog.
+    pub repos_text: bool,
+    /// The Repos tab shows its context menu.
+    pub repos_menu: bool,
+    /// The keys of the Repos tab, shared like the keymap.
+    pub repos_keys: Arc<ncrs_repos::ReposKeys>,
+    /// What the Git tab is doing as far as its keys care: filter, diff, dialog, picker, area.
+    pub git_context: ncrs_git_view::KeyContext,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -616,7 +627,7 @@ pub struct PromptKeyState {
 impl PromptKeyState {
     /// The viewer, the notes or the System page is up and takes the keys.
     pub fn shows_viewer_or_monitor(&self) -> bool {
-        self.viewer || self.monitor || self.notes || self.filing || self.git.is_some()
+        self.viewer || self.monitor || self.notes || self.filing || self.repos || self.git.is_some()
     }
 }
 
@@ -665,9 +676,11 @@ impl Default for PromptKeyState {
             filing: false,
             filing_renaming: false,
             git: None,
-            git_filter: false,
-            git_diff: false,
-            git_dialog: false,
+            repos: false,
+            repos_text: false,
+            repos_menu: false,
+            repos_keys: Arc::default(),
+            git_context: ncrs_git_view::KeyContext::default(),
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             quit_dialog: false,

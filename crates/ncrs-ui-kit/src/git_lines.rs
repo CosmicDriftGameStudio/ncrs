@@ -316,15 +316,59 @@ pub fn summarize_refs(chips: Vec<(String, RefChipKind)>) -> Vec<(String, RefChip
     }
     merged
         .into_iter()
-        .map(|(name, kind, remotes)| {
-            if remotes.is_empty() {
+        .map(|(name, kind, joined)| {
+            if joined.is_empty() {
                 (name, kind)
             } else {
-                (format!("{name} \u{b7} {}", remotes.join(", ")), kind)
+                (format!("{name} \u{b7} {}", joined.join(", ")), kind)
             }
         })
         .chain(alone)
         .collect()
+}
+
+/// One fact of a commit: the dim `label` in a column of [`size::FACT_LABEL`]
+/// and the `content` after it.
+pub fn fact_row<'a, M: 'a>(
+    label: &str,
+    content: Element<'a, M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    row![
+        container(
+            text(label.to_owned())
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
+                .wrapping(text::Wrapping::None),
+        )
+        .width(size::FACT_LABEL),
+        content,
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// A short text in purple that acts like a link: a parent commit.
+pub fn purple_link<'a, M: Clone + 'a>(
+    label: String,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ink = git::purple(palette);
+    button(
+        text(label)
+            .size(font_size::BODY)
+            .color(ink)
+            .wrapping(text::Wrapping::None),
+    )
+    .padding(0.0)
+    .on_press(on_press)
+    .style(move |_theme: &iced::Theme, _status| button::Style {
+        text_color: ink,
+        ..button::Style::default()
+    })
+    .into()
 }
 
 #[cfg(test)]

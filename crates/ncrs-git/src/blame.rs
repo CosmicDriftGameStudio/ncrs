@@ -65,10 +65,7 @@ pub fn blame(
     let repository = open(root)?;
     let suspect = match at {
         Some(sha) => parse_id(sha)?,
-        None => repository
-            .head_id()
-            .map_err(GitError::read)?
-            .detach(),
+        None => repository.head_id().map_err(GitError::read)?.detach(),
     };
     let outcome = repository
         .blame_file(
@@ -124,7 +121,12 @@ pub fn blame(
                 .map(|signature| signature.name.to_string())
                 .unwrap_or_default(),
             time: commit.time().map(|time| time.seconds).unwrap_or_default(),
-            summary: message.lines().next().unwrap_or_default().trim().to_string(),
+            summary: message
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
             path_then: entry.source_file_name.as_ref().map(|name| name.to_string()),
         });
         for offset in 0..entry.len.get() {

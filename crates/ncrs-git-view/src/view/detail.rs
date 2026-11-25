@@ -1,19 +1,25 @@
 //! The right side: what the commit says and the files it changed.
 
-use iced::widget::{column, container, row, Column, Space};
+use iced::widget::{column, container, row, Column, Row, Space};
 use iced::{Element, Length};
-use ncrs_git::ChangeKind;
+use ncrs_git::{ChangeKind, CommitDetail};
 use ncrs_i18n::Msg;
-use ncrs_ui_kit::kit::segmented;
+use ncrs_ui_kit::git_lines::{fact_row, purple_link, summarize_refs};
+use ncrs_ui_kit::git_rows::ref_chip;
+use ncrs_ui_kit::kit::{key_cap, segmented};
 use ncrs_ui_kit::page_text::{page_heading_wrapped, page_line, page_paragraph};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
 
-use super::commits::moment;
+use super::commits::{chip_kind, moment};
 use super::DETAIL_ID;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
+use crate::shortcuts::Shortcut;
 use crate::state::{Area, DetailRow, State};
+
+/// How many characters of a parent's id are written.
+const PARENT_SHORT: usize = 7;
 
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
@@ -38,16 +44,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 info.message.lines().next().unwrap_or_default(),
                 palette,
             ))
-            .push(page_paragraph(
-                format!(
-                    "{} \u{b7} {} \u{b7} {}",
-                    info.short,
-                    info.author,
-                    moment(info.time, ctx)
-                ),
-                font_size::SMALL,
-                palette.dim_text,
-            ));
+            .push(facts(state, info, ctx));
         for line in info
             .message
             .lines()
@@ -76,7 +73,12 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         true,
         palette,
     );
-    let count = ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang);
+    let added: u32 = detail.files.iter().map(|file| file.added).sum();
+    let removed: u32 = detail.files.iter().map(|file| file.removed).sum();
+    let count = format!(
+        "{} \u{b7} +{added} \u{2212}{removed}",
+        ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang)
+    );
     let files = state.detail_rows().into_iter().map(|entry| match entry {
         DetailRow::Folder { depth, name } => tree_row(
             TreeRow {
@@ -121,9 +123,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         theme::horizontal_rule(palette.border_inactive),
         container(
             row![
-                toggle,
+                page_line(count, font_size::SMALL, palette.dim_text),
                 Space::new().width(Length::Fill),
-                page_line(count, font_size::SMALL, palette.dim_text)
+                toggle
             ]
             .spacing(spacing::M)
             .align_y(iced::alignment::Vertical::Center)
@@ -141,4 +143,89 @@ fn kind_letter(kind: ChangeKind) -> &'static str {
         ChangeKind::Deleted => "D",
         ChangeKind::Renamed => "R",
     }
+}
+
+/// The facts under the title: who wrote it and when, who committed it, the
+/// parents, the SHA and the branches that contain it.
+fn facts<'a>(state: &'a State, info: &'a CommitDetail, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    let line = |content: String| -> Element<'a, Message> {
+        page_line(content, font_size::SMALL, palette.text).into()
+    };
+    let mut rows = Column::new().spacing(spacing::XS);
+    rows = rows.push(fact_row(
+        lang.text(Msg::GitViewDetailAuthor),
+        line(format!(
+            "{} \u{b7} {}",
+            info.author,
+            moment(info.author_time, ctx)
+        )),
+        palette,
+    ));
+    if info.committer != info.author || info.committer_time != info.author_time {
+        rows = rows.push(fact_row(
+            lang.text(Msg::GitViewDetailCommitter),
+            line(format!(
+                "{} \u{b7} {}",
+                info.committer,
+                moment(info.committer_time, ctx)
+            )),
+            palette,
+        ));
+    }
+    if !info.parents.is_empty() {
+        let links = Row::with_children(info.parents.iter().map(|parent| {
+            purple_link(
+                parent.chars().take(PARENT_SHORT).collect(),
+                Message::JumpToCommit(parent.clone()),
+                palette,
+            )
+        }))
+        .spacing(spacing::M);
+        let label = if info.parents.len() > 1 {
+            Msg::GitViewDetailParents
+        } else {
+            Msg::GitViewDetailParent
+        };
+        rows = rows.push(fact_row(lang.text(label), links.into(), palette));
+    }
+    let copy_key = Shortcut::CopySha.label(ctx.keys);
+    let mut sha = Row::new()
+        .spacing(spacing::M)
+        .align_y(iced::Alignment::Center);
+    sha = sha.push(line(info.short.clone()));
+    if !copy_key.is_empty() {
+        sha = sha.push(key_cap(&copy_key, palette));
+    }
+    rows = rows.push(fact_row(
+        lang.text(Msg::GitViewDetailSha),
+        sha.into(),
+        palette,
+    ));
+    if let Some((_, labels)) = state
+        .containing
+        .as_ref()
+        .filter(|(id, labels)| *id == info.id && !labels.is_empty())
+    {
+        let chips = summarize_refs(
+            labels
+                .iter()
+                .map(|label| (label.name.clone(), chip_kind(label.kind)))
+                .collect(),
+        );
+        let wrapped = Row::with_children(
+            chips
+                .into_iter()
+                .map(|(label, kind)| ref_chip(label, kind, palette)),
+        )
+        .spacing(spacing::XS)
+        .wrap();
+        rows = rows.push(fact_row(
+            lang.text(Msg::GitViewDetailBranches),
+            wrapped.into(),
+            palette,
+        ));
+    }
+    rows.into()
 }

@@ -63,6 +63,10 @@ pub struct GitViewSection {
     #[serde(default)]
     pub sha_width: Option<i64>,
     #[serde(default)]
+    pub sidebar_width: Option<i64>,
+    #[serde(default)]
+    pub detail_width: Option<i64>,
+    #[serde(default)]
     pub folded: std::collections::BTreeMap<String, Vec<String>>,
 }
 

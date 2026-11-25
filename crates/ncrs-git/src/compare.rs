@@ -50,7 +50,11 @@ pub fn compare_files(
     for path in paths {
         check_stop(stop)?;
         let old = blob_at(&repository, &from_tree, &path);
-        let in_old = from_tree.lookup_entry_by_path(&path).ok().flatten().is_some();
+        let in_old = from_tree
+            .lookup_entry_by_path(&path)
+            .ok()
+            .flatten()
+            .is_some();
         let new = std::fs::read(root.join(&path)).ok();
         let kind = match (in_old, &new) {
             (false, None) => continue,
@@ -91,15 +95,16 @@ fn pair_renames(
         return;
     }
     let mut taken: Vec<String> = Vec::new();
-    for file in files.iter_mut().filter(|file| file.kind == ChangeKind::Added) {
+    for file in files
+        .iter_mut()
+        .filter(|file| file.kind == ChangeKind::Added)
+    {
         let Ok(content) = std::fs::read(root.join(&file.path)) else {
             continue;
         };
-        let Ok(id) = gix::objs::compute_hash(
-            repository.object_hash(),
-            gix::object::Kind::Blob,
-            &content,
-        ) else {
+        let Ok(id) =
+            gix::objs::compute_hash(repository.object_hash(), gix::object::Kind::Blob, &content)
+        else {
             continue;
         };
         let source = recorder

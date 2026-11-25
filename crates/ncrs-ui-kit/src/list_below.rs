@@ -13,11 +13,28 @@ use iced::{mouse, Element, Event, Length, Point, Rectangle, Renderer, Size, Them
 struct ListBelow<'a, M> {
     field: Element<'a, M>,
     list: Element<'a, M>,
+    own_width: bool,
 }
 
 /// `field` as it is, with `list` floating below it as long as it is shown.
 pub fn list_below<'a, M: 'a>(field: Element<'a, M>, list: Element<'a, M>) -> Element<'a, M> {
-    Element::new(ListBelow { field, list })
+    Element::new(ListBelow {
+        field,
+        list,
+        own_width: false,
+    })
+}
+
+/// [`list_below`] for a list with a width of its own, which may be wider than the field.
+pub fn list_below_own_width<'a, M: 'a>(
+    field: Element<'a, M>,
+    list: Element<'a, M>,
+) -> Element<'a, M> {
+    Element::new(ListBelow {
+        field,
+        list,
+        own_width: true,
+    })
 }
 
 // `children` is built by `children`/`diff` with exactly the field's tree
@@ -170,6 +187,7 @@ impl<M> Widget<M, Theme, Renderer> for ListBelow<'_, M> {
             list: &mut self.list,
             tree: list_tree,
             field: field_bounds,
+            own_width: self.own_width,
         }));
         Some(
             overlay::Group::with_children(
@@ -184,6 +202,7 @@ struct FloatingList<'a, 'b, M> {
     list: &'b mut Element<'a, M>,
     tree: &'b mut Tree,
     field: Rectangle,
+    own_width: bool,
 }
 
 /// Where the list's top edge goes: below the field, or above it when the
@@ -201,7 +220,12 @@ fn list_top(field: Rectangle, list_height: f32, window_height: f32) -> f32 {
 
 impl<M> overlay::Overlay<M, Theme, Renderer> for FloatingList<'_, '_, M> {
     fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
-        let limits = layout::Limits::new(Size::ZERO, Size::new(self.field.width, bounds.height));
+        let width = if self.own_width {
+            bounds.width
+        } else {
+            self.field.width
+        };
+        let limits = layout::Limits::new(Size::ZERO, Size::new(width, bounds.height));
         let node = self
             .list
             .as_widget_mut()

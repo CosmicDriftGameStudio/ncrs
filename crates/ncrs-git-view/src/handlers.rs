@@ -203,7 +203,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
 }
 
 /// Starts `job` unless another one runs or there are no actions.
-fn start(state: &mut State, job: Job) -> Outcome {
+pub fn start(state: &mut State, job: Job) -> Outcome {
     if state.actions.busy.is_some() || state.actions.unavailable.is_some() {
         return quiet(Task::none());
     }
@@ -300,7 +300,7 @@ fn commit(state: &mut State) -> Outcome {
     start(state, job)
 }
 
-fn current_branch(state: &State) -> String {
+pub fn current_branch(state: &State) -> String {
     state
         .overview
         .as_ref()
@@ -330,6 +330,20 @@ fn branch_of(state: &State, target: MenuTarget) -> Option<String> {
     }
 }
 
+/// Asks for the name of a new branch that starts at `from`.
+pub fn begin_new_branch(state: &mut State, from: String) -> Outcome {
+    if state.actions.unavailable.is_some() {
+        return quiet(Task::none());
+    }
+    state.actions.new_branch = Some(NewBranch {
+        name: String::new(),
+        from,
+        checkout: true,
+        problem: None,
+    });
+    quiet(operation::focus(NAME_ID))
+}
+
 fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
     let target = menu_subject(state);
     state.actions.menu = None;
@@ -337,13 +351,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         let from = target
             .and_then(|found| branch_of(state, found))
             .unwrap_or_else(|| current_branch(state));
-        state.actions.new_branch = Some(NewBranch {
-            name: String::new(),
-            from,
-            checkout: true,
-            problem: None,
-        });
-        return quiet(operation::focus(NAME_ID));
+        return begin_new_branch(state, from);
     }
     let Some(chosen) = target else {
         return quiet(Task::none());
@@ -663,6 +671,29 @@ fn undo_text(lang: Language, summary: &UndoSummary) -> String {
             lang.text(Msg::GitViewUndoDeletedBranch),
             &[("{name}", name)],
         ),
+        UndoSummary::Ignore { pattern } => fill_template(
+            lang.text(Msg::GitViewUndoIgnored),
+            &[("{pattern}", pattern)],
+        ),
+        UndoSummary::CreateTag { name } => {
+            fill_template(lang.text(Msg::GitViewUndoCreatedTag), &[("{name}", name)])
+        }
+        UndoSummary::CherryPick { title } => fill_template(
+            lang.text(Msg::GitViewUndoCherryPicked),
+            &[("{title}", title.trim())],
+        ),
+        UndoSummary::Revert { title } => fill_template(
+            lang.text(Msg::GitViewUndoReverted),
+            &[("{title}", title.trim())],
+        ),
+        UndoSummary::Reset { branch, sha } => fill_template(
+            lang.text(Msg::GitViewUndoReset),
+            &[("{branch}", branch), ("{sha}", sha)],
+        ),
+        UndoSummary::CleanUp { branches } => fill_template(
+            lang.text(Msg::GitViewUndoCleanedUp),
+            &[("{count}", &branches.to_string())],
+        ),
     }
 }
 
@@ -747,11 +778,14 @@ fn notice_of(state: &State, error: ActionError) -> Notice {
         ActionError::UnresolvedConflicts { count } => Notice::UnresolvedConflicts { count },
         ActionError::UndoNotSafe(_) => Notice::UndoNotSafe,
         ActionError::InvalidName { name } => Notice::InvalidName { name },
-        ActionError::Other { git_output } => Notice::Other {
-            output: git_output,
-            details_open: false,
-        },
-        ActionError::GitNotFound
+        ActionError::Other { git_output } | ActionError::NotFastForward { git_output } => {
+            Notice::Other {
+                output: git_output,
+                details_open: false,
+            }
+        }
+        ActionError::LeaseRejected
+        | ActionError::GitNotFound
         | ActionError::DisabledInSandbox
         | ActionError::Io(_)
         | ActionError::Read(_) => Notice::Other {

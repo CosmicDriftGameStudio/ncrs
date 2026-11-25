@@ -10,6 +10,7 @@ use ncrs_i18n::{Language, Msg};
 use crate::actions::{ConflictAction, MenuAction, Side};
 use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
+use crate::picker::PickerKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -37,6 +38,13 @@ pub enum Shortcut {
     OpenEditor,
     MarkResolved,
     ResetConflict,
+    RepoPicker,
+    BranchPicker,
+    JumpHead,
+    JumpWip,
+    CopySha,
+    GoParent,
+    ToggleTree,
 }
 
 impl Shortcut {
@@ -65,6 +73,13 @@ impl Shortcut {
         Self::OpenEditor,
         Self::MarkResolved,
         Self::ResetConflict,
+        Self::RepoPicker,
+        Self::BranchPicker,
+        Self::JumpHead,
+        Self::JumpWip,
+        Self::CopySha,
+        Self::GoParent,
+        Self::ToggleTree,
     ];
 
     /// The name of the action in `[keys.git]`.
@@ -94,6 +109,13 @@ impl Shortcut {
             Self::OpenEditor => "open_editor",
             Self::MarkResolved => "mark_resolved",
             Self::ResetConflict => "reset_conflict",
+            Self::RepoPicker => "repo_picker",
+            Self::BranchPicker => "branch_picker",
+            Self::JumpHead => "jump_head",
+            Self::JumpWip => "jump_wip",
+            Self::CopySha => "copy_sha",
+            Self::GoParent => "parent",
+            Self::ToggleTree => "toggle_tree",
         }
     }
 
@@ -115,13 +137,16 @@ impl Shortcut {
     /// The default key is one the whole app already gives the same meaning:
     /// edit, menu, rename. The check against the app keymap skips these.
     pub const fn shares_an_app_key(self) -> bool {
-        matches!(self, Self::OpenEditor | Self::OpenMenu | Self::Rename)
+        matches!(
+            self,
+            Self::OpenEditor | Self::OpenMenu | Self::Rename | Self::CopySha | Self::GoParent
+        )
     }
 
     /// The key it ships with; `command` is what Cmd or Ctrl is on the
     /// platform. ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F,
     /// ⇧⌘B, ⇧⌘D, ⇧⌘H, ⌘K, ⌘,) stay free.
-    pub(crate) fn default_chord(self, command: Modifiers) -> Chord {
+    pub fn default_chord(self, command: Modifiers) -> Chord {
         let shifted = command | Modifiers::SHIFT;
         let letter = |held: Modifiers, letter: &str| (held, Key::Character(letter.into()));
         let named = |held: Modifiers, named: Named| (held, Key::Named(named));
@@ -150,6 +175,13 @@ impl Shortcut {
             Self::OpenEditor => named(Modifiers::empty(), Named::F4),
             Self::MarkResolved => letter(shifted, "j"),
             Self::ResetConflict => letter(shifted, "z"),
+            Self::RepoPicker => letter(command, "o"),
+            Self::BranchPicker => letter(command, "b"),
+            Self::JumpHead => letter(Modifiers::empty(), "h"),
+            Self::JumpWip => letter(Modifiers::empty(), "w"),
+            Self::CopySha => letter(command, "c"),
+            Self::GoParent => named(Modifiers::empty(), Named::Backspace),
+            Self::ToggleTree => letter(Modifiers::empty(), "t"),
         }
     }
 
@@ -197,6 +229,13 @@ impl Shortcut {
             Self::OpenEditor => Msg::GitViewConflictOpenEditor,
             Self::MarkResolved => Msg::GitViewConflictMarkResolved,
             Self::ResetConflict => Msg::GitViewCommandConflictReset,
+            Self::RepoPicker => Msg::GitViewCommandRepoPicker,
+            Self::BranchPicker => Msg::GitViewCommandBranchPicker,
+            Self::JumpHead => Msg::GitViewCommandJumpHead,
+            Self::JumpWip => Msg::GitViewCommandJumpWip,
+            Self::CopySha => Msg::GitViewCommandCopySha,
+            Self::GoParent => Msg::GitViewCommandParent,
+            Self::ToggleTree => Msg::GitViewCommandToggleTree,
         })
     }
 
@@ -226,6 +265,13 @@ impl Shortcut {
             Self::OpenEditor => Message::ConflictShortcut(ConflictAction::OpenEditor),
             Self::MarkResolved => Message::ConflictShortcut(ConflictAction::MarkResolved),
             Self::ResetConflict => Message::ConflictShortcut(ConflictAction::Reset),
+            Self::RepoPicker => Message::OpenPicker(PickerKind::Repository),
+            Self::BranchPicker => Message::OpenPicker(PickerKind::Branch),
+            Self::JumpHead => Message::JumpToHead,
+            Self::JumpWip => Message::JumpToWip,
+            Self::CopySha => Message::CopySha,
+            Self::GoParent => Message::GoToParent,
+            Self::ToggleTree => Message::ToggleTreeKey,
         }
     }
 

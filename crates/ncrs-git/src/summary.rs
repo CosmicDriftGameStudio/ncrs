@@ -48,9 +48,7 @@ pub fn repo_summary(
     check_stop(stop)?;
     let repository = open(root)?;
     let head = repository.head().map_err(GitError::read)?;
-    let branch = head
-        .referent_name()
-        .map(|name| name.shorten().to_string());
+    let branch = head.referent_name().map(|name| name.shorten().to_string());
     let head_id = head.id().map(|id| id.detach());
     let (ahead, behind) = match (head.referent_name(), head_id) {
         (Some(name), Some(id)) => distance_to_upstream(&repository, name, id, stop)?,
@@ -75,7 +73,10 @@ pub fn repo_summary(
             .ok()
             .flatten()
             .map(|name| name.shorten().to_string());
-        worktrees.push(WorktreeSummary { path, branch: linked_branch });
+        worktrees.push(WorktreeSummary {
+            path,
+            branch: linked_branch,
+        });
     }
     let common = std::fs::canonicalize(repository.common_dir()).ok();
     let own = std::fs::canonicalize(repository.git_dir()).ok();

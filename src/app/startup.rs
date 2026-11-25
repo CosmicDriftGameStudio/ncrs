@@ -324,6 +324,8 @@ impl App {
                 self.start_appearance(config.appearance);
                 self.keymap = config.keymap;
                 self.apply_git_keys(&config.git_keys);
+                self.repos_settings = config.repos;
+                self.apply_repos_keys(&config.repos_keys);
                 self.monitor.set_settings(config.system);
                 self.update_check = config.check_for_updates;
                 self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
@@ -532,6 +534,9 @@ impl App {
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
             git_keys: Arc::default(),
+            repos_keys: Arc::default(),
+            repos: None,
+            repos_settings: ncrs_config::repos::ReposSettings::default(),
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
             dialog_focus: 0,

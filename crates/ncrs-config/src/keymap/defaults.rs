@@ -319,6 +319,12 @@ pub fn default_bindings_for(mac: bool) -> Vec<(KeyAction, Binding)> {
             A::GitView,
             Binding::with_modifiers(Character("g".into()), command | Modifiers::SHIFT),
         ),
+        // The list of all repositories, K for the keep of projects;
+        // Cmd+Shift+K, Ctrl+Shift+K elsewhere.
+        (
+            A::Repos,
+            Binding::with_modifiers(Character("k".into()), command | Modifiers::SHIFT),
+        ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.
         (

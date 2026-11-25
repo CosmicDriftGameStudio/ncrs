@@ -4,16 +4,14 @@
 //! prints the answer for git. The answer travels only through that socket: it
 //! is never put in an environment variable, a log or a debug print.
 
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
-use std::hash::{BuildHasher as _, Hasher as _};
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 /// Set for the helper: `deny`, or the `host:port` of the broker.
 pub const ENDPOINT_VARIABLE: &str = "NCRS_ASKPASS";
@@ -83,9 +81,15 @@ pub fn kind_of_prompt(prompt: &str, confirm_hint: bool) -> PromptKind {
     let lower = prompt.to_lowercase();
     if confirm_hint || lower.contains("(yes/no") || lower.contains("yes/no/[fingerprint]") {
         PromptKind::Confirm
-    } else if ["password", "passphrase", "pin ", "verification code", "token"]
-        .iter()
-        .any(|word| lower.contains(word))
+    } else if [
+        "password",
+        "passphrase",
+        "pin ",
+        "verification code",
+        "token",
+    ]
+    .iter()
+    .any(|word| lower.contains(word))
     {
         PromptKind::Secret
     } else {
@@ -113,14 +117,11 @@ impl Broker {
         Ok((broker, receiver))
     }
 
-    fn listen(
-        requests: Sender<AskRequest>,
-        listening: Arc<AtomicBool>,
-    ) -> std::io::Result<Self> {
+    fn listen(requests: Sender<AskRequest>, listening: Arc<AtomicBool>) -> std::io::Result<Self> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let broker = Self {
             address: listener.local_addr()?,
-            secret: random_secret(),
+            secret: random_secret()?,
             pending: Arc::new(Mutex::new(HashMap::new())),
         };
         let shared = Shared {
@@ -192,18 +193,21 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn random_secret() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_nanos());
-    let part = |salt: u64| {
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u128(nanos);
-        hasher.write_u32(std::process::id());
-        hasher.write_u64(salt);
-        hasher.finish()
-    };
-    format!("{:016x}{:016x}", part(1), part(2))
+fn random_secret() -> std::io::Result<String> {
+    let mut bytes = [0; 32];
+    getrandom::fill(&mut bytes).map_err(|err| std::io::Error::other(err.to_string()))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Compares without stopping at the first difference, so the time a refused
+/// token takes says nothing about how much of it was right.
+fn same_secret(given: &str, expected: &str) -> bool {
+    given.len() == expected.len()
+        && given
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0, |diff, (left, right)| diff | (left ^ right))
+            == 0
 }
 
 fn serve(mut connection: TcpStream, shared: &Shared) -> std::io::Result<()> {
@@ -218,7 +222,7 @@ fn serve(mut connection: TcpStream, shared: &Shared) -> std::io::Result<()> {
     let [protocol, token, hint, prompt] = <[String; 4]>::try_from(fields).unwrap_or_default();
     let parsed_job = token
         .split_once(':')
-        .filter(|(secret, _)| protocol == PROTOCOL && *secret == shared.secret)
+        .filter(|(secret, _)| protocol == PROTOCOL && same_secret(secret, &shared.secret))
         .and_then(|(_, job)| job.parse::<u64>().ok());
     let Some(job) = parsed_job else {
         return connection.write_all(b"no\n");
@@ -372,12 +376,12 @@ pub fn run_if_asked(args: &[String]) -> Option<i32> {
     };
     match exchange(&endpoint, &token, prompt, hint) {
         Ok(Some(answer)) => {
-            let reply = if mode == HINT_CONFIRM || kind_of_prompt(prompt, false) == PromptKind::Confirm
-            {
-                "yes".to_string()
-            } else {
-                answer
-            };
+            let reply =
+                if mode == HINT_CONFIRM || kind_of_prompt(prompt, false) == PromptKind::Confirm {
+                    "yes".to_string()
+                } else {
+                    answer
+                };
             let mut out = std::io::stdout();
             let written = out
                 .write_all(reply.as_bytes())
@@ -413,8 +417,7 @@ pub fn exchange(
 
 impl std::fmt::Debug for Setup {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f
-            .debug_struct("Setup")
+        f.debug_struct("Setup")
             .field("endpoint", &self.endpoint)
             .field("token", &"***")
             .finish_non_exhaustive()
@@ -426,6 +429,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_the_whole_secret_opens_the_socket() {
+        let secret = random_secret().unwrap();
+        assert_eq!(secret.len(), 64);
+        assert_ne!(secret, random_secret().unwrap());
+        assert!(same_secret(&secret, &secret));
+        assert!(!same_secret(&secret[..63], &secret));
+        assert!(!same_secret(
+            &format!("{}0", &secret[..63]),
+            &format!("{}1", &secret[..63])
+        ));
+    }
+
+    #[test]
     fn a_secret_never_prints() {
         let secret = Secret::new("hunter2");
         assert_eq!(format!("{secret:?}"), "***");
@@ -435,7 +451,10 @@ mod tests {
     #[test]
     fn prompts_are_sorted_by_what_they_ask_for() {
         let kind = |prompt| kind_of_prompt(prompt, false);
-        assert_eq!(kind("Username for 'https://github.com': "), PromptKind::Text);
+        assert_eq!(
+            kind("Username for 'https://github.com': "),
+            PromptKind::Text
+        );
         assert_eq!(
             kind("Password for 'https://me@github.com': "),
             PromptKind::Secret
@@ -459,7 +478,10 @@ mod tests {
             git_askpass_value(path, true),
             "\"C:/Program Files/ncrs/ncrs.exe\""
         );
-        assert_eq!(ssh_askpass_value(path, true), "C:/Program Files/ncrs/ncrs.exe");
+        assert_eq!(
+            ssh_askpass_value(path, true),
+            "C:/Program Files/ncrs/ncrs.exe"
+        );
         assert_eq!(
             git_askpass_value(Path::new("/opt/ncrs/ncrs"), false),
             "/opt/ncrs/ncrs"
@@ -504,8 +526,7 @@ mod tests {
     #[test]
     fn a_wrong_token_is_refused_without_a_request() {
         let (broker, requests) = Broker::start().unwrap();
-        let answer =
-            exchange(&broker.endpoint(), "wrong:1", "Username: ", HINT_TEXT).unwrap();
+        let answer = exchange(&broker.endpoint(), "wrong:1", "Username: ", HINT_TEXT).unwrap();
         assert_eq!(answer, None);
         assert!(requests.try_recv().is_err(), "nobody was asked");
     }

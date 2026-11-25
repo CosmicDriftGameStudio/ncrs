@@ -177,8 +177,8 @@ fn finish(mut child: Child, timeout: Option<Duration>) -> Result<Output, ActionE
             None => std::thread::sleep(POLL_INTERVAL),
         }
     };
-    let mut stderr_text = String::from_utf8_lossy(&stderr.recv_timeout(PIPE_GRACE).unwrap_or_default())
-        .to_string();
+    let mut stderr_text =
+        String::from_utf8_lossy(&stderr.recv_timeout(PIPE_GRACE).unwrap_or_default()).to_string();
     if timed_out {
         stderr_text.push_str(&format!(
             "\nOperation timed out after {} s",
@@ -534,7 +534,8 @@ mod tests {
         let settings = settings_of(Prompts::Unattended);
         assert_eq!(value(&settings, "GIT_ASKPASS"), Some(""));
         assert_eq!(value(&settings, "SSH_ASKPASS_REQUIRE"), Some("never"));
-        assert!(value(&settings, "GIT_SSH_COMMAND").is_some_and(|found| found.contains("BatchMode=yes")));
+        assert!(value(&settings, "GIT_SSH_COMMAND")
+            .is_some_and(|found| found.contains("BatchMode=yes")));
         assert!(!settings.contains_key("NCRS_ASKPASS"));
     }
 

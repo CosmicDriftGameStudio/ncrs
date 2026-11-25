@@ -40,11 +40,17 @@ fn offered(list: &CleanupList) -> Vec<(&str, CleanupReason)> {
 }
 
 fn kept<'a>(list: &'a CleanupList, name: &str) -> Option<&'a KeepReason> {
-    list.kept.iter().find(|row| row.name == name).map(|row| &row.why)
+    list.kept
+        .iter()
+        .find(|row| row.name == name)
+        .map(|row| &row.why)
 }
 
 fn kept_worktree(list: &CleanupList) -> Option<&KeepReason> {
-    list.kept.iter().find(|row| row.is_worktree).map(|row| &row.why)
+    list.kept
+        .iter()
+        .find(|row| row.is_worktree)
+        .map(|row| &row.why)
 }
 
 /// A pushed branch `feat` with one commit.
@@ -114,7 +120,10 @@ fn unmerged_work_stays_with_the_number_of_commits_at_risk() {
     repo.commit_file("w2.txt", "2\n", "two");
     repo.git.checkout("main").unwrap();
     let list = scan(&repo, &BTreeMap::new());
-    assert_eq!(kept(&list, "wip"), Some(&KeepReason::Unpushed { commits: 2 }));
+    assert_eq!(
+        kept(&list, "wip"),
+        Some(&KeepReason::Unpushed { commits: 2 })
+    );
 }
 
 #[test]
@@ -136,12 +145,19 @@ fn a_fresh_empty_branch_stays_but_a_merged_one_goes() {
     repo.sh(&["branch", "-m", "done-old", "done"]);
     let list = scan(&repo, &BTreeMap::new());
     assert_eq!(kept(&list, "fresh"), Some(&KeepReason::Empty));
-    assert_eq!(kept(&list, "done"), Some(&KeepReason::Empty), "same tip as main, no upstream");
+    assert_eq!(
+        kept(&list, "done"),
+        Some(&KeepReason::Empty),
+        "same tip as main, no upstream"
+    );
     repo.commit_file("next.txt", "n\n", "main moves on");
     let later = scan(&repo, &BTreeMap::new());
     assert_eq!(
         offered(&later),
-        vec![("done", CleanupReason::InDefault), ("fresh", CleanupReason::InDefault)],
+        vec![
+            ("done", CleanupReason::InDefault),
+            ("fresh", CleanupReason::InDefault)
+        ],
         "once main moved on they are plain merged branches"
     );
 }
@@ -158,7 +174,14 @@ fn the_current_and_the_default_branch_stay_and_master_works_as_default() {
 
 fn merged_worktree(repo: &Repo) -> std::path::PathBuf {
     let folder = repo.path().with_extension("wt");
-    repo.sh(&["worktree", "add", "-q", "-b", "wt-branch", folder.to_str().unwrap()]);
+    repo.sh(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "wt-branch",
+        folder.to_str().unwrap(),
+    ]);
     write(&folder, "wt.txt", "w\n");
     sh(&folder, &["add", "wt.txt"]);
     sh(&folder, &["commit", "-q", "-m", "worktree work"]);
@@ -171,7 +194,10 @@ fn a_clean_merged_worktree_goes_with_its_folder_and_its_branch() {
     let repo = repo();
     let folder = merged_worktree(&repo);
     let list = scan(&repo, &BTreeMap::new());
-    assert!(list.branches.is_empty(), "its branch is part of the worktree row");
+    assert!(
+        list.branches.is_empty(),
+        "its branch is part of the worktree row"
+    );
     assert_eq!(list.worktrees.len(), 1);
 
     let plan = CleanupPlan {
@@ -251,7 +277,10 @@ fn the_remote_branch_goes_only_when_asked_and_undo_brings_back_the_local_ones() 
 
     repo.git.undo(&keep_remote.undo.unwrap()).unwrap();
     assert_eq!(repo.sh(&["rev-parse", "feat"]), feat_tip);
-    assert_eq!(repo.sh(&["rev-parse", "--abbrev-ref", "feat@{upstream}"]), "origin/feat");
+    assert_eq!(
+        repo.sh(&["rev-parse", "--abbrev-ref", "feat@{upstream}"]),
+        "origin/feat"
+    );
 
     let with_remote = repo
         .git
@@ -279,11 +308,31 @@ fn a_shallow_clone_does_not_turn_unmerged_branches_into_merged_ones() {
 
     let shallow = TempDir::new().unwrap();
     let url = origin.path().to_str().unwrap().to_string();
-    sh(shallow.path(), &["clone", "-q", "--depth", "1", "--no-single-branch", &url, "."]);
-    sh(shallow.path(), &["checkout", "-q", "-b", "feat", "origin/feat"]);
+    sh(
+        shallow.path(),
+        &[
+            "clone",
+            "-q",
+            "--depth",
+            "1",
+            "--no-single-branch",
+            &url,
+            ".",
+        ],
+    );
+    sh(
+        shallow.path(),
+        &["checkout", "-q", "-b", "feat", "origin/feat"],
+    );
     sh(shallow.path(), &["checkout", "-q", "main"]);
     let overview = refs(shallow.path(), &go()).unwrap();
-    let feat = overview.local.iter().find(|branch| branch.name == "feat").unwrap();
+    let feat = overview
+        .local
+        .iter()
+        .find(|branch| branch.name == "feat")
+        .unwrap();
     assert!(!feat.merged);
-    assert!(cleanup_list(&overview, &BTreeMap::new()).branches.is_empty());
+    assert!(cleanup_list(&overview, &BTreeMap::new())
+        .branches
+        .is_empty());
 }

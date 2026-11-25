@@ -245,6 +245,7 @@ pub(in crate::app) fn is_page_spanning(message: &Message) -> bool {
             KeyAction::FilingStatus,
             KeyAction::Rules,
             KeyAction::SavedQueries,
+            KeyAction::Repos,
         ]
         .into_iter()
         .any(|action| *message == action.message())
@@ -469,15 +470,30 @@ pub(in crate::app) fn git_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if let Some(message) = ncrs_git_view::git_view_key(
-        &prompt.git_keys,
+    if let Some(message) =
+        ncrs_git_view::git_view_key(&prompt.git_keys, key, key_modifiers, prompt.git_context)
+    {
+        return Some(Message::GitView(git, message));
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+}
+
+/// The Repos tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn repos_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if let Some(message) = ncrs_repos::repos_key(
+        &prompt.repos_keys,
         key,
         key_modifiers,
-        prompt.git_filter,
-        prompt.git_diff,
-        prompt.git_dialog,
+        prompt.repos_text,
+        prompt.repos_menu,
     ) {
-        return Some(Message::GitView(git, message));
+        return Some(Message::Repos(message));
     }
     bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
 }
@@ -490,6 +506,8 @@ pub(in crate::app) fn viewer_or_monitor_key(
 ) -> Option<Message> {
     if prompt.filing {
         filing_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.repos {
+        repos_page_key(prompt, key, key_modifiers, scope)
     } else if let Some(git) = prompt.git {
         git_page_key(git, prompt, key, key_modifiers, scope)
     } else if prompt.notes {

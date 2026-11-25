@@ -91,7 +91,10 @@ fn a_cancelled_question_makes_git_fail_without_a_login() {
     broker.cancel_job(first.job);
     let output = running.join().unwrap();
     assert!(!output.status.success());
-    assert!(logins.try_recv().is_err(), "no credentials may have been sent");
+    assert!(
+        logins.try_recv().is_err(),
+        "no credentials may have been sent"
+    );
 }
 
 #[test]

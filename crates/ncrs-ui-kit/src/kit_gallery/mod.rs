@@ -16,7 +16,7 @@ use crate::palette::ThemePreset;
 
 /// Renders `content` on the panel ground in `size` and compares it with
 /// `tests/snapshots/git-kit-{name}-dracula-tiny-skia.png`.
-pub(super) fn matches_picture(name: &str, size: Size, content: Element<'_, ()>) {
+pub fn matches_picture(name: &str, size: Size, content: Element<'_, ()>) {
     let palette = ThemePreset::Dracula.palette();
     let file = format!("git-kit-{name}-dracula");
     let matches = Simulator::with_size(

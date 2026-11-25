@@ -15,6 +15,10 @@ pub enum AddAs {
     Indexed,
     /// Favourites: a folder for the bar under the tabs and the drive menu.
     Favourite,
+    /// Git: a folder the Repos tab searches for repositories.
+    RepoSource,
+    /// Git: a folder name the search does not enter.
+    RepoSkip,
 }
 
 /// `path` joins the list. An indexed folder becomes the filing target when
@@ -29,7 +33,7 @@ pub fn added(locations: &[FilingLocation], path: PathBuf, kind: AddAs) -> Vec<Fi
         AddAs::ReadFolder => LocationMode::Inbox,
         AddAs::Indexed => LocationMode::Archive,
         // A favourite is not a location of the filing.
-        AddAs::Favourite => return list,
+        AddAs::Favourite | AddAs::RepoSource | AddAs::RepoSkip => return list,
     };
     list.push(FilingLocation {
         path,

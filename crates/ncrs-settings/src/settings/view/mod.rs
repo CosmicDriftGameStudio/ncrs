@@ -3,6 +3,7 @@ mod columns_page;
 mod favourites_page;
 mod font_rows;
 mod full_version_page;
+mod git_page;
 mod groups;
 mod hermes_page;
 mod index_page;
@@ -17,6 +18,7 @@ use columns_page::columns_groups;
 use favourites_page::favourites_groups;
 use font_rows::font_rows;
 use full_version_page::full_version_groups;
+use git_page::git_groups;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
@@ -36,7 +38,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{container, row, scrollable, text, Column};
 use iced::{Color, Element, Length};
 
-use crate::facts::{DocumentsFacts, FavouritesFacts};
+use crate::facts::{DocumentsFacts, FavouritesFacts, ReposScanFacts};
 use crate::message::{SettingChange, SettingField, SettingsMessage};
 use ncrs_config::config::{AiEndpointProblem, Filing, ProgramLineProblem, ServerEntry};
 use ncrs_config::{SettingsFeature, SettingsGroup};
@@ -85,6 +87,8 @@ pub struct SettingsView<'a> {
     pub facts: DocumentsFacts,
     /// The folders of the Favourites page.
     pub favourites: FavouritesFacts,
+    /// The last search of the Repos tab, for the Git page.
+    pub repos_scan: ReposScanFacts,
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
@@ -174,6 +178,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Columns => Msg::SettingsFeatureColumns,
         SettingsFeature::Favourites => Msg::SettingsFeatureFavourites,
         SettingsFeature::Notes => Msg::SettingsFeatureNotes,
+        SettingsFeature::Git => Msg::SettingsFeatureGit,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersion,
@@ -202,6 +207,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
+        | SettingsFeature::Git
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -238,6 +244,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
+        | SettingsFeature::Git
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -264,6 +271,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Columns
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
+        | SettingsFeature::Git
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -288,6 +296,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Columns => Msg::SettingsFeatureColumnsIntro,
         SettingsFeature::Favourites => Msg::SettingsFeatureFavouritesIntro,
         SettingsFeature::Notes => Msg::SettingsFeatureNotesIntro,
+        SettingsFeature::Git => Msg::SettingsFeatureGitIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersionIntro,
@@ -316,6 +325,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Columns => Some(COLUMNS_SECTION),
         SettingsFeature::Favourites => None,
         SettingsFeature::Notes => Some(NOTES_SECTION),
+        SettingsFeature::Git => Some(REPOS_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index => Some(FILING_SECTION),
         SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
@@ -391,6 +401,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Columns => columns_groups(view),
         SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::Notes => notes_groups(view),
+        SettingsFeature::Git => git_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::FullVersion => full_version_groups(view),
         SettingsFeature::Index => index_groups(view),
