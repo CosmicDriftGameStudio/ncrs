@@ -119,9 +119,13 @@ fn the_git_actions_are_listed_with_their_keys_while_a_git_tab_offers_them() {
     let commands = ncrs_git_view::commands(app.lang, &app.git_keys);
     assert!(!commands.is_empty());
     assert_eq!(entries.len(), commands.len());
+    // The three ways to pull are picked by their letter in the pull menu.
+    let without_key = commands.iter().filter(|(_, key)| key.is_empty()).count();
+    assert_eq!(without_key, 3);
     for (label, shortcut) in commands {
+        let shortcut = Some(shortcut).filter(|key| !key.is_empty());
         assert!(
-            entries.contains(&(label.clone(), Some(shortcut))),
+            entries.contains(&(label.clone(), shortcut)),
             "{label} is missing"
         );
     }
