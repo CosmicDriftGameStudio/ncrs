@@ -8,7 +8,7 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::{banner, BannerTone};
 use ncrs_ui_kit::frame::{DialogSize, Frame};
 use ncrs_ui_kit::kit::{
-    button, dim, enter_button, error_line, labelled_checkbox, paragraph, scrim, text_field, Check,
+    button, dim, enter_button, error_line, labelled_checkbox, paragraph, radio_choice, scrim, text_field, Check,
     Tone,
 };
 use ncrs_ui_kit::popup_menu::{
@@ -18,8 +18,8 @@ use ncrs_ui_kit::theme::{size, spacing};
 use ncrs_ui_kit::tree_list::{LIST_INSET, ROW_OVERHEAD, TREE_INDENT};
 
 use crate::actions::{
-    ConflictAction, Dialog, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu, Question,
-    RenameBranch, Side,
+    ConflictAction, Dialog, IgnoreChoice, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu,
+    Question, RenameBranch, Side,
 };
 use crate::ctx::ViewCtx;
 use crate::git_keys::GitKeys;
@@ -338,6 +338,52 @@ fn dialog_frame<'a>(
     .into_element()
 }
 
+fn ignore_dialog<'a>(
+    path: &str,
+    folder: Option<&str>,
+    extension: Option<&str>,
+    chosen: IgnoreChoice,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let choice = |label: String, which: IgnoreChoice| {
+        radio_choice(
+            &label,
+            chosen == which,
+            Message::IgnoreChoiceChanged(which),
+            ctx.palette,
+        )
+    };
+    let mut rows = column![choice(
+        fill_template(lang.text(Msg::GitViewIgnoreFile), &[("{path}", path)]),
+        IgnoreChoice::File,
+    )]
+    .spacing(spacing::XS);
+    if let Some(directory) = folder {
+        rows = rows.push(choice(
+            fill_template(
+                lang.text(Msg::GitViewIgnoreFolder),
+                &[("{folder}", directory)],
+            ),
+            IgnoreChoice::Folder,
+        ));
+    }
+    if let Some(ending) = extension {
+        rows = rows.push(choice(
+            fill_template(lang.text(Msg::GitViewIgnoreExtension), &[("{ext}", ending)]),
+            IgnoreChoice::Extension,
+        ));
+    }
+    dialog_frame(
+        lang.text(Msg::GitViewIgnoreTitle),
+        rows.into(),
+        lang.text(Msg::GitViewIgnoreConfirm),
+        Some(Message::ConfirmDialog),
+        Tone::Primary,
+        ctx,
+    )
+}
+
 fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
     let (title, text, button_label) = match question {
@@ -373,6 +419,14 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
             ),
             Msg::GitViewAskDeleteButton,
         ),
+        Question::Ignore {
+            path,
+            folder,
+            extension,
+            chosen,
+        } => {
+            return ignore_dialog(path, folder.as_deref(), extension.as_deref(), *chosen, ctx);
+        }
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(

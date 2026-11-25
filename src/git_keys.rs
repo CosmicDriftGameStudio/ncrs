@@ -29,7 +29,7 @@ pub fn resolve(overrides: &TabKeys, keymap: &Keymap, mac: bool) -> Result<GitKey
                 .collect(),
         })
         .collect();
-    let line_of = |place: usize| overrides.entries.get(place).and_then(|entry| entry.line);
+    let line_of = |place: usize| overrides.entries.get(place)?.line;
     let keys = GitKeys::with_overrides(&entries, mac).map_err(|err| GitKeysProblem {
         line: line_of(err.place),
         reason: err.reason,

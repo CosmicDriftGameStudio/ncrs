@@ -373,8 +373,8 @@ fn one_hunk_is_staged_a_file_is_discarded_and_undo_brings_it_back() {
     append(&flow.repo, "README.md", "- Die Hilfeseite fehlt noch");
     write(&flow.repo, "docs/idee.md", "# Idee\n");
     flow.refresh();
-    flow.send(View::SidebarPressed(0));
-    assert!(flow.view().actions.changes_open);
+    flow.send(View::CommitPressed(0));
+    assert!(flow.view().changes_shown());
     let engine = flow.unstaged_row("src/engine.rs");
     flow.send(View::SelectChange(
         ncrs_git_view::actions::ChangeSide::Unstaged,
@@ -433,7 +433,7 @@ fn a_commit_is_made_undone_made_again_and_amended() {
     append(&flow.repo, "docs/install.md", "Zuerst das Paket laden.");
     append(&flow.repo, "src/config.rs", "// Pfad aus der Umgebung");
     flow.refresh();
-    flow.send(View::SidebarPressed(0));
+    flow.send(View::CommitPressed(0));
     flow.press_shifted("i");
     assert_eq!(
         flow.git(&["diff", "--cached", "--name-only"]),

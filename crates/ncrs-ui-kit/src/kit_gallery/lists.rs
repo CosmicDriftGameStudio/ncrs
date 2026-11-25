@@ -231,8 +231,9 @@ fn the_work_in_progress_row_looks_the_same() {
         wip_row(
             WipRow {
                 changed,
-                staged,
+                staged: Some(staged),
                 chosen,
+                marked: false,
                 lanes: 2,
                 columns,
                 show_sha: true,

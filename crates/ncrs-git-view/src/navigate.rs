@@ -12,7 +12,7 @@ use crate::handlers;
 use crate::message::{Chip, Message};
 use crate::panes::PaneDrag;
 use crate::picker;
-use crate::state::{Area, SidebarItem, State};
+use crate::state::{Area, State};
 use crate::update::{ensure_detail, quiet, Outcome};
 use crate::view::COMMITS_ID;
 
@@ -160,18 +160,6 @@ pub fn jump_to(state: &mut State, sha: String) -> Task<Message> {
 }
 
 fn jump_to_working_copy(state: &mut State) -> Task<Message> {
-    if state.actions.local.is_some() {
-        let at = state
-            .sidebar_items()
-            .iter()
-            .position(|item| *item == SidebarItem::Changes);
-        if let Some(at) = at {
-            state.area = Area::Sidebar;
-            state.sidebar_cursor = at;
-            state.actions.changes_open = true;
-        }
-        return Task::none();
-    }
     if state.has_working_row() {
         state.area = Area::Commits;
         state.commit_cursor = 0;

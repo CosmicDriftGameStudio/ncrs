@@ -10,6 +10,7 @@ use crate::status::check_stop;
 use crate::GitError;
 
 const CONTEXT_LINES: u32 = 3;
+const SECTION_CHARS: usize = 80;
 /// Larger files are not diffed line by line.
 const MAX_DIFFED_BYTES: usize = 4 * 1024 * 1024;
 
@@ -34,6 +35,21 @@ pub struct DiffHunk {
     pub old_start: u32,
     pub new_start: u32,
     pub rows: Vec<DiffRow>,
+    /// The line above the hunk that opens a function or section, as git
+    /// shows it after the `@@`; empty if there is none.
+    pub context: String,
+}
+
+impl DiffHunk {
+    /// How many lines the hunk covers in the old file.
+    pub fn old_len(&self) -> usize {
+        self.rows.iter().filter(|row| row.old_line.is_some()).count()
+    }
+
+    /// How many lines the hunk covers in the new file.
+    pub fn new_len(&self) -> usize {
+        self.rows.iter().filter(|row| row.new_line.is_some()).count()
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -46,6 +62,9 @@ pub struct FileDiff {
     pub binary: bool,
     /// Too large to compare line by line.
     pub too_large: bool,
+    /// Lines of the old and the new file; `None` where there is no text to count.
+    pub old_total: Option<u32>,
+    pub new_total: Option<u32>,
 }
 
 /// Which file of which commit, or of the working copy when `commit` is `None`.
@@ -132,6 +151,8 @@ pub fn diff_bytes(path: &str, old: &[u8], new: &[u8], ignore_whitespace: bool) -
     let new_text = String::from_utf8_lossy(new);
     let old_lines: Vec<&str> = old_text.lines().collect();
     let new_lines: Vec<&str> = new_text.lines().collect();
+    result.old_total = u32::try_from(old_lines.len()).ok();
+    result.new_total = u32::try_from(new_lines.len()).ok();
 
     let before = comparable(&old_lines, ignore_whitespace);
     let after = comparable(&new_lines, ignore_whitespace);
@@ -242,11 +263,29 @@ fn hunk_of(
                 .saturating_sub(last.1.end),
         );
     context(last.0.end, last.1.end, trail, &mut rows);
+    let first_old = first.0.start - lead;
     Some(DiffHunk {
-        old_start: first.0.start - lead + 1,
+        old_start: first_old + 1,
         new_start: first.1.start - lead + 1,
         rows,
+        context: section_above(old_lines, first_old),
     })
+}
+
+/// The nearest line above `index` that starts at the left edge with a letter or
+/// `_`, like git's default for function lines, cut to a readable length.
+fn section_above(lines: &[&str], index: u32) -> String {
+    let above = lines.get(..index as usize).unwrap_or_default();
+    above
+        .iter()
+        .rev()
+        .find(|line| {
+            line.chars()
+                .next()
+                .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
+        })
+        .map(|line| line.trim_end().chars().take(SECTION_CHARS).collect())
+        .unwrap_or_default()
 }
 
 fn line_at(lines: &[&str], index: u32) -> String {

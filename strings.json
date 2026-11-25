@@ -12925,12 +12925,6 @@
       "de": "losgelöst bei {sha}"
     },
     {
-      "key": "git_view.working_copy",
-      "context": "Git tab: the first line of the commit list when the folder has changes that are not committed yet. {count} is the number of changed files.",
-      "en": "Local changes ({count})",
-      "de": "Lokale Änderungen ({count})"
-    },
-    {
       "key": "git_view.column_message",
       "context": "Git tab: header of the column with the commit messages. Upper case, short.",
       "en": "MESSAGE",
@@ -12971,12 +12965,6 @@
       "context": "Git tab: segment that lists the changed files of a commit as a tree of folders. Noun, short.",
       "en": "Tree",
       "de": "Baum"
-    },
-    {
-      "key": "git_view.diff_back",
-      "context": "Git tab: hint at the top left of a file's diff that Escape goes back to the commit list. Keep the arrow and the key name Esc.",
-      "en": "← Esc back to the list",
-      "de": "← Esc zurück zur Liste"
     },
     {
       "key": "git_view.diff_side_by_side",
@@ -13487,12 +13475,6 @@
       "context": "Git tab: status line while the left list has the keys and the actions are on. {menu} opens the menu of the row, {new_branch} starts a new branch; both are keys as the platform spells them. Keep the other key names as they are on the keyboard.",
       "en": "↑↓ choose · ←→ fold · Enter shows the worktree · {menu} actions · {new_branch} new branch · Tab next area · Esc closes",
       "de": "↑↓ wählen · ←→ falten · Enter zeigt den Worktree · {menu} Aktionen · {new_branch} Neuer Branch · Tab nächster Bereich · Esc schließt"
-    },
-    {
-      "key": "git_view.status_changes",
-      "context": "Git tab: status line while the local changes are shown and have the keyboard. {stage_all}, {unstage_all} and {commit} are keys as the platform spells them. Keep the other key names.",
-      "en": "↑↓ choose · {stage_all} stage all · {unstage_all} unstage all · {commit} commit · Tab next area · Esc closes",
-      "de": "↑↓ wählen · {stage_all} alle vormerken · {unstage_all} alle zurücknehmen · {commit} Commit · Tab nächster Bereich · Esc schließt"
     },
     {
       "key": "git_view.status_merge",
@@ -14302,7 +14284,7 @@
       "key": "git_view.toolbar_undo_label",
       "context": "Git tab, toolbar button that takes back the last Git action. One word.",
       "en": "Undo",
-      "de": "Zurück"
+      "de": "Rückgängig"
     },
     {
       "key": "git_view.toolbar_nothing_to_undo",
@@ -14909,6 +14891,198 @@
       "context": "Entry of the command list that runs the key action repos: it opens the Repos tab with the list of all repositories. Also the label of the tab in the tab strip. Noun, plural.",
       "en": "Repositories",
       "de": "Repositories"
+    },
+    {
+      "key": "git_view.wip_now",
+      "context": "Git tab, commit list: the date column of the first row, which stands for the changes not committed yet. Short, lower case.",
+      "en": "now",
+      "de": "jetzt"
+    },
+    {
+      "key": "git_view.wip_on",
+      "context": "Git tab, right pane of the local changes: headline before the branch name, which is shown as a chip after it.",
+      "en": "Local changes on",
+      "de": "Lokale Änderungen auf"
+    },
+    {
+      "key": "git_view.wip_summary",
+      "context": "Git tab, right pane of the local changes: how many files are changed and how many of them are staged (put into the next commit). {changed} and {staged} are numbers.",
+      "en": "{changed} changed · {staged} staged",
+      "de": "{changed} geändert · {staged} vorgemerkt"
+    },
+    {
+      "key": "git_view.wip_worktree",
+      "context": "Git tab, right pane of the local changes: the folder of the worktree the changes are in. Worktree is the Git word. {path} is a folder path.",
+      "en": "Worktree {path}",
+      "de": "Worktree {path}"
+    },
+    {
+      "key": "git_view.staged_empty",
+      "context": "Git tab, local changes: text in the empty list of staged files. Staging means putting a change into the next commit. The key is the space bar.",
+      "en": "Nothing staged yet. Space stages the chosen file.",
+      "de": "Noch nichts vorgemerkt. Leertaste merkt die gewählte Datei vor."
+    },
+    {
+      "key": "git_view.commit_counter",
+      "context": "Git tab, commit box: the length of the commit title at the right end of its field, like 12/72. {count} is the number of characters typed, {limit} the length after which it turns red.",
+      "en": "{count}/{limit}",
+      "de": "{count}/{limit}"
+    },
+    {
+      "key": "git_view.commit_push_after",
+      "context": "Git tab, commit box: a checkbox. When on, the commit is sent to the remote repository right after it is made.",
+      "en": "Push afterwards",
+      "de": "Danach pushen"
+    },
+    {
+      "key": "git_view.command_commit_push",
+      "context": "Git tab, command list (F1): commits the staged files and pushes the branch afterwards. Push is the Git word.",
+      "en": "Commit and push",
+      "de": "Committen und pushen"
+    },
+    {
+      "key": "git_view.command_focus_title",
+      "context": "Git tab, command list (F1): moves the keyboard to the title field of the commit box.",
+      "en": "Go to the commit title",
+      "de": "Zum Commit-Titel"
+    },
+    {
+      "key": "git_view.command_ignore",
+      "context": "Git tab, command list (F1): adds the chosen file that Git does not know yet to the ignore file (.gitignore).",
+      "en": "Ignore the chosen file",
+      "de": "Gewählte Datei ignorieren"
+    },
+    {
+      "key": "git_view.ignore",
+      "context": "Git tab, button on a file Git does not know yet: opens a question where the user picks what goes into the ignore file. The three dots mean a question follows.",
+      "en": "Ignore…",
+      "de": "Ignorieren…"
+    },
+    {
+      "key": "git_view.ignore_title",
+      "context": "Git tab, title of the question about ignoring a file. .gitignore is the name of a file; keep it.",
+      "en": "Add to .gitignore",
+      "de": "Zu .gitignore hinzufügen"
+    },
+    {
+      "key": "git_view.ignore_file",
+      "context": "Git tab, ignore question: the choice to ignore only this file. {path} is the path of the file.",
+      "en": "This file {path}",
+      "de": "Diese Datei {path}"
+    },
+    {
+      "key": "git_view.ignore_folder",
+      "context": "Git tab, ignore question: the choice to ignore the whole folder the file is in. {folder} is the folder path.",
+      "en": "Folder {folder}",
+      "de": "Ordner {folder}"
+    },
+    {
+      "key": "git_view.ignore_extension",
+      "context": "Git tab, ignore question: the choice to ignore all files with the same ending. {ext} is the ending without the dot, like log.",
+      "en": "All *.{ext} files",
+      "de": "Alle *.{ext}-Dateien"
+    },
+    {
+      "key": "git_view.ignore_confirm",
+      "context": "Git tab, button that confirms the ignore question.",
+      "en": "Ignore",
+      "de": "Ignorieren"
+    },
+    {
+      "key": "git_view.diff_index_to_worktree",
+      "context": "Git tab, diff of a change not staged: what is compared. Index is the Git word for the staging area. {path} is the file path; keep a/ and b/ as they are in a Git diff.",
+      "en": "a/{path} (index) → b/{path} (working copy)",
+      "de": "a/{path} (Index) → b/{path} (Arbeitskopie)"
+    },
+    {
+      "key": "git_view.diff_head_to_index",
+      "context": "Git tab, diff of a staged change: what is compared. HEAD is the Git word for the last commit, Index for the staging area. {path} is the file path; keep a/ and b/.",
+      "en": "a/{path} (HEAD) → b/{path} (index)",
+      "de": "a/{path} (HEAD) → b/{path} (Index)"
+    },
+    {
+      "key": "git_view.diff_end_of_file",
+      "context": "Git tab, last line under a diff of a change. {count} is the number of lines shown.",
+      "en": "End of file · {count} lines",
+      "de": "Ende der Datei · {count} Zeilen"
+    },
+    {
+      "key": "git_view.open_editor",
+      "context": "Git tab, button in the diff of a change: opens the file in the editor the user has set.",
+      "en": "Open in editor",
+      "de": "Im Editor öffnen"
+    },
+    {
+      "key": "git_view.status_wip_files",
+      "context": "Git tab: status line while the file lists of the local changes have the keyboard. The placeholders are keys as the platform spells them; keep the other key names as they are on the keyboard.",
+      "en": "↑↓ choose · Space stage or unstage · Enter diff · {stage_all} stage all · {unstage_all} unstage all · {commit} commit · Tab next area",
+      "de": "↑↓ wählen · Leertaste vormerken/zurücknehmen · Enter Diff · {stage_all} alle vormerken · {unstage_all} alle zurücknehmen · {commit} Commit · Tab nächster Bereich"
+    },
+    {
+      "key": "git_view.status_wip_commit_box",
+      "context": "Git tab: status line while the commit box has the keyboard. {commit} and {commit_push} are keys as the platform spells them. Keep the key name Esc.",
+      "en": "{commit} commit · {commit_push} commit and push · Tab next field · Esc leave the field",
+      "de": "{commit} Commit · {commit_push} Commit und Push · Tab nächstes Feld · Esc Feld verlassen"
+    },
+    {
+      "key": "git_view.status_wip_diff",
+      "context": "Git tab: status line while the diff of a local change is open. {other_file} is a key as the platform spells it. Keep the other key names.",
+      "en": "{other_file} other file · Space stage or unstage · F4 editor · Esc back",
+      "de": "{other_file} andere Datei · Leertaste vormerken/zurücknehmen · F4 Editor · Esc zurück"
+    },
+    {
+      "key": "git_view.changes_all",
+      "context": "Git tab, sandbox: headline of the one list of changed files, where no staging is possible. Short.",
+      "en": "Changed",
+      "de": "Geändert"
+    },
+    {
+      "key": "git_view.diff_change_of",
+      "context": "Git tab, toolbar of the diff of a local change: which change (block of changed lines) of the file has the keys. {current} and {total} are numbers.",
+      "en": "Change {current} of {total}",
+      "de": "Änderung {current} von {total}"
+    },
+    {
+      "key": "git_view.diff_previous_change",
+      "context": "Git tab, tooltip of the up arrow in the diff toolbar that jumps to the previous change in the file.",
+      "en": "Previous change",
+      "de": "Vorige Änderung"
+    },
+    {
+      "key": "git_view.diff_next_change",
+      "context": "Git tab, tooltip of the down arrow in the diff toolbar that jumps to the next change in the file.",
+      "en": "Next change",
+      "de": "Nächste Änderung"
+    },
+    {
+      "key": "git_view.hunk_locked_whitespace",
+      "context": "Git tab, diff of a local change: tooltip of the grey buttons that stage, unstage or discard one section while 'Ignore white space' is on. They are off because the lines shown are not the ones git would apply.",
+      "en": "Not possible while white space is ignored: the lines shown are not the ones git would change.",
+      "de": "Nicht möglich, solange Leerzeichen ignoriert werden: die gezeigten Zeilen sind nicht die, die Git ändern würde."
+    },
+    {
+      "key": "git_view.status_local_one",
+      "context": "Git tab: status bar, right end, before the number of commits read. Exactly one file has local changes.",
+      "en": "1 local change",
+      "de": "1 lokale Änderung"
+    },
+    {
+      "key": "git_view.status_local_many",
+      "context": "Git tab: status bar, right end, before the number of commits read. {count} files have local changes, 2 or more.",
+      "en": "{count} local changes",
+      "de": "{count} lokale Änderungen"
+    },
+    {
+      "key": "git_view.column_graph",
+      "context": "Git tab: header of the column with the commit graph (the lines and dots that join the commits). Upper case, short.",
+      "en": "GRAPH",
+      "de": "GRAPH"
+    },
+    {
+      "key": "git_view.diff_back",
+      "context": "Git tab: hint at the top left of a file's diff that Escape goes back to the commit list. Keep the arrow and the key name Esc.",
+      "en": "← Esc back to the list",
+      "de": "← Esc zurück zur Liste"
     }
   ]
 }

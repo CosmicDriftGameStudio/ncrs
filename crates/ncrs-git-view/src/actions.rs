@@ -7,7 +7,7 @@ use ncrs_git::{ChangedFile, FileDiff, UndoRecord};
 
 use crate::job::Job;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChangeSide {
     Unstaged,
     Staged,
@@ -23,6 +23,78 @@ pub struct LocalChanges {
     pub title: String,
     pub body: text_editor::Content,
     pub amend: bool,
+    /// "Push afterwards": the commit button commits and pushes.
+    pub push_after: bool,
+    pub focus: WipFocus,
+    /// Enter was pressed on the file: the middle shows its diff instead of the graph.
+    pub diff_open: bool,
+    /// The diff in one column instead of old and new next to each other.
+    pub unified: bool,
+    /// The change (hunk) of the open diff that has the keys.
+    pub hunk: usize,
+    /// The diff does not count a change of white space. Its hunks are for
+    /// looking only: the buttons of a hunk are locked while it is on.
+    pub ignore_whitespace: bool,
+    /// The lists of files that are folded shut.
+    pub folded: std::collections::HashSet<ChangeSide>,
+}
+
+/// The stops of Tab inside the pane of the local changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WipFocus {
+    #[default]
+    Unstaged,
+    Staged,
+    Title,
+    Body,
+    Amend,
+    PushAfter,
+    Commit,
+}
+
+impl WipFocus {
+    const RING: [Self; 7] = [
+        Self::Unstaged,
+        Self::Staged,
+        Self::Title,
+        Self::Body,
+        Self::Amend,
+        Self::PushAfter,
+        Self::Commit,
+    ];
+
+    fn place(self) -> usize {
+        Self::RING
+            .iter()
+            .position(|stop| *stop == self)
+            .unwrap_or_default()
+    }
+
+    pub fn next(self) -> Self {
+        Self::RING
+            .get((self.place() + 1) % Self::RING.len())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn previous(self) -> Self {
+        Self::RING
+            .get((self.place() + Self::RING.len() - 1) % Self::RING.len())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn is_field(self) -> bool {
+        matches!(self, Self::Title | Self::Body)
+    }
+}
+
+/// What the user can put into `.gitignore` for one file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IgnoreChoice {
+    File,
+    Folder,
+    Extension,
 }
 
 impl Actions {
@@ -87,18 +159,40 @@ pub struct NewBranch {
 /// What the user is asked to confirm; the job of [`Question::job`] runs when they do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Question {
-    DiscardFile { path: String },
-    DiscardAll { count: usize },
-    DeleteBranch { name: String },
-    DeleteOnRemote { remote: String, branch: String },
-    DropStash { sha: String, message: String },
+    DiscardFile {
+        path: String,
+    },
+    DiscardAll {
+        count: usize,
+    },
+    DeleteBranch {
+        name: String,
+    },
+    DeleteOnRemote {
+        remote: String,
+        branch: String,
+    },
+    DropStash {
+        sha: String,
+        message: String,
+    },
+    /// Which pattern goes into `.gitignore`; only the offered choices are set.
+    Ignore {
+        path: String,
+        folder: Option<String>,
+        extension: Option<String>,
+        chosen: IgnoreChoice,
+    },
 }
 
 impl Question {
     /// Whether "undo" brings back what the action takes away.
     pub fn can_be_undone(&self) -> bool {
         match self {
-            Self::DiscardFile { .. } | Self::DiscardAll { .. } | Self::DeleteBranch { .. } => true,
+            Self::DiscardFile { .. }
+            | Self::DiscardAll { .. }
+            | Self::DeleteBranch { .. }
+            | Self::Ignore { .. } => true,
             Self::DeleteOnRemote { .. } | Self::DropStash { .. } => false,
         }
     }
@@ -116,6 +210,20 @@ impl Question {
                 branch: branch.clone(),
             },
             Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
+            Self::Ignore {
+                path,
+                folder,
+                extension,
+                chosen,
+            } => Job::Ignore {
+                pattern: match (chosen, folder, extension) {
+                    (IgnoreChoice::Folder, Some(directory), _) => {
+                        format!("{}/", ncrs_git::literal_pattern(directory))
+                    }
+                    (IgnoreChoice::Extension, _, Some(ending)) => format!("*.{ending}"),
+                    _ => ncrs_git::literal_pattern(path),
+                },
+            },
         }
     }
 }
@@ -268,9 +376,6 @@ pub struct Actions {
     pub merge: Option<MergeInProgress>,
     pub notice: Option<Notice>,
     pub stashes: Vec<StashEntry>,
-    /// "Local changes" is chosen in the left list: the middle shows the diff of
-    /// the chosen file and the right side the files and the commit message.
-    pub changes_open: bool,
     /// The operation running off-thread; presses wait for it.
     pub busy: Option<Operation>,
     /// Set when git is missing or the build runs no git actions.

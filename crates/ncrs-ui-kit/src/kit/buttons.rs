@@ -23,9 +23,18 @@ pub enum Tone {
     Secondary,
     /// An action that deletes: filled in the error color.
     Danger,
+    /// An action that deletes, next to others: outlined in the error color.
+    DangerOutline,
+    /// On a row filled in the accent: outlined in the ink of that row.
+    OnAccent,
 }
 
 impl Tone {
+    /// The button has a fill of its own, so what is drawn on it takes the ink of that fill.
+    pub const fn is_filled(self) -> bool {
+        matches!(self, Self::Primary | Self::Danger)
+    }
+
     /// Filled for the button that is the focus of the dialog, outlined for the
     /// others.
     pub const fn filled_if(filled: bool) -> Self {
@@ -127,6 +136,8 @@ fn tone_style(
     let primary = theme::dialog_button(palette, true);
     let secondary = theme::dialog_button(palette, false);
     let danger = theme::danger_button(palette);
+    let danger_outline = theme::danger_outline_button(palette);
+    let on_accent = theme::on_accent_button(palette);
     move |theme, status| {
         let disabled = matches!(status, widget_button::Status::Disabled);
         // A disabled button keeps its fill and outline, only fainter: without
@@ -140,6 +151,8 @@ fn tone_style(
             Tone::Primary => primary(theme, shown),
             Tone::Secondary => secondary(theme, shown),
             Tone::Danger => danger(theme, shown),
+            Tone::DangerOutline => danger_outline(theme, shown),
+            Tone::OnAccent => on_accent(theme, shown),
         };
         if disabled {
             style.background = style
@@ -183,6 +196,60 @@ pub fn button<'a, M: Clone + 'a>(
     sized_button(label_text(label), on_press, tone, palette)
 }
 
+fn shrunk_button<'a, M: Clone + 'a>(
+    label: &str,
+    on_press: Option<M>,
+    tone: Tone,
+    height: f32,
+    palette: &Palette,
+) -> Element<'a, M> {
+    widget_button(
+        container(
+            text(label.to_owned())
+                .size(font_size::SMALL)
+                .wrapping(Wrapping::None),
+        )
+        .center_y(Length::Fill),
+    )
+    .padding([0.0, spacing::M - 2.0])
+    .height(height)
+    .on_press_maybe(on_press)
+    .style(tone_style(palette, tone))
+    .into()
+}
+
+/// A button of 18 px for rows that carry their own actions. `on_press` of
+/// `None` disables it.
+pub fn small_button<'a, M: Clone + 'a>(
+    label: &str,
+    on_press: Option<M>,
+    tone: Tone,
+    palette: &Palette,
+) -> Element<'a, M> {
+    shrunk_button(label, on_press, tone, size::BUTTON_SMALL, palette)
+}
+
+/// A button of 22 px for the bars of a pane. With `on_press` of `None` it is
+/// disabled; `tip` is shown either way, and should say why it is disabled.
+pub fn compact_button<'a, M: Clone + 'a>(
+    label: &str,
+    tip: Option<&str>,
+    on_press: Option<M>,
+    tone: Tone,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let shown = shrunk_button(label, on_press, tone, size::BUTTON_COMPACT, palette);
+    match tip {
+        Some(words) => super::tooltip(
+            shown,
+            words.to_owned(),
+            iced::widget::tooltip::Position::Bottom,
+            palette,
+        ),
+        None => shown,
+    }
+}
+
 /// Like [`button`], with a small Enter cap: the button Enter presses.
 pub fn enter_button<'a, M: Clone + 'a>(
     label: &str,
@@ -207,7 +274,10 @@ pub fn key_button<'a, M: Clone + 'a>(
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let content = row![label_text(label), cap(key, on_press.is_some(), palette)]
+    let content = row![
+        label_text(label),
+        cap(key, on_press.is_some() && tone.is_filled(), palette)
+    ]
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
     sized_button(content.into(), on_press, tone, palette)
@@ -253,7 +323,8 @@ pub fn icon_button<'a, M: Clone + 'a>(
         match tone {
             Tone::Primary => palette.primary_button().1,
             Tone::Secondary => palette.text,
-            Tone::Danger => palette.cursor_text,
+            Tone::DangerOutline => palette.error,
+            Tone::Danger | Tone::OnAccent => palette.cursor_text,
         }
     };
     let mut content = Row::new()
@@ -288,7 +359,8 @@ pub fn toolbar_button<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     let tone_ink = match tone {
-        Tone::Secondary => palette.dim_text,
+        Tone::Secondary | Tone::DangerOutline => palette.dim_text,
+        Tone::OnAccent => palette.cursor_text,
         Tone::Primary => palette.primary_button().1.scale_alpha(KEY_ON_FILL_ALPHA),
         Tone::Danger => palette.cursor_text.scale_alpha(KEY_ON_FILL_ALPHA),
     };

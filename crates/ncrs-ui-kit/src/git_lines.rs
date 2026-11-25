@@ -64,8 +64,13 @@ impl<M> canvas::Program<M> for WipRing {
 #[derive(Debug)]
 pub struct WipRow<M> {
     pub changed: u32,
-    pub staged: u32,
+    /// `None` where the lists are not known, so nobody can say what is staged.
+    pub staged: Option<u32>,
+    /// The row has the keys: it is in the accent.
     pub chosen: bool,
+    /// What it stands for is shown at the right while the keys are elsewhere:
+    /// the row rests in grey.
+    pub marked: bool,
     /// How many lanes the graph column of the list is wide.
     pub lanes: usize,
     pub columns: CommitColumns,
@@ -82,6 +87,8 @@ pub fn wip_row<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let dim = if wip.chosen {
         palette.cursor_text
+    } else if wip.marked {
+        palette.text
     } else {
         palette.dim_text
     };
@@ -101,11 +108,14 @@ pub fn wip_row<'a, M: Clone + 'a>(
             .font(APP_FONT_BOLD)
             .color(title_ink)
             .wrapping(text::Wrapping::None),
-        text(format!(
-            "{} \u{b7} {}",
-            count(Msg::GitViewWipChanged, wip.changed),
-            count(Msg::GitViewWipStaged, wip.staged)
-        ))
+        text(match wip.staged {
+            Some(staged) => format!(
+                "{} \u{b7} {}",
+                count(Msg::GitViewWipChanged, wip.changed),
+                count(Msg::GitViewWipStaged, staged)
+            ),
+            None => count(Msg::GitViewWipChanged, wip.changed),
+        })
         .size(font_size::BODY)
         .color(dim)
         .wrapping(text::Wrapping::None),
@@ -125,8 +135,8 @@ pub fn wip_row<'a, M: Clone + 'a>(
     let line = row![
         ring,
         container(message).width(Length::Fill).clip(true),
-        cell("", wip.columns.author),
-        cell("", wip.columns.date),
+        cell("\u{2013}", wip.columns.author),
+        cell(lang.text(Msg::GitViewWipNow), wip.columns.date),
     ]
     .extend(
         wip.show_sha
@@ -143,7 +153,7 @@ pub fn wip_row<'a, M: Clone + 'a>(
     .width(Length::Fill)
     .height(size::ROW)
     .padding(0.0)
-    .style(theme::menu_item(palette, wip.chosen))
+    .style(theme::marked_menu_item(palette, wip.chosen, wip.marked))
     .into()
 }
 
@@ -240,12 +250,16 @@ pub fn worktree_line<'a, M: Clone + 'a>(
             .font(APP_FONT)
             .color(name_ink)
             .wrapping(text::Wrapping::None),
-        text(format!("\u{25a2} {}", line.folder))
-            .size(font_size::BODY)
-            .color(dim)
-            .wrapping(text::Wrapping::None),
-        Space::new().width(Length::Fill),
     ]
+    .extend((!line.folder.is_empty()).then(|| {
+        Element::from(
+            text(format!("\u{25a2} {}", line.folder))
+                .size(font_size::BODY)
+                .color(dim)
+                .wrapping(text::Wrapping::None),
+        )
+    }))
+    .push(Space::new().width(Length::Fill))
     .extend((line.behind > 0).then(|| small(format!("\u{2193}{}", line.behind), ink).into()))
     .extend((line.ahead > 0).then(|| small(format!("\u{2191}{}", line.ahead), ink).into()))
     .extend(

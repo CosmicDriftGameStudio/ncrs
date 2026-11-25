@@ -19,11 +19,12 @@ pub mod snapshot;
 pub mod state;
 pub mod update;
 pub mod view;
+mod wip;
 
 pub use action::Action;
 pub use ctx::{Ctx, ViewCtx};
 pub use git_keys::{GitKeys, GitKeysError, KeyOverride};
-pub use keys::{git_view_key, KeyContext};
+pub use keys::{commit_field_key, git_view_key, KeyContext};
 pub use message::Message;
 pub use panes::{PaneWidths, Split};
 pub use picker::{PickerKind, RepoEntry};
@@ -39,3 +40,5 @@ pub fn actions_available(state: &State) -> bool {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wip_tests;

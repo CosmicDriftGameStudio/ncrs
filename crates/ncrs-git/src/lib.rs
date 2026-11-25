@@ -10,8 +10,8 @@ mod blame;
 mod branch;
 mod changes;
 mod cleanup;
-mod clone;
 mod cli;
+mod clone;
 mod commit;
 mod compare;
 mod conflict;
@@ -44,8 +44,8 @@ pub use cleanup::{
     cleanup_list, remote_tips, CleanupBranch, CleanupList, CleanupPlan, CleanupReason,
     CleanupReport, CleanupRow, CleanupTarget, CleanupWorktree, KeepReason, Kept,
 };
-pub use clone::clone;
 pub use cli::{write_actions_available, Git, GitCli, WRITE_ACTIONS_ENABLED};
+pub use clone::clone;
 pub use commit::{CommitAndPush, CommitMessage};
 pub use compare::{compare_diff, compare_files};
 pub use conflict::{parse_blocks, preview_lines, ConflictBlock, ConflictChoice, PreviewLine};

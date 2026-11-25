@@ -26,6 +26,16 @@ pub fn section_head<'a, M: Clone + 'a>(
     head: SectionHead<'_, M>,
     palette: &Palette,
 ) -> Element<'a, M> {
+    section_head_with(head, Vec::new(), palette)
+}
+
+/// A head with buttons at its right end. The count then stands after the
+/// title, and the buttons keep their own clicks.
+pub fn section_head_with<'a, M: Clone + 'a>(
+    head: SectionHead<'_, M>,
+    actions: Vec<Element<'a, M>>,
+    palette: &Palette,
+) -> Element<'a, M> {
     let colors = *palette;
     let has_focus = head.has_focus;
     let empty = head.count == 0;
@@ -36,20 +46,30 @@ pub fn section_head<'a, M: Clone + 'a>(
     } else {
         palette.text
     };
-    let line = row![
+    let title = text(head.title.to_uppercase())
+        .size(font_size::SMALL)
+        .font(APP_FONT_BOLD)
+        .wrapping(Wrapping::None);
+    let count = text(head.count.to_string())
+        .size(font_size::SMALL)
+        .color(palette.dim_text)
+        .wrapping(Wrapping::None);
+    let mut line = row![
         text(arrow).size(font_size::SMALL).wrapping(Wrapping::None),
-        text(head.title.to_uppercase())
-            .size(font_size::SMALL)
-            .font(APP_FONT_BOLD)
-            .wrapping(Wrapping::None),
-        Space::new().width(Length::Fill),
-        text(head.count.to_string())
-            .size(font_size::SMALL)
-            .color(palette.dim_text)
-            .wrapping(Wrapping::None),
+        title,
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
+    if actions.is_empty() {
+        line = line.push(Space::new().width(Length::Fill)).push(count);
+    } else {
+        line = line.push(count).push(Space::new().width(Length::Fill));
+        line = line.push(
+            iced::widget::Row::with_children(actions)
+                .spacing(spacing::XS)
+                .align_y(alignment::Vertical::Center),
+        );
+    }
     let bar = container(line)
         .padding([0.0, spacing::M])
         .width(Length::Fill)

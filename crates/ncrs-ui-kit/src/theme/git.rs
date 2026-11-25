@@ -167,6 +167,8 @@ pub enum RefLook {
     /// A branch of a remote: dim.
     Remote,
     Tag,
+    /// Any label on the chosen row: outlined in the ink of that row.
+    OnChosen,
 }
 
 /// The ink of a ref label.
@@ -176,6 +178,7 @@ pub fn ref_ink(palette: &Palette, look: RefLook) -> Color {
         RefLook::Local => purple(palette),
         RefLook::Remote => palette.dim_text,
         RefLook::Tag => orange(),
+        RefLook::OnChosen => palette.cursor_text,
     }
 }
 
@@ -188,6 +191,7 @@ pub fn ref_label(palette: &Palette, look: RefLook) -> impl Fn(&Theme) -> contain
             RefLook::Local => purple(&colors),
             RefLook::Remote => control_outline(&colors, colors.panel),
             RefLook::Tag => orange(),
+            RefLook::OnChosen => colors.cursor_text,
         };
         container::Style {
             background: matches!(look, RefLook::Head).then(|| Background::Color(purple(&colors))),

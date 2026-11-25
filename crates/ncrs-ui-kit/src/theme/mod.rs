@@ -1,7 +1,7 @@
 //! Colors, spacing and reusable widget styles (dark, in the classic dual-panel style).
 
 use iced::widget::overlay::menu;
-use iced::widget::{button, checkbox, container, pick_list, text_input, Space};
+use iced::widget::{button, checkbox, container, pick_list, radio, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
 use crate::hermes_state::{FolderRole, HermesFileState};
@@ -379,6 +379,56 @@ pub fn danger_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> bu
     }
 }
 
+/// The button of a destructive action that is not the one the dialog is for:
+/// outlined and inked in the error color.
+pub fn danger_outline_button(
+    palette: &Palette,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let disabled = matches!(status, button::Status::Disabled);
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered
+                .then(|| Background::Color(colors.error.scale_alpha(HOVER_ALPHA))),
+            text_color: if disabled {
+                colors.dim_text
+            } else {
+                colors.error
+            },
+            border: Border {
+                color: if disabled {
+                    colors.border_inactive
+                } else {
+                    colors.error
+                },
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A button on a row filled in the accent: outlined in the ink of the row, lit while the pointer is over it.
+pub fn on_accent_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered
+                .then(|| Background::Color(colors.cursor_text.scale_alpha(HOVER_ALPHA))),
+            text_color: colors.cursor_text,
+            border: Border {
+                color: colors.cursor_text,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
 /// The close cross of a dialog: flat and dimmed, lit while the pointer is over
 /// it.
 pub fn close_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
@@ -656,6 +706,23 @@ pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -
     }
 }
 
+/// The round button of one choice among several that exclude each other.
+pub fn dialog_radio(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
+    let colors = *palette;
+    let (on, _) = colors.primary_button();
+    move |_theme, status| {
+        let (radio::Status::Active { is_selected } | radio::Status::Hovered { is_selected }) =
+            status;
+        radio::Style {
+            background: Background::Color(colors.panel),
+            dot_color: on,
+            border_width: spacing::BORDER_WIDTH,
+            border_color: if is_selected { on } else { colors.dim_text },
+            text_color: Some(colors.text),
+        }
+    }
+}
+
 /// The box of the context menu.
 pub fn menu(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
@@ -694,6 +761,24 @@ pub fn menu_item(
             border: Border::default(),
             ..button::Style::default()
         }
+    }
+}
+
+/// A list row that is in the accent while `chosen` and rests in grey while only
+/// `marked`: what it stands for is shown elsewhere, and the keys are not on it.
+pub fn marked_menu_item(
+    palette: &Palette,
+    chosen: bool,
+    marked: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    let plain = menu_item(palette, chosen);
+    move |theme, status| {
+        let mut style = plain(theme, status);
+        if marked && !chosen {
+            style.background = Some(Background::Color(colors.border_inactive));
+        }
+        style
     }
 }
 

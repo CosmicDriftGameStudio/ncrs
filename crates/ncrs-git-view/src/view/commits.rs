@@ -15,7 +15,7 @@ use ncrs_ui_kit::git_rows::{
 use ncrs_ui_kit::kit::{button, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_text::page_line;
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 use super::COMMITS_ID;
 use crate::ctx::ViewCtx;
@@ -32,7 +32,13 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     let show_sha = !super::is_narrow(ctx);
     let columns = state.columns_in_view(ctx.columns);
-    let lanes = log.lane_count.max(1);
+    // The column is at least as wide as its own title.
+    let title_lanes = (format::estimated_width(
+        ctx.lang.text(Msg::GitViewColumnGraph),
+        font_size::COLUMN_HEADER,
+    ) / LANE_WIDTH)
+        .ceil() as usize;
+    let lanes = log.lane_count.max(title_lanes).max(1);
     let graph_width = LANE_WIDTH * lanes as f32;
     let message_width = commit_message_width(
         super::commits_pane_width(state, ctx),
@@ -41,12 +47,19 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         show_sha,
     );
     let working = state.has_working_row().then(|| {
-        let count = state.current_worktree().map_or(0, |worktree| worktree.wip);
+        let changed = state.local_change_count();
+        // Without the lists nobody knows which files are staged.
+        let staged = state
+            .actions
+            .local
+            .as_ref()
+            .map(|local| u32::try_from(local.staged.len()).unwrap_or(u32::MAX));
         wip_row(
             WipRow {
-                changed: u32::try_from(count).unwrap_or(u32::MAX),
-                staged: 0,
+                changed: u32::try_from(changed).unwrap_or(u32::MAX),
+                staged,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
+                marked: state.changes_shown(),
                 lanes,
                 columns,
                 show_sha,
@@ -101,6 +114,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let header = commit_header(
         graph_width,
         [
+            ctx.lang.text(Msg::GitViewColumnGraph),
             ctx.lang.text(Msg::GitViewColumnMessage),
             ctx.lang.text(Msg::GitViewColumnAuthor),
             ctx.lang.text(Msg::GitViewColumnDate),
@@ -113,6 +127,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     );
     column![
         header,
+        theme::horizontal_rule(palette.border_inactive),
         page_scroll(COMMITS_ID, rows.width(Length::Fill).into())
     ]
     .into()

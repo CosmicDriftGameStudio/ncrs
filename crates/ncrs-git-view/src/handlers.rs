@@ -15,15 +15,17 @@ use crate::action::Action;
 use crate::actions::{
     Actions, ChangeSide, Conflict, ConflictAction, Dialog, LocalChanges, MenuAction, MenuTarget,
     MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
+    WipFocus,
 };
 use crate::ctx::Ctx;
 use crate::job::{Done, Finished, Job};
 use crate::load;
 use crate::message::Message;
 use crate::snapshot::{self, IntegrationSnapshot, Snapshot};
-use crate::state::State;
+use crate::state::{Area, State};
 use crate::update::{ensure_detail, failed, menu_target_of, quiet, Outcome};
 use crate::view::{NAME_ID, RENAME_ID};
+use crate::wip;
 
 pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
     match message {
@@ -70,21 +72,52 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             if let Some(local) = state.actions.local.as_mut() {
                 local.title = title;
             }
+            wip::typed_in(state, WipFocus::Title);
             quiet(Task::none())
         }
         Message::CommitBodyEdited(edit) => {
             if let Some(local) = state.actions.local.as_mut() {
                 local.body.perform(edit);
             }
+            wip::typed_in(state, WipFocus::Body);
             quiet(Task::none())
         }
-        Message::ToggleAmend => {
+        Message::ToggleWipSection(side) => {
             if let Some(local) = state.actions.local.as_mut() {
-                local.amend = !local.amend;
+                if !local.folded.remove(&side) {
+                    local.folded.insert(side);
+                }
             }
             quiet(Task::none())
         }
-        Message::Commit => commit(state),
+        Message::ToggleAmend => {
+            wip::toggle_amend(state);
+            quiet(Task::none())
+        }
+        Message::TogglePushAfter => {
+            wip::toggle_push_after(state);
+            quiet(Task::none())
+        }
+        Message::ToggleStageSelected => wip::toggle_stage_selected(state),
+        Message::FocusCommitTitle => quiet(wip::focus_title(state)),
+        Message::WipFocused(focus) => quiet(wip::focused(state, focus)),
+        Message::WipFieldPressed(focus) => {
+            state.area = Area::Detail;
+            wip::typed_in(state, focus);
+            quiet(Task::none())
+        }
+        Message::IgnoreFile(index) => wip::ignore_file(state, index),
+        Message::IgnoreSelected => wip::ignore_selected(state),
+        Message::IgnoreChoiceChanged(choice) => {
+            wip::choose_ignore(state, choice);
+            quiet(Task::none())
+        }
+        Message::OpenSelectedInEditor => wip::open_selected_in_editor(state),
+        Message::ConflictShortcut(ConflictAction::OpenEditor) if state.actions.merge.is_none() => {
+            wip::open_selected_in_editor(state)
+        }
+        Message::Commit => commit(state, false),
+        Message::CommitAndPush => commit(state, true),
         Message::Fetch => start(state, Job::Fetch),
         Message::Pull | Message::PullFirst => start(state, Job::Pull(None)),
         Message::PullWith(strategy) => start(state, Job::Pull(Some(strategy))),
@@ -251,7 +284,8 @@ fn start_any(state: &mut State, job: Option<Job>) -> Outcome {
 fn hunk_of(state: &State, side: ChangeSide, hunk: usize) -> Option<(String, DiffHunk)> {
     let local = state.actions.local.as_ref()?;
     let (chosen, index) = local.selected?;
-    if chosen != side {
+    // The hunks of a diff that ignores whitespace are not the ones git applies.
+    if chosen != side || local.ignore_whitespace {
         return None;
     }
     let path = files_of(local, side).get(index)?.path.clone();
@@ -282,7 +316,8 @@ fn select_change(state: &mut State, side: ChangeSide, index: usize) -> Outcome {
     quiet(load::actions(state))
 }
 
-fn commit(state: &mut State) -> Outcome {
+/// Commits the staged files; `push` or the box "push afterwards" pushes next.
+pub fn commit(state: &mut State, push: bool) -> Outcome {
     let Some(local) = state.actions.local.as_ref() else {
         return quiet(Task::none());
     };
@@ -290,12 +325,15 @@ fn commit(state: &mut State) -> Outcome {
         state.actions.notice = Some(Notice::CommitTitleMissing);
         return quiet(Task::none());
     }
-    let job = Job::Commit {
-        message: CommitMessage {
-            title: local.title.clone(),
-            body: local.body.text(),
-        },
-        amend: local.amend,
+    let message = CommitMessage {
+        title: local.title.clone(),
+        body: local.body.text(),
+    };
+    let amend = local.amend;
+    let job = if push || local.push_after {
+        Job::CommitAndPush { message, amend }
+    } else {
+        Job::Commit { message, amend }
     };
     start(state, job)
 }
@@ -426,7 +464,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
 }
 
 /// Opens the question unless another call to git runs or there are no actions.
-fn ask(state: &mut State, question: Option<Question>) -> Outcome {
+pub fn ask(state: &mut State, question: Option<Question>) -> Outcome {
     if state.actions.busy.is_none() && state.actions.unavailable.is_none() {
         if let Some(asked) = question {
             state.actions.dialog = Some(Dialog::Ask(asked));
@@ -552,7 +590,6 @@ fn switch_off(state: &mut State, reason: Unavailable) {
     actions.new_branch = None;
     actions.dialog = None;
     actions.menu = None;
-    actions.changes_open = false;
 }
 
 fn apply(state: &mut State, ctx: &Ctx, snapshot: Snapshot) {
@@ -701,11 +738,18 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
     state.actions.busy = None;
     let Finished { job, result } = finished;
     match result {
+        Ok(Done::CommittedButNotPushed { undo, error }) => {
+            if undo.is_some() {
+                state.actions.undo = undo;
+            }
+            after_success(state, &job);
+            report(state, ctx, Job::Push, error);
+        }
         Ok(done) => {
             match done {
                 Done::Undoable(Some(record)) => state.actions.undo = Some(record),
                 Done::Undone => state.actions.undo = None,
-                Done::Undoable(None) | Done::Plain => {}
+                Done::Undoable(None) | Done::Plain | Done::CommittedButNotPushed { .. } => {}
             }
             state.actions.retry = None;
             after_success(state, &job);
@@ -718,7 +762,7 @@ fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
 
 fn after_success(state: &mut State, job: &Job) {
     match job {
-        Job::Commit { .. } => {
+        Job::Commit { .. } | Job::CommitAndPush { .. } => {
             if let Some(local) = state.actions.local.as_mut() {
                 local.title.clear();
                 local.body = text_editor::Content::new();

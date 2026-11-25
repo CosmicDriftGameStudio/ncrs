@@ -25,6 +25,7 @@ use crate::state::{
     Subject, PAGE,
 };
 use crate::view::{DIFF_ID, FILTER_ID};
+use crate::wip;
 
 /// Lines an arrow key scrolls the diff by.
 const SCROLL_LINES: f32 = 3.0;
@@ -172,6 +173,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::CommitPressed(row) => {
             state.area = Area::Commits;
             state.commit_cursor = row;
+            close_wip_diff(state);
             quiet(ensure_detail(state))
         }
         Message::FolderPressed => {
@@ -219,7 +221,16 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             if let Some(shown) = state.diff.as_mut() {
                 shown.unified = unified;
             }
+            if let Some(local) = state.actions.local.as_mut() {
+                local.unified = unified;
+            }
             quiet(Task::none())
+        }
+        Message::ToggleIgnoreWhitespace if state.changes_shown() => {
+            if let Some(local) = state.actions.local.as_mut() {
+                local.ignore_whitespace = !local.ignore_whitespace;
+            }
+            quiet(load::actions(state))
         }
         Message::ToggleIgnoreWhitespace => {
             let Some(shown) = state.diff.as_mut() else {
@@ -251,20 +262,19 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             let folded = fold_at_cursor(state, false);
             if folded.is_none() && state.area != Area::Detail {
                 state.area = state.area.next_list();
+                if state.area == Area::Detail && state.changes_shown() {
+                    wip::enter_pane(state);
+                }
             }
             (Task::none(), folded)
         }
         Message::Enter => enter(state, ctx),
-        Message::NextArea => {
-            state.area = state.area.next();
-            quiet(Task::none())
-        }
-        Message::PreviousArea => {
-            state.area = state.area.previous();
-            quiet(Task::none())
-        }
+        Message::NextArea => quiet(wip::tab(state, true)),
+        Message::PreviousArea => quiet(wip::tab(state, false)),
         Message::NextHunk => quiet(step_hunk(state, true)),
         Message::PreviousHunk => quiet(step_hunk(state, false)),
+        Message::NextFile if state.changes_shown() => quiet(wip::move_selection(state, 1)),
+        Message::PreviousFile if state.changes_shown() => quiet(wip::move_selection(state, -1)),
         Message::NextFile => quiet(step_file(state, 1)),
         Message::PreviousFile => quiet(step_file(state, -1)),
         Message::ViewFile => {
@@ -322,7 +332,18 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         | Message::CommitTitleChanged(_)
         | Message::CommitBodyEdited(_)
         | Message::ToggleAmend
+        | Message::ToggleWipSection(_)
+        | Message::TogglePushAfter
+        | Message::ToggleStageSelected
+        | Message::FocusCommitTitle
+        | Message::WipFocused(_)
+        | Message::WipFieldPressed(_)
+        | Message::IgnoreFile(_)
+        | Message::IgnoreSelected
+        | Message::IgnoreChoiceChanged(_)
+        | Message::OpenSelectedInEditor
         | Message::Commit
+        | Message::CommitAndPush
         | Message::Fetch
         | Message::Pull
         | Message::Push
@@ -457,8 +478,6 @@ fn activate_sidebar(state: &mut State, index: usize) -> Outcome {
     if let Some(fold) = item.and_then(|row| state.fold_of(row)) {
         return (Task::none(), toggle_fold(state, fold));
     }
-    state.actions.changes_open =
-        state.actions.local.is_some() && item == Some(SidebarItem::Changes);
     match item {
         Some(SidebarItem::Worktree(position)) => {
             let path = state
@@ -492,13 +511,26 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
         }
         Area::Commits => {
             state.area = Area::Detail;
+            if state.changes_shown() {
+                wip::enter_pane(state);
+            }
             quiet(Task::none())
         }
+        Area::Detail if state.changes_shown() => wip::enter(state),
         Area::Detail => {
             let index = state.file_cursor;
             quiet(open_diff(state, index))
         }
         Area::SidebarSplit | Area::DetailSplit => quiet(Task::none()),
+    }
+}
+
+/// The diff of a change is in the middle only while the working copy row is the chosen one.
+fn close_wip_diff(state: &mut State) {
+    if state.commit_cursor != 0 {
+        if let Some(local) = state.actions.local.as_mut() {
+            local.diff_open = false;
+        }
     }
 }
 
@@ -521,6 +553,7 @@ fn move_cursor(state: &mut State, delta: isize) -> Task<Message> {
         Area::Commits => {
             let rows = state.row_count();
             state.commit_cursor = step(state.commit_cursor, delta, rows);
+            close_wip_diff(state);
             let detail = ensure_detail(state);
             let near_end = state.commit_cursor + 1 >= rows;
             if near_end && delta > 0 {
@@ -529,6 +562,7 @@ fn move_cursor(state: &mut State, delta: isize) -> Task<Message> {
                 detail
             }
         }
+        Area::Detail if state.changes_shown() => wip::move_selection(state, delta),
         Area::Detail => {
             let len = state.files_in_detail().len();
             state.file_cursor = step(state.file_cursor, delta, len);
@@ -595,6 +629,9 @@ fn step_file(state: &mut State, delta: isize) -> Task<Message> {
 }
 
 fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
+    if state.changes_shown() {
+        return wip::step_hunk(state, forward);
+    }
     let Some(shown) = state.diff.as_mut() else {
         return Task::none();
     };
@@ -634,6 +671,9 @@ fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
     if state.filter_focused {
         state.filter_focused = false;
         return quiet(release_focus());
+    }
+    if let Some(task) = wip::escape_step(state) {
+        return quiet(task);
     }
     if state.diff.take().is_some() {
         state.loads.diff.cancel();

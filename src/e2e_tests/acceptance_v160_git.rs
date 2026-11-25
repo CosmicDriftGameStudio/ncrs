@@ -483,11 +483,10 @@ fn open_git_view_from_the_context_menu<P: Live>(session: &mut Session<P>) {
     session.settle();
 }
 
-fn assert_local_changes_sit_in_the_sidebar(view: &ncrs_git_view::State) {
-    assert_eq!(
+fn assert_local_changes_sit_in_the_log(view: &ncrs_git_view::State) {
+    assert!(
         view.has_working_row(),
-        !ncrs_git::WRITE_ACTIONS_ENABLED,
-        "the local changes sit in the sidebar where actions exist, otherwise in the log"
+        "the local changes are the first row of the log"
     );
     if !ncrs_git::WRITE_ACTIONS_ENABLED {
         return;
@@ -523,7 +522,7 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
     assert_eq!((linked.ahead, linked.behind), (2, 0), "against main");
     let current = view.current_worktree().expect("the opened worktree");
     assert_eq!(current.wip, 3);
-    assert_local_changes_sit_in_the_sidebar(view);
+    assert_local_changes_sit_in_the_log(view);
     let log = view.log.clone().expect("the log was read");
     assert!(log.commits.len() >= 33, "{} commits", log.commits.len());
     shoot(&session.app, "20-git-ansicht");

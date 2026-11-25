@@ -21,8 +21,19 @@ impl Git {
     /// The hunks of one file for the given side. Hunk actions take a hunk from
     /// exactly this list; one that no longer fits the file is refused by git.
     pub fn hunks(&self, path: &str, side: HunkSide) -> Result<FileDiff, ActionError> {
+        self.hunks_shown(path, side, false)
+    }
+
+    /// The hunks as they are shown. With `ignore_whitespace` they are for
+    /// looking only: a hunk of it must not be given to a hunk action.
+    pub fn hunks_shown(
+        &self,
+        path: &str,
+        side: HunkSide,
+        ignore_whitespace: bool,
+    ) -> Result<FileDiff, ActionError> {
         let (old, new) = self.sides(path, side)?;
-        Ok(diff_bytes(path, &old, &new, false))
+        Ok(diff_bytes(path, &old, &new, ignore_whitespace))
     }
 
     pub fn stage_hunk(

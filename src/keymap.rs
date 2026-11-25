@@ -262,8 +262,11 @@ mod tests {
     fn a_repos_key_set_in_the_config_is_checked_against_the_app_keymap() {
         let (_dir, path) = written("[keys.repos]\nfetch = \"primary+shift+n\"\n");
         let config = config::load(&path).unwrap();
-        let clash =
-            crate::repos_keys::resolve(&config.repos_keys, &config.keymap, cfg!(target_os = "macos"));
+        let clash = crate::repos_keys::resolve(
+            &config.repos_keys,
+            &config.keymap,
+            cfg!(target_os = "macos"),
+        );
         // Cmd+Shift+N is note_on_file on a Mac, Ctrl+Shift+N elsewhere.
         assert!(clash.is_err(), "{clash:?}");
     }
@@ -276,9 +279,10 @@ mod tests {
             crate::git_keys::resolve(&config.git_keys, &config.keymap, cfg!(target_os = "macos"));
         // Ctrl+Shift+C is copy_name elsewhere, free on a Mac.
         assert_eq!(clash.is_err(), !cfg!(target_os = "macos"), "{clash:?}");
-        let (_dir, path) = written("[keys.git]\nfetch = \"primary+alt+shift+k\"\n");
-        let config = config::load(&path).unwrap();
-        let keys = crate::git_keys::resolve(&config.git_keys, &config.keymap, false).unwrap();
+        let (_second_dir, second_path) = written("[keys.git]\nfetch = \"primary+alt+shift+k\"\n");
+        let second_config = config::load(&second_path).unwrap();
+        let keys = crate::git_keys::resolve(&second_config.git_keys, &second_config.keymap, false)
+            .unwrap();
         assert_eq!(
             keys.pressed(
                 &Key::Character("k".into()),

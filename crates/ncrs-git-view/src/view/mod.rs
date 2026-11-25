@@ -3,6 +3,7 @@
 //! one file in their place.
 
 mod changes;
+mod commit_box;
 mod commits;
 mod detail;
 mod diff;
@@ -11,6 +12,7 @@ mod merge;
 mod overlay;
 mod sidebar;
 mod toolbar;
+mod wip_pane;
 
 use iced::widget::{column, container, row, stack};
 use iced::{Element, Length, Padding};
@@ -23,12 +25,14 @@ use ncrs_ui_kit::splitter::{splitter, width_label, SplitterMessages};
 use ncrs_ui_kit::theme::git::SplitterLook;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
-use crate::actions::Unavailable;
+use crate::actions::{Unavailable, WipFocus};
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::panes::{PaneWidths, Split};
 use crate::shortcuts::Shortcut;
 use crate::state::{Area, State};
+pub use changes::HUNKS_ID;
+pub use commit_box::{BODY_ID, TITLE_ID};
 pub use overlay::{NAME_ID, RENAME_ID};
 
 /// The ids of the fields and scroll areas, for the focus and scroll tasks.
@@ -65,10 +69,22 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .as_deref()
         .map_or(PageStatusLine::Hint(&hint), PageStatusLine::Failure);
     let loaded = state.log.as_ref().map(|log| {
-        fill_template(
+        let commits = fill_template(
             ctx.lang.text(Msg::GitViewStatusLoaded),
             &[("{count}", &log.commits.len().to_string())],
-        )
+        );
+        let changed = state.local_change_count();
+        if changed == 0 {
+            return commits;
+        }
+        let local = match changed {
+            1 => ctx.lang.text(Msg::GitViewStatusLocalOne).to_owned(),
+            _ => fill_template(
+                ctx.lang.text(Msg::GitViewStatusLocalMany),
+                &[("{count}", &changed.to_string())],
+            ),
+        };
+        format!("{local} \u{b7} {commits}")
     });
     let copied = state
         .copied_sha
@@ -141,6 +157,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     overlay::over(page.into(), state, ctx)
 }
 
+/// The width of the pane of the local changes: the buttons of a file need the room.
+const WIP_PANE: f32 = 520.0;
+
 /// What the right side shows: the commit, the local changes or a merge.
 enum Pane {
     Commit,
@@ -152,7 +171,7 @@ fn pane_of(state: &State) -> Pane {
     if state.actions.merge.is_some() {
         return Pane::Merge;
     }
-    if state.actions.local.is_some() && state.actions.changes_open {
+    if state.changes_shown() {
         return Pane::Changes;
     }
     Pane::Commit
@@ -163,7 +182,11 @@ fn pane_of(state: &State) -> Pane {
 fn middle_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     match (pane_of(state), &state.actions.merge, &state.actions.local) {
         (Pane::Merge, Some(merge), _) => merge::diff_view(merge, ctx),
-        (Pane::Changes, _, Some(local)) => changes::diff_view(local, ctx),
+        (Pane::Changes, _, Some(local)) if local.diff_open => {
+            let has_keys = state.area == Area::Detail
+                && matches!(local.focus, WipFocus::Unstaged | WipFocus::Staged);
+            changes::diff_view(local, has_keys, ctx)
+        }
         _ => commits::view(state, ctx),
     }
 }
@@ -185,7 +208,7 @@ fn body_top(state: &State) -> f32 {
 fn detail_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     match (pane_of(state), &state.actions.merge, &state.actions.local) {
         (Pane::Merge, Some(merge), _) => merge::view(merge, ctx),
-        (Pane::Changes, _, Some(local)) => changes::view(local, ctx),
+        (Pane::Changes, _, Some(local)) => wip_pane::view(state, local, ctx),
         _ => detail::view(state, ctx),
     }
 }
@@ -203,10 +226,10 @@ pub fn sidebar_width(ctx: ViewCtx<'_>, state: &State) -> f32 {
 /// so the commit list keeps its room.
 fn detail_width(state: &State, ctx: ViewCtx<'_>) -> f32 {
     let wanted = panes_in_view(state, ctx).width(Split::Detail);
-    if matches!(pane_of(state), Pane::Commit) && is_narrow(ctx) {
-        wanted.min(size::SIDE_PANE)
-    } else {
-        wanted
+    match pane_of(state) {
+        Pane::Commit if is_narrow(ctx) => wanted.min(size::SIDE_PANE),
+        Pane::Changes => wanted.max(WIP_PANE),
+        Pane::Commit | Pane::Merge => wanted,
     }
 }
 
@@ -286,14 +309,32 @@ fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
         );
     }
     if acting && matches!(pane_of(state), Pane::Changes) && state.area != Area::Sidebar {
-        return fill_template(
-            ctx.lang.text(Msg::GitViewStatusChanges),
-            &[
-                ("{stage_all}", &key(Shortcut::StageAll)),
-                ("{unstage_all}", &key(Shortcut::UnstageAll)),
-                ("{commit}", &key(Shortcut::Commit)),
-            ],
-        );
+        let focus = state
+            .actions
+            .local
+            .as_ref()
+            .map(|local| (local.focus, local.diff_open));
+        return match focus {
+            Some((WipFocus::Unstaged | WipFocus::Staged, true)) => fill_template(
+                ctx.lang.text(Msg::GitViewStatusWipDiff),
+                &[("{other_file}", &key(Shortcut::NextFile))],
+            ),
+            Some((WipFocus::Unstaged | WipFocus::Staged, false)) | None => fill_template(
+                ctx.lang.text(Msg::GitViewStatusWipFiles),
+                &[
+                    ("{stage_all}", &key(Shortcut::StageAll)),
+                    ("{unstage_all}", &key(Shortcut::UnstageAll)),
+                    ("{commit}", &key(Shortcut::Commit)),
+                ],
+            ),
+            Some((_, _)) => fill_template(
+                ctx.lang.text(Msg::GitViewStatusWipCommitBox),
+                &[
+                    ("{commit}", &key(Shortcut::Commit)),
+                    ("{commit_push}", &key(Shortcut::CommitAndPush)),
+                ],
+            ),
+        };
     }
     if acting && state.area == Area::Sidebar {
         return fill_template(

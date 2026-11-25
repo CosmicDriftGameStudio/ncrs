@@ -140,7 +140,8 @@ fn standings(state: &State) -> Vec<(Standing, Chip)> {
                 Chip::Behind,
             ));
         }
-        if branch.ahead > 0 {
+        // "↑0" beside "↓2": the pair says where the branch stands.
+        if branch.ahead > 0 || branch.behind > 0 {
             chips.push((
                 Standing::Ahead {
                     count: branch.ahead,

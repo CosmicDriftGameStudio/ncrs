@@ -20,6 +20,12 @@ pub enum Shortcut {
     Stash,
     Undo,
     Commit,
+    CommitAndPush,
+    FocusCommitTitle,
+    Ignore,
+    ToggleStage,
+    PreviousFile,
+    NextFile,
     StageAll,
     UnstageAll,
     DiscardAll,
@@ -55,6 +61,12 @@ impl Shortcut {
         Self::Stash,
         Self::Undo,
         Self::Commit,
+        Self::CommitAndPush,
+        Self::FocusCommitTitle,
+        Self::Ignore,
+        Self::ToggleStage,
+        Self::PreviousFile,
+        Self::NextFile,
         Self::StageAll,
         Self::UnstageAll,
         Self::DiscardAll,
@@ -91,6 +103,12 @@ impl Shortcut {
             Self::Stash => "stash",
             Self::Undo => "undo",
             Self::Commit => "commit",
+            Self::CommitAndPush => "commit_and_push",
+            Self::FocusCommitTitle => "focus_commit_title",
+            Self::Ignore => "ignore",
+            Self::ToggleStage => "toggle_stage",
+            Self::PreviousFile => "previous_file",
+            Self::NextFile => "next_file",
             Self::StageAll => "stage_all",
             Self::UnstageAll => "unstage_all",
             Self::DiscardAll => "discard_all",
@@ -135,11 +153,20 @@ impl Shortcut {
     }
 
     /// The default key is one the whole app already gives the same meaning:
-    /// edit, menu, rename. The check against the app keymap skips these.
+    /// edit, menu, rename; Space, ⌘↑ and ⌘↓ are the app's keys too, but the
+    /// tab only reads them where its files are. The check against the app
+    /// keymap skips these.
     pub const fn shares_an_app_key(self) -> bool {
         matches!(
             self,
-            Self::OpenEditor | Self::OpenMenu | Self::Rename | Self::CopySha | Self::GoParent
+            Self::OpenEditor
+                | Self::OpenMenu
+                | Self::Rename
+                | Self::CopySha
+                | Self::GoParent
+                | Self::ToggleStage
+                | Self::PreviousFile
+                | Self::NextFile
         )
     }
 
@@ -157,6 +184,12 @@ impl Shortcut {
             Self::Stash => letter(shifted, "s"),
             Self::Undo => letter(shifted, "y"),
             Self::Commit => named(command, Named::Enter),
+            Self::CommitAndPush => named(command | Modifiers::ALT, Named::Enter),
+            Self::FocusCommitTitle => letter(command, "l"),
+            Self::Ignore => letter(command | Modifiers::ALT, "i"),
+            Self::ToggleStage => named(Modifiers::empty(), Named::Space),
+            Self::PreviousFile => named(command, Named::ArrowUp),
+            Self::NextFile => named(command, Named::ArrowDown),
             Self::StageAll => letter(shifted, "i"),
             Self::UnstageAll => letter(shifted, "r"),
             Self::DiscardAll => named(shifted, Named::Backspace),
@@ -211,6 +244,10 @@ impl Shortcut {
             Self::Stash => Msg::GitViewToolbarStash,
             Self::Undo => Msg::GitViewCommandUndo,
             Self::Commit => Msg::GitViewCommandCommit,
+            Self::CommitAndPush => Msg::GitViewCommandCommitPush,
+            Self::FocusCommitTitle => Msg::GitViewCommandFocusTitle,
+            Self::Ignore => Msg::GitViewCommandIgnore,
+            Self::ToggleStage | Self::PreviousFile | Self::NextFile => return None,
             Self::StageAll => Msg::GitViewStageAll,
             Self::UnstageAll => Msg::GitViewUnstageAll,
             Self::DiscardAll => Msg::GitViewDiscardAll,
@@ -247,6 +284,12 @@ impl Shortcut {
             Self::Stash => Message::Stash,
             Self::Undo => Message::Undo,
             Self::Commit => Message::Commit,
+            Self::CommitAndPush => Message::CommitAndPush,
+            Self::FocusCommitTitle => Message::FocusCommitTitle,
+            Self::Ignore => Message::IgnoreSelected,
+            Self::ToggleStage => Message::ToggleStageSelected,
+            Self::PreviousFile => Message::PreviousFile,
+            Self::NextFile => Message::NextFile,
             Self::StageAll => Message::StageAll,
             Self::UnstageAll => Message::UnstageAll,
             Self::DiscardAll => Message::DiscardAll,

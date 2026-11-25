@@ -508,3 +508,141 @@ fn in_a_rebase_the_sides_swap_so_mine_stays_first() {
         ]
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn space_stages_the_chosen_file_and_takes_it_back() {
+    let dir = repo();
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::ToggleStageSelected).await;
+    let local = state.actions.local.as_ref().unwrap();
+    assert_eq!((local.unstaged.len(), local.staged.len()), (0, 1));
+    assert_eq!(local.selected, Some((ChangeSide::Staged, 0)));
+    send(&mut state, Message::ToggleStageSelected).await;
+    let after = state.actions.local.as_ref().unwrap();
+    assert_eq!((after.unstaged.len(), after.staged.len()), (1, 0));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ignoring_an_untracked_file_hides_it_and_can_be_undone() {
+    let dir = repo();
+    write(dir.path(), "junk.log", "noise\n");
+    let mut state = opened(dir.path()).await;
+    let place = |shown: &State| {
+        shown
+            .actions
+            .local
+            .as_ref()
+            .unwrap()
+            .unstaged
+            .iter()
+            .position(|file| file.path == "junk.log")
+    };
+    let index = place(&state).expect("the new file is listed");
+    send(&mut state, Message::IgnoreFile(index)).await;
+    send(
+        &mut state,
+        Message::IgnoreChoiceChanged(ncrs_git_view::actions::IgnoreChoice::Extension),
+    )
+    .await;
+    send(&mut state, Message::ConfirmDialog).await;
+    assert_eq!(read(dir.path(), ".gitignore"), "*.log\n");
+    assert_eq!(place(&state), None);
+    send(&mut state, Message::Undo).await;
+    assert!(!dir.path().join(".gitignore").exists());
+    assert!(place(&state).is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tracked_file_is_not_offered_for_ignoring() {
+    let dir = repo();
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::IgnoreFile(0)).await;
+    assert!(state.actions.dialog.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commit_and_push_pushes_after_the_commit() {
+    let origin = TempDir::new().unwrap();
+    sh(origin.path(), &["init", "-q", "--bare", "-b", "main"]);
+    let dir = repo();
+    let url = origin.path().to_str().unwrap().to_owned();
+    sh(dir.path(), &["remote", "add", "origin", &url]);
+    sh(dir.path(), &["push", "-q", "-u", "origin", "main"]);
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::StageAll).await;
+    send(&mut state, Message::CommitTitleChanged("second".to_owned())).await;
+    send(&mut state, Message::CommitAndPush).await;
+    assert_eq!(sh(origin.path(), &["log", "-1", "--format=%s"]), "second");
+    assert!(state
+        .actions
+        .local
+        .as_ref()
+        .is_some_and(|local| local.title.is_empty()));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_push_afterwards_box_turns_the_commit_into_commit_and_push() {
+    let origin = TempDir::new().unwrap();
+    sh(origin.path(), &["init", "-q", "--bare", "-b", "main"]);
+    let dir = repo();
+    let url = origin.path().to_str().unwrap().to_owned();
+    sh(dir.path(), &["remote", "add", "origin", &url]);
+    sh(dir.path(), &["push", "-q", "-u", "origin", "main"]);
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::StageAll).await;
+    send(&mut state, Message::TogglePushAfter).await;
+    send(&mut state, Message::CommitTitleChanged("third".to_owned())).await;
+    send(&mut state, Message::Commit).await;
+    assert_eq!(sh(origin.path(), &["log", "-1", "--format=%s"]), "third");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_title_over_the_counter_limit_still_commits() {
+    let dir = repo();
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::StageAll).await;
+    let long = "x".repeat(100);
+    send(&mut state, Message::CommitTitleChanged(long.clone())).await;
+    send(&mut state, Message::Commit).await;
+    assert_eq!(sh(dir.path(), &["log", "-1", "--format=%s"]), long);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rejected_push_after_commit_and_push_keeps_the_commit_and_its_undo() {
+    let origin = TempDir::new().unwrap();
+    sh(origin.path(), &["init", "-q", "--bare", "-b", "main"]);
+    let dir = repo();
+    let url = origin.path().to_str().unwrap().to_owned();
+    sh(dir.path(), &["remote", "add", "origin", &url]);
+    sh(dir.path(), &["push", "-q", "-u", "origin", "main"]);
+    let other = TempDir::new().unwrap();
+    sh(other.path(), &["clone", "-q", &url, "."]);
+    sh(other.path(), &["config", "user.name", "Other"]);
+    sh(other.path(), &["config", "user.email", "other@example.com"]);
+    commit_file(other.path(), "o.txt", "o\n", "other");
+    sh(other.path(), &["push", "-q"]);
+    let before = sh(dir.path(), &["rev-parse", "HEAD"]);
+    write(dir.path(), "a.txt", &two_hunks());
+    let mut state = opened(dir.path()).await;
+    send(&mut state, Message::StageAll).await;
+    send(&mut state, Message::CommitTitleChanged("mine".to_owned())).await;
+    send(&mut state, Message::CommitAndPush).await;
+    assert!(matches!(
+        state.actions.notice,
+        Some(Notice::PushRejected { .. })
+    ));
+    assert_eq!(sh(dir.path(), &["log", "-1", "--format=%s"]), "mine");
+    assert!(state.actions.undo.is_some());
+    assert!(state
+        .actions
+        .local
+        .as_ref()
+        .is_some_and(|local| local.title.is_empty()));
+    send(&mut state, Message::Undo).await;
+    assert_eq!(sh(dir.path(), &["rev-parse", "HEAD"]), before);
+}

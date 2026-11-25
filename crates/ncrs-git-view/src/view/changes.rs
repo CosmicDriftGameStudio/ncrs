@@ -1,94 +1,39 @@
-//! The local changes: the files not staged and staged with the commit message
-//! on the right, the diff of the chosen file with a button per hunk in the middle.
+//! The diff of the chosen local change, in the middle: a toolbar for the
+//! file, a button per hunk, and the end of the file.
 
-use iced::widget::{column, container, row, Column, Space};
+use iced::widget::{column, container, responsive, row, Column, Row, Space};
 use iced::{alignment, Element, Length};
-use ncrs_git::{ChangeKind, ChangedFile, RowKind};
+use ncrs_git::{ChangeKind, DiffHunk, DiffRow, RowKind};
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::action_rows::{action_row, hunk_bar, section_bar, ActionRow};
-use ncrs_ui_kit::git_rows::{diff_unified_line, DiffTone};
+use ncrs_ui_kit::action_rows::hunk_bar;
+use ncrs_ui_kit::format::fit_middle;
+use ncrs_ui_kit::git_rows::{diff_cell, diff_note, diff_unified_line, DiffTone};
 use ncrs_ui_kit::kit::{
-    icon_button, key_button, labelled_checkbox, text_area, text_field, Check, Icon, Tone,
+    compact_button, focused_frame, icon_button, key_button, labelled_checkbox, segmented, Check,
+    Icon, Tone,
 };
 use ncrs_ui_kit::page_scroll::page_scroll;
-use ncrs_ui_kit::page_text::page_line;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::page_text::{page_heading, page_line};
+use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
 use crate::actions::{ChangeSide, LocalChanges};
 use crate::ctx::ViewCtx;
+use crate::diff_layout::{hunk_title, pairs};
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 
-use super::toolbar::tip;
+pub const HUNKS_ID: &str = "git-local-diff";
 
-const TITLE_ID: &str = "git-commit-title";
-const BODY_ID: &str = "git-commit-body";
-const HUNKS_ID: &str = "git-local-diff";
-/// Height of the field for the longer commit text.
-const BODY_HEIGHT: f32 = 84.0;
+/// How much of the path the first row of the toolbar shows before the middle of it is cut out.
+const PATH_ROOM: f32 = 240.0;
 
-fn kind_letter(kind: ChangeKind) -> &'static str {
+pub fn kind_letter(kind: ChangeKind) -> &'static str {
     match kind {
         ChangeKind::Added => "A",
         ChangeKind::Modified => "M",
         ChangeKind::Deleted => "D",
         ChangeKind::Renamed => "R",
     }
-}
-
-fn file_rows<'a>(
-    files: &'a [ChangedFile],
-    side: ChangeSide,
-    local: &'a LocalChanges,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
-    let palette = ctx.palette;
-    let lang = ctx.lang;
-    Column::with_children(files.iter().enumerate().map(|(index, file)| {
-        let actions = match side {
-            ChangeSide::Unstaged => vec![
-                icon_button(
-                    Icon::Plus,
-                    None,
-                    lang.text(Msg::GitViewStage),
-                    Some(Message::Stage(index)),
-                    Tone::Secondary,
-                    palette,
-                ),
-                icon_button(
-                    Icon::Trash,
-                    None,
-                    lang.text(Msg::GitViewDiscardFile),
-                    Some(Message::DiscardFile(index)),
-                    Tone::Secondary,
-                    palette,
-                ),
-            ],
-            ChangeSide::Staged => vec![icon_button(
-                Icon::Minus,
-                None,
-                lang.text(Msg::GitViewUnstage),
-                Some(Message::Unstage(index)),
-                Tone::Secondary,
-                palette,
-            )],
-        };
-        action_row(
-            ActionRow {
-                lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
-                label: file.path.clone(),
-                trail: vec![
-                    (format!("+{}", file.added), palette.success),
-                    (format!("\u{2212}{}", file.removed), palette.error),
-                ],
-                actions,
-                chosen: local.selected == Some((side, index)),
-                on_press: Message::SelectChange(side, index),
-            },
-            palette,
-        )
-    }))
-    .into()
 }
 
 fn tone_of(kind: RowKind) -> DiffTone {
@@ -99,183 +44,359 @@ fn tone_of(kind: RowKind) -> DiffTone {
     }
 }
 
-fn hunks<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+/// Below this width of the middle the toolbar drops what the buttons already say.
+const TOOLBAR_NARROW: f32 = 1000.0;
+
+/// The file with what can be done to it and how it is shown, then where it
+/// comes from and the way to the editor: two rows of one line each.
+fn toolbar<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    responsive(move |bounds| toolbar_rows(local, bounds.width < TOOLBAR_NARROW, ctx))
+        .height(2.0 * size::COMPARE_BAR)
+        .into()
+}
+
+fn toolbar_rows<'a>(
+    local: &'a LocalChanges,
+    narrow: bool,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    let Some((side, index)) = local.selected else {
+        return Space::new().into();
+    };
+    let files = match side {
+        ChangeSide::Unstaged => &local.unstaged,
+        ChangeSide::Staged => &local.staged,
+    };
+    let Some(file) = files.get(index) else {
+        return Space::new().into();
+    };
+    let (state_text, toggle_label, toggle, hunk_label) = match side {
+        ChangeSide::Unstaged => (
+            Msg::GitViewChangesUnstaged,
+            Msg::GitViewStage,
+            Message::Stage(index),
+            Msg::GitViewHunkStage,
+        ),
+        ChangeSide::Staged => (
+            Msg::GitViewChangesStaged,
+            Msg::GitViewUnstage,
+            Message::Unstage(index),
+            Msg::GitViewHunkUnstage,
+        ),
+    };
+    let comparison = match side {
+        ChangeSide::Unstaged => Msg::GitViewDiffIndexToWorktree,
+        ChangeSide::Staged => Msg::GitViewDiffHeadToIndex,
+    };
+    let total = local.diff.as_ref().map_or(0, |diff| diff.hunks.len());
+    let current = local.hunk.min(total.saturating_sub(1));
+    let hunk_message = match side {
+        ChangeSide::Unstaged => Message::StageHunk(current),
+        ChangeSide::Staged => Message::UnstageHunk(current),
+    };
+    let hunk_tip = local
+        .ignore_whitespace
+        .then(|| lang.text(Msg::GitViewHunkLockedWhitespace));
+    let mut first = Row::new()
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center)
+        .push(page_line(
+            kind_letter(file.kind).to_owned(),
+            font_size::BODY,
+            palette.text,
+        ))
+        .push(
+            container(page_heading(
+                &fit_middle(&file.path, PATH_ROOM, font_size::ROW),
+                palette,
+            ))
+            .width(Length::Fill)
+            .clip(true),
+        )
+        .extend((!narrow).then(|| {
+            page_line(
+                lang.text(state_text).to_owned(),
+                font_size::SMALL,
+                palette.dim_text,
+            )
+        }))
+        .push(compact_button(
+            lang.text(toggle_label),
+            None,
+            Some(toggle),
+            Tone::Primary,
+            palette,
+        ))
+        .push(compact_button(
+            lang.text(hunk_label),
+            hunk_tip,
+            (total > 0 && !local.ignore_whitespace).then_some(hunk_message),
+            Tone::Secondary,
+            palette,
+        ))
+        .push(segmented(
+            &[
+                (
+                    lang.text(Msg::GitViewDiffSideBySide),
+                    Message::SetUnified(false),
+                ),
+                (
+                    lang.text(Msg::GitViewDiffUnified),
+                    Message::SetUnified(true),
+                ),
+            ],
+            usize::from(local.unified),
+            true,
+            palette,
+        ))
+        .push(labelled_checkbox(
+            if local.ignore_whitespace {
+                Check::On
+            } else {
+                Check::Off
+            },
+            Some(Message::ToggleIgnoreWhitespace),
+            Some(lang.text(Msg::GitViewDiffIgnoreWhitespace)),
+            palette,
+        ));
+    first = first.push(change_stepper(local, narrow, ctx));
+    column![
+        bar(first.into()),
+        bar(row![
+            page_line(
+                fill_template(lang.text(comparison), &[("{path}", &file.path)]),
+                font_size::SMALL,
+                palette.dim_text
+            ),
+            Space::new().width(Length::Fill),
+            key_button(
+                lang.text(Msg::GitViewOpenEditor),
+                &Shortcut::OpenEditor.label(ctx.keys),
+                Some(Message::OpenSelectedInEditor),
+                Tone::Secondary,
+                palette,
+            ),
+        ]
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center)
+        .into()),
+    ]
+    .into()
+}
+
+/// One line of the toolbar: 32 px, no wrapping.
+fn bar<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
+    container(content)
+        .padding([0.0, spacing::M])
+        .height(size::COMPARE_BAR)
+        .center_y(size::COMPARE_BAR)
+        .clip(true)
+        .into()
+}
+
+/// "↑ ↓ Change x of y": which change of the file has the keys.
+fn change_stepper<'a>(
+    local: &'a LocalChanges,
+    narrow: bool,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    let total = local.diff.as_ref().map_or(0, |diff| diff.hunks.len());
+    let current = local.hunk.min(total.saturating_sub(1)) + usize::from(total > 0);
+    row![
+        icon_button(
+            Icon::ArrowUp,
+            None,
+            lang.text(Msg::GitViewDiffPreviousChange),
+            (current > 1).then_some(Message::PreviousHunk),
+            Tone::Secondary,
+            palette,
+        ),
+        icon_button(
+            Icon::ArrowDown,
+            None,
+            lang.text(Msg::GitViewDiffNextChange),
+            (current < total).then_some(Message::NextHunk),
+            Tone::Secondary,
+            palette,
+        ),
+    ]
+    .extend((!narrow).then(|| {
+        page_line(
+            fill_template(
+                lang.text(Msg::GitViewDiffChangeOf),
+                &[
+                    ("{current}", &current.to_string()),
+                    ("{total}", &total.to_string()),
+                ],
+            ),
+            font_size::SMALL,
+            palette.dim_text,
+        )
+    }))
+    .spacing(spacing::XS)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+fn side_cell<'a>(line: Option<&DiffRow>, old: bool, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    match line {
+        Some(shown) => diff_cell(
+            if old { shown.old_line } else { shown.new_line },
+            shown.text.clone(),
+            tone_of(shown.kind),
+            ctx.palette,
+        ),
+        None => diff_cell(None, String::new(), DiffTone::Empty, ctx.palette),
+    }
+}
+
+/// The lines of one hunk, in one column or old and new next to each other.
+fn hunk_lines<'a>(
+    hunk: &'a DiffHunk,
+    unified: bool,
+    ctx: ViewCtx<'a>,
+) -> Vec<Element<'a, Message>> {
+    if unified {
+        hunk.rows
+            .iter()
+            .map(|line| {
+                diff_unified_line(
+                    line.old_line,
+                    line.new_line,
+                    line.text.clone(),
+                    tone_of(line.kind),
+                    ctx.palette,
+                )
+            })
+            .collect()
+    } else {
+        pairs(hunk)
+            .into_iter()
+            .map(|pair| {
+                row![
+                    side_cell(pair.left, true, ctx),
+                    side_cell(pair.right, false, ctx)
+                ]
+                .into()
+            })
+            .collect()
+    }
+}
+
+/// "End of file · n lines": the length of the whole file on each side, under
+/// each side when they are next to each other. Without a length (a binary or
+/// too large file) there is no line.
+fn end_of_file<'a>(
+    diff: &ncrs_git::FileDiff,
+    unified: bool,
+    ctx: ViewCtx<'a>,
+) -> Option<Element<'a, Message>> {
+    let footer = |total: Option<u32>| {
+        total.map(|count| {
+            diff_note(
+                fill_template(
+                    ctx.lang.text(Msg::GitViewDiffEndOfFile),
+                    &[("{count}", &count.to_string())],
+                ),
+                ctx.palette,
+            )
+        })
+    };
+    if unified {
+        footer(diff.new_total)
+    } else if diff.old_total.is_none() && diff.new_total.is_none() {
+        None
+    } else {
+        Some(
+            row![
+                footer(diff.old_total).unwrap_or_else(|| Space::new().into()),
+                footer(diff.new_total).unwrap_or_else(|| Space::new().into()),
+            ]
+            .into(),
+        )
+    }
+}
+
+fn hunk_actions<'a>(
+    local: &'a LocalChanges,
+    staged: bool,
+    index: usize,
+    ctx: ViewCtx<'a>,
+) -> Vec<Element<'a, Message>> {
+    let palette = ctx.palette;
+    let lang = ctx.lang;
+    let locked = local.ignore_whitespace;
+    let tip = locked.then(|| lang.text(Msg::GitViewHunkLockedWhitespace));
+    let press = |message: Message| (!locked).then_some(message);
+    if staged {
+        vec![compact_button(
+            lang.text(Msg::GitViewHunkUnstage),
+            tip,
+            press(Message::UnstageHunk(index)),
+            Tone::Secondary,
+            palette,
+        )]
+    } else {
+        vec![
+            compact_button(
+                lang.text(Msg::GitViewHunkStage),
+                tip,
+                press(Message::StageHunk(index)),
+                Tone::Secondary,
+                palette,
+            ),
+            compact_button(
+                lang.text(Msg::GitViewHunkDiscard),
+                tip,
+                press(Message::DiscardHunk(index)),
+                Tone::DangerOutline,
+                palette,
+            ),
+        ]
+    }
+}
+
+fn hunks<'a>(local: &'a LocalChanges, has_keys: bool, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let Some(diff) = &local.diff else {
         return Space::new().into();
     };
     let staged = matches!(local.selected, Some((ChangeSide::Staged, _)));
+    let current = local.hunk.min(diff.hunks.len().saturating_sub(1));
     let mut rows = Column::new().width(Length::Fill);
-    rows = rows.push(hunk_bar(diff.path.clone(), Vec::new(), palette));
     for (index, hunk) in diff.hunks.iter().enumerate() {
-        let actions = if staged {
-            vec![icon_button(
-                Icon::Minus,
-                None,
-                ctx.lang.text(Msg::GitViewHunkUnstage),
-                Some(Message::UnstageHunk(index)),
-                Tone::Secondary,
-                palette,
-            )]
-        } else {
-            vec![
-                icon_button(
-                    Icon::Plus,
-                    None,
-                    ctx.lang.text(Msg::GitViewHunkStage),
-                    Some(Message::StageHunk(index)),
-                    Tone::Secondary,
-                    palette,
-                ),
-                icon_button(
-                    Icon::Trash,
-                    None,
-                    ctx.lang.text(Msg::GitViewHunkDiscard),
-                    Some(Message::DiscardHunk(index)),
-                    Tone::Danger,
-                    palette,
-                ),
-            ]
-        };
-        rows = rows.push(hunk_bar(
-            format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
-            actions,
+        let mut block = Column::new().width(Length::Fill).push(hunk_bar(
+            hunk_title(hunk),
+            hunk_actions(local, staged, index, ctx),
             palette,
         ));
-        for line in &hunk.rows {
-            rows = rows.push(diff_unified_line(
-                line.old_line,
-                line.new_line,
-                line.text.clone(),
-                tone_of(line.kind),
-                palette,
-            ));
+        for line in hunk_lines(hunk, local.unified, ctx) {
+            block = block.push(line);
         }
+        let ring = index == current && local.diff_open && has_keys;
+        rows = rows.push(focused_frame(block, ring, palette));
+    }
+    if let Some(footer) = end_of_file(diff, local.unified, ctx) {
+        rows = rows.push(footer);
     }
     page_scroll(HUNKS_ID, rows.into())
 }
 
-fn commit_form<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let palette = ctx.palette;
-    let staged = local.staged.len();
-    let label = match staged {
-        1 => ctx.lang.text(Msg::GitViewCommitOne).to_owned(),
-        _ => fill_template(
-            ctx.lang.text(Msg::GitViewCommitMany),
-            &[("{count}", &staged.to_string())],
-        ),
-    };
-    let can_commit = staged > 0 || local.amend;
+/// The middle while a change is open: the toolbar and the hunks.
+/// `has_keys`: the diff, not a commit field, has the keyboard.
+pub fn diff_view<'a>(
+    local: &'a LocalChanges,
+    has_keys: bool,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
     column![
-        text_field(
-            ctx.lang.text(Msg::GitViewCommitTitlePlaceholder),
-            &local.title,
-            TITLE_ID,
-            Some(Message::CommitTitleChanged),
-            Message::Commit,
-            palette,
-        ),
-        page_line(
-            ctx.lang.text(Msg::GitViewCommitBodyLabel),
-            font_size::SMALL,
-            palette.dim_text
-        ),
-        container(text_area(
-            &local.body,
-            BODY_ID,
-            Message::CommitBodyEdited,
-            palette
-        ))
-        .height(BODY_HEIGHT),
-        row![
-            labelled_checkbox(
-                if local.amend { Check::On } else { Check::Off },
-                Some(Message::ToggleAmend),
-                Some(ctx.lang.text(Msg::GitViewCommitAmend)),
-                palette,
-            ),
-            Space::new().width(Length::Fill),
-            key_button(
-                &label,
-                &Shortcut::Commit.label(ctx.keys),
-                can_commit.then_some(Message::Commit),
-                Tone::Primary,
-                palette
-            ),
-        ]
-        .align_y(alignment::Vertical::Center),
-    ]
-    .spacing(spacing::M)
-    .padding(spacing::M)
-    .into()
-}
-
-/// The middle: the diff of the chosen file.
-pub fn diff_view<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    hunks(local, ctx)
-}
-
-/// The right side: the files and the commit message.
-pub fn view<'a>(local: &'a LocalChanges, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let palette = ctx.palette;
-    let lang = ctx.lang;
-    let rule = || theme::horizontal_rule(palette.border_inactive);
-    column![
-        section_bar(
-            lang.text(Msg::GitViewChangesUnstaged).to_owned(),
-            local.unstaged.len(),
-            vec![
-                icon_button(
-                    Icon::Trash,
-                    None,
-                    &tip(
-                        lang.text(Msg::GitViewDiscardAll),
-                        Shortcut::DiscardAll,
-                        ctx.keys
-                    ),
-                    (!local.unstaged.is_empty()).then_some(Message::DiscardAll),
-                    Tone::Secondary,
-                    palette,
-                ),
-                icon_button(
-                    Icon::Plus,
-                    None,
-                    &tip(
-                        lang.text(Msg::GitViewStageAll),
-                        Shortcut::StageAll,
-                        ctx.keys
-                    ),
-                    (!local.unstaged.is_empty()).then_some(Message::StageAll),
-                    Tone::Secondary,
-                    palette,
-                ),
-            ],
-            palette,
-        ),
-        file_rows(&local.unstaged, ChangeSide::Unstaged, local, ctx),
-        rule(),
-        section_bar(
-            lang.text(Msg::GitViewChangesStaged).to_owned(),
-            local.staged.len(),
-            vec![icon_button(
-                Icon::Minus,
-                None,
-                &tip(
-                    lang.text(Msg::GitViewUnstageAll),
-                    Shortcut::UnstageAll,
-                    ctx.keys
-                ),
-                (!local.staged.is_empty()).then_some(Message::UnstageAll),
-                Tone::Secondary,
-                palette,
-            )],
-            palette,
-        ),
-        file_rows(&local.staged, ChangeSide::Staged, local, ctx),
-        rule(),
-        Space::new().height(Length::Fill),
-        rule(),
-        commit_form(local, ctx),
+        toolbar(local, ctx),
+        theme::horizontal_rule(ctx.palette.border_inactive),
+        hunks(local, has_keys, ctx),
     ]
     .height(Length::Fill)
     .into()

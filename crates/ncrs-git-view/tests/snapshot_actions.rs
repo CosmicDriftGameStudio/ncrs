@@ -263,6 +263,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 41,
                     new_start: 41,
+                    context: "impl Satz {".to_owned(),
                     rows: vec![
                         row(
                             Context,
@@ -289,6 +290,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 88,
                     new_start: 88,
+                    context: String::new(),
                     rows: vec![
                         row(Context, Some(88), Some(88), "#[cfg(test)]"),
                         row(Context, Some(89), Some(89), "mod tests {"),
@@ -309,6 +311,8 @@ mod ui_tests {
             removed: 1,
             binary: false,
             too_large: false,
+            old_total: Some(120),
+            new_total: Some(124),
         };
         LocalChanges {
             unstaged: vec![
@@ -329,6 +333,7 @@ mod ui_tests {
                 "Halbe Cent wurden bisher abgeschnitten. Jetzt wird wie in der Rechnung des Steuerberaters aufgerundet.",
             ),
             amend: false,
+            ..LocalChanges::default()
         }
     }
 
@@ -453,7 +458,7 @@ mod ui_tests {
     #[test]
     fn local_changes_picture() {
         let mut state = repository();
-        state.actions.changes_open = true;
+        state.commit_cursor = 0;
         picture(&state, "tests/snapshots/git-local-changes-cosmic");
     }
 
@@ -465,6 +470,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 10,
                     new_start: 10,
+                    context: "mod abschluss {".to_owned(),
                     rows: vec![
                         row(
                             Context,
@@ -495,6 +501,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 52,
                     new_start: 54,
+                    context: String::new(),
                     rows: vec![
                         row(Context, Some(52), Some(54), "impl Abschluss {"),
                         row(
@@ -518,6 +525,8 @@ mod ui_tests {
             removed: 0,
             binary: false,
             too_large: false,
+            old_total: Some(120),
+            new_total: Some(124),
         }
     }
 
@@ -529,7 +538,7 @@ mod ui_tests {
         local.selected = Some((ChangeSide::Staged, 0));
         local.diff = Some(staged_diff());
         state.actions.local = Some(local);
-        state.actions.changes_open = true;
+        state.commit_cursor = 0;
         picture(&state, "tests/snapshots/git-local-changes-staged-cosmic");
     }
 
@@ -892,5 +901,72 @@ mod ui_tests {
             PaneWidths::STANDARD,
             ThemePreset::Dracula,
         );
+    }
+
+    #[test]
+    fn wip_row_picture() {
+        let mut state = repository();
+        state.actions.sync = Some(sync());
+        state.actions.local = Some(local_changes());
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-wip-row-cosmic");
+    }
+
+    #[test]
+    fn wip_diff_picture() {
+        let mut state = repository();
+        let mut local = local_changes();
+        local.selected = Some((ChangeSide::Unstaged, 0));
+        local.diff = Some(staged_diff());
+        local.diff_open = true;
+        state.actions.local = Some(local);
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-wip-diff-cosmic");
+    }
+
+    #[test]
+    fn commit_box_disabled_picture() {
+        let mut state = repository();
+        let mut local = local_changes();
+        local.staged.clear();
+        local.focus = ncrs_git_view::actions::WipFocus::Title;
+        local.title =
+            "Rundung der Mehrwertsteuer auf Cent korrigiert und den Monatsabschluss ergänzt"
+                .to_owned();
+        state.actions.local = Some(local);
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-commit-box-disabled-cosmic");
+    }
+
+    #[test]
+    fn ignore_dialog_picture() {
+        let state = with_dialog(Dialog::Ask(Question::Ignore {
+            path: "target/debug/kassenbuch.log".to_owned(),
+            folder: Some("target/debug".to_owned()),
+            extension: Some("log".to_owned()),
+            chosen: ncrs_git_view::actions::IgnoreChoice::File,
+        }));
+        picture(&state, "tests/snapshots/git-ignore-dialog-cosmic");
+    }
+
+    #[test]
+    fn sandbox_changes_picture() {
+        let mut state = repository();
+        state.actions.sync = None;
+        state.actions.local = None;
+        state.actions.unavailable = Some(Unavailable::Sandbox);
+        state.commit_cursor = 0;
+        state.detail = Some(Detail {
+            subject: Subject::Working,
+            info: None,
+            files: vec![
+                file("src/steuer/mwst.rs", ChangeKind::Modified, 3, 1),
+                file("README.md", ChangeKind::Modified, 2, 0),
+            ],
+        });
+        picture(&state, "tests/snapshots/git-sandbox-changes-cosmic");
     }
 }

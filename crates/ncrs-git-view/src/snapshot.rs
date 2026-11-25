@@ -8,7 +8,7 @@ use ncrs_git::{
     IntegrationDetail, PreviewLine, StashEntry,
 };
 
-use crate::actions::{ChangeSide, ConflictLine, LocalChanges};
+use crate::actions::{ChangeSide, ConflictLine, LocalChanges, WipFocus};
 use crate::state::State;
 
 /// What the user has chosen, so a new read shows the same things.
@@ -16,6 +16,7 @@ use crate::state::State;
 pub struct Want {
     pub change: Option<(ChangeSide, String)>,
     pub conflict: Option<String>,
+    pub ignore_whitespace: bool,
 }
 
 impl Want {
@@ -34,7 +35,16 @@ impl Want {
                 .get(merge.selected)
                 .map(|conflict| conflict.path.clone())
         });
-        Self { change, conflict }
+        let ignore_whitespace = state
+            .actions
+            .local
+            .as_ref()
+            .is_some_and(|local| local.ignore_whitespace);
+        Self {
+            change,
+            conflict,
+            ignore_whitespace,
+        }
     }
 }
 
@@ -146,7 +156,12 @@ pub fn read(root: &Path, want: &Want) -> Result<Snapshot, ActionError> {
             ChangeSide::Unstaged => &changes.unstaged,
             ChangeSide::Staged => &changes.staged,
         };
-        git.hunks(&files.get(index)?.path, hunk_side(side)).ok()
+        git.hunks_shown(
+            &files.get(index)?.path,
+            hunk_side(side),
+            want.ignore_whitespace,
+        )
+        .ok()
     });
     let stashes = git.stashes()?;
     let integration = git
@@ -228,9 +243,20 @@ pub fn stash_row(entry: &StashEntry) -> crate::actions::StashEntry {
 impl LocalChanges {
     /// Takes the lists of a new read; the message the user is typing stays.
     pub fn take(&mut self, snapshot: &Snapshot) {
+        if self.selected != snapshot.selected {
+            self.hunk = 0;
+        }
         self.unstaged.clone_from(&snapshot.changes.unstaged);
         self.staged.clone_from(&snapshot.changes.staged);
         self.selected = snapshot.selected;
+        if let Some((side, _)) = self.selected {
+            if matches!(self.focus, WipFocus::Unstaged | WipFocus::Staged) {
+                self.focus = crate::wip::focus_of(side);
+            }
+        }
+        if self.selected.is_none() {
+            self.diff_open = false;
+        }
         self.diff.clone_from(&snapshot.diff);
     }
 }

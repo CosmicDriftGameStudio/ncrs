@@ -37,18 +37,18 @@ pub fn git_view_key(
     if context.picker_open {
         return picker_key(keys, key, modifiers);
     }
-    if modifiers == Modifiers::COMMAND && context.in_diff {
-        return match key.as_ref() {
-            Key::Named(Named::ArrowUp) => Some(Message::PreviousFile),
-            Key::Named(Named::ArrowDown) => Some(Message::NextFile),
-            _ => None,
-        };
-    }
     if context.filter_focused {
         return None;
     }
     if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
-        return Some(shortcut.message());
+        let applies = match shortcut {
+            Shortcut::PreviousFile | Shortcut::NextFile => {
+                context.in_diff || context.area == Area::Detail
+            }
+            Shortcut::ToggleStage => context.area == Area::Detail,
+            _ => true,
+        };
+        return applies.then(|| shortcut.message());
     }
     // "/" is a shifted key on some layouts.
     let slash_modifiers = modifiers.is_empty() || modifiers == Modifiers::SHIFT;
@@ -123,6 +123,24 @@ fn splitter_key(split: Split, key: &Key, modifiers: Modifiers) -> Option<Message
         }
         Key::Named(Named::Home) if modifiers.is_empty() => Some(Message::SplitReset(split)),
         Key::Named(Named::Tab) if modifiers.is_empty() => Some(Message::NextArea),
+        _ => None,
+    }
+}
+
+/// What a press means while a field of the commit box has the keyboard: the
+/// commit keys and the jump to the title, and Tab, which would type a tab.
+pub fn commit_field_key(keys: &GitKeys, key: &Key, modifiers: Modifiers) -> Option<Message> {
+    if key.as_ref() == Key::Named(Named::Tab) {
+        return match modifiers {
+            m if m.is_empty() => Some(Message::NextArea),
+            m if m == Modifiers::SHIFT => Some(Message::PreviousArea),
+            _ => None,
+        };
+    }
+    match Shortcut::pressed(keys, key, modifiers)? {
+        shortcut @ (Shortcut::Commit | Shortcut::CommitAndPush | Shortcut::FocusCommitTitle) => {
+            Some(shortcut.message())
+        }
         _ => None,
     }
 }

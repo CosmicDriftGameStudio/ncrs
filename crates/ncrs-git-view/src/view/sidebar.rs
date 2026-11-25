@@ -4,9 +4,9 @@
 use iced::widget::column;
 use iced::Element;
 use ncrs_git::{BranchInfo, WorktreeInfo};
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::Msg;
 use ncrs_ui_kit::action_rows::context_area;
-use ncrs_ui_kit::format::{estimated_width, fit_end};
+use ncrs_ui_kit::format::{estimated_text_width, estimated_width, fit_end, fit_middle};
 use ncrs_ui_kit::git_lines::{worktree_line, WorktreeLine, WorktreeState};
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
 use ncrs_ui_kit::theme::{font_size, git, spacing};
@@ -22,6 +22,17 @@ use crate::update::menu_target_of;
 
 /// Room the scroll bar of the list takes from a label.
 const SCROLL_BAR_ROOM: f32 = 12.0;
+
+/// Tick, branch symbol, the square before the folder and the gaps of a worktree row.
+const WORKTREE_FIXED_ROOM: f32 = 70.0;
+/// Room for the distance and the number of changes at the right of a worktree row.
+const WORKTREE_TRAIL_ROOM: f32 = 60.0;
+/// "detached at " and the short id of a detached worktree, in characters.
+const DETACHED_TITLE_CHARS: usize = 20;
+/// The "merged" label at the right of a merged worktree, in characters.
+const MERGED_LABEL_CHARS: usize = 8;
+/// The fewest characters of a folder name worth showing.
+const FOLDER_MIN_CHARS: usize = 6;
 
 /// How much of a label of a row `depth` levels down and `trail` wide shows
 /// before it is cut with an ellipsis.
@@ -48,7 +59,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .enumerate()
         .map(|(index, item)| {
             let has_focus = state.area == Area::Sidebar && index == state.sidebar_cursor;
-            let chosen = has_focus || item == SidebarItem::Changes && state.actions.changes_open;
+            let chosen = has_focus;
             if let SidebarItem::Header(section) = item {
                 return section_head(
                     SectionHead {
@@ -63,26 +74,10 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             }
             if let (SidebarItem::Worktree(which), Some(overview)) = (item, &state.overview) {
                 if let Some(worktree) = overview.worktrees.get(which) {
-                    return worktree_row_of(worktree, chosen, index, ctx);
+                    return worktree_row_of(worktree, chosen, index, width, ctx);
                 }
             }
             let (depth, open, label, trail) = match item {
-                SidebarItem::Changes => {
-                    let count = state
-                        .actions
-                        .local
-                        .as_ref()
-                        .map_or(0, |local| local.unstaged.len() + local.staged.len());
-                    (
-                        0,
-                        None,
-                        fill_template(
-                            ctx.lang.text(Msg::GitViewWorkingCopy),
-                            &[("{count}", &count.to_string())],
-                        ),
-                        String::new(),
-                    )
-                }
                 SidebarItem::RemoteHeader(position) => {
                     let (name, count) = remote_label(state, position);
                     let folded = state.collapsed.contains(&Fold::Remote(name.clone()));
@@ -163,19 +158,12 @@ fn section_title(section: Section) -> Msg {
     }
 }
 
-/// How far a branch is from its upstream; a distance of zero is not written.
+/// How far a branch is from its upstream, "↑0 ↓2"; none for a branch without one.
 fn distance(branch: &BranchInfo) -> String {
     if !branch.has_upstream {
         return String::new();
     }
-    let mut parts = Vec::new();
-    if branch.behind > 0 {
-        parts.push(format!("\u{2193}{}", branch.behind));
-    }
-    if branch.ahead > 0 {
-        parts.push(format!("\u{2191}{}", branch.ahead));
-    }
-    parts.join(" ")
+    format!("\u{2191}{} \u{2193}{}", branch.ahead, branch.behind)
 }
 
 /// The label of a leaf and what stands at the right of it.
@@ -208,10 +196,9 @@ fn child_label(state: &State, item: SidebarItem) -> (String, String) {
             .get(index)
             .map(|stash| (stash.message.clone(), stash.origin.clone()))
             .unwrap_or_default(),
-        SidebarItem::Worktree(_)
-        | SidebarItem::Header(_)
-        | SidebarItem::RemoteHeader(_)
-        | SidebarItem::Changes => (String::new(), String::new()),
+        SidebarItem::Worktree(_) | SidebarItem::Header(_) | SidebarItem::RemoteHeader(_) => {
+            (String::new(), String::new())
+        }
     }
 }
 
@@ -219,12 +206,18 @@ fn worktree_row_of<'a>(
     worktree: &WorktreeInfo,
     chosen: bool,
     index: usize,
+    width: f32,
     ctx: ViewCtx<'a>,
 ) -> Element<'a, Message> {
     let folder = worktree
         .path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let branch_name = worktree
+        .branch
+        .clone()
+        .or_else(|| worktree.head_short.clone())
         .unwrap_or_default();
     let state = if worktree.is_current {
         WorktreeState::Current
@@ -235,14 +228,34 @@ fn worktree_row_of<'a>(
     } else {
         WorktreeState::Other
     };
+    // What stands in the row besides the folder: tick, symbol, name, the distance and the changes.
+    let name_room = match state {
+        WorktreeState::Detached => estimated_text_width(DETACHED_TITLE_CHARS, font_size::BODY),
+        _ => estimated_text_width(branch_name.chars().count(), font_size::BODY),
+    };
+    let merged_room = if state == WorktreeState::Merged {
+        estimated_text_width(MERGED_LABEL_CHARS, font_size::SMALL)
+    } else {
+        0.0
+    };
+    let beside = WORKTREE_FIXED_ROOM + name_room + WORKTREE_TRAIL_ROOM + merged_room;
+    let branch_name = fit_end(
+        &branch_name,
+        (label_budget(width, 0, "") - WORKTREE_FIXED_ROOM - WORKTREE_TRAIL_ROOM - merged_room)
+            .max(0.0),
+        font_size::BODY,
+    );
+    let room = label_budget(width, 0, "") - beside;
+    // A folder that would shrink to a few letters says nothing: leave it out.
+    let folder = if room < estimated_text_width(FOLDER_MIN_CHARS, font_size::BODY) {
+        String::new()
+    } else {
+        fit_middle(&folder, room, font_size::BODY)
+    };
     worktree_line(
         WorktreeLine {
             state,
-            branch: worktree
-                .branch
-                .clone()
-                .or_else(|| worktree.head_short.clone())
-                .unwrap_or_default(),
+            branch: branch_name,
             folder,
             ahead: worktree.upstream_ahead,
             behind: worktree.upstream_behind,

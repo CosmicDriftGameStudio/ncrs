@@ -10,7 +10,7 @@ use ncrs_git::{
 };
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
-use crate::actions::Actions;
+use crate::actions::{Actions, WipFocus};
 use crate::panes::{PaneDrag, Split};
 use crate::picker::Picker;
 
@@ -161,8 +161,6 @@ pub fn remote_groups(overview: &RefsOverview) -> Vec<RemoteGroup<'_>> {
 /// remote header into [`remote_groups`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarItem {
-    /// The local changes, above the groups; only while there are actions to show them.
-    Changes,
     Header(Section),
     Local(usize),
     RemoteHeader(usize),
@@ -326,11 +324,19 @@ impl State {
         self.loads.containing.cancel();
     }
 
+    /// The diff of a local change is open and no commit field has the keys.
+    fn wip_diff_has_keys(&self) -> bool {
+        self.changes_shown()
+            && self.actions.local.as_ref().is_some_and(|local| {
+                local.diff_open && matches!(local.focus, WipFocus::Unstaged | WipFocus::Staged)
+            })
+    }
+
     /// What the keys of the tab need to know.
     pub fn key_context(&self) -> crate::keys::KeyContext {
         crate::keys::KeyContext {
             filter_focused: self.filter_focused,
-            in_diff: self.diff.is_some(),
+            in_diff: self.diff.is_some() || self.wip_diff_has_keys(),
             dialog_open: self.actions.dialog_open(),
             picker_open: self.picker.is_some(),
             area: self.area,
@@ -343,9 +349,6 @@ impl State {
         };
         let is_folded = |section: Section| self.collapsed.contains(&Fold::Section(section));
         let mut items = Vec::new();
-        if self.actions.local.is_some() {
-            items.push(SidebarItem::Changes);
-        }
         items.push(SidebarItem::Header(Section::Local));
         if !is_folded(Section::Local) {
             items.extend((0..overview.local.len()).map(SidebarItem::Local));
@@ -419,6 +422,15 @@ impl State {
         }
     }
 
+    /// How many files are changed: the lists the pane shows when there are
+    /// any, else what the overview of the worktree counted.
+    pub fn local_change_count(&self) -> usize {
+        match &self.actions.local {
+            Some(local) => local.unstaged.len() + local.staged.len(),
+            None => self.current_worktree().map_or(0, |worktree| worktree.wip),
+        }
+    }
+
     /// The worktree whose folder this tab was opened on.
     pub fn current_worktree(&self) -> Option<&WorktreeInfo> {
         self.overview
@@ -433,12 +445,27 @@ impl State {
         self.column_drag.map_or(remembered, |drag| drag.current)
     }
 
-    /// The first row of the list stands for the changes of the working copy.
+    /// The first row of the list stands for the changes of the working copy:
+    /// with the actions on, the files the last read of git found; else the
+    /// count of the overview.
     pub fn has_working_row(&self) -> bool {
-        self.actions.local.is_none()
-            && self
+        match &self.actions.local {
+            Some(local) => !local.unstaged.is_empty() || !local.staged.is_empty(),
+            None => self
                 .current_worktree()
-                .is_some_and(|worktree| worktree.wip > 0)
+                .is_some_and(|worktree| worktree.wip > 0),
+        }
+    }
+
+    /// The cursor of the list is on the working copy row.
+    pub fn working_row_chosen(&self) -> bool {
+        self.has_working_row() && self.commit_cursor == 0
+    }
+
+    /// The right side shows the staging of the local changes: the row of the
+    /// working copy is the chosen one and git can write.
+    pub fn changes_shown(&self) -> bool {
+        self.actions.local.is_some() && self.working_row_chosen()
     }
 
     pub fn row_count(&self) -> usize {

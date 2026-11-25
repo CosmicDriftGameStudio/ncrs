@@ -33,7 +33,7 @@ fn commit(id: &str) -> LogCommit {
     }
 }
 
-fn changed(path: &str) -> ChangedFile {
+pub fn changed(path: &str) -> ChangedFile {
     ChangedFile {
         path: path.to_owned(),
         old_path: None,
@@ -60,7 +60,7 @@ fn worktree(path: &str, wip: usize, is_current: bool) -> WorktreeInfo {
     }
 }
 
-fn opened(commits: &[&str], wip: usize) -> State {
+pub fn opened(commits: &[&str], wip: usize) -> State {
     let mut state = State {
         root: Some(PathBuf::from("/repo")),
         name: "repo".to_owned(),
@@ -115,7 +115,7 @@ fn show_detail(state: &mut State, sha: &str, files: &[&str]) {
     );
 }
 
-fn send(state: &mut State, message: Message) -> Option<Action> {
+pub fn send(state: &mut State, message: Message) -> Option<Action> {
     update(state, message, &CTX).1
 }
 
@@ -265,6 +265,7 @@ fn hunks_step_within_the_diff() {
         old_start: start,
         new_start: start,
         rows: Vec::new(),
+        context: String::new(),
     };
     let diff = FileDiff {
         path: "a.txt".to_owned(),
@@ -356,11 +357,11 @@ fn the_tab_is_titled_with_the_repository_and_has_none_while_closed() {
     assert_eq!(tab_title(&state, Language::English), None);
 }
 
-fn pressed(key: Key, held: Modifiers, context: KeyContext) -> Option<Message> {
+pub fn pressed(key: Key, held: Modifiers, context: KeyContext) -> Option<Message> {
     git_view_key(&GitKeys::default(), &key, held, context)
 }
 
-fn character(letter: &str) -> Key {
+pub fn character(letter: &str) -> Key {
     Key::Character(letter.into())
 }
 
@@ -874,3 +875,4 @@ fn the_sidebar_lists_the_worktrees_after_the_branches() {
     assert_eq!(items.first(), Some(&SidebarItem::Header(Section::Local)));
     assert!(items.contains(&SidebarItem::Header(Section::Worktrees)));
 }
+

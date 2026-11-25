@@ -137,6 +137,7 @@ fn conflict_row<'a>(
             trail: vec![state],
             actions: Vec::new(),
             chosen,
+            active: true,
             on_press: Message::SelectConflict(index),
         },
         palette,

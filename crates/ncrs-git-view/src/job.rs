@@ -34,6 +34,14 @@ pub enum Job {
         message: CommitMessage,
         amend: bool,
     },
+    /// Commits, then pushes; a push that fails leaves the commit.
+    CommitAndPush {
+        message: CommitMessage,
+        amend: bool,
+    },
+    Ignore {
+        pattern: String,
+    },
     Fetch,
     Pull(Option<PullStrategy>),
     Push,
@@ -94,6 +102,11 @@ pub enum Done {
     /// The way back, if the action has one.
     Undoable(Option<UndoRecord>),
     Undone,
+    /// Commit and push: the commit is made (and undoable), the push failed.
+    CommittedButNotPushed {
+        undo: Option<UndoRecord>,
+        error: ActionError,
+    },
 }
 
 /// A job and what came of it.
@@ -128,7 +141,8 @@ impl Job {
             Self::DiscardHunk { .. } | Self::DiscardFile(_) | Self::DiscardAll => {
                 Operation::Discard
             }
-            Self::Commit { .. } => Operation::Commit,
+            Self::Commit { .. } | Self::CommitAndPush { .. } => Operation::Commit,
+            Self::Ignore { .. } => Operation::Stage,
             Self::Fetch => Operation::Fetch,
             Self::Pull(_) => Operation::Pull,
             Self::Push | Self::PushBranch(_) => Operation::Push,
@@ -181,6 +195,24 @@ impl Job {
                 message,
                 amend: false,
             } => git.commit(message).map(Done::Undoable),
+            Self::CommitAndPush { message, amend } => {
+                let committed = Self::Commit {
+                    message: message.clone(),
+                    amend: *amend,
+                }
+                .run(git)?;
+                match git.push() {
+                    Ok(()) => Ok(committed),
+                    Err(error) => Ok(Done::CommittedButNotPushed {
+                        undo: match committed {
+                            Done::Undoable(record) => record,
+                            _ => None,
+                        },
+                        error,
+                    }),
+                }
+            }
+            Self::Ignore { pattern } => git.ignore_pattern(pattern).map(Done::Undoable),
             Self::Fetch => git.fetch(None).map(|()| Done::Plain),
             Self::Pull(strategy) => git.pull(*strategy).map(|_| Done::Plain),
             Self::Push => git.push().map(|()| Done::Plain),

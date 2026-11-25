@@ -1,6 +1,8 @@
 pub const ROW: f32 = 22.0;
 pub const ROW_TALL: f32 = 24.0;
 pub const BUTTON: f32 = 24.0;
+pub const BUTTON_SMALL: f32 = 18.0;
+pub const BUTTON_COMPACT: f32 = 22.0;
 pub const HEADER: f32 = 32.0;
 pub const FOOTER: f32 = 40.0;
 pub const CONTROL_WIDTH: f32 = 260.0;

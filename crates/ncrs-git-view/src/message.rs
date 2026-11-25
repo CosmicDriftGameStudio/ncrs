@@ -7,7 +7,9 @@ use ncrs_git::{
 use ncrs_ui_kit::git_rows::CommitColumn;
 use ncrs_ui_kit::splitter::{Direction, Step};
 
-use crate::actions::{ChangeSide, ConflictAction, MenuAction, MenuTarget, Side};
+use crate::actions::{
+    ChangeSide, ConflictAction, IgnoreChoice, MenuAction, MenuTarget, Side, WipFocus,
+};
 use crate::job::Finished;
 use crate::panes::Split;
 use crate::picker::PickerKind;
@@ -78,7 +80,26 @@ pub enum Message {
     CommitTitleChanged(String),
     CommitBodyEdited(iced::widget::text_editor::Action),
     ToggleAmend,
+    /// Folds a list of the local changes shut or open.
+    ToggleWipSection(ChangeSide),
     Commit,
+    /// Commit, then push (the key, or the commit button while "push afterwards" is on).
+    CommitAndPush,
+    TogglePushAfter,
+    /// Space: stages or unstages the chosen file, or presses the stop Tab is on.
+    ToggleStageSelected,
+    /// The key that jumps to the commit title.
+    FocusCommitTitle,
+    /// A press on a stop of the pane of the local changes.
+    WipFocused(WipFocus),
+    /// The pointer pressed in the title or the body: the field has the focus.
+    WipFieldPressed(WipFocus),
+    /// "Ignore…" on an unstaged file; the key asks for the chosen file.
+    IgnoreFile(usize),
+    IgnoreSelected,
+    IgnoreChoiceChanged(IgnoreChoice),
+    /// F4 on a change: opens the chosen file in the editor.
+    OpenSelectedInEditor,
     Fetch,
     Pull,
     Push,

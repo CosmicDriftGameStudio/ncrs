@@ -383,6 +383,21 @@ pub fn tooltip<'a, M: 'a>(
     .into()
 }
 
+/// Like [`focused`], for content with a background of its own that reaches
+/// its edges, such as a hunk with its header: the frame has its own line, so
+/// the content does not paint over it.
+pub fn focused_frame<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    has_focus: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    focused(
+        container(content).padding(theme::spacing::BORDER_WIDTH),
+        has_focus,
+        palette,
+    )
+}
+
 /// `content` with the one look of keyboard focus around it while `has_focus`;
 /// without focus it takes the same room, so focus moves nothing.
 pub fn focused<'a, M: 'a>(

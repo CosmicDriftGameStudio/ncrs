@@ -16,7 +16,11 @@ pub struct ReposKeysProblem {
 /// The Repos keys for `overrides` of `[keys.repos]`, built on the keys of the
 /// platform `mac`. A key that an action of the app also holds is refused: the
 /// Repos tab would shadow it, or the app would never see it.
-pub fn resolve(overrides: &TabKeys, keymap: &Keymap, mac: bool) -> Result<ReposKeys, ReposKeysProblem> {
+pub fn resolve(
+    overrides: &TabKeys,
+    keymap: &Keymap,
+    mac: bool,
+) -> Result<ReposKeys, ReposKeysProblem> {
     let entries: Vec<KeyOverride> = overrides
         .entries
         .iter()

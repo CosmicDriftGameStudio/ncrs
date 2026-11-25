@@ -79,7 +79,9 @@ impl App {
             return Task::none();
         };
         let (task, actions) = ncrs_repos::update(state, message, &ctx);
-        let asked = actions.into_iter().map(|action| self.run_repos_action(action));
+        let asked = actions
+            .into_iter()
+            .map(|action| self.run_repos_action(action));
         Task::batch(std::iter::once(task.map(Message::Repos)).chain(asked))
     }
 
@@ -96,7 +98,9 @@ impl App {
             }),
             Ask::PickCloneTarget => (self.pick_folder)(&self.home).then(|picked| {
                 picked.map_or_else(Task::none, |folder| {
-                    Task::done(Message::Repos(ncrs_repos::Message::CloneTargetPicked(folder)))
+                    Task::done(Message::Repos(ncrs_repos::Message::CloneTargetPicked(
+                        folder,
+                    )))
                 })
             }),
         }

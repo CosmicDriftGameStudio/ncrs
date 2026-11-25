@@ -146,10 +146,10 @@ mod ui_tests {
             id: first.id,
             short: first.short,
             parents: Vec::new(),
-            author: first.author,
+            author: first.author.clone(),
             time: first.time,
             author_time: first.time,
-            committer: String::new(),
+            committer: first.author,
             committer_time: first.time,
             message: message.to_owned(),
             files: vec![ChangedFile {

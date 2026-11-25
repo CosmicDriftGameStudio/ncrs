@@ -174,10 +174,7 @@ fn lines<'a>(diff: &'a FileDiff, unified: bool, ctx: ViewCtx<'a>) -> Element<'a,
     let palette = ctx.palette;
     let mut rows = Column::new().width(Length::Fill);
     for hunk in &diff.hunks {
-        rows = rows.push(diff_hunk_header(
-            format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
-            palette,
-        ));
+        rows = rows.push(diff_hunk_header(crate::diff_layout::hunk_title(hunk), palette));
         if unified {
             for line in &hunk.rows {
                 rows = rows.push(diff_unified_line(

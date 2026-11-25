@@ -16,7 +16,7 @@ use super::DETAIL_ID;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
-use crate::state::{Area, DetailRow, State};
+use crate::state::{Area, DetailRow, State, Subject};
 
 /// How many characters of a parent's id are written.
 const PARENT_SHORT: usize = 7;
@@ -38,6 +38,12 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into();
     };
     let mut head = Column::new().spacing(spacing::XS).width(Length::Fill);
+    if matches!(detail.subject, Subject::Working) {
+        head = head.push(page_heading_wrapped(
+            ctx.lang.text(Msg::GitViewChangesAll),
+            palette,
+        ));
+    }
     if let Some(info) = &detail.info {
         head = head
             .push(page_heading_wrapped(
@@ -151,12 +157,15 @@ fn facts<'a>(state: &'a State, info: &'a CommitDetail, ctx: ViewCtx<'a>) -> Elem
     let palette = ctx.palette;
     let lang = ctx.lang;
     let line = |content: String| -> Element<'a, Message> {
-        page_line(content, font_size::SMALL, palette.text).into()
+        page_line(content, font_size::SMALL, palette.text)
+    };
+    let wrapped = |content: String| -> Element<'a, Message> {
+        page_paragraph(content, font_size::SMALL, palette.text)
     };
     let mut rows = Column::new().spacing(spacing::XS);
     rows = rows.push(fact_row(
         lang.text(Msg::GitViewDetailAuthor),
-        line(format!(
+        wrapped(format!(
             "{} \u{b7} {}",
             info.author,
             moment(info.author_time, ctx)
@@ -166,7 +175,7 @@ fn facts<'a>(state: &'a State, info: &'a CommitDetail, ctx: ViewCtx<'a>) -> Elem
     if info.committer != info.author || info.committer_time != info.author_time {
         rows = rows.push(fact_row(
             lang.text(Msg::GitViewDetailCommitter),
-            line(format!(
+            wrapped(format!(
                 "{} \u{b7} {}",
                 info.committer,
                 moment(info.committer_time, ctx)
