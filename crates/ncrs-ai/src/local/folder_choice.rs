@@ -3,9 +3,11 @@
 //! document goes back to that state and decodes only its own tokens.
 
 use std::num::NonZeroU32;
+use std::sync::PoisonError;
 
-use llama_cpp_2::context::session::LlamaStateSeqFlags;
+use llama_cpp_2::context::session::{LlamaStateSeqFlags, SeqState};
 use llama_cpp_2::llama_batch::LlamaBatch;
+use llama_cpp_2::token::LlamaToken;
 
 use super::{chat_threads, LocalModel, MAX_BATCH_TOKENS};
 use crate::error::AiError;
@@ -16,6 +18,14 @@ const ANSWER_START: &[u8] = b"<|im_end|>\n<|im_start|>assistant\n<think>\n\n</th
 const MAX_REPLY_TOKENS: usize = 8;
 /// Room for one document; longer ones are cut.
 const DOCUMENT_TOKENS: usize = 1500;
+
+/// The state after the instructions and the folder list, for the tokens it
+/// was decoded from.
+#[derive(Debug)]
+pub(in crate::local) struct KeptFolderList {
+    prefix: Vec<LlamaToken>,
+    after_list: SeqState,
+}
 
 impl LocalModel {
     /// For each document the index of the folder it belongs in, or `None`
@@ -65,10 +75,21 @@ impl LocalModel {
 
         let mut context = self.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
-        self.decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
-        let after_list = context
-            .state_seq_get(0, LlamaStateSeqFlags::empty())
-            .map_err(|_refused| AiError::Model("the model could not keep the folder list"))?;
+        let mut kept = self
+            .kept_folder_list
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let after_list = match kept.take() {
+            Some(earlier) if earlier.prefix == prefix => earlier.after_list,
+            _ => {
+                self.decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
+                context
+                    .state_seq_get(0, LlamaStateSeqFlags::empty())
+                    .map_err(|_refused| {
+                        AiError::Model("the model could not keep the folder list")
+                    })?
+            }
+        };
 
         let numbers: Vec<String> = (0..=folders.len()).map(|n| format!("\"{n}\"")).collect();
         let grammar = format!("root ::= {}", numbers.join(" | "));
@@ -96,6 +117,7 @@ impl LocalModel {
             })?;
             chosen.push(number.checked_sub(1));
         }
+        *kept = Some(KeptFolderList { prefix, after_list });
         Ok(chosen)
     }
 }
@@ -244,6 +266,46 @@ mod tests {
             "exakt {exact}/{total}, Bereich {area}/{total}, keiner {none}/{total}, {:.1} s je Scan",
             seconds / total.max(1) as f64
         );
+    }
+
+    #[test]
+    #[ignore = "loads the real local model from NCRS_AI_MODELS_DIR"]
+    fn a_second_choice_with_the_same_list_answers_alike_without_decoding_it_again() {
+        let local = model();
+        let mut folders: Vec<(String, Vec<String>)> = (0..10)
+            .flat_map(|area| {
+                (0..30).map(move |firm| {
+                    (
+                        format!("Bereich {area}/Firma {firm}"),
+                        vec![format!("Rechnung Firma {firm} 2025.pdf")],
+                    )
+                })
+            })
+            .collect();
+        folders.push(("Steuer".to_owned(), Vec::new()));
+        let documents =
+            vec!["Absender: Finanzamt\nArt: Steuerbescheid\n\nEinkommensteuer 2025".to_owned()];
+
+        let started = Instant::now();
+        let first = local.choose_folders(&folders, &documents).unwrap();
+        let decoding = started.elapsed();
+        let started = Instant::now();
+        let second = local.choose_folders(&folders, &documents).unwrap();
+        let kept = started.elapsed();
+        println!(
+            "with decoding {} s, kept {} s",
+            decoding.as_secs_f32(),
+            kept.as_secs_f32()
+        );
+
+        assert_eq!(first, second);
+        assert!(
+            kept * 4 < decoding,
+            "with decoding {decoding:?}, kept {kept:?}"
+        );
+        folders.pop();
+        let changed = local.choose_folders(&folders, &documents).unwrap();
+        assert_eq!(changed.len(), 1);
     }
 
     #[test]
