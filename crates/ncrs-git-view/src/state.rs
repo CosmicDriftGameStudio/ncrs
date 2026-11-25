@@ -188,6 +188,11 @@ pub enum Subject {
     /// The changes in the working copy against HEAD.
     Working,
     Commit(String),
+    /// The changes from one commit to another, or to the working copy (`None`).
+    Compare {
+        from: String,
+        to: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -286,6 +291,10 @@ pub struct State {
     pub pending_jump: Option<String>,
     /// The id of the commit whose SHA was copied last, for the status line.
     pub copied_sha: Option<String>,
+    /// The commit Space marked as the one to compare with.
+    pub marked_commit: Option<String>,
+    /// How far the user scrolled the commit list, in pixels.
+    pub commits_scroll: f32,
     pub sidebar_cursor: usize,
     pub commit_cursor: usize,
     pub file_cursor: usize,

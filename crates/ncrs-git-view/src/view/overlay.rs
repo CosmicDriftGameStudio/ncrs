@@ -12,7 +12,7 @@ use ncrs_ui_kit::kit::{
     Tone,
 };
 use ncrs_ui_kit::popup_menu::{
-    popup_layer, popup_menu_rows, popup_rows_height, MenuRow, PopupEntry, RightPress,
+    menu_rows_height, popup_layer, popup_menu_rows_in, MenuRow, PopupEntry, RightPress,
 };
 use ncrs_ui_kit::theme::{size, spacing};
 use ncrs_ui_kit::tree_list::{LIST_INSET, ROW_OVERHEAD, TREE_INDENT};
@@ -28,7 +28,7 @@ use crate::shortcuts::Shortcut;
 use crate::state::State;
 use crate::update::menu_target_of;
 
-const MENU_WIDTH: f32 = 300.0;
+pub(super) const MENU_WIDTH: f32 = 300.0;
 pub const NAME_ID: &str = "git-new-branch-name";
 pub const RENAME_ID: &str = "git-rename-branch-name";
 
@@ -74,6 +74,7 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
     match menu.target {
+        MenuTarget::Commit(row) => super::commit_menu::rows(state, menu, row, ctx),
         MenuTarget::LocalBranch(index) => {
             let branch = state
                 .overview
@@ -207,6 +208,7 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
 fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
     let top = super::body_top(state);
     match target {
+        MenuTarget::Commit(row) => super::commit_menu::anchor(state, row, ctx),
         MenuTarget::Conflict(index) => Point::new(
             ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
             top + (index + 1) as f32 * size::ROW_TALL,
@@ -227,15 +229,11 @@ fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
 
 fn menu<'a>(state: &State, open: OpenMenu, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let rows = rows_of(state, open, ctx);
-    let separators = rows
-        .iter()
-        .filter(|line| matches!(line, MenuRow::Separator))
-        .count();
-    let height = popup_rows_height(rows.len() - separators, separators);
+    let height = menu_rows_height(&rows);
     let mut origin = anchor(state, open.target, ctx);
     origin.y = origin.y.min(ctx.window.height - height).max(0.0);
     popup_layer(
-        popup_menu_rows(rows, MENU_WIDTH, origin, ctx.palette),
+        popup_menu_rows_in(rows, MENU_WIDTH, origin, ctx.window, ctx.palette),
         Some(Message::CloseMenu),
         RightPress::Dismiss,
     )
@@ -427,6 +425,7 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
         } => {
             return ignore_dialog(path, folder.as_deref(), extension.as_deref(), *chosen, ctx);
         }
+        Question::ResetHard { .. } => return super::commit_menu::reset_dialog(question, ctx),
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(
@@ -656,6 +655,9 @@ pub fn over<'a>(
         }
         Some(Dialog::Rename(rename)) => {
             return stack![page, scrim(rename_dialog(rename, ctx))].into();
+        }
+        Some(Dialog::Tag(draft)) => {
+            return stack![page, scrim(super::commit_menu::tag_dialog(draft, ctx))].into();
         }
         None => {}
     }

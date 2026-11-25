@@ -2,7 +2,11 @@
 
 use ncrs_git::{
     ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefLabel, RefsOverview,
+    ResetLoss,
 };
+
+use crate::commit_menu::CommitAction;
+use crate::state::Subject;
 
 use ncrs_ui_kit::git_rows::CommitColumn;
 use ncrs_ui_kit::splitter::{Direction, Step};
@@ -162,6 +166,22 @@ pub enum Message {
     /// The key that switches the file list between paths and a tree.
     ToggleTreeKey,
     ChipPressed(Chip),
+    /// An entry of the commit menu, or its key: it acts on the commit of the open menu or the cursor.
+    CommitAction(CommitAction),
+    /// The pointer is over an entry of the commit menu.
+    MenuCursor(usize),
+    /// The pointer is over an entry of the reset submenu.
+    MenuSubmenuCursor(usize),
+    /// Space in the commit list: marks the commit to compare with, or lifts the mark.
+    MarkCommit,
+    /// The user scrolled the commit list this far down.
+    CommitsScrolled(f32),
+    TagNameChanged(String),
+    CreateTag,
+    /// What a hard reset to the commit would lose.
+    ResetLossLoaded(String, Box<Result<ResetLoss, ActionError>>),
+    /// The files of a comparison: the generation of the read, what is compared.
+    CompareLoaded(u64, Subject, Box<Result<Vec<ChangedFile>, String>>),
 }
 
 /// The state chips of the head that jump somewhere when pressed.

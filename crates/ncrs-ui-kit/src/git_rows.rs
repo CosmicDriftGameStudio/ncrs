@@ -288,25 +288,29 @@ fn message_cell<'a, M: 'a>(
         })
         .sum();
     let fitted = fit_end(message, width - chips_width, font_size::BODY);
-    let chip_row = Row::with_children(
-        chips
-            .into_iter()
-            .map(|(label, kind)| chip(label, kind, on_chosen, palette)),
-    )
-    .spacing(spacing::XS);
-    row![
-        chip_row,
-        text(fitted)
-            .size(font_size::BODY)
-            .font(if bold {
-                crate::APP_FONT_BOLD
-            } else {
-                crate::APP_FONT
-            })
-            .color(ink)
-            .wrapping(Wrapping::None)
-    ]
-    .spacing(spacing::XS)
+    // No empty row before the text: its gap would push the message right.
+    let chip_row = (!chips.is_empty()).then(|| {
+        Row::with_children(
+            chips
+                .into_iter()
+                .map(|(label, kind)| chip(label, kind, on_chosen, palette)),
+        )
+        .spacing(spacing::XS)
+    });
+    Row::new()
+        .extend(chip_row.map(Element::from))
+        .push(
+            text(fitted)
+                .size(font_size::BODY)
+                .font(if bold {
+                    crate::APP_FONT_BOLD
+                } else {
+                    crate::APP_FONT
+                })
+                .color(ink)
+                .wrapping(Wrapping::None),
+        )
+        .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center)
     .width(Length::Fill)
     .into()

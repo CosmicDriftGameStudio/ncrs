@@ -6,12 +6,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use iced::Task;
-use ncrs_git::{ActionError, DiffTarget, GitError};
+use ncrs_git::{ActionError, ChangedFile, DiffTarget, Git, GitError};
 
 use crate::job::{Finished, Job};
 use crate::message::Message;
 use crate::snapshot::{self, Want};
-use crate::state::State;
+use crate::state::{State, Subject};
 
 fn blocking<T, Work>(
     stop: Arc<AtomicBool>,
@@ -128,6 +128,70 @@ pub fn job(root: PathBuf, job: Job) -> Task<Message> {
                 result: Err(ActionError::Io(error.to_string())),
             })))
         },
+    )
+}
+
+/// Reads what a hard reset to `sha` would lose.
+pub fn reset_loss(root: PathBuf, sha: String) -> Task<Message> {
+    let asked = sha.clone();
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                Git::open(&root).and_then(|git| git.reset_loss(&sha))
+            })
+            .await
+        },
+        move |joined| {
+            Message::ResetLossLoaded(
+                asked.clone(),
+                Box::new(joined.unwrap_or_else(|error| Err(ActionError::Io(error.to_string())))),
+            )
+        },
+    )
+}
+
+/// The files that differ between two commits, or a commit and the working copy.
+pub fn compare_files(state: &mut State, from: String, to: Option<String>) -> Task<Message> {
+    let Some(root) = root_of(state) else {
+        return Task::none();
+    };
+    let (generation, stop) = state.loads.diff.begin();
+    let subject = Subject::Compare {
+        from: from.clone(),
+        to: to.clone(),
+    };
+    blocking(
+        stop,
+        move |cancelled| ncrs_git::compare_files(&root, &from, to.as_deref(), cancelled),
+        move |result| Message::CompareLoaded(generation, subject.clone(), Box::new(result)),
+    )
+}
+
+pub fn compare_diff(
+    state: &mut State,
+    (from, to): (String, Option<String>),
+    file: &ChangedFile,
+    ignore_whitespace: bool,
+) -> Task<Message> {
+    let Some(root) = root_of(state) else {
+        return Task::none();
+    };
+    let (path, old_path) = (file.path.clone(), file.old_path.clone());
+    let (generation, stop) = state.loads.diff.begin();
+    blocking(
+        stop,
+        move |cancelled| {
+            ncrs_git::compare_diff(
+                &root,
+                &from,
+                to.as_deref(),
+                &path,
+                old_path.as_deref(),
+                ignore_whitespace,
+                cancelled,
+            )
+        },
+        move |result| Message::DiffLoaded(generation, Box::new(result)),
     )
 }
 

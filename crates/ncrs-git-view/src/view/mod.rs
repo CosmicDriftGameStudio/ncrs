@@ -4,6 +4,7 @@
 
 mod changes;
 mod commit_box;
+mod commit_menu;
 mod commits;
 mod detail;
 mod diff;
@@ -33,6 +34,7 @@ use crate::shortcuts::Shortcut;
 use crate::state::{Area, State};
 pub use changes::HUNKS_ID;
 pub use commit_box::{BODY_ID, TITLE_ID};
+pub use commit_menu::TAG_ID;
 pub use overlay::{NAME_ID, RENAME_ID};
 
 /// The ids of the fields and scroll areas, for the focus and scroll tasks.
@@ -288,6 +290,9 @@ fn drag_label<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message
 /// The keys of the focus; with the actions on, the keys of the actions too.
 fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
     let key = |shortcut: Shortcut| shortcut.label(ctx.keys);
+    if crate::commit_menu::is_open(state) {
+        return ctx.lang.text(Msg::GitViewStatusCommitMenu).to_owned();
+    }
     if state.picker.is_some() {
         return ctx.lang.text(Msg::GitViewStatusPicker).to_owned();
     }

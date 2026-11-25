@@ -18,12 +18,14 @@ use std::sync::Once;
 use iced::Task;
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
-use ncrs_git::PullStrategy;
+use ncrs_git::{Integration, PullStrategy, ResetMode};
 use ncrs_git_view::actions::{
     ChangeSide, ConflictAction, ConflictLine, Dialog, MenuAction, MenuTarget, Notice, Question,
-    Side,
+    Side, Unavailable,
 };
+use ncrs_git_view::commit_menu::{branch_label, enabled, CommitAction};
 use ncrs_git_view::snapshot::view_lines;
+use ncrs_git_view::state::{Area, Subject};
 use ncrs_git_view::{open, update, Ctx, Message, State};
 use ncrs_i18n::Language;
 use tempfile::TempDir;
@@ -645,4 +647,252 @@ async fn a_rejected_push_after_commit_and_push_keeps_the_commit_and_its_undo() {
         .is_some_and(|local| local.title.is_empty()));
     send(&mut state, Message::Undo).await;
     assert_eq!(sh(dir.path(), &["rev-parse", "HEAD"]), before);
+}
+
+// The menu of a commit (#369).
+
+/// main: base, second, third. side (from base): "on side", "clash" (which
+/// changes a.txt as "third" does).
+fn menu_repo() -> TempDir {
+    let dir = repo();
+    let path = dir.path();
+    sh(path, &["checkout", "-q", "-b", "side"]);
+    commit_file(path, "other.txt", "other\n", "on side");
+    commit_file(path, "a.txt", "side\n", "clash");
+    sh(path, &["checkout", "-q", "main"]);
+    commit_file(path, "b.txt", "two\n", "second");
+    commit_file(path, "a.txt", "main\n", "third");
+    dir
+}
+
+fn row_of(state: &State, summary: &str) -> usize {
+    (0..state.row_count())
+        .find(|row| state.commit_at(*row).is_some_and(|c| c.summary == summary))
+        .unwrap()
+}
+
+/// Opens the menu on the commit and runs one entry, as the menu does.
+async fn run(state: &mut State, summary: &str, action: CommitAction) {
+    let row = row_of(state, summary);
+    send(state, Message::OpenMenu(MenuTarget::Commit(row))).await;
+    send(state, Message::CommitAction(action)).await;
+}
+
+fn head(dir: &Path) -> String {
+    sh(dir, &["rev-parse", "HEAD"])
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn checking_out_a_commit_detaches_head_and_names_it() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "second", CommitAction::Checkout).await;
+    assert_eq!(head(dir.path()), sh(dir.path(), &["rev-parse", "main~1"]));
+    assert_eq!(sh(dir.path(), &["branch", "--show-current"]), "");
+    assert_eq!(branch_label(&state, Language::English), "detached HEAD");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tag_is_asked_for_made_and_undone() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "second", CommitAction::Tag).await;
+    assert!(matches!(state.actions.dialog, Some(Dialog::Tag(_))));
+    send(&mut state, Message::TagNameChanged("v 1".to_owned())).await;
+    send(&mut state, Message::Enter).await;
+    assert!(matches!(state.actions.dialog, Some(Dialog::Tag(_))));
+    assert_eq!(sh(dir.path(), &["tag", "--list"]), "");
+    send(&mut state, Message::TagNameChanged("v1".to_owned())).await;
+    send(&mut state, Message::Enter).await;
+    assert_eq!(state.actions.dialog, None);
+    assert_eq!(sh(dir.path(), &["tag", "--list"]), "v1");
+    assert_eq!(
+        sh(dir.path(), &["rev-parse", "v1^{commit}"]),
+        sh(dir.path(), &["rev-parse", "main~1"])
+    );
+    send(&mut state, Message::Undo).await;
+    assert_eq!(sh(dir.path(), &["tag", "--list"]), "");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cherry_pick_copies_the_commit_and_can_be_undone() {
+    let dir = menu_repo();
+    let before = head(dir.path());
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "on side", CommitAction::CherryPick).await;
+    assert!(dir.path().join("other.txt").exists());
+    assert_ne!(head(dir.path()), before);
+    assert!(state.actions.undo.is_some());
+    send(&mut state, Message::Undo).await;
+    assert_eq!(head(dir.path()), before);
+    assert!(!dir.path().join("other.txt").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cherry_pick_with_conflicts_shows_the_banner_and_aborts() {
+    let dir = menu_repo();
+    let before = head(dir.path());
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "clash", CommitAction::CherryPick).await;
+    let merge = state.actions.merge.as_ref().unwrap();
+    assert_eq!(merge.kind, Integration::CherryPick);
+    assert_eq!(merge.conflicts.len(), 1);
+    send(&mut state, Message::MergeAbort).await;
+    assert!(state.actions.merge.is_none());
+    assert_eq!(head(dir.path()), before);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn revert_makes_a_commit_that_takes_the_change_back() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "second", CommitAction::Revert).await;
+    assert!(!dir.path().join("b.txt").exists());
+    assert!(sh(dir.path(), &["log", "-1", "--format=%s"]).starts_with("Revert"));
+    send(&mut state, Message::Undo).await;
+    assert!(dir.path().join("b.txt").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_merge_commit_cannot_be_picked_or_reverted() {
+    let dir = menu_repo();
+    sh(
+        dir.path(),
+        &["merge", "-q", "--no-ff", "-m", "joined", "side~1"],
+    );
+    let state = opened(dir.path()).await;
+    let row = row_of(&state, "joined");
+    assert!(!enabled(&state, row, CommitAction::CherryPick));
+    assert!(!enabled(&state, row, CommitAction::Revert));
+    assert!(enabled(&state, row, CommitAction::Checkout));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_sandbox_leaves_copying_and_comparing() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    state.actions.unavailable = Some(Unavailable::Sandbox);
+    let row = row_of(&state, "second");
+    assert!(enabled(&state, row, CommitAction::CopySha));
+    assert!(enabled(&state, row, CommitAction::CompareWorking));
+    for blocked in [
+        CommitAction::Checkout,
+        CommitAction::NewBranch,
+        CommitAction::Tag,
+        CommitAction::CherryPick,
+        CommitAction::Revert,
+        CommitAction::Reset(ResetMode::Soft),
+        CommitAction::Reset(ResetMode::Hard),
+    ] {
+        assert!(!enabled(&state, row, blocked), "{blocked:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_soft_reset_keeps_the_changes_staged_a_mixed_one_unstaged() {
+    let dir = menu_repo();
+    let second = sh(dir.path(), &["rev-parse", "main~1"]);
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "second", CommitAction::Reset(ResetMode::Soft)).await;
+    assert_eq!(head(dir.path()), second);
+    assert_eq!(sh(dir.path(), &["diff", "--cached", "--name-only"]), "a.txt");
+    send(&mut state, Message::Undo).await;
+    run(&mut state, "second", CommitAction::Reset(ResetMode::Mixed)).await;
+    assert_eq!(sh(dir.path(), &["diff", "--cached", "--name-only"]), "");
+    assert_eq!(sh(dir.path(), &["diff", "--name-only"]), "a.txt");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hard_reset_asks_with_the_counts_and_enter_cancels() {
+    let dir = menu_repo();
+    let second = sh(dir.path(), &["rev-parse", "main~1"]);
+    write(dir.path(), "a.txt", "dirty\n");
+    let before = head(dir.path());
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "second", CommitAction::Reset(ResetMode::Hard)).await;
+    let Some(Dialog::Ask(Question::ResetHard {
+        branch,
+        commits,
+        changed_files,
+        ..
+    })) = state.actions.dialog.clone()
+    else {
+        panic!("no question: {:?}", state.actions.dialog);
+    };
+    assert_eq!(branch, "main");
+    assert_eq!((commits, changed_files), (1, 1));
+    send(&mut state, Message::Enter).await;
+    assert_eq!(state.actions.dialog, None);
+    assert_eq!(head(dir.path()), before);
+    run(&mut state, "second", CommitAction::Reset(ResetMode::Hard)).await;
+    send(&mut state, Message::ConfirmDialog).await;
+    assert_eq!(head(dir.path()), second);
+    send(&mut state, Message::Undo).await;
+    assert_eq!(head(dir.path()), before);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_keys_walk_the_menu_and_its_submenu() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    state.area = Area::Commits;
+    state.commit_cursor = row_of(&state, "second");
+    send(&mut state, Message::OpenMenuKey).await;
+    let open = state.actions.menu.unwrap();
+    assert_eq!(open.target, MenuTarget::Commit(state.commit_cursor));
+    for _ in 0..6 {
+        send(&mut state, Message::Down).await;
+    }
+    assert_eq!(state.actions.menu.unwrap().cursor, 6);
+    send(&mut state, Message::Right).await;
+    assert_eq!(state.actions.menu.unwrap().submenu, Some(0));
+    send(&mut state, Message::Down).await;
+    assert_eq!(state.actions.menu.unwrap().submenu, Some(1));
+    send(&mut state, Message::Left).await;
+    assert_eq!(state.actions.menu.unwrap().submenu, None);
+    send(&mut state, Message::Escape).await;
+    assert_eq!(state.actions.menu, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn space_marks_a_commit_and_the_comparison_runs() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    state.area = Area::Commits;
+    state.commit_cursor = row_of(&state, "second");
+    let second = state.commit_at(state.commit_cursor).unwrap().id.clone();
+    let third_row = row_of(&state, "third");
+    let third = state.commit_at(third_row).unwrap().id.clone();
+    assert!(!enabled(&state, third_row, CommitAction::CompareMarked));
+    send(&mut state, Message::MarkCommit).await;
+    assert_eq!(state.marked_commit.as_deref(), Some(second.as_str()));
+    assert!(enabled(&state, third_row, CommitAction::CompareMarked));
+    run(&mut state, "third", CommitAction::CompareMarked).await;
+    let shown = state.diff.as_ref().unwrap();
+    assert_eq!(
+        shown.subject,
+        Subject::Compare {
+            from: second,
+            to: Some(third)
+        }
+    );
+    assert_eq!(shown.files.len(), 1);
+    assert!(shown.diff.is_some());
+    send(&mut state, Message::MarkCommit).await;
+    assert_eq!(state.marked_commit, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn comparing_with_the_working_copy_lists_the_differences() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    run(&mut state, "first", CommitAction::CompareWorking).await;
+    let shown = state.diff.as_ref().unwrap();
+    assert!(matches!(shown.subject, Subject::Compare { to: None, .. }));
+    let paths: Vec<_> = shown.files.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(paths, ["a.txt", "b.txt"]);
+    send(&mut state, Message::FilePressed(1)).await;
+    let shown = state.diff.as_ref().unwrap();
+    assert_eq!(shown.file, 1);
+    assert!(shown.diff.is_some());
 }

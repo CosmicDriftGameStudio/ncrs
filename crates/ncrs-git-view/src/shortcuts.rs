@@ -8,6 +8,7 @@ use iced::keyboard::{Key, Modifiers};
 use ncrs_i18n::{Language, Msg};
 
 use crate::actions::{ConflictAction, MenuAction, Side};
+use crate::commit_menu::CommitAction;
 use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
 use crate::picker::PickerKind;
@@ -51,6 +52,7 @@ pub enum Shortcut {
     CopySha,
     GoParent,
     ToggleTree,
+    CherryPick,
 }
 
 impl Shortcut {
@@ -92,6 +94,7 @@ impl Shortcut {
         Self::CopySha,
         Self::GoParent,
         Self::ToggleTree,
+        Self::CherryPick,
     ];
 
     /// The name of the action in `[keys.git]`.
@@ -134,6 +137,7 @@ impl Shortcut {
             Self::CopySha => "copy_sha",
             Self::GoParent => "parent",
             Self::ToggleTree => "toggle_tree",
+            Self::CherryPick => "cherry_pick",
         }
     }
 
@@ -215,6 +219,7 @@ impl Shortcut {
             Self::CopySha => letter(command, "c"),
             Self::GoParent => named(Modifiers::empty(), Named::Backspace),
             Self::ToggleTree => letter(Modifiers::empty(), "t"),
+            Self::CherryPick => letter(command | Modifiers::ALT, "k"),
         }
     }
 
@@ -273,6 +278,7 @@ impl Shortcut {
             Self::CopySha => Msg::GitViewCommandCopySha,
             Self::GoParent => Msg::GitViewCommandParent,
             Self::ToggleTree => Msg::GitViewCommandToggleTree,
+            Self::CherryPick => return None,
         })
     }
 
@@ -315,6 +321,7 @@ impl Shortcut {
             Self::CopySha => Message::CopySha,
             Self::GoParent => Message::GoToParent,
             Self::ToggleTree => Message::ToggleTreeKey,
+            Self::CherryPick => Message::CommitAction(CommitAction::CherryPick),
         }
     }
 

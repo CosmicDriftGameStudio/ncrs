@@ -12,7 +12,8 @@ use ncrs_ui_kit::page_scroll::scroll_page_by;
 use ncrs_ui_kit::theme::size;
 
 use crate::action::Action;
-use crate::actions::{MenuTarget, OpenMenu};
+use crate::actions::{Dialog, MenuTarget, OpenMenu};
+use crate::commit_menu;
 use crate::ctx::Ctx;
 use crate::diff_layout::rows_before;
 use crate::handlers;
@@ -183,6 +184,18 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::FilePressed(index) => {
             state.area = Area::Detail;
             state.file_cursor = index;
+            let comparing = state
+                .diff
+                .as_ref()
+                .is_some_and(|shown| matches!(shown.subject, Subject::Compare { .. }));
+            if comparing {
+                if let Some(shown) = state.diff.as_mut().filter(|shown| index < shown.files.len()) {
+                    shown.file = index;
+                    shown.diff = None;
+                    shown.hunk = 0;
+                }
+                return quiet(reload_diff(state));
+            }
             quiet(open_diff(state, index))
         }
         Message::ToggleFold(fold) => (Task::none(), toggle_fold(state, fold)),
@@ -238,6 +251,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             };
             shown.ignore_whitespace = !shown.ignore_whitespace;
             quiet(reload_diff(state))
+        }
+        Message::Up | Message::Down | Message::Left | Message::Right | Message::Enter
+            if commit_menu::is_open(state) =>
+        {
+            commit_menu::key(state, &message)
         }
         Message::Up if state.picker.is_some() => {
             picker::move_cursor(state, -1);
@@ -298,17 +316,35 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         Message::OpenMenu(target) => {
-            state.actions.menu = Some(OpenMenu { target });
+            state.actions.menu = Some(OpenMenu::new(target));
             quiet(Task::none())
         }
         Message::OpenMenuKey => {
-            let target = state
-                .sidebar_items()
-                .get(state.sidebar_cursor)
-                .and_then(|item| menu_target_of(*item));
-            state.actions.menu = target.map(|chosen| OpenMenu { target: chosen });
+            let target = if state.area == Area::Commits {
+                state
+                    .commit_at(state.commit_cursor)
+                    .map(|_| MenuTarget::Commit(state.commit_cursor))
+            } else {
+                state
+                    .sidebar_items()
+                    .get(state.sidebar_cursor)
+                    .and_then(|item| menu_target_of(*item))
+            };
+            state.actions.menu = target.map(OpenMenu::new);
             quiet(Task::none())
         }
+        Message::ConfirmDialog if matches!(state.actions.dialog, Some(Dialog::Tag(_))) => {
+            commit_menu::handle(state, Message::CreateTag, ctx)
+        }
+        commit @ (Message::CommitAction(_)
+        | Message::MenuCursor(_)
+        | Message::MenuSubmenuCursor(_)
+        | Message::MarkCommit
+        | Message::CommitsScrolled(_)
+        | Message::TagNameChanged(_)
+        | Message::CreateTag
+        | Message::ResetLossLoaded(..)
+        | Message::CompareLoaded(..)) => commit_menu::handle(state, commit, ctx),
         Message::CloseMenu => {
             state.actions.menu = None;
             quiet(Task::none())
@@ -420,6 +456,7 @@ pub fn ensure_detail(state: &mut State) -> Task<Message> {
     match subject {
         Subject::Working => load::working_changes(state),
         Subject::Commit(sha) => load::commit_detail(state, sha),
+        Subject::Compare { .. } => Task::none(),
     }
 }
 
@@ -493,6 +530,14 @@ fn activate_sidebar(state: &mut State, index: usize) -> Outcome {
 
 fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
     if state.actions.dialog_open() {
+        if let Some(Dialog::Ask(question)) = &state.actions.dialog {
+            if question.enter_is_safe() {
+                return handlers::act(state, Message::CloseDialog, ctx);
+            }
+        }
+        if matches!(state.actions.dialog, Some(Dialog::Tag(_))) {
+            return commit_menu::handle(state, Message::CreateTag, ctx);
+        }
         // A text field sends Enter as its own submit too; the second one finds nothing to do.
         let answer = if state.actions.dialog.is_some() {
             Message::ConfirmDialog
@@ -576,7 +621,7 @@ fn target_of(subject: &Subject, file: &ChangedFile) -> DiffTarget {
     DiffTarget {
         commit: match subject {
             Subject::Commit(sha) => Some(sha.clone()),
-            Subject::Working => None,
+            Subject::Working | Subject::Compare { .. } => None,
         },
         path: file.path.clone(),
         old_path: file.old_path.clone(),
@@ -602,15 +647,19 @@ fn open_diff(state: &mut State, index: usize) -> Task<Message> {
     reload_diff(state)
 }
 
-fn reload_diff(state: &mut State) -> Task<Message> {
+pub(crate) fn reload_diff(state: &mut State) -> Task<Message> {
     let Some(shown) = &state.diff else {
         return Task::none();
     };
     let Some(file) = shown.files.get(shown.file) else {
         return Task::none();
     };
-    let target = target_of(&shown.subject, file);
     let ignore_whitespace = shown.ignore_whitespace;
+    if let Subject::Compare { from, to } = &shown.subject {
+        let (ends, file) = ((from.clone(), to.clone()), file.clone());
+        return load::compare_diff(state, ends, &file, ignore_whitespace);
+    }
+    let target = target_of(&shown.subject, file);
     load::file_diff(state, target, ignore_whitespace)
 }
 

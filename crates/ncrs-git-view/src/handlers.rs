@@ -364,7 +364,7 @@ fn branch_of(state: &State, target: MenuTarget) -> Option<String> {
             overview.local.get(index).map(|branch| branch.name.clone())
         }
         MenuTarget::RemoteBranch(index) => overview.remote.get(index).cloned(),
-        MenuTarget::Stash(_) | MenuTarget::Conflict(_) => None,
+        MenuTarget::Stash(_) | MenuTarget::Conflict(_) | MenuTarget::Commit(_) => None,
     }
 }
 
@@ -383,6 +383,9 @@ pub fn begin_new_branch(state: &mut State, from: String) -> Outcome {
 }
 
 fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
+    if let Some(on_commit) = crate::commit_menu::of_shortcut(state, action) {
+        return crate::commit_menu::act(state, on_commit);
+    }
     let target = menu_subject(state);
     state.actions.menu = None;
     if action == MenuAction::NewBranchFrom {
@@ -490,7 +493,7 @@ fn confirm_dialog(state: &mut State) -> Outcome {
                 to,
             }
         }
-        None => return quiet(Task::none()),
+        Some(Dialog::Tag(_)) | None => return quiet(Task::none()),
     };
     start(state, job)
 }
@@ -658,6 +661,7 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
         .unwrap_or_default();
     actions.rebasing = rebasing;
     actions.merge = Some(MergeInProgress {
+        kind: integration.detail.kind,
         from: integration.detail.other,
         into: integration.detail.current,
         conflicts,
@@ -770,11 +774,12 @@ fn after_success(state: &mut State, job: &Job) {
             }
         }
         Job::CreateBranch { .. } => state.actions.new_branch = None,
+        Job::CreateTag { .. } => state.actions.dialog = None,
         _ => {}
     }
 }
 
-fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
+pub(crate) fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
     match &error {
         ActionError::GitNotFound => return switch_off(state, Unavailable::GitMissing),
         ActionError::DisabledInSandbox => return switch_off(state, Unavailable::Sandbox),
@@ -791,6 +796,9 @@ fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
     }
     if matches!(job, Job::CreateBranch { .. }) {
         state.actions.new_branch = None;
+    }
+    if matches!(job, Job::CreateTag { .. }) {
+        state.actions.dialog = None;
     }
     if matches!(
         error,

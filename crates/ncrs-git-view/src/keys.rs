@@ -41,11 +41,15 @@ pub fn git_view_key(
         return None;
     }
     if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
+        if shortcut == Shortcut::ToggleStage && context.area == Area::Commits && !context.in_diff {
+            return Some(Message::MarkCommit);
+        }
         let applies = match shortcut {
             Shortcut::PreviousFile | Shortcut::NextFile => {
                 context.in_diff || context.area == Area::Detail
             }
             Shortcut::ToggleStage => context.area == Area::Detail,
+            Shortcut::CherryPick => context.area == Area::Commits,
             _ => true,
         };
         return applies.then(|| shortcut.message());
@@ -71,6 +75,7 @@ pub fn git_view_key(
         Key::Named(Named::ArrowRight) => Some(Message::Right),
         Key::Named(Named::Enter) => Some(Message::Enter),
         Key::Named(Named::Tab) => Some(Message::NextArea),
+        Key::Named(Named::ContextMenu) => Some(Message::OpenMenuKey),
         Key::Named(Named::F3) if context.in_diff => Some(Message::ViewFile),
         Key::Character("n") if context.in_diff => Some(Message::NextHunk),
         Key::Character("p") if context.in_diff => Some(Message::PreviousHunk),

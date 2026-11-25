@@ -15083,6 +15083,162 @@
       "context": "Git tab: hint at the top left of a file's diff that Escape goes back to the commit list. Keep the arrow and the key name Esc.",
       "en": "← Esc back to the list",
       "de": "← Esc zurück zur Liste"
+    },
+    {
+      "key": "git_view.detached_head",
+      "context": "Git tab: stands for the branch name in the commit menu and its questions while no branch is checked out (HEAD points at a commit). Short, lower case.",
+      "en": "detached HEAD",
+      "de": "losgelöstes HEAD"
+    },
+    {
+      "key": "git_view.commit_menu_copy_sha",
+      "context": "Git tab, context menu of a commit: copies the full commit id to the clipboard.",
+      "en": "Copy SHA",
+      "de": "SHA kopieren"
+    },
+    {
+      "key": "git_view.commit_menu_checkout",
+      "context": "Git tab, context menu of a commit: checks the commit out without a branch (detached HEAD).",
+      "en": "Check out commit (detached)",
+      "de": "Commit auschecken (losgelöst)"
+    },
+    {
+      "key": "git_view.commit_menu_new_branch",
+      "context": "Git tab, context menu of a commit: asks for the name of a new branch that starts at this commit. Keep the ellipsis.",
+      "en": "New branch from here…",
+      "de": "Neuer Branch von hier…"
+    },
+    {
+      "key": "git_view.commit_menu_tag",
+      "context": "Git tab, context menu of a commit: asks for the name of a tag on this commit. Keep the ellipsis.",
+      "en": "Create tag…",
+      "de": "Tag anlegen…"
+    },
+    {
+      "key": "git_view.commit_menu_cherry_pick",
+      "context": "Git tab, context menu of a commit: copies the commit onto the checked-out branch. {branch} is that branch's name, or the word for a detached HEAD.",
+      "en": "Cherry-pick onto {branch}",
+      "de": "Cherry-pick in {branch}"
+    },
+    {
+      "key": "git_view.commit_menu_revert",
+      "context": "Git tab, context menu of a commit: makes a new commit that takes this commit's changes back.",
+      "en": "Create revert commit",
+      "de": "Revert-Commit anlegen"
+    },
+    {
+      "key": "git_view.commit_menu_reset",
+      "context": "Git tab, context menu of a commit: opens the submenu that moves the checked-out branch to this commit. {branch} is that branch's name, or the word for a detached HEAD.",
+      "en": "Reset {branch} to here",
+      "de": "{branch} hierher zurücksetzen"
+    },
+    {
+      "key": "git_view.commit_menu_reset_soft",
+      "context": "Git tab, reset submenu: moves the branch, the changes of the commits stay staged.",
+      "en": "Soft (changes stay staged)",
+      "de": "Weich (Änderungen bleiben vorgemerkt)"
+    },
+    {
+      "key": "git_view.commit_menu_reset_mixed",
+      "context": "Git tab, reset submenu: moves the branch, the changes of the commits stay in the files but are not staged.",
+      "en": "Mixed (changes stay, not staged)",
+      "de": "Gemischt (Änderungen bleiben, nicht vorgemerkt)"
+    },
+    {
+      "key": "git_view.commit_menu_reset_hard",
+      "context": "Git tab, reset submenu: moves the branch and throws the changes away; asks first. Shown in red. Keep the ellipsis.",
+      "en": "Hard (discard changes)…",
+      "de": "Hart (Änderungen verwerfen…)"
+    },
+    {
+      "key": "git_view.commit_menu_compare_working",
+      "context": "Git tab, context menu of a commit: shows what differs between this commit and the files in the folder.",
+      "en": "Compare with working copy",
+      "de": "Mit Arbeitskopie vergleichen"
+    },
+    {
+      "key": "git_view.commit_menu_compare_marked",
+      "context": "Git tab, context menu of a commit: shows what differs between the commit marked with Space and this one. Off until a commit is marked.",
+      "en": "Compare with marked commit",
+      "de": "Mit gewähltem Commit vergleichen"
+    },
+    {
+      "key": "git_view.ask_reset_hard_title",
+      "context": "Git tab, question before a hard reset. {branch} is the branch's name, or the word for a detached HEAD.",
+      "en": "Hard reset {branch}",
+      "de": "{branch} hart zurücksetzen"
+    },
+    {
+      "key": "git_view.ask_reset_hard_text",
+      "context": "Git tab, question before a hard reset: what is lost. {branch} the branch, {sha} the short commit id it moves to, {commits} number of commits that are no longer on the branch, {files} number of files with local changes. Undo is the Undo button of the tab.",
+      "en": "{branch} jumps to {sha}. {commits} commit(s) and {files} local change(s) are lost. Undo can bring them back.",
+      "de": "{branch} springt auf {sha}. {commits} Commits und {files} lokale Änderung(en) gehen verloren. Rückgängig kann sie zurückholen."
+    },
+    {
+      "key": "git_view.ask_reset_hard_button",
+      "context": "Git tab, confirm button of the hard reset question. Shown in red.",
+      "en": "Reset",
+      "de": "Zurücksetzen"
+    },
+    {
+      "key": "git_view.tag_title",
+      "context": "Git tab, title of the dialog that asks for a tag name.",
+      "en": "Create tag",
+      "de": "Tag anlegen"
+    },
+    {
+      "key": "git_view.tag_name",
+      "context": "Git tab, tag dialog: label of the name field.",
+      "en": "Tag name",
+      "de": "Name des Tags"
+    },
+    {
+      "key": "git_view.tag_name_placeholder",
+      "context": "Git tab, tag dialog: example in the empty name field.",
+      "en": "v1.0.0",
+      "de": "v1.0.0"
+    },
+    {
+      "key": "git_view.tag_at",
+      "context": "Git tab, tag dialog: names the commit that gets the tag. {sha} is the short commit id.",
+      "en": "At commit {sha}",
+      "de": "Auf Commit {sha}"
+    },
+    {
+      "key": "git_view.tag_create",
+      "context": "Git tab, tag dialog: confirm button.",
+      "en": "Create tag",
+      "de": "Tag anlegen"
+    },
+    {
+      "key": "git_view.status_commit_menu",
+      "context": "Git tab, status bar while the commit menu is open. Keep the arrows and the key names.",
+      "en": "↑↓ choose · Enter run · → submenu · ← back · Esc closes",
+      "de": "↑↓ wählen · Enter ausführen · → Untermenü · ← zurück · Esc schließt"
+    },
+    {
+      "key": "git_view.commit_marked",
+      "context": "Git tab, commit list: small tag on the commit that was marked with Space to compare with. Short, lower case.",
+      "en": "marked",
+      "de": "gewählt"
+    },
+    {
+      "key": "git_view.compare_working",
+      "context": "Git tab, header of a comparison: stands for the files in the folder (the right side of the arrow).",
+      "en": "working copy",
+      "de": "Arbeitskopie"
+    },
+    {
+      "key": "git_view.merge_pick_title",
+      "context": "Git tab, banner while a cherry-pick stopped on conflicts. {sha} is the short id of the commit being copied.",
+      "en": "Cherry-pick of {sha} has conflicts",
+      "de": "Cherry-pick von {sha} hat Konflikte"
+    },
+    {
+      "key": "git_view.merge_revert_title",
+      "context": "Git tab, banner while a revert stopped on conflicts. {sha} is the short id of the commit being taken back.",
+      "en": "Revert of {sha} has conflicts",
+      "de": "Revert von {sha} hat Konflikte"
     }
   ]
 }

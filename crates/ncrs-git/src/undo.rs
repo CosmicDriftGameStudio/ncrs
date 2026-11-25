@@ -48,6 +48,11 @@ pub enum UndoAction {
         new_head: String,
         previous_head: String,
     },
+    /// A cherry-pick or revert: its changes go too, local changes made since stay.
+    ResetPick {
+        new_head: String,
+        previous_head: String,
+    },
     RestoreFiles {
         saved: Vec<SavedFile>,
     },
@@ -181,6 +186,29 @@ impl Git {
         Ok(folder)
     }
 
+    fn undo_commit(
+        &self,
+        new_head: &str,
+        previous_head: &str,
+        reset_flag: &str,
+    ) -> Result<(), ActionError> {
+        if self.head_sha().as_deref() != Some(new_head) {
+            return Err(ActionError::UndoNotSafe(
+                "HEAD moved since the commit".to_string(),
+            ));
+        }
+        if !self
+            .text(&["branch", "-r", "--contains", new_head])?
+            .is_empty()
+        {
+            return Err(ActionError::UndoNotSafe(
+                "the commit is already pushed".to_string(),
+            ));
+        }
+        self.ok(&["reset", reset_flag, previous_head])?;
+        Ok(())
+    }
+
     /// Takes the last local action back, or says why that is not safe.
     pub fn undo(&self, record: &UndoRecord) -> Result<(), ActionError> {
         match &record.action {
@@ -196,23 +224,11 @@ impl Git {
             UndoAction::ResetCommit {
                 new_head,
                 previous_head,
-            } => {
-                if self.head_sha().as_deref() != Some(new_head.as_str()) {
-                    return Err(ActionError::UndoNotSafe(
-                        "HEAD moved since the commit".to_string(),
-                    ));
-                }
-                if !self
-                    .text(&["branch", "-r", "--contains", new_head])?
-                    .is_empty()
-                {
-                    return Err(ActionError::UndoNotSafe(
-                        "the commit is already pushed".to_string(),
-                    ));
-                }
-                self.ok(&["reset", "--soft", previous_head])?;
-                Ok(())
-            }
+            } => self.undo_commit(new_head, previous_head, "--soft"),
+            UndoAction::ResetPick {
+                new_head,
+                previous_head,
+            } => self.undo_commit(new_head, previous_head, "--keep"),
             UndoAction::RestoreFiles { saved } => {
                 self.check_saved(saved)?;
                 self.apply_saved(saved)

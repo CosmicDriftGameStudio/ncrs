@@ -47,7 +47,10 @@ fn the_pane_keys_belong_to_the_detail_area_only() {
         pressed(Key::Named(Named::Space), none, detail),
         Some(Message::ToggleStageSelected)
     );
-    assert_eq!(pressed(Key::Named(Named::Space), none, commits), None);
+    assert_eq!(
+        pressed(Key::Named(Named::Space), none, commits),
+        Some(Message::MarkCommit)
+    );
     assert_eq!(
         pressed(Key::Named(Named::ArrowUp), Modifiers::COMMAND, detail),
         Some(Message::PreviousFile)

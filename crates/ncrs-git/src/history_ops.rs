@@ -183,7 +183,7 @@ impl Git {
                 Some(UndoRecord {
                     summary,
                     description,
-                    action: UndoAction::ResetCommit {
+                    action: UndoAction::ResetPick {
                         new_head,
                         previous_head,
                     },

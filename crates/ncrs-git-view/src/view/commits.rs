@@ -6,6 +6,7 @@ use iced::widget::{column, container, Column};
 use iced::{Element, Length};
 use ncrs_git::{LogCommit, RefKind, SegmentHalf};
 use ncrs_i18n::Msg;
+use ncrs_ui_kit::action_rows::context_area;
 use ncrs_ui_kit::commit_graph::{graph_cell, GraphCell, GraphLine, LineHalf, LANE_WIDTH};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::git_lines::{summarize_refs, wip_row, WipRow};
@@ -13,11 +14,12 @@ use ncrs_ui_kit::git_rows::{
     commit_header, commit_message_width, commit_row, CommitRow, RefChipKind,
 };
 use ncrs_ui_kit::kit::{button, Tone};
-use ncrs_ui_kit::page_scroll::page_scroll;
+use ncrs_ui_kit::page_scroll::page_scroll_tracked;
 use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 use super::COMMITS_ID;
+use crate::actions::MenuTarget;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::state::{Area, State};
@@ -72,16 +74,20 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let offset = usize::from(working.is_some());
     let commits = log.commits.iter().enumerate().map(|(index, commit)| {
         let row = index + offset;
-        commit_row(
+        let mut chips = summarize_refs(
+            commit
+                .refs
+                .iter()
+                .map(|label| (label.name.clone(), chip_kind(label.kind)))
+                .collect(),
+        );
+        if state.marked_commit.as_deref() == Some(commit.id.as_str()) {
+            chips.push((ctx.lang.text(Msg::GitViewCommitMarked).to_owned(), RefChipKind::Tag));
+        }
+        let shown = commit_row(
             CommitRow {
                 graph: graph_cell(graph_of(commit), lanes, palette),
-                chips: summarize_refs(
-                    commit
-                        .refs
-                        .iter()
-                        .map(|label| (label.name.clone(), chip_kind(label.kind)))
-                        .collect(),
-                ),
+                chips,
                 message: commit.summary.clone(),
                 author: commit.author.clone(),
                 date: date_of(commit, ctx),
@@ -95,7 +101,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 on_press: Message::CommitPressed(row),
             },
             palette,
-        )
+        );
+        context_area(shown, Message::OpenMenu(MenuTarget::Commit(row)))
     });
     let mut rows = Column::new();
     rows = rows.extend(working);
@@ -128,7 +135,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     column![
         header,
         theme::horizontal_rule(palette.border_inactive),
-        page_scroll(COMMITS_ID, rows.width(Length::Fill).into())
+        page_scroll_tracked(
+            COMMITS_ID,
+            rows.width(Length::Fill).into(),
+            Message::CommitsScrolled
+        )
     ]
     .into()
 }

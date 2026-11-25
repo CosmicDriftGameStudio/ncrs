@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use ncrs_git::{
-    ActionError, CommitMessage, ConflictChoice, DiffHunk, Git, PullStrategy, UndoRecord,
+    ActionError, CommitMessage, ConflictChoice, DiffHunk, Git, PullStrategy, ResetMode,
+    UndoRecord,
 };
 
 use crate::actions::Operation;
@@ -93,6 +94,17 @@ pub enum Job {
     ResetFile(String),
     AbortIntegration,
     ContinueIntegration,
+    CheckoutDetached(String),
+    CreateTag {
+        name: String,
+        sha: String,
+    },
+    CherryPick(String),
+    Revert(String),
+    Reset {
+        mode: ResetMode,
+        sha: String,
+    },
 }
 
 /// What a job that worked leaves for the state.
@@ -157,9 +169,14 @@ impl Job {
             | Self::StashAndCheckout { .. }
             | Self::DeleteBranch { .. }
             | Self::RenameBranch { .. }
-            | Self::DeleteOnRemote { .. } => Operation::Branch,
+            | Self::DeleteOnRemote { .. }
+            | Self::CheckoutDetached(_)
+            | Self::CreateTag { .. }
+            | Self::Reset { .. } => Operation::Branch,
             Self::Merge(_)
             | Self::Rebase(_)
+            | Self::CherryPick(_)
+            | Self::Revert(_)
             | Self::AbortIntegration
             | Self::ContinueIntegration => Operation::Integrate,
             Self::ResolveBlock { .. }
@@ -269,6 +286,16 @@ impl Job {
             Self::ResetFile(path) => git.reset_file(path).map(|()| Done::Plain),
             Self::AbortIntegration => git.abort_integration().map(|()| Done::Plain),
             Self::ContinueIntegration => git.continue_integration().map(|_| Done::Plain),
+            Self::CheckoutDetached(sha) => git.checkout_detached(sha).map(|()| Done::Plain),
+            Self::CreateTag { name, sha } => git
+                .create_tag(name, sha)
+                .map(|record| Done::Undoable(Some(record))),
+            // A pick that stops on conflicts has no undo; the next read shows the banner.
+            Self::CherryPick(sha) => git.cherry_pick(sha).map(|picked| Done::Undoable(picked.undo)),
+            Self::Revert(sha) => git.revert(sha).map(|picked| Done::Undoable(picked.undo)),
+            Self::Reset { mode, sha } => git
+                .reset(*mode, sha)
+                .map(|record| Done::Undoable(Some(record))),
         }
     }
 

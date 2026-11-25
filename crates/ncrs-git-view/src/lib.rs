@@ -4,6 +4,7 @@
 pub mod action;
 pub mod actions;
 pub mod ctx;
+pub mod commit_menu;
 mod diff_layout;
 pub mod git_keys;
 mod handlers;

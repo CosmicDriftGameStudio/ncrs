@@ -4,7 +4,7 @@
 use iced::advanced::widget::operation::scrollable;
 use iced::advanced::widget::Id;
 use iced::widget::scrollable::{AbsoluteOffset, Direction, RelativeOffset, Scrollbar};
-use iced::widget::{container, scrollable as scrollable_widget};
+use iced::widget::{container, scrollable as scrollable_widget, Scrollable};
 use iced::{Element, Length, Padding, Task};
 
 use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
@@ -22,6 +22,26 @@ pub fn page_scroll_padded<'a, M: 'a>(
     content: Element<'a, M>,
     padding: Padding,
 ) -> Element<'a, M> {
+    page_scrollable(id, content, padding).into()
+}
+
+/// [`page_scroll`] that reports how far down the user has scrolled it, in
+/// pixels. A scroll by task (`scroll_to`, [`scroll_page_by`]) is not reported.
+pub fn page_scroll_tracked<'a, M: 'a>(
+    id: &'static str,
+    content: Element<'a, M>,
+    on_scroll: impl Fn(f32) -> M + 'a,
+) -> Element<'a, M> {
+    page_scrollable(id, content, Padding::from([spacing::XL, spacing::XXL]))
+        .on_scroll(move |viewport| on_scroll(viewport.absolute_offset().y))
+        .into()
+}
+
+fn page_scrollable<'a, M: 'a>(
+    id: &'static str,
+    content: Element<'a, M>,
+    padding: Padding,
+) -> Scrollable<'a, M> {
     scrollable_widget(container(content).padding(padding))
         .direction(Direction::Vertical(
             Scrollbar::new()
@@ -33,7 +53,6 @@ pub fn page_scroll_padded<'a, M: 'a>(
         .id(id)
         .width(Length::Fill)
         .height(Length::Fill)
-        .into()
 }
 
 /// Moves the page `id` by `delta` pixels, down when positive.

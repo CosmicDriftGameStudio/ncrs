@@ -122,6 +122,8 @@ pub enum MenuTarget {
     Stash(usize),
     /// The index into the conflicts of the merge.
     Conflict(usize),
+    /// The row of the commit list, the working copy row counted.
+    Commit(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +146,20 @@ pub enum MenuAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpenMenu {
     pub target: MenuTarget,
+    /// The entry of a commit menu the keys are on.
+    pub cursor: usize,
+    /// The entry of the open reset submenu the keys are on.
+    pub submenu: Option<usize>,
+}
+
+impl OpenMenu {
+    pub const fn new(target: MenuTarget) -> Self {
+        Self {
+            target,
+            cursor: 0,
+            submenu: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,6 +199,14 @@ pub enum Question {
         extension: Option<String>,
         chosen: IgnoreChoice,
     },
+    /// A hard reset: what it would lose was read before the question.
+    ResetHard {
+        /// The branch, or the word for a detached HEAD, ready to show.
+        branch: String,
+        sha: String,
+        commits: u32,
+        changed_files: u32,
+    },
 }
 
 impl Question {
@@ -192,13 +216,23 @@ impl Question {
             Self::DiscardFile { .. }
             | Self::DiscardAll { .. }
             | Self::DeleteBranch { .. }
-            | Self::Ignore { .. } => true,
+            | Self::Ignore { .. }
+            | Self::ResetHard { .. } => true,
             Self::DeleteOnRemote { .. } | Self::DropStash { .. } => false,
         }
     }
 
+    /// Enter presses the cancel button, not the one that does the harm.
+    pub fn enter_is_safe(&self) -> bool {
+        matches!(self, Self::ResetHard { .. })
+    }
+
     pub fn job(&self) -> Job {
         match self {
+            Self::ResetHard { sha, .. } => Job::Reset {
+                mode: ncrs_git::ResetMode::Hard,
+                sha: sha.clone(),
+            },
             Self::DiscardFile { path } => Job::DiscardFile(path.clone()),
             Self::DiscardAll { .. } => Job::DiscardAll,
             Self::DeleteBranch { name } => Job::DeleteBranch {
@@ -235,11 +269,21 @@ pub struct RenameBranch {
     pub name: String,
 }
 
+/// The dialog for the name of a tag on a commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagDraft {
+    pub name: String,
+    pub sha: String,
+    /// Why the name does not work, ready to show.
+    pub problem: Option<String>,
+}
+
 /// A dialog over the tab, besides the one for a new branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dialog {
     Ask(Question),
     Rename(RenameBranch),
+    Tag(TagDraft),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,6 +323,7 @@ pub enum ConflictLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeInProgress {
+    pub kind: ncrs_git::Integration,
     pub from: String,
     pub into: String,
     pub conflicts: Vec<Conflict>,

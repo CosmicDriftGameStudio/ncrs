@@ -168,12 +168,14 @@ fn jump_to_working_copy(state: &mut State) -> Task<Message> {
     Task::none()
 }
 
-fn scroll_to_cursor(state: &State) -> Task<Message> {
+fn scroll_to_cursor(state: &mut State) -> Task<Message> {
+    let offset = state.commit_cursor.saturating_sub(3) as f32 * size::ROW;
+    state.commits_scroll = offset;
     operation::scroll_to(
         COMMITS_ID,
         AbsoluteOffset {
             x: None,
-            y: Some(state.commit_cursor.saturating_sub(3) as f32 * size::ROW),
+            y: Some(offset),
         },
     )
 }

@@ -15,6 +15,7 @@ use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
 use super::DIFF_ID;
+use crate::commit_menu::compare_ends;
 use crate::ctx::ViewCtx;
 use crate::diff_layout::pairs;
 use crate::message::Message;
@@ -24,7 +25,11 @@ const COMMIT_LINE_CHARS: usize = 48;
 
 /// The commit line of the header: the short hash and the first line of the
 /// message, as far as `detail` is the commit this diff is about.
-fn commit_line(shown: &DiffState, detail: Option<&Detail>) -> Option<String> {
+fn commit_line(shown: &DiffState, detail: Option<&Detail>, ctx: ViewCtx<'_>) -> Option<String> {
+    if let Some((from, to)) = compare_ends(&shown.subject) {
+        let to = to.unwrap_or_else(|| ctx.lang.text(Msg::GitViewCompareWorking).to_owned());
+        return Some(format!("{from} \u{2192} {to}"));
+    }
     let info = detail
         .filter(|candidate| candidate.subject == shown.subject)?
         .info
@@ -61,7 +66,7 @@ pub fn view<'a>(
         ),
         page_heading(&path, palette),
     ];
-    if let Some(commit) = commit_line(shown, detail) {
+    if let Some(commit) = commit_line(shown, detail, ctx) {
         header = header.push(page_line(commit, font_size::BODY, palette.dim_text));
     }
     if added + removed > 0 {
