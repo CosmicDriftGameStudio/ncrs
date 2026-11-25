@@ -486,13 +486,25 @@ pub fn segment_button(
 
 /// The one grey outline around a group of segments.
 pub fn segment_group(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    segment_group_focusable(palette, false)
+}
+
+/// [`segment_group`] that takes the focus outline while the keyboard is on it.
+pub fn segment_group_focusable(
+    palette: &Palette,
+    focused: bool,
+) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     let outline = control_outline(&colors, colors.panel);
     move |_theme| container::Style {
-        border: Border {
-            color: outline,
-            width: spacing::BORDER_WIDTH,
-            radius: radius::CORNER.into(),
+        border: if focused {
+            focus_border(&colors)
+        } else {
+            Border {
+                color: outline,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            }
         },
         ..container::Style::default()
     }

@@ -7,7 +7,6 @@ use iced::Size;
 
 use crate::clipboard_paste::PastedContent;
 use crate::filing::FilingMessage;
-use crate::filing_work::FilingSummary;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
 pub use ncrs_core::PanelSide;
@@ -220,10 +219,8 @@ pub enum Message {
     Activity(ActivityMessage),
     /// Opens one of the single pages.
     HermesPage(HermesPage),
-    /// The filing job on its blocking thread is done.
-    DocumentsFiled(Result<FilingSummary, String>),
-    /// The background filing of new files is done.
-    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
+    /// The background filing of the watched sources is done.
+    ContinuousFiled(Result<Vec<ncrs_hermes_ui::SourceRun>, String>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
@@ -412,7 +409,6 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::Tags(inner) => Self::Tags(inner),
             Hermes::Reviews(inner) => Self::Reviews(inner),
             Hermes::Activity(inner) => Self::Activity(inner),
-            Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
             Hermes::ContinuousFiled(result) => Self::ContinuousFiled(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::HermesFile(inner) => Self::HermesFile(inner),

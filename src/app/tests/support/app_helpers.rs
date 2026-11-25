@@ -688,11 +688,12 @@ impl App {
             .is_some_and(|runner| runner.state() == ncrs_pipeline::RunnerState::Idle)
     }
 
-    /// Runner state, waiting files per step and waiting continuous
-    /// candidates, as text for the protocol's progress line.
-    pub fn pipeline_status_for_test(&self) -> (String, String, usize) {
+    /// Runner state and waiting files per step, as text for the protocol's
+    /// progress line, and whether the watched sources are filing right now.
+    pub fn pipeline_status_for_test(&self) -> (String, String, bool) {
+        let filing_now = self.hermes.watching.is_running();
         let Some(runner) = self.hermes.live_pipeline() else {
-            return ("none".to_owned(), String::new(), 0);
+            return ("none".to_owned(), String::new(), filing_now);
         };
         let snapshot = runner.snapshot();
         let queues = snapshot
@@ -704,15 +705,15 @@ impl App {
         (
             format!("{:?}", snapshot.state),
             queues,
-            runner.continuous_candidates_waiting(),
+            filing_now,
         )
     }
 
-    /// Whether the background filing has its model, and whether an "Ablegen"
+    /// Whether the app allows the background filing, and whether an "Ablegen"
     /// tab that still works holds a folder back.
     pub fn continuous_gates_for_test(&self) -> (bool, bool) {
         (
-            self.continuous_tools().is_some(),
+            self.changes_allowed(),
             self.filing_view
                 .session
                 .as_ref()

@@ -8,7 +8,6 @@ use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
 use ncrs_filing::filing::ActivityBatch;
 use ncrs_filing::filing::FilingMessage;
-use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
 use ncrs_filing::review_work::{AcceptSummary, ReviewItem, TargetComparison};
 use ncrs_filing::rules_work::{RulesLoad, TryResult};
@@ -20,6 +19,7 @@ use crate::condition_editor::ConditionEdit;
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::reviews_page::{Answer, Question, ReviewsLoad};
+use crate::watching::SourceRun;
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,11 +33,9 @@ pub enum Message {
     Tags(TagsMessage),
     Reviews(ReviewsMessage),
     Activity(ActivityMessage),
-    /// The filing job on its blocking thread is done.
-    DocumentsFiled(Result<FilingSummary, String>),
-    /// The background filing of new files is done: the read folders and how
-    /// many files each had filed.
-    ContinuousFiled(Result<Vec<(PathBuf, usize)>, String>),
+    /// The background filing of the watched sources is done: what each one
+    /// came to.
+    ContinuousFiled(Result<Vec<SourceRun>, String>),
     HermesColumn(HermesColumnMessage),
     HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings

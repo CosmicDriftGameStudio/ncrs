@@ -3,7 +3,6 @@
 
 mod activity;
 mod column;
-mod continuous;
 mod filing_job;
 mod hermes_file;
 mod lifecycle;
@@ -14,12 +13,12 @@ mod rules;
 mod saved_queries;
 mod status;
 mod tags;
+mod watching;
 
 use std::path::{Path, PathBuf};
 
 use iced::Task;
 use ncrs_config::config::{FilingWriteError, LocationTransfer};
-use ncrs_filing::filing_work::FilingSummary;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::{Action, ProtectionStep};
@@ -34,6 +33,7 @@ use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::state::Hermes;
 use crate::tags_page::TagsPage;
+use crate::watching::SourceRun;
 use ncrs_config::config::Filing;
 use ncrs_filing::filing::FilingMessage;
 
@@ -130,8 +130,7 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
         Message::Reviews(inner) => update_reviews(hermes, inner, ctx),
         Message::Activity(inner) => update_activity(hermes, inner),
-        Message::DocumentsFiled(result) => documents_filed(result, ctx),
-        Message::ContinuousFiled(result) => continuous_filed(result, ctx),
+        Message::ContinuousFiled(result) => continuous_filed(hermes, result, ctx),
         Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
         Message::HermesFile(inner) => update_hermes_file(hermes, inner, ctx),
         Message::ToggleFileListTags => return None,
@@ -198,21 +197,13 @@ pub fn exclude_from_hermes(hermes: &Hermes, paths: Vec<PathBuf>) -> Outcome {
     (task, actions)
 }
 
-pub fn documents_filed(result: Result<FilingSummary, String>, ctx: &Ctx<'_>) -> Outcome {
+pub fn continuous_filed(
+    hermes: &mut Hermes,
+    result: Result<Vec<SourceRun>, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
     let mut actions = Vec::new();
-    filing_job::documents_filed(result, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-pub fn continuous_filed(result: Result<Vec<(PathBuf, usize)>, String>, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    continuous::continuous_filed(result, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-pub fn run_filing(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    filing_job::run_filing(hermes, ctx, &mut actions);
+    watching::continuous_filed(hermes, result, ctx, &mut actions);
     (Task::none(), actions)
 }
 

@@ -54,7 +54,6 @@ impl App {
             Message::Tags(inner) => Page::Tags(inner),
             Message::Reviews(inner) => Page::Reviews(inner),
             Message::Activity(inner) => Page::Activity(inner),
-            Message::DocumentsFiled(result) => Page::DocumentsFiled(result),
             Message::ContinuousFiled(result) => Page::ContinuousFiled(result),
             Message::HermesColumn(inner) => Page::HermesColumn(inner),
             _ => return Task::none(),

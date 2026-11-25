@@ -7,7 +7,7 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_pipeline::{Load, Runner, RunnerState, Snapshot};
 
 use super::column::{refresh_hermes_column, settle_reading_again};
-use super::{continuous, filing_job, Outcome};
+use super::{watching, Outcome};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
@@ -177,20 +177,12 @@ fn filing_status_step(
     }
 }
 
-/// The once-a-second look at the pipeline. The filing job comes before the
-/// refiling, which waits for the queue the filing job may have just taken.
+/// The once-a-second look at the pipeline.
 fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
     actions.push(Action::RefreshDocumentsFacts);
     hermes.refresh_filing_snapshot(ctx.now);
     refresh_hermes_column(hermes, ctx);
     let settled = settle_reading_again(hermes, ctx, actions);
-    let plans_made = hermes
-        .live_pipeline()
-        .map_or(0, |runner| runner.snapshot().plans_made);
-    if plans_made > hermes.plans_filed_for || hermes.filing_due {
-        hermes.plans_filed_for = plans_made;
-        filing_job::run_filing(hermes, ctx, actions);
-    }
     actions.push(Action::EnsureChatModel);
     if ctx.chat_open {
         actions.push(Action::CheckChatWaiting);
@@ -202,8 +194,7 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     if let Some(snapshot) = idle_pipeline {
         actions.push(Action::ReadingSettled(snapshot.left_pipeline));
     }
-    continuous::sync_continuous_roots(hermes);
-    continuous::run_continuous(hermes, ctx, actions);
+    watching::run_watching(hermes, ctx, actions);
     let counts = if hermes.live_pipeline().is_some() && hermes.filing_status.tick_wants_counts() {
         request_hermes_counts(hermes)
     } else {

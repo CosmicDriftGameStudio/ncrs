@@ -121,6 +121,11 @@ pub(super) fn watch_with<P: Progress>(
             Ok(backlog) => record_backlog(access, source, &backlog),
         };
     }
+    // Before the walk: while a drive is away this is asked again and again.
+    let targets_waiting = access.waiting(&source.targets);
+    if !targets_waiting.is_empty() {
+        return Ok(WatchedReport::Waiting(targets_waiting));
+    }
     let new = match new_files(access, source, &root, files)? {
         Ok(new) => new,
         Err(err) => return Ok(waiting(err)),

@@ -8,7 +8,7 @@ use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::format;
 use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
-use crate::kit::{list_row, Columns};
+use crate::kit::{self, list_row, Columns};
 use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use crate::tree_list::{tree_row, TreeRow, LABEL_LEAD, TREE_INDENT};
@@ -30,6 +30,70 @@ pub struct PlanFileRow<M> {
 /// second one.
 pub fn plan_file_row<'a, M: Clone + 'a>(
     file: PlanFileRow<M>,
+    columns: &Columns<'_>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    plan_line(file, None, columns, palette)
+}
+
+/// A link behind what happens to a file, like "Make a rule…".
+#[derive(Debug)]
+pub struct PlanLink<M> {
+    pub label: String,
+    pub on_press: M,
+}
+
+/// A [`PlanFileRow`] with links after it: what the user can do about the
+/// file right there.
+#[derive(Debug)]
+pub struct PlanActionRow<M> {
+    pub file: PlanFileRow<M>,
+    pub links: Vec<PlanLink<M>>,
+    /// The link the keyboard is on (Left and Right move it).
+    pub marked_link: Option<usize>,
+}
+
+/// Like [`plan_file_row`]; the links stand at the right end of the row.
+pub fn plan_action_row<'a, M: Clone + 'a>(
+    action: PlanActionRow<M>,
+    columns: &Columns<'_>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let marked = action.marked_link;
+    let chosen = action.file.chosen;
+    let on_cursor = Palette {
+        accent: palette.cursor_text,
+        ..*palette
+    };
+    let links = action.links.into_iter().enumerate().map(|(at, link)| {
+        // A marked link takes the ground of the window, or the mark would be
+        // lost on the cursor fill of its row.
+        let is_marked = marked == Some(at);
+        let ink = if chosen && !is_marked { &on_cursor } else { palette };
+        let shown = kit::text_link(link.label, link.on_press, ink);
+        if is_marked {
+            let ground = palette.background;
+            container(shown)
+                .padding([0.0, spacing::XS])
+                .style(move |_| container::background(ground))
+                .into()
+        } else {
+            shown
+        }
+    });
+    let strip = row(links)
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center);
+    let after_what = container(strip).padding(Padding {
+        left: spacing::M,
+        ..Padding::ZERO
+    });
+    plan_line(action.file, Some(after_what.into()), columns, palette)
+}
+
+fn plan_line<'a, M: Clone + 'a>(
+    file: PlanFileRow<M>,
+    links: Option<Element<'a, M>>,
     columns: &Columns<'_>,
     palette: &Palette,
 ) -> Element<'a, M> {
@@ -61,9 +125,12 @@ pub fn plan_file_row<'a, M: Clone + 'a>(
         columns.portions.get(1).copied().unwrap_or(1),
     ))
     .clip(true);
-    let line = row![columns.cell(0, &file.name, name_color), what_cell]
+    let mut line = row![columns.cell(0, &file.name, name_color), what_cell]
         .height(size::ROW)
         .align_y(alignment::Vertical::Center);
+    if let Some(after) = links {
+        line = line.push(after);
+    }
     list_row(line.into(), file.on_press, file.chosen, true, palette)
 }
 

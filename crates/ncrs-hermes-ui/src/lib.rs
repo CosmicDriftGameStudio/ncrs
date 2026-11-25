@@ -28,9 +28,10 @@ pub mod tags_page;
 pub mod ui;
 pub mod update;
 pub mod view;
+pub mod watching;
 
 pub use action::{Action, ProgressJobBuilder, ProtectionStep, StartProgressJob};
-pub use ctx::{Bin, ContinuousTools, Ctx};
+pub use ctx::{Bin, Ctx};
 pub use cursor_roles::CursorRoles;
 pub use message::{
     ActivityMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage,
@@ -40,14 +41,15 @@ pub use message::{
 pub use state::{Hermes, KeyStoreHandle};
 pub use update::{
     apply_ai_change, apply_saved_filing, change_protection, close_dialog, closing,
-    continuous_filed, dialog_is_open, documents_filed, exclude_from_hermes, filing_restarted,
-    leave_pages, open_filing_status_page, read_paths_again, refresh_hermes_column,
-    request_hermes_column, request_hermes_counts, restart_hermes_module, role_save_failed,
-    run_filing, run_filing_work, run_filing_work_after, set_continuous_filing, set_folder_role,
-    show_page, start_filing_module, update, update_activity, update_filing, update_filing_status,
-    update_hermes_column, update_hermes_overview, update_quick_fix, update_reviews, update_rules,
-    update_saved_queries, update_tags, Outcome, SavedFilingApplies,
+    continuous_filed, dialog_is_open, exclude_from_hermes, filing_restarted, leave_pages,
+    open_filing_status_page, read_paths_again, refresh_hermes_column, request_hermes_column,
+    request_hermes_counts, restart_hermes_module, role_save_failed, run_filing_work,
+    run_filing_work_after, set_continuous_filing, set_folder_role, show_page, start_filing_module,
+    update, update_activity, update_filing, update_filing_status, update_hermes_column,
+    update_hermes_overview, update_quick_fix, update_reviews, update_rules, update_saved_queries,
+    update_tags, Outcome, SavedFilingApplies,
 };
+pub use watching::{SourceRun, Watching};
 pub use view::{
     confirm_again_dialog, dialogs, filing_badge, hermes_line, hermes_status, overview_facts,
     page_content, page_keys, FilingBadge, ViewCtx,

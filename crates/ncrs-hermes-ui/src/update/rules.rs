@@ -64,7 +64,10 @@ pub fn update(hermes: &mut Hermes, message: RulesMessage) -> Task<Message> {
                 return Task::none();
             }
             match result {
-                Ok(()) => run_rules_load(hermes),
+                Ok(()) => {
+                    hermes.watching.mark_all();
+                    run_rules_load(hermes)
+                }
                 Err(detail) => {
                     if let Some(view) = hermes.rules.as_mut() {
                         view.failed(detail);
@@ -197,6 +200,7 @@ fn update_rule_form(hermes: &mut Hermes, message: RuleFormMessage) -> Task<Messa
             match result {
                 Ok(id) => {
                     view.saved(id);
+                    hermes.watching.mark_all();
                     run_rules_load(hermes)
                 }
                 Err(detail) => {

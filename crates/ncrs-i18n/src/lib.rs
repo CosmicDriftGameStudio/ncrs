@@ -374,6 +374,10 @@ mod tests {
                 | Msg::BatchRenameTokenName
                 | Msg::BatchRenameStart
                 | Msg::BatchRenameColumnProblem
+                // Only placeholders and an arrow, or two file patterns: nothing to translate.
+                | Msg::SortingStateRule
+                | Msg::SortingFigureSeveral
+                | Msg::SortingIncludePlaceholder
                 // Git command names, kept as is in German too.
                 | Msg::GitViewToolbarPull
                 | Msg::GitViewToolbarPush

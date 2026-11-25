@@ -161,14 +161,16 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         None
     }
 
-    /// Runner state, the queue per step, waiting candidates and whether a job runs.
+    /// Runner state, the queue per step, whether the watched sources are
+    /// filing and whether a job runs.
     fn pipeline_line(&self) -> String {
-        let (state, queues, candidates) = self.app().pipeline_status_for_test();
-        let (tools, tab_blocks) = self.app().continuous_gates_for_test();
+        let (state, queues, filing_now) = self.app().pipeline_status_for_test();
+        let (allowed, tab_blocks) = self.app().continuous_gates_for_test();
         format!(
-            "runner {state}, queued per step {queues}, {candidates} candidates, jobs busy {}, tools {}, tab blocks {}",
+            "runner {state}, queued per step {queues}, watched filing {}, jobs busy {}, allowed {}, tab blocks {}",
+            if filing_now { "running" } else { "idle" },
             self.app().jobs_busy_for_test(),
-            if tools { "Some" } else { "None" },
+            if allowed { "yes" } else { "no" },
             if tab_blocks { "yes" } else { "no" }
         )
     }

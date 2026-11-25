@@ -12553,6 +12553,558 @@
       "de": "Nur Ordner mit Neuem"
     },
     {
+      "key": "sorting.intro",
+      "context": "Filing page of the settings, sentence under the page title: what the page is for. Sources are folders files come from, targets are folders they go into, rules say which file goes where.",
+      "en": "Files from sources go into targets by rules. If no rule matches, the file stays where it is.",
+      "de": "Dateien aus Quellen kommen nach Regeln in Ziele. Passt keine Regel, bleibt die Datei liegen."
+    },
+    {
+      "key": "sorting.sources_title",
+      "context": "Filing page of the settings: heading of the list of source folders, the folders new files are taken from. Noun, plural.",
+      "en": "Sources",
+      "de": "Quellen"
+    },
+    {
+      "key": "sorting.sources_note",
+      "context": "Filing page of the settings: short note after the heading Sources. Says that Hermes watches the folders and files what arrives.",
+      "en": "are watched",
+      "de": "werden überwacht"
+    },
+    {
+      "key": "sorting.add_source",
+      "context": "Filing page of the settings: button that opens the dialog for a new source folder. The plus is part of the label; the ellipsis means a dialog follows.",
+      "en": "+ Source…",
+      "de": "+ Quelle…"
+    },
+    {
+      "key": "sorting.targets_title",
+      "context": "Filing page of the settings: heading of the list of target folders with the rules of each. Targets are the folders files are filed into.",
+      "en": "Targets and their rules",
+      "de": "Ziele und ihre Regeln"
+    },
+    {
+      "key": "sorting.targets_note",
+      "context": "Filing page of the settings: short note after the heading Targets and their rules. The rules of a target are checked in the order of the list.",
+      "en": "top to bottom, the first match applies",
+      "de": "von oben nach unten, die erste passende gilt"
+    },
+    {
+      "key": "sorting.add_target",
+      "context": "Filing page of the settings: button that opens the dialog for a new target folder. The plus is part of the label; the ellipsis means a dialog follows.",
+      "en": "+ Target…",
+      "de": "+ Ziel…"
+    },
+    {
+      "key": "sorting.add_rule",
+      "context": "Filing page of the settings: button on the line of a target that opens the dialog for a new rule of this target. The plus is part of the label.",
+      "en": "+ Rule…",
+      "de": "+ Regel…"
+    },
+    {
+      "key": "sorting.suggest_rules",
+      "context": "Filing page of the settings: button on the line of a target that already has rules. Hermes reads the folders of the target that no rule covers and proposes rules for them.",
+      "en": "Hermes: suggest rules",
+      "de": "Hermes: Regeln vorschlagen"
+    },
+    {
+      "key": "sorting.suggest_scheme",
+      "context": "Filing page of the settings: main button on the line of a target that has no rules yet. Hermes reads the target and the sources and proposes a whole set of rules, the scheme.",
+      "en": "Hermes: suggest a scheme",
+      "de": "Hermes: Schema vorschlagen"
+    },
+    {
+      "key": "sorting.no_scheme",
+      "context": "Filing page of the settings: warning on the line of a target that has no rules yet. A scheme is the set of rules that says which file goes into which folder.",
+      "en": "No scheme yet.",
+      "de": "Noch kein Schema."
+    },
+    {
+      "key": "sorting.target_from",
+      "context": "Filing page of the settings: second line of a target. {path} is the folder of the target, {sources} the names of the sources whose files can come into it, separated by commas.",
+      "en": "{path} · from {sources}",
+      "de": "{path} · aus {sources}"
+    },
+    {
+      "key": "sorting.target_no_source",
+      "context": "Filing page of the settings: second line of a target that no source files into. {path} is the folder of the target.",
+      "en": "{path} · no source yet",
+      "de": "{path} · noch keine Quelle"
+    },
+    {
+      "key": "sorting.source_summary",
+      "context": "Filing page of the settings: status on the line of a source. {files} is what happens to the files (move or copy), {no_text} what happens to a file in which no text was found (ask or skip).",
+      "en": "{files} · without text: {no_text}",
+      "de": "{files} · ohne Text: {no_text}"
+    },
+    {
+      "key": "sorting.source_move",
+      "context": "Filing page of the settings: part of the status of a source, the files are moved into the target. Lower case verb, fills {files} of the status.",
+      "en": "move",
+      "de": "verschieben"
+    },
+    {
+      "key": "sorting.source_copy",
+      "context": "Filing page of the settings: part of the status of a source, the files are copied into the target. Lower case verb, fills {files} of the status.",
+      "en": "copy",
+      "de": "kopieren"
+    },
+    {
+      "key": "sorting.source_no_text_ask",
+      "context": "Filing page of the settings: part of the status of a source, a file without recognised text makes Hermes ask what to do. Lower case, fills {no_text} of the status.",
+      "en": "ask",
+      "de": "fragen"
+    },
+    {
+      "key": "sorting.source_no_text_skip",
+      "context": "Filing page of the settings: part of the status of a source, a file without recognised text is skipped and stays where it is. Lower case, fills {no_text} of the status.",
+      "en": "skip",
+      "de": "überspringen"
+    },
+    {
+      "key": "sorting.rule_hits",
+      "context": "Filing page of the settings: on the line of a rule, how many documents of the index the rule matches. {count} is the number.",
+      "en": "{count} matches",
+      "de": "{count} Treffer"
+    },
+    {
+      "key": "sorting.change",
+      "context": "Filing page of the settings: button on the line of a source, a target or a rule that opens its dialog. Verb.",
+      "en": "Change",
+      "de": "Ändern"
+    },
+    {
+      "key": "sorting.remove",
+      "context": "Filing page of the settings: button on the line of a source, a target or a rule that removes it. Files already filed stay where they are. Verb.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "sorting.sources_empty",
+      "context": "Filing page of the settings: shown under the heading Sources while the list is empty.",
+      "en": "No source yet.",
+      "de": "Noch keine Quelle."
+    },
+    {
+      "key": "sorting.targets_empty",
+      "context": "Filing page of the settings: shown under the heading Targets and their rules while the list is empty.",
+      "en": "No target yet.",
+      "de": "Noch kein Ziel."
+    },
+    {
+      "key": "sorting.target_needed",
+      "context": "Source dialog: hint while there is no target to choose, so the source cannot be saved yet. A button next to it makes a target.",
+      "en": "Make a target first.",
+      "de": "Zuerst ein Ziel anlegen."
+    },
+    {
+      "key": "sorting.source_title",
+      "context": "Title of the dialog of a source folder that Hermes watches. Noun.",
+      "en": "Source",
+      "de": "Quelle"
+    },
+    {
+      "key": "sorting.once_title",
+      "context": "Title of the dialog that files the files of one folder once, opened from the context menu of a folder. The same dialog as for a source, without watching.",
+      "en": "Sorting",
+      "de": "Einsortieren"
+    },
+    {
+      "key": "sorting.field_folder",
+      "context": "Source dialog: label of the field with the path of the folder the files are taken from.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "sorting.field_include",
+      "context": "Source dialog: label of the field with the file patterns to take. Several patterns are separated by a semicolon, an empty field takes every file.",
+      "en": "Include",
+      "de": "Einschließen"
+    },
+    {
+      "key": "sorting.include_placeholder",
+      "context": "Source dialog: grey example in the empty Include field. Two file patterns separated by a semicolon; the same in every language.",
+      "en": "*.pdf;*.jpg",
+      "de": "*.pdf;*.jpg"
+    },
+    {
+      "key": "sorting.field_exclude",
+      "context": "Source dialog: label of the field with the file patterns to leave out. Several patterns are separated by a semicolon.",
+      "en": "Exclude",
+      "de": "Ausschließen"
+    },
+    {
+      "key": "sorting.field_targets",
+      "context": "Source dialog: label of the list of targets with a tick box each. The files of the source may go into the ticked targets.",
+      "en": "Targets",
+      "de": "Ziele"
+    },
+    {
+      "key": "sorting.field_when",
+      "context": "Source dialog: label of the choice between watching the folder all the time and filing it once.",
+      "en": "When",
+      "de": "Wann"
+    },
+    {
+      "key": "sorting.when_watch",
+      "context": "Source dialog: choice of the field When. Hermes watches the folder and files what arrives. Verb.",
+      "en": "Watch",
+      "de": "Überwachen"
+    },
+    {
+      "key": "sorting.when_once",
+      "context": "Source dialog: choice of the field When. The folder is filed one time, nothing is watched afterwards.",
+      "en": "Once",
+      "de": "Einmal"
+    },
+    {
+      "key": "sorting.field_files",
+      "context": "Source dialog: label of the choice between copying and moving the files into the target.",
+      "en": "Files",
+      "de": "Dateien"
+    },
+    {
+      "key": "sorting.files_copy",
+      "context": "Source dialog: choice of the field Files. The original stays in the source. Verb.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "sorting.files_move",
+      "context": "Source dialog: choice of the field Files. The original leaves the source. Verb.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "sorting.field_no_text",
+      "context": "Source dialog: label of the choice what happens to a file in which no text was recognised.",
+      "en": "No text found",
+      "de": "Kein Text erkannt"
+    },
+    {
+      "key": "sorting.no_text_ask",
+      "context": "Source dialog: choice of the field No text found. Hermes asks what to do with the file. Verb.",
+      "en": "Ask",
+      "de": "Fragen"
+    },
+    {
+      "key": "sorting.no_text_skip",
+      "context": "Source dialog: choice of the field No text found. The file is skipped and stays where it is. Verb.",
+      "en": "Skip",
+      "de": "Überspringen"
+    },
+    {
+      "key": "sorting.field_several",
+      "context": "Source dialog: label of the choice what happens to a file that matches rules of several targets.",
+      "en": "Several targets match",
+      "de": "Mehrere Ziele passen"
+    },
+    {
+      "key": "sorting.several_ask",
+      "context": "Source dialog: choice of the field Several targets match. Hermes asks which targets get the file. Verb.",
+      "en": "Ask",
+      "de": "Fragen"
+    },
+    {
+      "key": "sorting.several_copy_all",
+      "context": "Source dialog: choice of the field Several targets match. The file is copied into every target that matches.",
+      "en": "Copy to all",
+      "de": "In alle kopieren"
+    },
+    {
+      "key": "sorting.show_plan",
+      "context": "Button of the dialog that files a folder once: closes the dialog and shows the plan of what would happen, nothing is moved yet.",
+      "en": "Show plan",
+      "de": "Plan zeigen"
+    },
+    {
+      "key": "sorting.glob_problem",
+      "context": "Source dialog: error under the Include or Exclude field. {pattern} is the file pattern that cannot be used, {reason} the explanation of the parser.",
+      "en": "The pattern “{pattern}” cannot be used: {reason}",
+      "de": "Das Muster „{pattern}“ ist nicht gültig: {reason}"
+    },
+    {
+      "key": "sorting.rule_target",
+      "context": "Rule dialog: label of the dropdown that chooses the target folder the files of this rule are filed into.",
+      "en": "Target",
+      "de": "Ziel"
+    },
+    {
+      "key": "sorting.rule_then",
+      "context": "Rule dialog: heading in capitals over the pattern, after the conditions. Reads “if the document … then into …”.",
+      "en": "THEN INTO",
+      "de": "DANN NACH"
+    },
+    {
+      "key": "sorting.rule_pattern",
+      "context": "Rule dialog: label of the field with the pattern that makes the path and the name of the filed file, built from blocks like the sender and the date.",
+      "en": "Pattern",
+      "de": "Muster"
+    },
+    {
+      "key": "sorting.pattern_result",
+      "context": "Rule dialog: dimmed line under the pattern. {path} is the full path a real example document would get.",
+      "en": "Result: {path}",
+      "de": "Ergebnis: {path}"
+    },
+    {
+      "key": "sorting.state_no_date",
+      "context": "Rule dialog, trial run: a document has no recognised date, so the block {block} of the pattern stays empty and the file is left where it is. {block} is the block in braces, e.g. the year.",
+      "en": "no date found, {block} stays empty · stays where it is",
+      "de": "kein Datum erkannt, {block} bleibt leer · bleibt liegen"
+    },
+    {
+      "key": "sorting.state_no_text_ask",
+      "context": "Rule dialog, trial run: no text was recognised in a document and Hermes will ask what to do with it.",
+      "en": "no text found · ask",
+      "de": "kein Text erkannt · fragen"
+    },
+    {
+      "key": "sorting.plan_source",
+      "context": "Filing tab: heading over the left list, before the folder of the source and its file patterns. Noun.",
+      "en": "Source",
+      "de": "Quelle"
+    },
+    {
+      "key": "sorting.plan_targets",
+      "context": "Filing tab: heading over the right tree, before the chips of the targets. Noun, plural.",
+      "en": "Targets",
+      "de": "Ziele"
+    },
+    {
+      "key": "sorting.plan_column_what",
+      "context": "Filing tab: column heading of the left list. Shows which rule matches a file and where it goes.",
+      "en": "Rule → target",
+      "de": "Regel → Ziel"
+    },
+    {
+      "key": "sorting.state_rule",
+      "context": "Filing tab: what happens to a file. {rule} is the name of the matching rule, {target} the short name of the target (T1), {path} the new path of the file inside the target.",
+      "en": "{rule} → {target} {path}",
+      "de": "{rule} → {target} {path}"
+    },
+    {
+      "key": "sorting.state_present",
+      "context": "Filing tab: the file is in the target already. {target} is the short name of the target (T1), {path} the path of the existing file inside it.",
+      "en": "= already there: {target} {path}",
+      "de": "= schon da: {target} {path}"
+    },
+    {
+      "key": "sorting.state_no_rule",
+      "context": "Filing tab: no rule matches the file, so it is not filed. Links to make a rule follow.",
+      "en": "no rule matches · stays where it is",
+      "de": "keine Regel passt · bleibt liegen"
+    },
+    {
+      "key": "sorting.state_no_text",
+      "context": "Filing tab: no text was recognised in the file, so no rule can match. A link to ask follows.",
+      "en": "no text found · stays where it is",
+      "de": "kein Text erkannt · bleibt liegen"
+    },
+    {
+      "key": "sorting.state_several",
+      "context": "Filing tab: rules of several targets match the file. {targets} is the list of their short names, e.g. “T1 and T2”.",
+      "en": "matches {targets}",
+      "de": "passt in {targets}"
+    },
+    {
+      "key": "sorting.targets_and",
+      "context": "Two short names of targets joined, e.g. “T1 and T2”. {first} and {second} are the names.",
+      "en": "{first} and {second}",
+      "de": "{first} und {second}"
+    },
+    {
+      "key": "sorting.link_make_rule",
+      "context": "Filing tab: link behind a file that no rule matches. Opens the rule dialog filled with what is known of the file. The ellipsis means a dialog follows.",
+      "en": "Make a rule…",
+      "de": "Regel anlegen…"
+    },
+    {
+      "key": "sorting.link_suggest_rule",
+      "context": "Filing tab: link behind a file that no rule matches. Hermes proposes the missing rule.",
+      "en": "Hermes: suggest a rule",
+      "de": "Hermes: Regel vorschlagen"
+    },
+    {
+      "key": "sorting.link_ask",
+      "context": "Filing tab: link behind a file that cannot be filed without a decision of the user (no text, several targets). Opens the question. Lower case verb.",
+      "en": "ask",
+      "de": "fragen"
+    },
+    {
+      "key": "sorting.figure_read",
+      "context": "Filing tab, status bar: how many files of the source were looked at. {count} is the number.",
+      "en": "{count} read",
+      "de": "{count} gelesen"
+    },
+    {
+      "key": "sorting.figure_by_rule",
+      "context": "Filing tab, status bar: how many files a rule puts into a target. {count} is the number.",
+      "en": "{count} by rule",
+      "de": "{count} nach Regel"
+    },
+    {
+      "key": "sorting.figure_present",
+      "context": "Filing tab, status bar: how many files are in their target already. {count} is the number.",
+      "en": "{count} already there",
+      "de": "{count} schon da"
+    },
+    {
+      "key": "sorting.figure_no_rule",
+      "context": "Filing tab, status bar: how many files no rule matches. {count} is the number.",
+      "en": "{count} without a matching rule",
+      "de": "{count} ohne passende Regel"
+    },
+    {
+      "key": "sorting.figure_no_text",
+      "context": "Filing tab, status bar: how many files have no recognised text. {count} is the number.",
+      "en": "{count} without text",
+      "de": "{count} ohne Text"
+    },
+    {
+      "key": "sorting.figure_several",
+      "context": "Filing tab, status bar: how many files match rules of several targets. {count} is the number, {targets} the short names of those targets.",
+      "en": "{count} in {targets}",
+      "de": "{count} in {targets}"
+    },
+    {
+      "key": "sorting.button_copy",
+      "context": "Filing tab, button in the status bar: copies the files that a rule files. {count} is the number of files.",
+      "en": "Copy {count}",
+      "de": "{count} kopieren"
+    },
+    {
+      "key": "sorting.button_move",
+      "context": "Filing tab, button in the status bar: moves the files that a rule files. {count} is the number of files.",
+      "en": "Move {count}",
+      "de": "{count} verschieben"
+    },
+    {
+      "key": "sorting.question_matches",
+      "context": "Filing tab, subtitle of the question about one file: rules of two targets match it.",
+      "en": "matches two targets",
+      "de": "passt in zwei Ziele"
+    },
+    {
+      "key": "sorting.question_option",
+      "context": "Filing tab, line of the question about one file, behind the chip of a target. {rule} is the name of the rule, {path} the path the file would get.",
+      "en": "Rule {rule} → {path}",
+      "de": "Regel {rule} → {path}"
+    },
+    {
+      "key": "sorting.question_both",
+      "context": "Filing tab, button of the question about one file that matches two targets: copy it into both.",
+      "en": "Copy to both",
+      "de": "In beide kopieren"
+    },
+    {
+      "key": "sorting.question_only",
+      "context": "Filing tab, button of the question about one file that matches two targets: file it into one only. {target} is its short name (T1).",
+      "en": "Only {target}",
+      "de": "Nur {target}"
+    },
+    {
+      "key": "sorting.question_leave",
+      "context": "Filing tab, hint beside the Esc key in the question about one file: the file is left where it is.",
+      "en": "leave it",
+      "de": "liegen lassen"
+    },
+    {
+      "key": "sorting.scheme_title",
+      "context": "Title of the dialog in which Hermes proposes a whole set of rules for a target that has none.",
+      "en": "Suggest a scheme",
+      "de": "Schema vorschlagen"
+    },
+    {
+      "key": "sorting.scheme_read",
+      "context": "Scheme dialog: what Hermes looked at. {files} is the number of files read, {sources} the number of sources, {fit} how many files the proposed {rules} rules match, {rest} how many no rule matches.",
+      "en": "Read: {files} files in {sources} sources. {fit} match these {rules} rules, {rest} match none.",
+      "de": "Gelesen: {files} Dateien in {sources} Quellen. Davon passen {fit} in diese {rules} Regeln, {rest} in keine."
+    },
+    {
+      "key": "sorting.scheme_again",
+      "context": "Button of the dialogs in which Hermes proposes rules: asks for a different proposal.",
+      "en": "Suggest differently",
+      "de": "Anders vorschlagen"
+    },
+    {
+      "key": "sorting.take_rules",
+      "context": "Main button of the dialogs in which Hermes proposes rules: saves the ticked rules. {count} is the number of rules.",
+      "en": "Take {count} rules",
+      "de": "{count} Regeln übernehmen"
+    },
+    {
+      "key": "sorting.scheme_example",
+      "context": "Scheme dialog: dimmed line under the pattern of a proposed rule. {example} is the path a real file would get.",
+      "en": "e.g. {example}",
+      "de": "z. B. {example}"
+    },
+    {
+      "key": "sorting.scheme_files",
+      "context": "Scheme dialog and rule proposals: how many files a proposed rule matches. {count} is the number.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "sorting.suggest_rule_title",
+      "context": "Title of the dialog in which Hermes proposes the one rule that a file without a matching rule needs.",
+      "en": "Suggest a rule",
+      "de": "Regel vorschlagen"
+    },
+    {
+      "key": "sorting.suggest_rule_found",
+      "context": "Rule proposal dialog: what Hermes recognised in the file. {facts} lists sender, kind and date.",
+      "en": "Found: {facts}",
+      "de": "Erkannt: {facts}"
+    },
+    {
+      "key": "sorting.suggest_rule_section",
+      "context": "Rule proposal dialog: heading in capitals over the fields of the new rule. {target} is the chip text and name of the target the rule goes into.",
+      "en": "NEW RULE IN {target}",
+      "de": "NEUE REGEL IN {target}"
+    },
+    {
+      "key": "sorting.suggest_rule_if",
+      "context": "Rule proposal dialog: label of the line with the condition of the new rule. Reads “if: sender is …”.",
+      "en": "If",
+      "de": "Wenn"
+    },
+    {
+      "key": "sorting.suggest_rule_also",
+      "context": "Rule proposal dialog: the new rule also matches other files that lie in the source. {count} is the number of those files.",
+      "en": "Also matches {count} more files",
+      "de": "Passt auch auf {count} weitere Dateien"
+    },
+    {
+      "key": "sorting.suggest_rule_edit",
+      "context": "Rule proposal dialog: button that opens the full rule dialog with the proposal. The ellipsis means a dialog follows.",
+      "en": "Change…",
+      "de": "Ändern…"
+    },
+    {
+      "key": "sorting.suggest_rule_create",
+      "context": "Rule proposal dialog: main button that saves the proposed rule.",
+      "en": "Make rule",
+      "de": "Regel anlegen"
+    },
+    {
+      "key": "sorting.suggest_rules_title",
+      "context": "Title of the dialog in which Hermes proposes more rules for a target that has rules already.",
+      "en": "Suggest rules",
+      "de": "Regeln vorschlagen"
+    },
+    {
+      "key": "sorting.suggest_rules_intro",
+      "context": "Rules proposal dialog: what is missing. {rules} is the number of rules the target has, {folders} the number of folders of the target that no rule covers.",
+      "en": "{rules} rules exist. {folders} folders in the target are covered by no rule:",
+      "de": "{rules} Regeln sind da. {folders} Ordner im Ziel deckt keine Regel ab:"
+    },
+    {
+      "key": "sorting.suggest_rules_none",
+      "context": "Rules proposal dialog: line shown when the model found nothing to propose.",
+      "en": "Hermes found no further rule to suggest.",
+      "de": "Hermes hat keine weitere Regel gefunden."
+    },
+    {
       "key": "filing_view.more_there",
       "context": "Filing tab: line under the existing files of a folder of the write folder, grey. {count} is how many more files are there that are not listed.",
       "en": "… {count} more already there",

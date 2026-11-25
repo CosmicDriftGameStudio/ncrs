@@ -304,6 +304,40 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         .with_buttons(pressable(&buttons), build)
     }
 
+    /// The head of a group of rows that folds (a target and its rules): the
+    /// arrow, `lead` (its chip), the name as a link, `description` under it and
+    /// the buttons. Folding is the first thing Enter does on the row and what a
+    /// click on the name does; the arrow itself only shows the state.
+    pub fn folding_head(
+        open: bool,
+        lead: Element<'a, M>,
+        label: String,
+        description: Option<String>,
+        on_toggle: M,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let arrow = if open { "▾" } else { "▸" };
+        let lead = Row::new()
+            .push(status_text(arrow.to_owned(), palette.text))
+            .push(lead)
+            .spacing(spacing::M)
+            .align_y(alignment::Vertical::Center);
+        let build = |marked: Option<usize>| {
+            let marked_button = marked.and_then(|at| at.checked_sub(1));
+            button_row(None, &buttons, marked_button, palette)
+        };
+        let mut presses = vec![on_toggle.clone()];
+        presses.extend(pressable(&buttons));
+        Self {
+            list_indent: Some(0.0),
+            ..Self::text(label, description, build(None))
+        }
+        .with_buttons(presses, build)
+        .with_leading(lead.into())
+        .with_label_action(on_toggle)
+    }
+
     /// A listed row with an input field before its buttons; `field` draws the
     /// field each time the row is built.
     pub fn listed_field_buttons(
@@ -633,6 +667,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                     Palette {
                         text: palette.cursor_text,
                         dim_text: palette.cursor_text.scale_alpha(HINT_ON_CURSOR_ALPHA),
+                        accent: palette.cursor_text,
                         ..*palette
                     }
                 } else {

@@ -199,6 +199,7 @@ pub fn update(
         }
         ReviewsMessage::Filed(summary) => {
             answered(hermes, &summary, ctx, actions);
+            hermes.watching.mark_all();
             actions.push(Action::RequestHermesCounts);
             if let Some(page) = hermes.reviews.as_mut() {
                 page.work_finished();

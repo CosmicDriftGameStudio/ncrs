@@ -16,6 +16,7 @@ use crate::reviews_page::ReviewsPage;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::tags_page::TagsPage;
+use crate::watching::Watching;
 
 /// What only the Hermes pages use: the pages that are up. Each page has a
 /// generation, so the answer of work that was started for a page that was
@@ -38,8 +39,6 @@ pub struct Hermes {
     pub reviews_generation: u64,
     pub activity: Option<ActivityPage>,
     pub activity_generation: u64,
-    /// The planned documents wait for a free queue; the next tick asks again.
-    pub filing_due: bool,
     /// What the filing status page and the status bar show of the pipeline.
     pub filing_status: FilingStatus,
     /// What the index says about the files and folders the panels show.
@@ -64,8 +63,8 @@ pub struct Hermes {
     pub filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pub pipeline: Option<ncrs_pipeline::Runner>,
-    /// `Snapshot::plans_made` the filing job was last asked for.
-    pub plans_filed_for: usize,
+    /// What the watched sources are to be filed from next.
+    pub watching: Watching,
     /// The module is being rebuilt after an AI setting changed: its
     /// generation and the filing config it starts with.
     pub filing_restart: Option<(u64, Filing)>,

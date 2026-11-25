@@ -275,7 +275,7 @@ fn gallery<'a>(palette: &Palette) -> Cell<'a> {
                 Some(kit::segmented(&options, 0, true, p)),
                 Some(kit::segmented(&options, 1, true, p)),
                 Some(kit::segmented(&options, 0, false, p)),
-                None,
+                Some(kit::focusable_segmented(&options, 0, true, true, p)),
             ),
             p,
         ),
@@ -489,6 +489,197 @@ mod favourites_bar_ui_tests {
     fn the_favourites_bar_looks_the_same_in_every_preset() {
         for preset in ThemePreset::ALL {
             bar_picture(preset);
+        }
+    }
+}
+
+/// The blocks of the filing pages apart from the grid, so the grid stays as it is.
+mod filing_blocks_ui_tests {
+    use super::*;
+    use iced::widget::column;
+    use crate::hermes_kit::TargetCheck;
+    use crate::kit::{Columns, PatternField};
+    use crate::plan_rows::{plan_action_row, plan_file_row, PlanActionRow, PlanFileRow, PlanLink};
+    use crate::setting_rows::RowButton;
+
+    fn chips<'a>(p: &Palette) -> Cell<'a> {
+        let chips = (0..7).map(|index| {
+            hermes_kit::target_chip(index, &format!("T{}", index + 1), p)
+        });
+        Row::with_children(chips).spacing(spacing::M).into()
+    }
+
+    fn target_rows<'a>(p: &Palette) -> Cell<'a> {
+        let row = |state: Check, index: usize, number: &'a str, name: &'a str, marked: bool| {
+            hermes_kit::target_check_row(
+                TargetCheck {
+                    state,
+                    on_toggle: Some(()),
+                    index,
+                    number,
+                    name,
+                    path: "/Volumes/Vault/Documents",
+                    marked,
+                },
+                p,
+            )
+        };
+        column![
+            row(Check::On, 0, "T1", "Documents", false),
+            row(Check::On, 1, "T2", "Company", true),
+            row(Check::Off, 2, "T3", "Family", false),
+        ]
+        .into()
+    }
+
+    fn pattern<'a>(p: &Palette) -> Cell<'a> {
+        const TOKENS: [(&str, ()); 4] = [("{sender}", ()), ("{kind}", ()), ("{year}", ()), ("{day}", ())];
+        let field = |value: &'a str, preview: Option<&str>, problem: Option<&str>| {
+            kit::pattern_field(
+                PatternField {
+                    value,
+                    id: "gallery-pattern",
+                    on_input: Box::new(|_| ()),
+                    on_submit: (),
+                    tokens: &TOKENS,
+                    preview: preview.map(str::to_owned),
+                    problem: problem.map(str::to_owned),
+                },
+                p,
+            )
+        };
+        column![
+            kit::token_row("Add", &TOKENS, p),
+            field(
+                "Bank/{sender}/{year}/{kind}.pdf",
+                Some("Result: Bank/Example Bank/2026/Statement.pdf"),
+                None,
+            ),
+            field("Bank/{sender}/{unknown}", None, Some("{unknown} is not a block")),
+        ]
+        .spacing(spacing::M)
+        .into()
+    }
+
+    fn plan_rows<'a>(p: &Palette) -> Cell<'a> {
+        let columns = Columns {
+            portions: &[4, 6],
+            line_chars: 110,
+        };
+        let file = |chosen: bool| PlanFileRow {
+            name: "scan-006.pdf".to_owned(),
+            what: "no rule matches · stays where it is".to_owned(),
+            what_color: p.dim_text,
+            chip: None,
+            chosen,
+            on_press: (),
+        };
+        let links = || {
+            vec![
+                PlanLink {
+                    label: "Make a rule…".to_owned(),
+                    on_press: (),
+                },
+                PlanLink {
+                    label: "Hermes: suggest a rule".to_owned(),
+                    on_press: (),
+                },
+            ]
+        };
+        column![
+            plan_file_row(file(false), &columns, p),
+            plan_action_row(
+                PlanActionRow {
+                    file: file(false),
+                    links: links(),
+                    marked_link: None,
+                },
+                &columns,
+                p,
+            ),
+            plan_action_row(
+                PlanActionRow {
+                    file: file(true),
+                    links: links(),
+                    marked_link: Some(1),
+                },
+                &columns,
+                p,
+            ),
+        ]
+        .into()
+    }
+
+    fn folding_heads<'a>(p: &Palette) -> Cell<'a> {
+        let head = |open: bool, index: usize| {
+            SettingRow::folding_head(
+                open,
+                hermes_kit::target_chip(index, "T1", p),
+                "Documents".to_owned(),
+                Some("/Volumes/Vault/Documents · from Downloads".to_owned()),
+                (),
+                vec![
+                    RowButton::new("+ Rule…", Some(()), Tone::Secondary),
+                    RowButton::new("Remove", Some(()), Tone::Secondary),
+                ],
+                p,
+            )
+        };
+        let group = Group {
+            intro: None,
+            title: String::new(),
+            rows: vec![head(true, 0), head(false, 1)],
+        };
+        let focus = RowFocus {
+            row: 1,
+            open: None,
+            button: 0,
+        };
+        let rows = setting_rows::sections_with_focus(
+            vec![group],
+            |_| true,
+            None,
+            Some(focus),
+            |_, _| None,
+            p,
+        );
+        column(rows).width(Length::Fill).into()
+    }
+
+    fn picture(preset: ThemePreset) {
+        let palette = preset.palette();
+        let p = &palette;
+        let content: Cell<'_> = column![
+            chips(p),
+            target_rows(p),
+            pattern(p),
+            plan_rows(p),
+            folding_heads(p),
+        ]
+        .spacing(spacing::L)
+        .into();
+        let name = format!("filing-blocks-{}", format!("{preset:?}").to_lowercase());
+        let matches = Simulator::with_size(
+            iced::Settings {
+                default_font: crate::APP_FONT,
+                ..iced::Settings::default()
+            },
+            Size::new(900.0, 640.0),
+            container(content)
+                .padding(spacing::XXL)
+                .style(theme::panel(p)),
+        )
+        .snapshot(&iced::Theme::Dark)
+        .unwrap()
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
+        .unwrap();
+        assert!(matches, "{name} differs from its image");
+    }
+
+    #[test]
+    fn the_filing_blocks_look_the_same_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            picture(preset);
         }
     }
 }

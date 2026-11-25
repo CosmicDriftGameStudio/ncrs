@@ -72,6 +72,46 @@ pub fn chip<'a, M: Clone + 'a>(
         .into()
 }
 
+/// The accent of the target at `index` (0 is T1): the "on" role, then
+/// colours that are not the yellow of the focus and differ from each other in
+/// every preset. Past the last one a target is told apart by its number alone.
+fn target_tint(index: usize, palette: &Palette) -> Option<Color> {
+    [
+        palette.primary_button().0,
+        palette.directory,
+        palette.tagged,
+    ]
+    .get(index)
+    .copied()
+}
+
+/// The chip of a target, 20 px: `label` ("T1", or "T1 Documents") in the
+/// colour of the target at `index`, counted from 0 by the number the target
+/// got when it was made. Past the third it is a plain grey chip.
+/// It has its own ground, so it reads on a marked row too.
+pub fn target_chip<'a, M: Clone + 'a>(
+    index: usize,
+    label: &str,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let tint = target_tint(index, palette).unwrap_or(palette.dim_text);
+    let ground = palette.background;
+    container(small(label.to_owned(), tint))
+        .padding([0.0, GAP_S])
+        .height(CHIP_HEIGHT)
+        .align_y(alignment::Vertical::Center)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(ground)),
+            border: Border {
+                color: tint,
+                width: 1.0,
+                radius: theme::radius::CORNER.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 fn filter_caption(label: &str, chosen: Option<&str>) -> String {
     match chosen {
         Some(value) => format!("{label}: {value}"),

@@ -84,10 +84,8 @@ impl App {
         } else {
             Vec::new()
         };
-        // Read before Hermes is taken out: the tools come from its module.
-        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let mut ctx = self.hermes_ctx(&hermes, Vec::new(), continuous);
+        let mut ctx = self.hermes_ctx(&hermes, Vec::new());
         ctx.action_sources = action_sources;
         let asked = ncrs_hermes_ui::update(
             &mut hermes,
@@ -124,31 +122,10 @@ impl App {
         task
     }
 
-    /// The handle and the model of the background filing, when Hermes is
-    /// ready and its AI is on.
-    pub(in crate::app) fn continuous_tools(&self) -> Option<ncrs_hermes_ui::ContinuousTools> {
-        // Locked, the background filing waits without a word.
-        if !self.changes_allowed() {
-            return None;
-        }
-        let model = self
-            .chat_ai_on()
-            .then(|| self.chat_model.clone())
-            .flatten()?;
-        match self.chat_availability() {
-            ncrs_hermes_chat::Availability::Ready(ready) => Some(ncrs_hermes_ui::ContinuousTools {
-                access: (*ready).with_model(Some(Arc::clone(&model))),
-                model,
-            }),
-            _ => None,
-        }
-    }
-
     fn hermes_ctx(
         &self,
         hermes: &ncrs_hermes_ui::Hermes,
         inquiry_paths: Vec<PathBuf>,
-        continuous: Option<ncrs_hermes_ui::ContinuousTools>,
     ) -> ncrs_hermes_ui::Ctx<'_> {
         let side = self.panels.active;
         let panel = self.panel(side);
@@ -173,7 +150,8 @@ impl App {
             chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
-            continuous,
+            // Locked, the background filing waits without a word.
+            watching_allowed: self.changes_allowed(),
             trash: ncrs_hermes_ui::Bin(Arc::clone(&self.trash)),
             filing_tab_source: self
                 .filing_view
@@ -239,10 +217,8 @@ impl App {
         inquiry_paths: Vec<PathBuf>,
         step: impl FnOnce(&mut ncrs_hermes_ui::Hermes, &ncrs_hermes_ui::Ctx<'_>) -> R,
     ) -> R {
-        // Read before Hermes is taken out: the tools come from its module.
-        let continuous = self.continuous_tools();
         let mut hermes = std::mem::take(&mut self.hermes);
-        let ctx = self.hermes_ctx(&hermes, inquiry_paths, continuous);
+        let ctx = self.hermes_ctx(&hermes, inquiry_paths);
         let outcome = step(&mut hermes, &ctx);
         self.hermes = hermes;
         outcome

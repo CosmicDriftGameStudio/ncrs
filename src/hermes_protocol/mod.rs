@@ -179,7 +179,7 @@ struct Protocol<P: iced::Program<State = App, Message = Message> + 'static> {
     /// The run started from the kept index.
     reused: bool,
     /// What each background filing job reported, in the order it came.
-    background_reports: Vec<Result<Vec<(PathBuf, usize)>, String>>,
+    background_reports: Vec<Result<Vec<ncrs_hermes_ui::SourceRun>, String>>,
     /// The longest `deliver` since `NCRS_EVAL_CONTINUOUS` started its wait.
     longest_deliver: Duration,
     /// The message that took `longest_deliver`, cut to its variant path.

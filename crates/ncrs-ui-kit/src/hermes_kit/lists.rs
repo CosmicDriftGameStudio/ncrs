@@ -103,6 +103,57 @@ pub fn list_row_two<'a, M: Clone + 'a>(
     .into()
 }
 
+/// A target in a list where some are ticked.
+#[derive(Debug)]
+pub struct TargetCheck<'a, M> {
+    pub state: Check,
+    /// Toggles the target; a click anywhere on the row does.
+    pub on_toggle: Option<M>,
+    /// The colour of the chip; see [`target_chip`].
+    pub index: usize,
+    /// "T1": the number the target got when it was made.
+    pub number: &'a str,
+    pub name: &'a str,
+    pub path: &'a str,
+    /// The keyboard is on this row.
+    pub marked: bool,
+}
+
+/// A row of 28 px: the box, the chip of the target, its name and its path
+/// dimmed. A marked row is outlined like a row of the settings.
+pub fn target_check_row<'a, M: Clone + 'a>(
+    target: TargetCheck<'a, M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let (name_color, path_color) = if target.marked {
+        (palette.cursor_text, palette.cursor_text)
+    } else {
+        (palette.text, palette.dim_text)
+    };
+    let line = Row::new()
+        .push(kit::checkbox(target.state, None, palette))
+        .push(target_chip(target.index, target.number, palette))
+        .push(body(target.name.to_owned(), name_color))
+        .push(small(target.path.to_owned(), path_color))
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center);
+    let row = container(line)
+        .width(Length::Fill)
+        .height(ROW_ONE_LINE)
+        .padding([0.0, GAP_XS])
+        .align_y(alignment::Vertical::Center);
+    let row = if target.marked {
+        row.style(theme::focused_setting(palette))
+    } else {
+        row
+    };
+    let area = mouse_area(row);
+    match target.on_toggle {
+        Some(message) => area.on_press(message).into(),
+        None => area.into(),
+    }
+}
+
 /// The part right of a list: padding of 16 and 24, scrolling when it is long.
 pub fn detail<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
     scrollable(
