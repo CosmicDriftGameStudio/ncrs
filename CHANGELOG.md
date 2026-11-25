@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-11-25
+
+### Changed
+
+- Filing places files the way the archive already does: senders are matched
+  across spellings, account numbers count, alike files are asked about once,
+  and a folder without a name pattern keeps the incoming name.
+- The filing tab marks places that are only the AI's guess as unsure, and
+  "Move only N sure" moves the sure files and leaves the rest in the read
+  folder. Continuous filing files only sure places.
+- The filing tab shows what is decided without the AI right after reading
+  (already there, placed by rules or neighbours, unreadable), instead of
+  showing every file as waiting until the AI's first answer.
+- The AI chooses folders much faster in a large write folder: the folder list
+  is read once per plan instead of once per round (with 370 folders, a round
+  went from about 50 s to a few seconds).
+
+### Fixed
+
+- Filing into a Cryptomator vault: drives that refuse the quarantine mark no
+  longer stop a move or copy.
+- Continuous filing of new downloads did not start.
+- The file panels show the folders without the moved files after a filing run.
+- A file the background filing left in place is offered to it once per start,
+  not again on every rescan.
+
 ## [1.7.0] — 2026-11-23
 
 ### Added
