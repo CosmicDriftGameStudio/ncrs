@@ -60,6 +60,8 @@ pub struct Item {
     pub name: String,
     /// The folder of a worktree.
     pub folder: Option<PathBuf>,
+    /// What of the worktree git ignores: no undo brings it back.
+    pub ignored_files: Vec<String>,
     pub reason: OfferReason,
     /// The remote branch (`origin/feat`) that goes with it when the box for the remote is ticked.
     pub remote: Option<String>,
@@ -136,7 +138,8 @@ pub struct Cleanup {
     pub queue: VecDeque<PathBuf>,
     pub running: usize,
     pub phase: Phase,
-    /// Everything offered is ticked at first; what is here was unticked.
+    /// Everything offered is ticked at first but a worktree with ignored files;
+    /// what is here is not.
     pub unticked: BTreeSet<Pick>,
     pub folded: BTreeSet<PathBuf>,
     /// The Keep section shows its text.
@@ -172,7 +175,7 @@ impl Cleanup {
         } else {
             Phase::Ready
         };
-        Self {
+        let mut cleanup = Self {
             scope,
             order,
             repos,
@@ -191,7 +194,20 @@ impl Cleanup {
             list_focus: false,
             generation,
             plans: BTreeMap::new(),
+        };
+        for repo in cleanup.order.clone() {
+            cleanup.untick_ignored(&repo);
         }
+        cleanup
+    }
+
+    fn untick_ignored(&mut self, repo: &Path) {
+        let kept = self
+            .items(repo)
+            .into_iter()
+            .filter(|item| !item.ignored_files.is_empty())
+            .map(|item| item.pick);
+        self.unticked.extend(kept);
     }
 
     pub fn scan(&self, repo: &Path) -> Option<&Scan> {
@@ -213,6 +229,7 @@ impl Cleanup {
             },
             name: found.branch.name.clone(),
             folder: Some(found.path.clone()),
+            ignored_files: found.ignored_files.clone(),
             reason: OfferReason::WorktreeOnly,
             remote: found.branch.remote_tip.as_ref().and(found.branch.upstream.clone()),
         });
@@ -223,6 +240,7 @@ impl Cleanup {
             },
             name: found.name.clone(),
             folder: None,
+            ignored_files: Vec::new(),
             reason: match found.reason {
                 CleanupReason::InDefault => OfferReason::InDefault,
                 CleanupReason::UpstreamGone => OfferReason::Gone,
@@ -557,6 +575,7 @@ fn scanned(
             Err(reason) => RepoState::Failed(reason),
         },
     );
+    cleanup.untick_ignored(&path);
     cleanup.fetched_at = Some(ctx.now);
     if cleanup.queue.is_empty() && cleanup.running == 0 {
         cleanup.phase = Phase::Ready;
@@ -858,6 +877,7 @@ mod tests {
             worktrees: vec![CleanupWorktree {
                 path: PathBuf::from("/work/app-wt"),
                 branch: branch("wt", CleanupReason::InDefault, None),
+                ignored_files: Vec::new(),
             }],
             kept: Vec::new(),
         };
@@ -878,6 +898,17 @@ mod tests {
         cleanup.toggle_group(&repo);
         assert_eq!(cleanup.group_check(&repo), Check::Off);
         assert!(cleanup.plan_for(&repo).is_none());
+    }
+
+    #[test]
+    fn a_worktree_with_ignored_files_is_not_ticked() {
+        let (cleanup, repo) = pane();
+        let mut scan = cleanup.scan(&repo).unwrap().clone();
+        scan.list.worktrees[0].ignored_files = vec![".env".to_owned()];
+        let repos = BTreeMap::from([(repo.clone(), RepoState::Scanned(Box::new(scan)))]);
+        let cleanup = Cleanup::new(1, Scope::Favourites(1), vec![repo.clone()], repos);
+        assert_eq!(cleanup.ticked(), (2, 1));
+        assert!(cleanup.plan_for(&repo).unwrap().worktrees.is_empty());
     }
 
     #[test]

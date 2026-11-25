@@ -65,6 +65,8 @@ pub struct CleanupWorktree {
     pub path: PathBuf,
     /// Deleted with the folder.
     pub branch: CleanupBranch,
+    /// Ignored files that go with the folder, see [`WorktreeInfo::ignored_files`].
+    pub ignored_files: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -306,6 +308,7 @@ fn judge_worktree(
     judge_branch(&seen_from_outside, overview, remote_tips_before, remote).map(|judged| CleanupWorktree {
         path: worktree.path.clone(),
         branch: judged,
+        ignored_files: worktree.ignored_files.clone(),
     })
 }
 
@@ -384,8 +387,8 @@ impl Git {
         }
         doomed.extend(plan.branches.iter());
         for branch in doomed {
-            plain_ref(&branch.name)?;
-            let result = self.delete_scanned_branch(branch);
+            let result =
+                plain_ref(&branch.name).and_then(|_| self.delete_scanned_branch(branch));
             if result.is_ok() {
                 let tracking_exists = branch.upstream.as_ref().filter(|name| {
                     self.try_text(&[

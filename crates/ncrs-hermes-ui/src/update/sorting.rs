@@ -18,7 +18,9 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::documents_facts::run_facts;
 use crate::message::Message;
-use crate::sorting_page::{source_state, Loaded, SortingMessage, SortingPage};
+use crate::sorting_page::{
+    own_volume_to_save, source_state, Loaded, SortingMessage, SortingPage,
+};
 use crate::source_dialog::{
     look_up_folder, FolderCheck, SourceDialog, SourceDialogKind, SourceField,
 };
@@ -497,7 +499,11 @@ fn repick(
     };
     write_task(move || {
         source.path = ncrs_intake::canonical_path(&folder).unwrap_or(folder);
-        source.own_volume = is_on_own_volume(&source.path);
+        source.own_volume = own_volume_to_save(
+            Some((&old, source.own_volume)),
+            &source.path,
+            is_on_own_volume(&source.path),
+        );
         upsert_sort_source(&config_path, &source, Some(&old))
     })
 }

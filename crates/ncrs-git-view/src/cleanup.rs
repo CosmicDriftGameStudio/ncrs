@@ -191,7 +191,8 @@ pub fn scan(git: &Git) -> Result<Done, ActionError> {
     })
 }
 
-/// The fetch for the scan is done: the dialog shows the list, everything ticked.
+/// The fetch for the scan is done: the dialog shows the list, everything ticked
+/// but the worktrees with ignored files, which no undo brings back.
 pub fn scanned(state: &mut State, list: CleanupList, fetch_error: Option<String>) {
     let Some(Dialog::Cleanup(dialog)) = state.actions.dialog.as_mut() else {
         return;
@@ -202,6 +203,11 @@ pub fn scanned(state: &mut State, list: CleanupList, fetch_error: Option<String>
     dialog.list = list;
     dialog.fetch_error = fetch_error;
     dialog.ticked = dialog.picks().into_iter().collect();
+    for worktree in &dialog.list.worktrees {
+        if !worktree.ignored_files.is_empty() {
+            dialog.ticked.remove(&Pick::Worktree(worktree.path.clone()));
+        }
+    }
     dialog.cursor = 0;
     dialog.phase = Phase::Ready;
 }

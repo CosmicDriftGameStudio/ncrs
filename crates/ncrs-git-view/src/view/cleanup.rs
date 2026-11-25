@@ -7,7 +7,7 @@ use iced::widget::{column, container, scrollable};
 use iced::{Element, Length, Padding};
 use ncrs_git::{CleanupBranch, CleanupReason, KeepReason};
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_ui_kit::check_rows::{check_row, CheckRow, RowOutcome};
+use ncrs_ui_kit::check_rows::{check_row, worktree_detail, CheckRow, RowOutcome};
 use ncrs_ui_kit::frame::{DialogSize, Frame};
 use ncrs_ui_kit::kit::{button, dim, enter_button, error_line, labelled_checkbox, Check, Tone};
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
@@ -85,16 +85,15 @@ fn item_row<'a>(
     pick: Pick,
     ctx: ViewCtx<'a>,
 ) -> Element<'a, Message> {
-    let (branch, folder) = match &pick {
-        Pick::Worktree(path) => (
-            dialog
+    let (branch, worktree) = match &pick {
+        Pick::Worktree(path) => {
+            let offered = dialog
                 .list
                 .worktrees
                 .iter()
-                .find(|found| &found.path == path)
-                .map(|found| &found.branch),
-            Some(path),
-        ),
+                .find(|found| &found.path == path);
+            (offered.map(|found| &found.branch), offered)
+        }
         Pick::Branch(name) => (
             dialog.list.branches.iter().find(|found| &found.name == name),
             None,
@@ -112,9 +111,9 @@ fn item_row<'a>(
                 Check::Off
             },
             name: branch.name.clone(),
-            detail: folder.map(|path| path.display().to_string()),
-            reason: offer_text(dialog, branch, folder.is_some(), ctx.lang),
-            worktree: folder.is_some(),
+            detail: worktree.map(|found| worktree_detail(&found.path, &found.ignored_files, ctx.lang)),
+            reason: offer_text(dialog, branch, worktree.is_some(), ctx.lang),
+            worktree: worktree.is_some(),
             kept: false,
             cursor: dialog.cursor == index,
             on_toggle: ready.then(|| Message::Cleanup(CleanupMessage::Toggle(pick.clone()))),

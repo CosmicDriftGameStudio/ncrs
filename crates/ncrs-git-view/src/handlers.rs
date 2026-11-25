@@ -166,6 +166,7 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.actions.new_branch = None;
             state.actions.dialog = None;
             state.actions.menu = None;
+            sync_handlers::show_next_credential(state);
             quiet(Task::none())
         }
         Message::RenameNameChanged(name) => {
@@ -451,6 +452,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
             .filter(|found| !found.is_main && !found.is_current)
             .map(|found| Question::RemoveWorktree {
                 path: found.path.clone(),
+                ignored_files: found.ignored_files.clone(),
             }),
         (MenuAction::Delete, MenuTarget::LocalBranch(_)) => {
             branch.clone().map(|name| Question::DeleteBranch { name })
@@ -461,6 +463,10 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                 Some(Question::DeleteOnRemote {
                     remote: remote_name.to_owned(),
                     branch: branch_name.to_owned(),
+                    tip: state
+                        .overview
+                        .as_ref()
+                        .and_then(|overview| overview.remote_tips.get(full).cloned()),
                 })
             })
         }

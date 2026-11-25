@@ -38,6 +38,7 @@ fn list() -> CleanupList {
         worktrees: vec![CleanupWorktree {
             path: PathBuf::from("/repo-wt/fix-c"),
             branch: branch("fix/c"),
+            ignored_files: Vec::new(),
         }],
         kept: Vec::new(),
     }
@@ -101,6 +102,29 @@ fn the_list_comes_with_everything_ticked_and_the_remote_off() {
     assert_eq!(shown.ticked.len(), 3);
     assert!(!shown.delete_remote);
     assert_eq!(state.actions.busy, None);
+}
+
+#[test]
+fn a_worktree_with_ignored_files_is_not_ticked() {
+    let mut state = tab();
+    let _ = update(
+        &mut state,
+        Message::Cleanup(CleanupMessage::Open),
+        &ctx(),
+    );
+    let mut offered = list();
+    offered.worktrees[0].ignored_files = vec![".env".to_owned()];
+    let _ = finish(
+        &mut state,
+        Job::FetchForCleanup,
+        Ok(Done::CleanupScan {
+            list: offered,
+            fetch_error: None,
+        }),
+    );
+    let plan = dialog(&state).plan();
+    assert!(plan.worktrees.is_empty());
+    assert_eq!(plan.branches.len(), 2);
 }
 
 #[test]

@@ -46,6 +46,7 @@ pub struct Facts {
     /// A linked worktree of another repository in the list: never touched.
     pub is_worktree: bool,
     pub changed: usize,
+    /// `None` when HEAD is detached.
     pub branch: Option<String>,
     pub default_branch: Option<String>,
     pub ahead: u32,
@@ -66,7 +67,6 @@ impl Facts {
 
     fn off_default(&self) -> bool {
         matches!((&self.branch, &self.default_branch), (Some(branch), Some(default)) if branch != default)
-            || (self.branch.is_none() && self.default_branch.is_some())
     }
 }
 
@@ -75,6 +75,11 @@ impl Facts {
 pub enum SkipReason {
     Worktree,
     LocalChanges(usize),
+    /// Commits made on a detached HEAD are on no branch; moving it loses them.
+    DetachedHead,
+    /// The repository's own config names content filters (git-crypt, a local
+    /// LFS). They are off in a bulk run, so a checkout would write raw content.
+    ContentFilters,
     /// Local commits and remote commits: not a fast-forward.
     Diverged {
         ahead: u32,
@@ -98,6 +103,9 @@ pub fn plan_for(action: BulkAction, facts: &Facts) -> Plan {
     }
     if action != BulkAction::Fetch && facts.changed > 0 {
         return Plan::Skip(SkipReason::LocalChanges(facts.changed));
+    }
+    if action != BulkAction::Fetch && facts.branch.is_none() {
+        return Plan::Skip(SkipReason::DetachedHead);
     }
     match action {
         BulkAction::SwitchToDefault if !facts.off_default() => Plan::Nothing,
@@ -250,6 +258,15 @@ pub fn execute(
             );
         }
     };
+    if action != BulkAction::Fetch {
+        // The summary can be older than the last command in a terminal.
+        if git.current_branch().is_none() {
+            return finish(Outcome::Skipped(SkipReason::DetachedHead), ran);
+        }
+        if git.has_content_filters().unwrap_or(true) {
+            return finish(Outcome::Skipped(SkipReason::ContentFilters), ran);
+        }
+    }
     let fetching = matches!(
         action,
         BulkAction::Fetch | BulkAction::PullFastForward | BulkAction::Both
@@ -430,11 +447,6 @@ mod tests {
             ..facts()
         };
         assert_eq!(plan_for(BulkAction::SwitchToDefault, &elsewhere), Plan::Run);
-        let detached = Facts {
-            branch: None,
-            ..facts()
-        };
-        assert_eq!(plan_for(BulkAction::SwitchToDefault, &detached), Plan::Run);
         let unknown_default = Facts {
             default_branch: None,
             branch: Some("feature".to_owned()),
@@ -444,6 +456,101 @@ mod tests {
             plan_for(BulkAction::SwitchToDefault, &unknown_default),
             Plan::Nothing
         );
+    }
+
+    #[test]
+    fn a_detached_head_is_fetched_but_never_moved() {
+        let detached = Facts {
+            branch: None,
+            ..facts()
+        };
+        assert_eq!(plan_for(BulkAction::Fetch, &detached), Plan::Run);
+        for action in [
+            BulkAction::SwitchToDefault,
+            BulkAction::PullFastForward,
+            BulkAction::Both,
+        ] {
+            assert_eq!(
+                plan_for(action, &detached),
+                Plan::Skip(SkipReason::DetachedHead)
+            );
+        }
+    }
+
+    fn git(root: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    }
+
+    /// A repository with `main`, checked out on `feature`.
+    fn repo_on_feature() -> (tempfile::TempDir, RepoSummary) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        git(root, &["init", "-q"]);
+        git(root, &["checkout", "-q", "-b", "main"]);
+        std::fs::write(root.join("secret.txt"), "content").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-q", "-m", "first"]);
+        git(root, &["checkout", "-q", "-b", "feature"]);
+        let before = summary::read(root, &Arc::default())
+            .summary()
+            .unwrap()
+            .clone();
+        (directory, before)
+    }
+
+    fn switch(root: &Path, before: &RepoSummary) -> Outcome {
+        execute(
+            BulkAction::SwitchToDefault,
+            root,
+            before,
+            false,
+            &Arc::default(),
+        )
+        .outcome
+    }
+
+    #[test]
+    fn a_repo_with_content_filters_of_its_own_is_not_switched() {
+        let (directory, before) = repo_on_feature();
+        let root = directory.path();
+        git(root, &["config", "filter.git-crypt.smudge", "cat"]);
+        assert_eq!(
+            switch(root, &before),
+            Outcome::Skipped(SkipReason::ContentFilters)
+        );
+        assert_eq!(git(root, &["symbolic-ref", "--short", "HEAD"]), "feature");
+
+        git(root, &["config", "--unset", "filter.git-crypt.smudge"]);
+        assert!(matches!(switch(root, &before), Outcome::Switched { .. }));
+    }
+
+    #[test]
+    fn a_head_detached_after_the_last_read_stays_where_it_is() {
+        let (directory, before) = repo_on_feature();
+        let root = directory.path();
+        git(root, &["checkout", "-q", "--detach"]);
+        git(root, &["commit", "-q", "--allow-empty", "-m", "on no branch"]);
+        let head = git(root, &["rev-parse", "HEAD"]);
+        assert_eq!(
+            switch(root, &before),
+            Outcome::Skipped(SkipReason::DetachedHead)
+        );
+        assert_eq!(git(root, &["rev-parse", "HEAD"]), head);
     }
 
     #[test]

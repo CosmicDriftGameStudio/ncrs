@@ -149,8 +149,8 @@ impl App {
             } else {
                 Subscription::none()
             },
-            if self.repos.is_some() {
-                iced::time::every(super::repos::REPOS_TICK_EVERY)
+            if self.repos_shown() {
+                iced::time::every(ncrs_repos::REFRESH_EVERY)
                     .map(|_| Message::Repos(ncrs_repos::Message::Tick))
             } else {
                 Subscription::none()

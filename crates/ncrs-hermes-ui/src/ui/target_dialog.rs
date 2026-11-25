@@ -1,4 +1,4 @@
-//! The dialog of a target and the question before a target is removed.
+//! The dialog of a target and the questions about a target.
 
 use std::path::Path;
 
@@ -12,7 +12,10 @@ use ncrs_ui_kit::hermes_kit::{self as page_kit, GAP_S};
 use ncrs_ui_kit::kit::{self, Tone};
 
 use crate::message::Message;
-use crate::target_dialog::{TargetDialog, TargetProblem, TargetRemoval, TargetsMessage};
+use crate::target_dialog::{
+    target_name, TargetConfirmation, TargetDialog, TargetProblem, TargetQuestion, TargetRemoval,
+    TargetsMessage,
+};
 
 pub const NAME_FIELD_ID: &str = "target-dialog-name";
 pub const FOLDER_FIELD_ID: &str = "target-dialog-folder";
@@ -116,8 +119,68 @@ fn problem_text(problem: &TargetProblem, lang: Language) -> String {
     }
 }
 
+pub fn question<'a>(
+    asked: &TargetQuestion,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    match asked {
+        TargetQuestion::Remove(removal) => removal_question(removal, window, lang, palette),
+        TargetQuestion::Confirm(asked) => confirm_question(asked, window, lang, palette),
+    }
+}
+
+/// The question before a target is confirmed whose known documents are all
+/// not there.
+fn confirm_question<'a>(
+    asked: &TargetConfirmation,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let question = fill_template(
+        lang.text(Msg::SortingConfirmTargetQuestion),
+        &[("{count}", &asked.gone.to_string())],
+    );
+    let answer = |label: &str, message: TargetsMessage, focused: bool| {
+        if focused {
+            kit::enter_button(label, Some(send(message)), Tone::Primary, palette)
+        } else {
+            kit::button(label, Some(send(message)), Tone::Secondary, palette)
+        }
+    };
+    Frame::new(
+        lang.text(Msg::SortingConfirmTargetTitle),
+        kit::paragraph(question, palette),
+        DialogSize::Small,
+        window,
+        lang,
+        palette,
+    )
+    .subtitle(target_name(&asked.target))
+    .buttons(vec![
+        answer(
+            lang.text(Msg::DialogCancel),
+            TargetsMessage::CancelQuestion,
+            !asked.confirm_focused,
+        ),
+        answer(
+            lang.text(Msg::SortingConfirmTargetAnyway),
+            TargetsMessage::ConfirmAnyway,
+            asked.confirm_focused,
+        ),
+    ])
+    .on_close(send(TargetsMessage::CancelQuestion))
+    .hints(KeyHints {
+        enter: true,
+        tab: true,
+    })
+    .into_element()
+}
+
 /// The question before a target and its rules are removed.
-pub fn removal<'a>(
+fn removal_question<'a>(
     asked: &TargetRemoval,
     window: Size,
     lang: Language,
@@ -148,7 +211,7 @@ pub fn removal<'a>(
     .buttons(vec![
         kit::button(
             lang.text(Msg::DialogCancel),
-            Some(send(TargetsMessage::CancelRemove)),
+            Some(send(TargetsMessage::CancelQuestion)),
             Tone::Secondary,
             palette,
         ),
@@ -159,7 +222,7 @@ pub fn removal<'a>(
             palette,
         ),
     ])
-    .on_close(send(TargetsMessage::CancelRemove))
+    .on_close(send(TargetsMessage::CancelQuestion))
     .hints(KeyHints {
         enter: true,
         tab: false,

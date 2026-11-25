@@ -97,6 +97,40 @@ fn delete_a_branch_on_the_remote() {
 }
 
 #[test]
+fn deleting_a_branch_on_the_remote_keeps_a_tag_of_the_same_name() {
+    let (origin, repo) = with_origin();
+    repo.git.create_branch("same", "main", false).unwrap();
+    repo.git.push_branch("same", None).unwrap();
+    git_cli::sh(origin.path(), &["tag", "same", "main"]);
+
+    repo.git
+        .delete_remote_branch("origin", "same", None)
+        .unwrap();
+    assert_eq!(origin_branches(&origin), "main");
+    assert_eq!(git_cli::sh(origin.path(), &["tag"]), "same");
+}
+
+#[test]
+fn the_shown_tip_of_a_remote_branch_is_the_lease_of_its_delete() {
+    let (origin, repo) = with_origin();
+    repo.git.create_branch("busy", "main", false).unwrap();
+    repo.git.push_branch("busy", None).unwrap();
+    let overview = ncrs_git::refs(repo.path(), &std::sync::Arc::default()).unwrap();
+    let shown = overview.remote_tips.get("origin/busy").unwrap();
+
+    let other = clone_of(&origin);
+    other.sh(&["checkout", "-q", "busy"]);
+    other.commit_file("o.txt", "o\n", "from the other clone");
+    other.sh(&["push", "-q", "origin", "busy"]);
+
+    assert_eq!(
+        repo.git.delete_remote_branch("origin", "busy", Some(shown)),
+        Err(ActionError::LeaseRejected)
+    );
+    assert_eq!(origin_branches(&origin), "busy\nmain");
+}
+
+#[test]
 fn push_without_any_remote_says_so() {
     let repo = repo();
     assert!(matches!(

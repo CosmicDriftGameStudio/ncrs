@@ -18,6 +18,7 @@ use ncrs_intake::{
 use ncrs_pipeline::{Load, OwnDetails};
 use tempfile::TempDir;
 
+use super::watched::Volume;
 use super::*;
 use crate::reading_support::ReadProgress;
 
@@ -198,6 +199,20 @@ impl Setup {
 
     /// `watch` of a source whose drive is there or not.
     fn watch_drive(&self, source: &SortSource, is_mounted: impl Fn() -> bool) -> WatchedReport {
+        self.watch_volume(
+            source,
+            Volume {
+                is_mounted: |_: &Path| is_mounted(),
+                is_own: super::ready::is_on_own_volume,
+            },
+        )
+    }
+
+    fn watch_volume(
+        &self,
+        source: &SortSource,
+        volume: Volume<impl Fn(&Path) -> bool, impl Fn(&Path) -> Option<bool>>,
+    ) -> WatchedReport {
         super::watched::watch_with(
             &self.access,
             source,
@@ -205,7 +220,7 @@ impl Setup {
             None,
             "watched",
             &mut Counting,
-            |_| is_mounted(),
+            volume,
         )
         .unwrap()
     }

@@ -68,8 +68,10 @@ pub enum Message {
     CleanableRead(PathBuf, Option<usize>),
     /// The list was scrolled by the pointer; how far down, in pixels.
     ListScrolled(f32),
-    /// Every minute while the tab is shown: reads the visible repos again.
+    /// Every minute while the tab is in view: reads every repo again.
     Tick,
+    /// The tab came into view: reads every repo again when the last read is old.
+    Shown,
     // Bulk actions.
     Bulk(BulkAction),
     StepDone(PathBuf, Box<Executed>),

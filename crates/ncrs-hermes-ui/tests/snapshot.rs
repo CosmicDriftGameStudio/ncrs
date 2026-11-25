@@ -27,6 +27,7 @@ mod ui_tests {
     use ncrs_hermes_ui::rules_page::RulesPage;
     use ncrs_hermes_ui::sorting_page::{SortingPage, SourceState};
     use ncrs_hermes_ui::source_dialog::{FolderCheck, SourceDialog, SourceField};
+    use ncrs_hermes_ui::target_dialog::{TargetConfirmation, TargetQuestion};
     use ncrs_hermes_ui::{
         dialogs, page_content, Hermes, HermesPage, Message, SortingMessage, SourceDialogKind,
         ViewCtx,
@@ -378,6 +379,30 @@ mod ui_tests {
         let mut dialog = dialog_of(SourceDialogKind::Watched);
         dialog.focus = SourceField::Target(1);
         picture(&with_dialog(dialog), "source-dialog-target-focused");
+    }
+
+    #[test]
+    fn source_dialog_of_a_folder_that_holds_a_target_picture() {
+        let folder = home("Firma");
+        let mut dialog =
+            SourceDialog::new(SourceDialogKind::Watched, Some(&folder), &filing());
+        dialog.folder_check = FolderCheck::Found(folder);
+        dialog.targets = vec![id("firm")];
+        picture(&with_dialog(dialog), "source-dialog-holds-target");
+    }
+
+    #[test]
+    fn target_confirm_question_picture() {
+        let filing = filing();
+        let target = filing.targets[0].target.clone();
+        let hermes = Hermes {
+            filing_config: filing,
+            target_removal: Some(TargetQuestion::Confirm(TargetConfirmation::new(
+                target, 214,
+            ))),
+            ..Hermes::default()
+        };
+        picture(&hermes, "target-confirm-question");
     }
 
     #[test]

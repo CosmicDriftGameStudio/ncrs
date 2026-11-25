@@ -198,6 +198,49 @@ fn an_empty_mount_point_is_not_what_lay_in_the_source() {
 }
 
 #[test]
+fn a_backlog_taken_on_an_empty_mount_point_is_taken_anew_once_the_drive_is_there() {
+    let setup = Setup::new();
+    setup.rule("t1", "acme", "Acme/{number}");
+    let source = setup.source("Q1", &["t1"]);
+    let watch_on = |own_volume: Option<bool>| {
+        setup.watch_volume(
+            &source,
+            Volume {
+                is_mounted: |_: &Path| true,
+                is_own: move |_: &Path| own_volume,
+            },
+        )
+    };
+    assert_eq!(
+        watch_on(Some(false)),
+        WatchedReport::BacklogRecorded { files: 0 }
+    );
+
+    let old = setup.write("Q1/old.txt", "acme Ref A1");
+    setup.plan(&source);
+    let looks = std::cell::Cell::new(0);
+    let plugged_in_on_the_way = setup.watch_volume(
+        &source,
+        Volume {
+            is_mounted: |_: &Path| true,
+            is_own: |_: &Path| Some(looks.replace(looks.get() + 1) > 0),
+        },
+    );
+    assert_eq!(plugged_in_on_the_way, drive_is_missing());
+    assert_eq!(
+        watch_on(Some(true)),
+        WatchedReport::BacklogRecorded { files: 1 }
+    );
+    assert_eq!(filed(&watch_on(Some(true))), 0);
+    assert!(old.exists());
+
+    let new = setup.write("Q1/new.txt", "acme Ref A22");
+    setup.plan(&source);
+    assert_eq!(filed(&watch_on(Some(true))), 1);
+    assert!(old.exists() && !new.exists());
+}
+
+#[test]
 fn a_source_saved_on_a_drive_waits_on_the_system_disk() {
     let setup = Setup::new();
     let source = SortSource {

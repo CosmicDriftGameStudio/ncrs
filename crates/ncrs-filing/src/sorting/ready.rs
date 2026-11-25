@@ -111,6 +111,15 @@ fn holds_known_file(access: &SortingAccess, folder: &Path) -> bool {
     known.is_ok_and(|documents| documents.iter().any(|(_, path)| path.is_file()))
 }
 
+/// How many documents the index knows below `folder` while none of them is
+/// there; 0 when one is. An empty mount point looks like that. Asks the disk.
+pub(super) fn all_gone_below(access: &SortingAccess, folder: &Path) -> Result<usize, String> {
+    let folder = ncrs_intake::canonical_path(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let known = access.with_index(|index| index.known_paths_under(&folder).map_err(text))?;
+    let one_is_there = known.iter().any(|path| path.is_file());
+    Ok(if one_is_there { 0 } else { known.len() })
+}
+
 /// The folders that are on the system disk whatever is plugged in. The home
 /// folder counts: on a partition of its own it is still always there, and an
 /// empty mount point inside it must not pass for the mounted drive.

@@ -2,7 +2,7 @@ use crate::cli::Git;
 use crate::integrate::IntegrateOutcome;
 use crate::refname::plain_ref;
 use crate::repo_access::parse_id;
-use crate::ActionError;
+use crate::{ActionError, GitError};
 
 /// How a pull on diverged branches joins them, for this one call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,7 +45,9 @@ const LOST_TITLES_SHOWN: &str = "3";
 
 impl Git {
     /// Fetches one remote, or all of them, and drops remote-tracking refs that are gone.
+    /// An unattended fetch of a repository whose config runs commands is refused.
     pub fn fetch(&self, remote: Option<&str>) -> Result<(), ActionError> {
+        self.refuse_commands_of_the_repository()?;
         let mut args = vec!["fetch", "--prune"];
         if self.is_unattended() {
             args.push("--no-recurse-submodules");
@@ -82,10 +84,42 @@ impl Git {
         }
     }
 
+    /// Nobody looks at what an unattended call starts, so the repository's own
+    /// config must not name a program for it.
+    fn refuse_commands_of_the_repository(&self) -> Result<(), ActionError> {
+        if self.is_unattended() && self.repository_config_runs_commands() {
+            return Err(ActionError::Other {
+                git_output: "the repository config runs commands".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Whether this repository's own config names content filters (git-crypt,
+    /// a local LFS setup). An unattended call switches them off, so a checkout
+    /// in it would write the raw content.
+    pub fn has_content_filters(&self) -> Result<bool, GitError> {
+        let output = self
+            .run(&["config", "--show-scope", "-z", "--list"], None)
+            .map_err(GitError::read)?;
+        if !output.success {
+            return Err(GitError::read(output.combined()));
+        }
+        let listing = output.stdout_text();
+        let has_filters = settings_of_the_repository(&listing).any(|(name, value)| {
+            let last = name.rsplit('.').next().unwrap_or_default();
+            name.starts_with("filter.")
+                && matches!(last, "clean" | "smudge" | "process")
+                && !value.is_empty()
+        });
+        Ok(has_filters)
+    }
+
     /// Pull the way the user's git config says (fast-forward, merge or rebase),
     /// or the way `strategy` says for this call; the config is never written.
     /// Conflicts come back as an outcome, not as an error.
     pub fn pull(&self, strategy: Option<PullStrategy>) -> Result<IntegrateOutcome, ActionError> {
+        self.refuse_commands_of_the_repository()?;
         let remote = self
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
@@ -113,6 +147,7 @@ impl Git {
 
     /// Pushes a local branch, checked out or not, and sets its upstream when it has none.
     pub fn push_branch(&self, branch: &str, requested: Option<&str>) -> Result<(), ActionError> {
+        self.refuse_commands_of_the_repository()?;
         let (configured, remote_name, target) = self.push_destination(branch, requested)?;
         let refspec = format!("refs/heads/{branch}:{target}");
         let mut args = vec!["push"];
@@ -207,6 +242,7 @@ impl Git {
     /// The expected commit is always spelled out: a bare lease checks the
     /// tracking ref, which a fetch in the background moves without anyone looking.
     pub fn force_push_with_lease(&self, plan: &ForcePushPlan) -> Result<(), ActionError> {
+        self.refuse_commands_of_the_repository()?;
         plain_ref(&plan.remote)?;
         plain_ref(&plan.branch)?;
         let lease = format!(
@@ -230,19 +266,22 @@ impl Git {
         branch: &str,
         expected_tip: Option<&str>,
     ) -> Result<(), ActionError> {
+        self.refuse_commands_of_the_repository()?;
         let remote = plain_ref(remote)?;
+        let full_name = format!("refs/heads/{branch}");
         let lease = match expected_tip {
             Some(tip) => {
                 parse_id(tip).map_err(|_unreadable| ActionError::Other {
                     git_output: format!("{branch} has no scanned remote commit"),
                 })?;
-                Some(format!("--force-with-lease=refs/heads/{branch}:{tip}"))
+                Some(format!("--force-with-lease={full_name}:{tip}"))
             }
             None => None,
         };
         let mut args = vec!["push"];
         args.extend(lease.as_deref());
-        args.extend(["--delete", "--", remote, branch]);
+        // The full name: a tag of the same name on the remote makes the short one ambiguous.
+        args.extend(["--delete", "--", remote, &full_name]);
         self.talk(&args, remote)?;
         Ok(())
     }
@@ -273,21 +312,22 @@ impl Git {
 }
 
 /// Reads the `scope NUL name LF value NUL` entries of `git config --show-scope -z
-/// --list` and looks at what the repository's own files set (`local`,
-/// `worktree`; what they include shows up under their scope). Without `-z` a
-/// name could hide behind an `=` or a line break of its own.
-fn config_runs_commands(listing: &str) -> bool {
+/// --list` and gives what the repository's own files set (`local`,
+/// `worktree`; what they include shows up under their scope) as lowercase name
+/// and value. Without `-z` a name could hide behind an `=` or a line break of
+/// its own.
+fn settings_of_the_repository(listing: &str) -> impl Iterator<Item = (String, &str)> {
     let mut parts = listing.split('\0');
-    while let (Some(scope), Some(setting)) = (parts.next(), parts.next()) {
-        if scope != "local" && scope != "worktree" {
-            continue;
-        }
-        let (name, value) = setting.split_once('\n').unwrap_or((setting, ""));
-        if setting_runs_commands(&name.to_ascii_lowercase(), value) {
-            return true;
-        }
-    }
-    false
+    std::iter::from_fn(move || Some((parts.next()?, parts.next()?)))
+        .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
+        .map(|(_, setting)| {
+            let (name, value) = setting.split_once('\n').unwrap_or((setting, ""));
+            (name.to_ascii_lowercase(), value)
+        })
+}
+
+fn config_runs_commands(listing: &str) -> bool {
+    settings_of_the_repository(listing).any(|(name, value)| setting_runs_commands(&name, value))
 }
 
 /// `name` is lowercase; the part between the first and last dot (a remote or

@@ -5,7 +5,7 @@
 //! is never put in an environment variable, a log or a debug print.
 
 use std::collections::HashMap;
-use std::io::{BufRead as _, BufReader, Write as _};
+use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,7 +15,8 @@ use std::time::Duration;
 
 /// Set for the helper: `deny`, or the `host:port` of the broker.
 pub const ENDPOINT_VARIABLE: &str = "NCRS_ASKPASS";
-/// `<secret>:<job>`; the secret keeps other local processes off the socket.
+/// `<secret>:<job>`; the secret keeps other local processes off the socket. Every
+/// job has its own: what one job's git starts cannot ask in the name of another.
 pub const TOKEN_VARIABLE: &str = "NCRS_ASKPASS_TOKEN";
 
 const DENY: &str = "deny";
@@ -25,6 +26,8 @@ const HINT_TEXT: &str = "text";
 /// A question nobody answers in this time is refused, so a job cannot hang forever.
 const ANSWER_LIMIT: Duration = Duration::from_secs(600);
 const REPLY_LIMIT: Duration = Duration::from_secs(660);
+/// The longest line a helper may send.
+const LINE_LIMIT: u64 = 8 * 1024;
 
 /// What git wants to know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,26 +80,23 @@ pub struct AskRequest {
 
 /// Sorts a prompt into what the dialog has to offer. `confirm_hint` is
 /// `SSH_ASKPASS_PROMPT=confirm`, which newer ssh sets for yes/no questions.
+/// Whatever does not clearly ask for a name is shown masked.
 pub fn kind_of_prompt(prompt: &str, confirm_hint: bool) -> PromptKind {
     let lower = prompt.to_lowercase();
     if confirm_hint || lower.contains("(yes/no") || lower.contains("yes/no/[fingerprint]") {
         PromptKind::Confirm
-    } else if [
-        "password",
-        "passphrase",
-        "pin ",
-        "verification code",
-        "token",
-    ]
-    .iter()
-    .any(|word| lower.contains(word))
+    } else if ["username", "user name"]
+        .iter()
+        .any(|word| lower.trim_start().starts_with(word))
     {
-        PromptKind::Secret
-    } else {
         PromptKind::Text
+    } else {
+        PromptKind::Secret
     }
 }
 
+/// The secret of each job that may ask.
+type Secrets = Arc<Mutex<HashMap<u64, String>>>;
 type Pending = Arc<Mutex<HashMap<u64, (u64, Sender<Option<Secret>>)>>>;
 
 /// Listens for helpers, turns their prompts into `AskRequest`s and hands the
@@ -104,7 +104,7 @@ type Pending = Arc<Mutex<HashMap<u64, (u64, Sender<Option<Secret>>)>>>;
 #[derive(Debug)]
 pub struct Broker {
     address: SocketAddr,
-    secret: String,
+    secrets: Secrets,
     pending: Pending,
 }
 
@@ -121,11 +121,11 @@ impl Broker {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let broker = Self {
             address: listener.local_addr()?,
-            secret: random_secret()?,
+            secrets: Arc::new(Mutex::new(HashMap::new())),
             pending: Arc::new(Mutex::new(HashMap::new())),
         };
         let shared = Shared {
-            secret: broker.secret.clone(),
+            secrets: Arc::clone(&broker.secrets),
             pending: Arc::clone(&broker.pending),
             requests,
             listening,
@@ -146,8 +146,17 @@ impl Broker {
         self.address.to_string()
     }
 
+    /// What a helper of `job` has to show. Empty, and so never accepted, when
+    /// the system gives no random bytes.
     pub fn token(&self, job: u64) -> String {
-        format!("{}:{job}", self.secret)
+        let mut secrets = lock(&self.secrets);
+        let known = secrets.get(&job).cloned();
+        let Some(secret) = known.or_else(|| random_secret().ok()) else {
+            return String::new();
+        };
+        let token = format!("{secret}:{job}");
+        secrets.insert(job, secret);
+        token
     }
 
     /// Answers a question; `None` cancels it (git then fails as unauthenticated).
@@ -158,8 +167,10 @@ impl Broker {
         }
     }
 
-    /// Cancels every open question of one job, for a closed tab.
+    /// Cancels every open question of one job, for a closed tab, and takes no
+    /// new one with the token it had.
     pub fn cancel_job(&self, job: u64) {
+        lock(&self.secrets).remove(&job);
         let ids: Vec<u64> = lock(&self.pending)
             .iter()
             .filter(|(_, (owner, _))| *owner == job)
@@ -171,6 +182,7 @@ impl Broker {
     }
 
     pub fn cancel_all(&self) {
+        lock(&self.secrets).clear();
         let ids: Vec<u64> = lock(&self.pending).keys().copied().collect();
         for id in ids {
             self.answer(id, None);
@@ -180,7 +192,7 @@ impl Broker {
 
 #[derive(Clone)]
 struct Shared {
-    secret: String,
+    secrets: Secrets,
     pending: Pending,
     requests: Sender<AskRequest>,
     listening: Arc<AtomicBool>,
@@ -210,23 +222,36 @@ fn same_secret(given: &str, expected: &str) -> bool {
             == 0
 }
 
+/// A whole line; one that is cut off or longer than the limit is an error.
+fn read_field(reader: &mut BufReader<TcpStream>) -> std::io::Result<String> {
+    let mut line = String::new();
+    reader.by_ref().take(LINE_LIMIT).read_line(&mut line)?;
+    match line.strip_suffix('\n') {
+        Some(field) => Ok(field.trim_end_matches('\r').to_string()),
+        None => Err(std::io::ErrorKind::InvalidData.into()),
+    }
+}
+
+fn job_of_token(token: &str, secrets: &Secrets) -> Option<u64> {
+    let (secret, number) = token.split_once(':')?;
+    let job = number.parse::<u64>().ok()?;
+    lock(secrets)
+        .get(&job)
+        .is_some_and(|expected| same_secret(secret, expected))
+        .then_some(job)
+}
+
 fn serve(mut connection: TcpStream, shared: &Shared) -> std::io::Result<()> {
     connection.set_read_timeout(Some(Duration::from_secs(10)))?;
     let mut reader = BufReader::new(connection.try_clone()?);
-    let mut fields = Vec::new();
-    for _ in 0..4 {
-        let mut line = String::new();
-        reader.read_line(&mut line)?;
-        fields.push(line.trim_end_matches(['\r', '\n']).to_string());
-    }
-    let [protocol, token, hint, prompt] = <[String; 4]>::try_from(fields).unwrap_or_default();
-    let parsed_job = token
-        .split_once(':')
-        .filter(|(secret, _)| protocol == PROTOCOL && same_secret(secret, &shared.secret))
-        .and_then(|(_, job)| job.parse::<u64>().ok());
-    let Some(job) = parsed_job else {
+    let protocol = read_field(&mut reader)?;
+    let token = read_field(&mut reader)?;
+    let allowed = job_of_token(&token, &shared.secrets).filter(|_| protocol == PROTOCOL);
+    let Some(job) = allowed else {
         return connection.write_all(b"no\n");
     };
+    let hint = read_field(&mut reader)?;
+    let prompt = read_field(&mut reader)?;
     if !shared.listening.load(Ordering::Relaxed) {
         return connection.write_all(b"no\n");
     }
@@ -312,8 +337,8 @@ pub fn cancel_all() {
 
 /// What `git` needs in its environment to ask through the broker.
 pub struct Setup {
-    pub git_askpass: String,
-    pub ssh_askpass: String,
+    /// The value for both `GIT_ASKPASS` and `SSH_ASKPASS`.
+    pub askpass: String,
     pub endpoint: String,
     pub token: String,
 }
@@ -323,36 +348,20 @@ pub fn setup_for(job: u64) -> Option<Setup> {
     // After an upgrade the running binary can be gone from disk: no helper then.
     let helper = std::env::current_exe().ok().filter(|path| path.is_file())?;
     Some(Setup {
-        git_askpass: git_askpass_value(&helper, cfg!(windows)),
-        ssh_askpass: ssh_askpass_value(&helper, cfg!(windows)),
+        askpass: askpass_value(&helper, cfg!(windows)),
         endpoint: shared.broker.endpoint(),
         token: shared.broker.token(job),
     })
 }
 
-fn slashed(helper: &Path) -> String {
-    helper.to_string_lossy().replace('\\', "/")
-}
-
-/// git starts the helper through `sh` when the value has shell characters, so
-/// a Windows path with a space has to carry its own quotes.
-fn git_askpass_value(helper: &Path, windows: bool) -> String {
-    if !windows {
-        return helper.to_string_lossy().into_owned();
-    }
-    let path = slashed(helper);
-    if path.contains(' ') {
-        format!("\"{path}\"")
-    } else {
-        path
-    }
-}
-
-fn ssh_askpass_value(helper: &Path, windows: bool) -> String {
+/// git and ssh both start the helper directly, without a shell: quotes around
+/// a path with a space would become part of the file name.
+fn askpass_value(helper: &Path, windows: bool) -> String {
+    let path = helper.to_string_lossy();
     if windows {
-        slashed(helper)
+        path.replace('\\', "/")
     } else {
-        helper.to_string_lossy().into_owned()
+        path.into_owned()
     }
 }
 
@@ -403,7 +412,9 @@ pub fn exchange(
     let mut connection = TcpStream::connect(endpoint)?;
     connection.set_read_timeout(Some(REPLY_LIMIT))?;
     let one_line = prompt.replace(['\r', '\n'], " ");
-    write!(connection, "{PROTOCOL}\n{token}\n{hint}\n{one_line}\n")?;
+    // One write: the broker may refuse after the token and close the connection.
+    let question = format!("{PROTOCOL}\n{token}\n{hint}\n{one_line}\n");
+    connection.write_all(question.as_bytes())?;
     let mut reader = BufReader::new(connection);
     let mut status = String::new();
     reader.read_line(&mut status)?;
@@ -472,20 +483,59 @@ mod tests {
     }
 
     #[test]
-    fn a_windows_path_with_a_space_is_quoted_for_git_only() {
+    fn the_helper_path_carries_no_quotes() {
         let path = Path::new(r"C:\Program Files\ncrs\ncrs.exe");
+        assert_eq!(askpass_value(path, true), "C:/Program Files/ncrs/ncrs.exe");
         assert_eq!(
-            git_askpass_value(path, true),
-            "\"C:/Program Files/ncrs/ncrs.exe\""
+            askpass_value(Path::new("/opt/my ncrs/ncrs"), false),
+            "/opt/my ncrs/ncrs"
         );
+    }
+
+    #[test]
+    fn an_unknown_prompt_is_masked() {
+        let kind = |prompt| kind_of_prompt(prompt, false);
+        assert_eq!(kind("Enter the code from your device: "), PromptKind::Secret);
+        assert_eq!(kind(""), PromptKind::Secret);
         assert_eq!(
-            ssh_askpass_value(path, true),
-            "C:/Program Files/ncrs/ncrs.exe"
+            kind("Password for 'https://username@host': "),
+            PromptKind::Secret
         );
-        assert_eq!(
-            git_askpass_value(Path::new("/opt/ncrs/ncrs"), false),
-            "/opt/ncrs/ncrs"
+    }
+
+    #[test]
+    fn the_token_of_one_job_does_not_ask_for_another() {
+        let (broker, requests) = Broker::start().unwrap();
+        let first = broker.token(1);
+        assert_eq!(broker.token(1), first, "every git call of a job shares it");
+        let second = broker.token(2);
+        let (secret, _) = first.split_once(':').unwrap();
+        assert!(!second.starts_with(secret));
+        let answer = exchange(
+            &broker.endpoint(),
+            &format!("{secret}:2"),
+            "Username: ",
+            HINT_TEXT,
+        )
+        .unwrap();
+        assert_eq!(answer, None);
+
+        broker.cancel_job(1);
+        let late = exchange(&broker.endpoint(), &first, "Username: ", HINT_TEXT).unwrap();
+        assert_eq!(late, None);
+        assert!(requests.try_recv().is_err(), "nobody was asked");
+    }
+
+    #[test]
+    fn an_endless_line_is_refused() {
+        let (broker, requests) = Broker::start().unwrap();
+        let prompt = "x".repeat(20_000);
+        let answer = exchange(&broker.endpoint(), &broker.token(1), &prompt, HINT_TEXT);
+        assert!(
+            !matches!(answer, Ok(Some(_))),
+            "a dropped connection or a no"
         );
+        assert!(requests.try_recv().is_err(), "nobody was asked");
     }
 
     fn ask_in_thread(

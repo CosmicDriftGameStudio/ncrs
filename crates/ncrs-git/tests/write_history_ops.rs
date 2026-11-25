@@ -259,6 +259,41 @@ fn a_hard_reset_counts_and_backs_up_an_untracked_file_the_target_tracks() {
 }
 
 #[test]
+fn the_undo_of_a_hard_reset_keeps_a_file_made_since_in_the_way() {
+    let repo = repo();
+    let base = repo.sh(&["rev-parse", "HEAD"]);
+    repo.commit_file("b.txt", "committed\n", "add b");
+    let undo = repo.git.reset(ResetMode::Hard, &base).unwrap();
+    write(repo.path(), "b.txt", "precious\n");
+
+    assert!(matches!(
+        repo.git.undo(&undo),
+        Err(ActionError::UndoNotSafe(_))
+    ));
+    assert_eq!(read(repo.path(), "b.txt"), "precious\n");
+    assert_eq!(repo.sh(&["rev-parse", "HEAD"]), base);
+}
+
+/// Only Linux has file names that are not UTF-8.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_hard_reset_is_refused_when_a_changed_file_has_no_utf8_name() {
+    use std::os::unix::ffi::OsStrExt as _;
+
+    let repo = repo();
+    let file = repo
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"caf\xe9.txt"));
+    std::fs::write(&file, "committed\n").unwrap();
+    repo.sh(&["add", "-A"]);
+    repo.sh(&["commit", "-q", "-m", "latin-1 name"]);
+    std::fs::write(&file, "precious\n").unwrap();
+
+    repo.git.reset(ResetMode::Hard, "HEAD").unwrap_err();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "precious\n");
+}
+
+#[test]
 fn a_hard_reset_stops_when_a_folder_stands_where_the_target_has_a_file() {
     let repo = repo();
     repo.commit_file("b.txt", "committed\n", "add b");

@@ -16,7 +16,7 @@ use crate::saved_queries::SavedQueries;
 use crate::sorting_page::SortingPage;
 use crate::source_dialog::SourceDialog;
 use crate::suggest::Suggest;
-use crate::target_dialog::{TargetDialog, TargetRemoval};
+use crate::target_dialog::{TargetDialog, TargetQuestion};
 use crate::tags_page::TagsPage;
 use crate::watching::Watching;
 
@@ -33,7 +33,7 @@ pub struct Hermes {
     /// Which look at the folder of the source dialog is the last one.
     pub source_check: u64,
     pub target_dialog: Option<TargetDialog>,
-    pub target_removal: Option<TargetRemoval>,
+    pub target_removal: Option<TargetQuestion>,
     pub suggest: Option<Suggest>,
     pub rules: Option<RulesPage>,
     pub rules_generation: u64,

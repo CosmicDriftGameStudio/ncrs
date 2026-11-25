@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 use iced::widget::operation;
 use iced::Task;
@@ -22,11 +22,15 @@ use crate::scan::ScanRequest;
 use crate::state::State;
 use crate::store::{Origin, ScanStamp, Store};
 use crate::tasks;
+use crate::texts::store_error_text;
 
 /// The id of the scrollable around the list.
 pub const LIST_ID: &str = "repos-list";
 /// The id of the filter field.
 pub const FILTER_ID: &str = "repos-filter";
+
+/// How often the tab reads the repositories again while it is in view.
+pub const REFRESH_EVERY: Duration = Duration::from_secs(60);
 
 /// How far a Page key moves the cursor.
 const PAGE_ROWS: isize = 10;
@@ -42,11 +46,29 @@ fn scroll_to_cursor() -> Task<Message> {
 }
 
 /// Reads the list from `repos.toml` and starts what the tab needs: the state
-/// of every repository and the scan of the project folders.
+/// of every repository and the scan of the project folders. A file that cannot
+/// be read is named once and then left alone: the list stays in memory.
 pub fn open(ctx: &Ctx) -> (State, Task<Message>) {
-    let store = ctx.file.as_deref().map(Store::read).unwrap_or_default();
-    let mut state = State::new(store, ctx.file.clone());
+    let mut state = match ctx.file.as_deref().map(Store::read).transpose() {
+        Ok(store) => State::new(store.unwrap_or_default(), ctx.file.clone()),
+        Err(error) => {
+            let mut unsaved = State::new(Store::default(), None);
+            unsaved.failure = Some(store_error_text(&error, ctx.lang));
+            unsaved
+        }
+    };
     state.open_roots.clone_from(&ctx.open_roots);
+    let reads = refresh(&mut state, ctx);
+    let scan = start_scan(&mut state, ctx, false);
+    (state, Task::batch([reads, scan]))
+}
+
+/// Reads every repository again, unless a run is going: its results are newer.
+fn refresh(state: &mut State, ctx: &Ctx) -> Task<Message> {
+    if state.run.as_ref().is_some_and(|run| !run.is_finished()) {
+        return Task::none();
+    }
+    state.refreshed_at = Some(ctx.now);
     let paths: Vec<PathBuf> = state
         .store
         .repos
@@ -54,11 +76,16 @@ pub fn open(ctx: &Ctx) -> (State, Task<Message>) {
         .map(|entry| entry.path.clone())
         .collect();
     for path in paths {
-        enqueue_read(&mut state, path);
+        enqueue_read(state, path);
     }
-    let reads = pump_reads(&mut state, ctx);
-    let scan = start_scan(&mut state, ctx, false);
-    (state, Task::batch([reads, scan]))
+    pump_reads(state, ctx)
+}
+
+fn is_stale(state: &State, ctx: &Ctx) -> bool {
+    state
+        .refreshed_at
+        .and_then(|last| ctx.now.duration_since(last).ok())
+        .is_none_or(|age| age >= REFRESH_EVERY)
 }
 
 pub(crate) fn enqueue_read(state: &mut State, path: PathBuf) {
@@ -108,12 +135,11 @@ fn persist(state: &mut State, ctx: &Ctx) {
     let Some(file) = &state.file else {
         return;
     };
-    state.failure = state.store.write(file).err().map(|reason| {
-        fill_template(
-            ctx.lang.text(Msg::ReposSaveFailed),
-            &[("{reason}", &reason)],
-        )
-    });
+    state.failure = state
+        .store
+        .write(file)
+        .err()
+        .map(|error| store_error_text(&error, ctx.lang));
 }
 
 fn is_repo_row(state: &State, path: &Path) -> bool {
@@ -458,21 +484,9 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(pump_reads(state, ctx))
         }
-        Message::Tick => {
-            if state.run.as_ref().is_some_and(|run| !run.is_finished()) {
-                return quiet(Task::none());
-            }
-            let paths: Vec<PathBuf> = state
-                .store
-                .repos
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect();
-            for path in paths {
-                enqueue_read(state, path);
-            }
-            quiet(pump_reads(state, ctx))
-        }
+        Message::Tick => quiet(refresh(state, ctx)),
+        Message::Shown if is_stale(state, ctx) => quiet(refresh(state, ctx)),
+        Message::Shown => quiet(Task::none()),
         Message::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
         Message::Bulk(action) => quiet(run::start(state, action, ctx)),
         Message::StepDone(path, executed) => {

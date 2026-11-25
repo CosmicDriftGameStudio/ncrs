@@ -343,6 +343,11 @@ impl Git {
                 ));
             }
             self.check_saved(saved)?;
+            if let Some(path) = self.untracked_in_the_way(previous_head)?.first() {
+                return Err(ActionError::UndoNotSafe(format!(
+                    "{path} was created since the reset"
+                )));
+            }
             self.ok(&["reset", "--hard", previous_head])?;
         } else {
             self.ok(&["reset", "--soft", previous_head])?;
@@ -358,11 +363,9 @@ impl Git {
     /// file: a folder cannot be saved, so it stops the reset.
     pub(crate) fn save_changed_tracked(&self, target: &str) -> Result<Vec<SavedFile>, ActionError> {
         let output = self.ok(&["diff", "--name-only", "-z", "HEAD", "--"])?;
-        let mut paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
-            .split('\0')
-            .filter(|path| !path.is_empty())
-            .map(str::to_string)
-            .collect();
+        let mut paths = raw_paths(&output)
+            .map(|raw| utf8_path(raw).map(str::to_string))
+            .collect::<Result<Vec<String>, ActionError>>()?;
         for path in self.untracked_in_the_way(target)? {
             let is_folder = fs::symlink_metadata(self.root().join(&path))
                 .is_ok_and(|found| found.is_dir());
@@ -384,25 +387,19 @@ impl Git {
     /// Paths with something on the disk that the index does not track and
     /// `target` does, or that stand where `target` needs a folder.
     pub(crate) fn untracked_in_the_way(&self, target: &str) -> Result<Vec<String>, ActionError> {
-        let names = |output: crate::cli::Output| -> Vec<String> {
-            String::from_utf8_lossy(&output.stdout)
-                .split('\0')
-                .filter(|path| !path.is_empty())
-                .map(str::to_string)
-                .collect()
-        };
-        let in_target = names(self.ok(&["ls-tree", "-r", "-z", "--name-only", target, "--"])?);
-        let in_index: HashSet<String> = names(self.ok(&["ls-files", "-z"])?).into_iter().collect();
+        let in_target = self.ok(&["ls-tree", "-r", "-z", "--name-only", target, "--"])?;
+        let listed = self.ok(&["ls-files", "-z"])?;
+        let in_index: HashSet<&[u8]> = raw_paths(&listed).collect();
         let mut found = BTreeSet::new();
-        for path in in_target.iter().filter(|path| !in_index.contains(*path)) {
-            found.extend(self.thing_at_or_above(path, &in_index));
+        for raw in raw_paths(&in_target).filter(|raw| !in_index.contains(raw)) {
+            found.extend(self.thing_at_or_above(utf8_path(raw)?, &in_index));
         }
         Ok(found.into_iter().collect())
     }
 
     /// `path` if something is there, else the first untracked non-folder on the
     /// way to it.
-    fn thing_at_or_above(&self, path: &str, in_index: &HashSet<String>) -> Option<String> {
+    fn thing_at_or_above(&self, path: &str, in_index: &HashSet<&[u8]>) -> Option<String> {
         let mut current = self.root().to_path_buf();
         let mut prefix = String::new();
         let parts: Vec<&str> = path.split('/').collect();
@@ -417,7 +414,7 @@ impl Git {
                 return Some(prefix);
             }
             if !here.is_dir() {
-                return (!in_index.contains(&prefix)).then_some(prefix);
+                return (!in_index.contains(prefix.as_bytes())).then_some(prefix);
             }
         }
         None
@@ -455,6 +452,24 @@ impl Git {
         }
         Ok(())
     }
+}
+
+/// The paths of a `-z` listing as git wrote them.
+fn raw_paths(output: &crate::cli::Output) -> impl Iterator<Item = &[u8]> {
+    output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+}
+
+/// A name that is not UTF-8 would be looked up under another name and so not be saved.
+fn utf8_path(raw: &[u8]) -> Result<&str, ActionError> {
+    std::str::from_utf8(raw).map_err(|_not_utf8| {
+        ActionError::Io(format!(
+            "{} is not a UTF-8 name and cannot be saved before the reset",
+            String::from_utf8_lossy(raw)
+        ))
+    })
 }
 
 /// Refuses a path that is, or runs through, a symlink inside `root`: a write

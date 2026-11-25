@@ -2,9 +2,12 @@
 //! deleted: a group head with a tick for the whole group, a row with tick, name
 //! and reason, and the dimmed row of what stays and why.
 
+use std::path::Path;
+
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
 use iced::{alignment, Color, Element, Length};
+use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::file_icon::git_branch_icon;
 use crate::format::ellipsize_middle;
@@ -26,6 +29,37 @@ const DETAIL_CHARS: usize = 52;
 const REASON_WIDTH: f32 = 240.0;
 /// What a row of a group is moved to the right of its head.
 const GROUP_INDENT: f32 = 18.0;
+
+/// How many ignored files are named; the rest is a number.
+const NAMED_FILES: usize = 2;
+
+/// `.env, local.toml and 3 more`
+pub fn named_files(files: &[String], lang: Language) -> String {
+    let shown: Vec<&str> = files.iter().take(NAMED_FILES).map(String::as_str).collect();
+    let names = shown.join(", ");
+    match files.len().saturating_sub(NAMED_FILES) {
+        0 => names,
+        more => fill_template(
+            lang.text(Msg::GitCleanupIgnoredMore),
+            &[("{count}", &more.to_string()), ("{names}", &names)],
+        ),
+    }
+}
+
+/// Where a worktree lives; with ignored files the folder alone, and them.
+pub fn worktree_detail(path: &Path, ignored_files: &[String], lang: Language) -> String {
+    let folder = match path.file_name() {
+        Some(name) if !ignored_files.is_empty() => name.to_string_lossy(),
+        _ => return path.display().to_string(),
+    };
+    fill_template(
+        lang.text(Msg::GitCleanupWorktreeIgnored),
+        &[
+            ("{folder}", &folder),
+            ("{files}", &named_files(ignored_files, lang)),
+        ],
+    )
+}
 
 /// What became of an entry.
 #[derive(Debug, Clone, PartialEq, Eq)]

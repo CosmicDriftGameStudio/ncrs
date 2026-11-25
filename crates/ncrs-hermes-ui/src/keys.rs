@@ -59,14 +59,18 @@ pub fn target_dialog_key(key: &Key) -> Option<Message> {
     }
 }
 
-/// The question before a target is removed.
+/// The question before a target is removed, or confirmed without its documents.
 pub fn target_removal_key(key: &Key) -> Option<Message> {
     use crate::message::TargetsMessage;
-    match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::Targets(TargetsMessage::CancelRemove)),
-        Key::Named(Named::Enter) => Some(Message::Targets(TargetsMessage::ConfirmRemove)),
-        _ => None,
-    }
+    let message = match key.as_ref() {
+        Key::Named(Named::Escape) => TargetsMessage::CancelQuestion,
+        Key::Named(Named::Enter) => TargetsMessage::AnswerQuestion,
+        Key::Named(Named::Tab | Named::ArrowLeft | Named::ArrowRight) => {
+            TargetsMessage::SwitchAnswer
+        }
+        _ => return None,
+    };
+    Some(Message::Targets(message))
 }
 
 /// The rules Hermes proposes: the arrows move, Space ticks, Enter takes the

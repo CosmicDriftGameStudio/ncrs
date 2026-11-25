@@ -51,8 +51,8 @@ pub use extract::{
 };
 pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
-    contains_condition_holds, pattern_is_valid, plan, render_pattern_in, unknown_placeholder,
-    FilingPlan, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
+    contains_condition_holds, has_lost_ending, pattern_is_valid, plan, render_pattern_in,
+    unknown_placeholder, FilingPlan, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
 pub use location::{

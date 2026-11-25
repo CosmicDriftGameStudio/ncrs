@@ -208,7 +208,7 @@ pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Mes
         hermes
             .target_removal
             .as_ref()
-            .map(|asked| target_dialog_ui::removal(asked, window, lang, palette)),
+            .map(|asked| target_dialog_ui::question(asked, window, lang, palette)),
         hermes
             .rules
             .as_ref()

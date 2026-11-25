@@ -1,9 +1,6 @@
 use crate::app::*;
 use ncrs_repos::Action as Ask;
 
-/// How often the Repos tab reads the repositories again while it is open.
-pub(in crate::app) const REPOS_TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
-
 impl App {
     fn repos_file(&self) -> Option<PathBuf> {
         self.config_path
@@ -73,7 +70,23 @@ impl App {
         self.follow_opened_pages(was_open);
     }
 
+    /// The tab came to the front or the window did: an old state is read again.
+    pub(in crate::app) fn repos_came_into_view(&mut self) -> Task<Message> {
+        if self.repos_shown() {
+            self.update_repos(ncrs_repos::Message::Shown)
+        } else {
+            Task::none()
+        }
+    }
+
+    fn repos_in_view(&self) -> bool {
+        self.repos_shown() && !self.input.lock().window_unfocused
+    }
+
     pub(in crate::app) fn update_repos(&mut self, message: ncrs_repos::Message) -> Task<Message> {
+        if matches!(message, ncrs_repos::Message::Tick) && !self.repos_in_view() {
+            return Task::none();
+        }
         let ctx = self.repos_ctx();
         let Some(state) = self.repos.as_mut() else {
             return Task::none();
@@ -159,9 +172,11 @@ impl App {
         let Some(file) = self.repos_file() else {
             return Task::none();
         };
-        let mut store = ncrs_repos::Store::read(&file);
-        if store.add(root, ncrs_repos::Origin::Learned, None) {
-            let _ = store.write(&file);
+        // A list that cannot be read stays as it is; the tab says so when it opens.
+        if let Ok(mut store) = ncrs_repos::Store::read(&file) {
+            if store.add(root, ncrs_repos::Origin::Learned, None) {
+                let _ = store.write(&file);
+            }
         }
         Task::none()
     }
@@ -190,7 +205,8 @@ impl App {
             Some(state) => state.store().last_scan,
             None => self
                 .repos_file()
-                .and_then(|file| ncrs_repos::Store::read(&file).last_scan),
+                .and_then(|file| ncrs_repos::Store::read(&file).ok())
+                .and_then(|store| store.last_scan),
         };
         ncrs_settings::facts::ReposScanFacts {
             now: std::time::SystemTime::now(),
@@ -200,5 +216,53 @@ impl App {
                 millis: scan.millis,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::{event, window, Event};
+
+    fn app_with_repos() -> App {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenRepos));
+        app
+    }
+
+    /// Forgets the last refresh, handles `message`, says whether it refreshed.
+    fn refreshes(app: &mut App, message: Message) -> bool {
+        app.repos.as_mut().unwrap().refreshed_at = None;
+        drop(app.update(message));
+        app.repos.as_ref().unwrap().refreshed_at.is_some()
+    }
+
+    fn tick() -> Message {
+        Message::Repos(ncrs_repos::Message::Tick)
+    }
+
+    fn window_event(app: &App, sent: window::Event) {
+        app.input
+            .lock()
+            .handle(&Event::Window(sent), event::Status::Ignored);
+    }
+
+    #[tokio::test]
+    async fn a_hidden_tab_is_not_read_again_until_it_is_shown() {
+        let mut app = app_with_repos();
+        assert!(refreshes(&mut app, tick()));
+        drop(app.update(Message::ShowTab(ShownTab::Panels)));
+        assert!(!refreshes(&mut app, tick()));
+        assert!(refreshes(&mut app, Message::ShowTab(ShownTab::Repos)));
+    }
+
+    #[tokio::test]
+    async fn a_window_without_focus_is_not_read_again_until_it_is_back() {
+        let mut app = app_with_repos();
+        window_event(&app, window::Event::Unfocused);
+        assert!(!refreshes(&mut app, tick()));
+        window_event(&app, window::Event::Focused);
+        assert!(refreshes(&mut app, Message::WindowFocused));
+        assert!(refreshes(&mut app, tick()));
     }
 }

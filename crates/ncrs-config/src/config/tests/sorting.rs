@@ -434,6 +434,28 @@ fn the_copy_is_made_once_and_never_overwritten() {
 
 #[cfg(unix)]
 #[test]
+fn a_link_to_nothing_is_no_copy_and_is_not_written_through() {
+    let base = tempfile::tempdir().unwrap();
+    let original = legacy_config(&base);
+    let path = config_in(&base, &original);
+    let pointed_at = base.path().join("elsewhere.toml");
+    std::os::unix::fs::symlink(&pointed_at, backup_of(&path)).unwrap();
+
+    upsert_sort_source_with_home(&path, &source_at(&paths(&base).0, &[]), None, None).unwrap();
+
+    let copy = backup_of(&path);
+    assert!(!copy.symlink_metadata().unwrap().is_symlink());
+    assert_eq!(std::fs::read_to_string(&copy).unwrap(), original);
+    assert!(!pointed_at.exists());
+    let left_over = std::fs::read_dir(base.path())
+        .unwrap()
+        .filter_map(|entry| entry.unwrap().file_name().into_string().ok())
+        .any(|name| name.ends_with(".partial"));
+    assert!(!left_over);
+}
+
+#[cfg(unix)]
+#[test]
 fn the_copy_has_the_permissions_of_the_config() {
     use std::os::unix::fs::PermissionsExt;
     let base = tempfile::tempdir().unwrap();
@@ -501,6 +523,28 @@ fn target_ids_are_never_handed_out_twice() {
     add("d");
 
     assert_eq!(handed_out, ["main", "t2", "t3", "t4"]);
+}
+
+#[test]
+fn targets_written_inline_keep_their_ids_when_one_is_added() {
+    let base = tempfile::tempdir().unwrap();
+    let (_, archive, other) = paths(&base);
+    let text = format!(
+        "[modules.filing]\nenabled = true\ntargets = [{{ id = \"main\", path = {} }}]\n",
+        quoted(&archive),
+    );
+    let path = config_in(&base, &text);
+
+    let (added, config) = add_sort_target_with_home(&path, "More", &other, None, None).unwrap();
+
+    assert_eq!(added.as_str(), "t2");
+    let targets: Vec<_> = config
+        .filing
+        .targets
+        .iter()
+        .map(|setting| (setting.target.id.as_str().to_owned(), setting.target.path.clone()))
+        .collect();
+    assert_eq!(targets, [("main".to_owned(), archive), ("t2".to_owned(), other)]);
 }
 
 #[test]

@@ -12,7 +12,7 @@ use super::plan_run::{
     files_of, plan_watched, source_root, PlanError, PlanFiles, PlanRequest, PlanRow, RowPlace, RowState,
 };
 use super::read_unknown::ReadUnknown;
-use super::ready::{source_is_mounted, WaitReason};
+use super::ready::{is_on_own_volume, source_is_mounted, WaitReason};
 use super::run::{run_as, RunEntry, RunError, RunRequest, SortReport};
 use crate::execute::reconcile;
 use crate::reading_support::{walk_sorted, ReadError, ReadProgress};
@@ -72,8 +72,17 @@ pub fn run_watched<P: Progress>(
     name: &str,
     progress: &mut P,
 ) -> Result<WatchedReport, String> {
-    let is_mounted = |root: &Path| source_is_mounted(source, root);
-    watch_with(access, source, files, busy_source, name, progress, is_mounted)
+    let volume = Volume {
+        is_mounted: |root: &Path| source_is_mounted(source, root),
+        is_own: is_on_own_volume,
+    };
+    watch_with(access, source, files, busy_source, name, progress, volume)
+}
+
+/// What the system says of the volume a source is on.
+pub(super) struct Volume<M, O> {
+    pub is_mounted: M,
+    pub is_own: O,
 }
 
 pub(super) fn watch_with<P: Progress>(
@@ -83,8 +92,9 @@ pub(super) fn watch_with<P: Progress>(
     busy_source: Option<&Path>,
     name: &str,
     progress: &mut P,
-    is_mounted: impl Fn(&Path) -> bool,
+    volume: Volume<impl Fn(&Path) -> bool, impl Fn(&Path) -> Option<bool>>,
 ) -> Result<WatchedReport, String> {
+    let Volume { is_mounted, is_own } = volume;
     let waiting = |err| WatchedReport::SourceWaiting(SourceWait::from_error(source, err));
     if !source.watch {
         return Ok(WatchedReport::Skipped(WatchedSkip::NotWatched));
@@ -111,14 +121,16 @@ pub(super) fn watch_with<P: Progress>(
     let _work = access.index_work.begin();
     access.with_index(|index| reconcile(index).map_err(text))?;
 
-    if !access.with_index(|index| index.has_source_backlog(&source.path).map_err(text))? {
+    let own_volume = is_own(&root);
+    let volume_changed = || is_own(&root) != own_volume;
+    if needs_backlog(access, source, own_volume)? {
         return match backlog_of(&root) {
             Err(err) => Ok(waiting(err)),
-            // Unplugged while it was walked, the list is cut short.
-            Ok(_) if !is_mounted(&root) => {
+            // Plugged in or out while it was walked, the list is cut short.
+            Ok(_) if !is_mounted(&root) || volume_changed() => {
                 Ok(WatchedReport::SourceWaiting(SourceWait::NotMounted))
             }
-            Ok(backlog) => record_backlog(access, source, &backlog),
+            Ok(backlog) => record_backlog(access, source, &backlog, own_volume),
         };
     }
     // Before the walk: while a drive is away this is asked again and again.
@@ -130,6 +142,9 @@ pub(super) fn watch_with<P: Progress>(
         Ok(new) => new,
         Err(err) => return Ok(waiting(err)),
     };
+    if volume_changed() {
+        return Ok(WatchedReport::SourceWaiting(SourceWait::NotMounted));
+    }
     let request = PlanRequest {
         source: source.clone(),
         files: PlanFiles::Listed(new),
@@ -183,6 +198,22 @@ fn is_paused(access: &SortingAccess, source: &SortSource) -> bool {
         .any(|entry| entry.source.path == source.path && entry.paused.is_some())
 }
 
+/// Nothing was taken stock of yet, or what was lay on another volume: an empty
+/// mount point then, the drive now.
+fn needs_backlog(
+    access: &SortingAccess,
+    source: &SortSource,
+    own_volume: Option<bool>,
+) -> Result<bool, String> {
+    access.with_index(|index| {
+        if !index.has_source_backlog(&source.path).map_err(text)? {
+            return Ok(true);
+        }
+        let recorded = index.source_backlog_volume(&source.path).map_err(text)?;
+        Ok(matches!((recorded, own_volume), (Some(then), Some(now)) if then != now))
+    })
+}
+
 /// All files, whatever the filter says: a filter changed later must not make
 /// old files new. The same goes for targets below the source.
 fn backlog_of(root: &Path) -> Result<Vec<(PathBuf, FileStamp)>, ReadError> {
@@ -197,10 +228,11 @@ fn record_backlog(
     access: &SortingAccess,
     source: &SortSource,
     backlog: &[(PathBuf, FileStamp)],
+    own_volume: Option<bool>,
 ) -> Result<WatchedReport, String> {
     access.with_index_mut(|index| {
         index
-            .set_source_backlog(&source.path, backlog)
+            .set_source_backlog(&source.path, backlog, own_volume)
             .map_err(text)
     })?;
     Ok(WatchedReport::BacklogRecorded {

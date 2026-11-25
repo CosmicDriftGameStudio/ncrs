@@ -341,8 +341,8 @@ impl Git {
             Prompts::Ask { job } => {
                 if let Some(setup) = crate::askpass::setup_for(job) {
                     command
-                        .env("GIT_ASKPASS", &setup.git_askpass)
-                        .env("SSH_ASKPASS", &setup.ssh_askpass)
+                        .env("GIT_ASKPASS", &setup.askpass)
+                        .env("SSH_ASKPASS", &setup.askpass)
                         .env("SSH_ASKPASS_REQUIRE", "force")
                         .env(crate::askpass::ENDPOINT_VARIABLE, &setup.endpoint)
                         .env(crate::askpass::TOKEN_VARIABLE, &setup.token);
@@ -383,6 +383,11 @@ impl Git {
             command
                 .env("GIT_OPTIONAL_LOCKS", "0")
                 .args(["-c", &format!("core.hooksPath={NULL_DEVICE}")]);
+            // Reading must not go to the remote for objects of a partial clone; an
+            // unattended pull or checkout has to.
+            if !self.is_unattended() {
+                command.env("GIT_NO_LAZY_FETCH", "1");
+            }
             for name in filters {
                 for key in ["clean", "smudge", "process"] {
                     command.args(["-c", &format!("filter.{name}.{key}=")]);

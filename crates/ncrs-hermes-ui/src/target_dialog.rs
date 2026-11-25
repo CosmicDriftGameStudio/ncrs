@@ -1,5 +1,5 @@
-//! The dialog of one target, the question before a target is removed and the
-//! messages of the targets part of the page Einsortieren.
+//! The dialog of one target, the questions about a target and the messages of
+//! the targets part of the page Einsortieren.
 
 use std::path::{Path, PathBuf};
 
@@ -28,9 +28,17 @@ pub enum TargetsMessage {
     },
     /// The states of the targets, read off the UI thread.
     StatesLoaded(Vec<(TargetId, TargetState)>),
+    /// What the disk and the index say of a target that is being confirmed.
+    ConfirmChecked(Box<ConfirmCheck>),
     AskRemove(usize),
-    CancelRemove,
     ConfirmRemove,
+    /// "Trotzdem bestätigen".
+    ConfirmAnyway,
+    CancelQuestion,
+    /// Enter: the button of the question that has the focus.
+    AnswerQuestion,
+    /// The other button of the question gets the focus.
+    SwitchAnswer,
     Name(String),
     Folder(String),
     PickFolder,
@@ -39,6 +47,15 @@ pub enum TargetsMessage {
     Cancel,
     Written(Box<Result<Filing, FilingWriteError>>),
     Removed(Box<Removed>),
+}
+
+/// The target as it was when the disk was asked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConfirmCheck {
+    pub target: SortTarget,
+    pub own_volume: Option<bool>,
+    /// Documents the index knows in the folder while none of them is there.
+    pub gone: Result<usize, String>,
 }
 
 /// What removing a target made of the config and of its rules.
@@ -192,6 +209,33 @@ pub fn target_name(target: &SortTarget) -> String {
             .map_or_else(String::new, |last| last.to_string_lossy().into_owned())
     } else {
         target.name.clone()
+    }
+}
+
+/// The question about a target that is up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetQuestion {
+    Remove(TargetRemoval),
+    Confirm(TargetConfirmation),
+}
+
+/// The question before a target is confirmed whose known documents are all
+/// not there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetConfirmation {
+    pub target: SortTarget,
+    pub gone: usize,
+    /// The focus is on "Trotzdem bestätigen"; it starts on "Abbrechen".
+    pub confirm_focused: bool,
+}
+
+impl TargetConfirmation {
+    pub fn new(target: SortTarget, gone: usize) -> Self {
+        Self {
+            target,
+            gone,
+            confirm_focused: false,
+        }
     }
 }
 

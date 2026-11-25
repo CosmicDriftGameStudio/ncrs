@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use ncrs_ui_kit::git_state::RunOutcome;
 use ncrs_ui_kit::marked_list::MarkedList;
@@ -126,6 +127,8 @@ pub struct State {
     pub scanning: Option<Arc<AtomicBool>>,
     pub read_queue: VecDeque<PathBuf>,
     pub reads_running: usize,
+    /// When the reading of every repository was last started.
+    pub refreshed_at: Option<SystemTime>,
     pub run: Option<Run>,
     /// The menu is open for this row; for the bar when `None` inside.
     pub menu: Option<PathBuf>,
@@ -157,6 +160,7 @@ impl State {
             scanning: None,
             read_queue: VecDeque::new(),
             reads_running: 0,
+            refreshed_at: None,
             run: None,
             menu: None,
             failure: None,

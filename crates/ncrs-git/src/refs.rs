@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use gix::ObjectId;
 
+use crate::cleanup::remote_tips;
 use crate::repo_access::{default_branch, open, DefaultBranch};
 use crate::status::{check_stop, count_commits_strict, distance_to_upstream};
 use crate::{status, FileState, GitError};
@@ -58,6 +59,9 @@ pub struct WorktreeInfo {
     pub locked: bool,
     /// The full id of HEAD.
     pub head: Option<String>,
+    /// Ignored files (not folders) by their path in the worktree: git removes a
+    /// linked worktree without a word about them. Empty for the main worktree.
+    pub ignored_files: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -68,6 +72,8 @@ pub struct RefsOverview {
     pub main_tip: Option<String>,
     pub local: Vec<BranchInfo>,
     pub remote: Vec<String>,
+    /// The full ids of the tips of `remote`.
+    pub remote_tips: BTreeMap<String, String>,
     pub tags: Vec<String>,
     pub stashes: usize,
     pub worktrees: Vec<WorktreeInfo>,
@@ -149,6 +155,7 @@ pub fn refs(root: &std::path::Path, stop: &Arc<AtomicBool>) -> Result<RefsOvervi
             .map(|id| id.to_string()),
         local,
         remote,
+        remote_tips: remote_tips(root, stop)?,
         tags,
         stashes: stash_count(&repository),
         worktrees: worktrees(&repository, root, main.as_ref(), stop)?,
@@ -243,7 +250,13 @@ fn worktrees(
             worktree_upstream(repository, state.branch.as_deref(), head_id, stop)?;
         let is_main = index == 0;
         let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        let ignored_files = if is_main {
+            Vec::new()
+        } else {
+            ignored_files(&path, &state.entries)
+        };
         found.push(WorktreeInfo {
+            ignored_files,
             wip: state
                 .entries
                 .values()
@@ -265,6 +278,21 @@ fn worktrees(
         });
     }
     Ok(found)
+}
+
+/// The status shows an ignored folder as one entry, so folders (build output,
+/// dependencies) are told apart by what is on the disk.
+fn ignored_files(folder: &Path, entries: &HashMap<PathBuf, FileState>) -> Vec<String> {
+    let mut files: Vec<String> = entries
+        .iter()
+        .filter(|(_, state)| **state == FileState::Ignored)
+        .filter(|(path, _)| {
+            std::fs::symlink_metadata(folder.join(path)).is_ok_and(|found| found.is_file())
+        })
+        .map(|(path, _)| path.to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    files
 }
 
 fn worktree_upstream(

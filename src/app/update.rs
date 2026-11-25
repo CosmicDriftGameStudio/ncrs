@@ -180,9 +180,15 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let was_open = self.open_pages();
+        let repos_were_shown = self.repos_shown();
         let task = self.update_message(message);
         let compare = self.follow_compare();
         self.follow_opened_pages(was_open);
+        let repos = if repos_were_shown {
+            Task::none()
+        } else {
+            self.repos_came_into_view()
+        };
         self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
@@ -194,7 +200,7 @@ impl App {
         self.publish_key_state();
         #[cfg(target_os = "macos")]
         native_menu::sync(self.lang, &self.keymap, self.menu_state());
-        Task::batch([task, compare, chat])
+        Task::batch([task, compare, repos, chat])
     }
 
     fn update_message(&mut self, message: Message) -> Task<Message> {
@@ -431,7 +437,9 @@ impl App {
                 self.apply_window_size(size);
                 Task::none()
             }
-            Message::WindowFocused => self.reload_local_panels(),
+            Message::WindowFocused => {
+                Task::batch([self.reload_local_panels(), self.repos_came_into_view()])
+            }
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::HermesChat(chat) => self.update_hermes_chat(chat),

@@ -130,9 +130,7 @@ pub fn view<'a>(
             dialog.focus == SourceField::When,
             palette,
         ),
-        (dialog.watch && dialog.replacing.is_none()).then(|| {
-            kit::paragraph(lang.text(Msg::SortingHintExistingStay).to_owned(), palette)
-        }),
+        when_hints(dialog, filing, lang, palette),
         palette,
     ));
     body = body.push(choice_row(
@@ -219,6 +217,25 @@ pub fn view<'a>(
             tab: true,
         })
         .into_element()
+}
+
+fn when_hints<'a>(
+    dialog: &SourceDialog,
+    filing: &Filing,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
+    let is_new = dialog.watch && dialog.replacing.is_none();
+    let existing_stay = is_new
+        .then(|| kit::paragraph(lang.text(Msg::SortingHintExistingStay).to_owned(), palette));
+    let not_read = dialog.is_not_read_by_itself(filing).then(|| {
+        kit::warning_line(
+            lang.text(Msg::SortingHintHoldsTarget).to_owned(),
+            palette,
+        )
+    });
+    let hints: Vec<_> = existing_stay.into_iter().chain(not_read).collect();
+    (!hints.is_empty()).then(|| kit::stack(hints).into())
 }
 
 /// The field tells the dialog when the mouse goes into it.

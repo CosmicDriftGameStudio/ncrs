@@ -705,7 +705,7 @@ fn automatic_file_name(fields: &DocumentFields) -> Option<String> {
 /// Windows drops a dot or space at the end of a name, so the folder would not
 /// be the one the pattern says. Elsewhere `Company Inc.` is a folder like any
 /// other.
-pub(crate) fn has_lost_ending(segment: &str) -> bool {
+pub fn has_lost_ending(segment: &str) -> bool {
     cfg!(windows) && segment.ends_with(['.', ' '])
 }
 

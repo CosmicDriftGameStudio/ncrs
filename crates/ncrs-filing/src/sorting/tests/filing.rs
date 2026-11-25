@@ -258,6 +258,27 @@ fn a_target_taken_over_waits_until_one_of_its_documents_is_seen() {
 }
 
 #[test]
+fn documents_that_are_all_gone_from_a_target_are_counted_those_marked_missing_too() {
+    let mut setup = Setup::new();
+    setup.add_target("old", "Old", None);
+    let gone = |folder: &str| setup.access.all_gone_below(&setup.path(folder));
+    assert_eq!(gone("Old"), Ok(0));
+
+    let first = setup.write("Old/a.txt", "a letter filed long ago");
+    let second = setup.write("Old/2024/b.txt", "another letter");
+    setup.plan(&setup.source("Old", &["t1"]));
+    assert_eq!(gone("Old"), Ok(0));
+
+    fs::remove_file(&second).unwrap();
+    assert_eq!(gone("Old"), Ok(0), "one of them is there");
+    fs::remove_file(&first).unwrap();
+    let document = setup.document(&first).id;
+    setup.index(|index| index.mark_document_missing(document).unwrap());
+    assert_eq!(gone("Old"), Ok(2));
+    assert_eq!(gone("T1"), Ok(0));
+}
+
+#[test]
 fn a_file_or_place_that_changed_since_the_plan_is_left() {
     let setup = Setup::new();
     setup.rule("t1", "acme", "Acme/{number}");

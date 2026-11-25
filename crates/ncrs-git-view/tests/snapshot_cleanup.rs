@@ -67,6 +67,7 @@ mod ui_tests {
             worktrees: vec![CleanupWorktree {
                 path: PathBuf::from("/Users/marc/code/kassenbuch-wt/mahnwesen"),
                 branch: branch_to_go("feature/mahnwesen", CleanupReason::InDefault, false),
+                ignored_files: Vec::new(),
             }],
             kept: vec![
                 Kept {
@@ -117,6 +118,19 @@ mod ui_tests {
     fn cleanup_dialog_picture() {
         let state = with_dialog(dialog(Phase::Ready));
         picture(&state, "tests/snapshots/git-cleanup-dialog-cosmic");
+    }
+
+    #[test]
+    fn cleanup_dialog_with_ignored_files_picture() {
+        let mut shown = dialog(Phase::Ready);
+        for worktree in &mut shown.list.worktrees {
+            worktree.ignored_files = [".env", "lokal.toml", "notizen.md"]
+                .map(str::to_owned)
+                .to_vec();
+            shown.ticked.remove(&Pick::Worktree(worktree.path.clone()));
+        }
+        let state = with_dialog(shown);
+        picture(&state, "tests/snapshots/git-cleanup-ignored-cosmic");
     }
 
     #[test]

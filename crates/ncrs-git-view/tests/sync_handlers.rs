@@ -9,7 +9,7 @@
 
 use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
 use ncrs_git::PullStrategy;
-use ncrs_git_view::actions::Dialog;
+use ncrs_git_view::actions::{Dialog, Question};
 use ncrs_git_view::sync_menu::{SyncAction, SyncKind};
 use ncrs_git_view::{update, Ctx, Message, State};
 use ncrs_i18n::Language;
@@ -74,6 +74,19 @@ fn a_login_question_opens_the_dialog_and_enter_sends_what_was_typed() {
     assert!(dialog_is_open(&state), "the field sends its own Enter, with the id");
     let _ = update(&mut state, Message::CredentialSend(7), &ctx);
     assert!(!dialog_is_open(&state));
+}
+
+#[test]
+fn closing_a_dialog_shows_the_login_question_that_waited_behind_it() {
+    let ctx = Ctx::new(Language::English);
+    let mut state = State::default();
+    state.actions.dialog = Some(Dialog::Ask(Question::DiscardAll { count: 1 }));
+    let _ = update(&mut state, Message::CredentialAsked(ask(PromptKind::Secret)), &ctx);
+    assert!(!dialog_is_open(&state));
+    let _ = update(&mut state, Message::CloseDialog, &ctx);
+    assert!(dialog_is_open(&state));
+    let _ = update(&mut state, Message::CloseDialog, &ctx);
+    assert!(state.actions.dialog.is_none());
 }
 
 #[test]

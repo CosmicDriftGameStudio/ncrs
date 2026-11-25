@@ -34,6 +34,10 @@ the process with `exit()` while the model still holds Metal buffers, and
 llama.cpp aborts in `ggml_metal_rsets_free`. `iced::exit` stops the run loop
 directly and does not come back through `terminate:`.
 
+A quit Apple event with a quit reason (attribute `why?`: logout, restart,
+shutdown) is answered with `NSTerminateNow` as upstream does: a cancel would
+stop the whole logout.
+
 ## Trimmed targets
 
 `Cargo.toml` has the dependency sections for `cfg(target_family = "wasm")`

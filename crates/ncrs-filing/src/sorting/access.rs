@@ -9,7 +9,7 @@ use ncrs_index::{BatchId, Index, Kinds, RuleId, TargetId};
 use ncrs_intake::{canonical_path, PlainText, SortTarget, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
-use super::ready::{state_of, TargetState, WaitReason};
+use super::ready::{all_gone_below, state_of, TargetState, WaitReason};
 use crate::chat_work::{runs_of_index, undo_run, RecentRun, Snapshots, UndoReport};
 use crate::execute::{trash_can_restore, trash_run, TrashItem, TrashReport};
 use crate::index_work::IndexWork;
@@ -116,6 +116,12 @@ impl SortingAccess {
             Some(setting) if setting.paused.is_some() => TargetState::Waiting(WaitReason::Paused),
             Some(setting) => state_of(self, &setting.target),
         }
+    }
+
+    /// How many documents the index knows below `folder`, those it misses
+    /// included, while none of them is there; 0 when one is. Blocking.
+    pub fn all_gone_below(&self, folder: &Path) -> Result<usize, String> {
+        all_gone_below(self, folder)
     }
 
     /// The targets out of `ids` that cannot be filed into.

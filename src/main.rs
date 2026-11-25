@@ -313,7 +313,10 @@ fn data_dir_of(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> 
 fn main() -> iced::Result {
     // Git and ssh start this binary as their askpass helper: that run answers
     // the prompt and exits, before anything else (console, instance lock, GUI).
-    let helper_arguments: Vec<String> = env::args().skip(1).collect();
+    // The program name stays in front: the prompt is the argument after it.
+    let helper_arguments: Vec<String> = env::args_os()
+        .map(|given| given.to_string_lossy().into_owned())
+        .collect();
     if let Some(code) = ncrs_git::askpass::run_if_asked(&helper_arguments) {
         std::process::exit(code);
     }

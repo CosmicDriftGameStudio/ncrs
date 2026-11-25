@@ -6,9 +6,9 @@ use ncrs_config::config::{same_folder, Filing, SourceSetting};
 use ncrs_fs::search::PathFilter;
 use ncrs_filing::sorting::is_on_own_volume;
 use ncrs_index::TargetId;
-use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
+use ncrs_intake::{LocationMode, LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
 
-use crate::sorting_page::typed_path;
+use crate::sorting_page::{own_volume_to_save, typed_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceDialogKind {
@@ -74,6 +74,8 @@ pub struct SourceDialog {
     pub kind: SourceDialogKind,
     /// The folder of the source this edits; `None` for a new one.
     pub replacing: Option<PathBuf>,
+    /// What is saved for the folder of the source this edits.
+    pub own_volume: Option<bool>,
     pub folder: String,
     pub include: String,
     pub exclude: String,
@@ -107,6 +109,7 @@ impl SourceDialog {
         let mut dialog = Self {
             kind,
             replacing: None,
+            own_volume: None,
             folder: folder.map(|path| path.to_string_lossy().into_owned()).unwrap_or_default(),
             include: String::new(),
             exclude: String::new(),
@@ -129,6 +132,7 @@ impl SourceDialog {
     fn take_over(&mut self, setting: &SourceSetting) {
         let source = &setting.source;
         self.replacing = Some(source.path.clone());
+        self.own_volume = source.own_volume;
         self.include = source.include.clone();
         self.exclude = source.exclude.clone();
         self.targets = source.targets.clone();
@@ -229,12 +233,32 @@ impl SourceDialog {
             && self.problems(filing).is_empty()
     }
 
+    /// Watched, the folder holds a target or a folder of the index: the pipeline
+    /// takes only folders that do not overlap, so nothing in it is read by
+    /// itself.
+    pub fn is_not_read_by_itself(&self, filing: &Filing) -> bool {
+        let FolderCheck::Found(folder) = &self.folder_check else {
+            return false;
+        };
+        let targets = filing.targets.iter().map(|setting| &setting.target.path);
+        let indexed = filing
+            .locations
+            .iter()
+            .filter(|location| location.mode == LocationMode::Archive)
+            .map(|location| &location.path);
+        self.watch
+            && targets
+                .chain(indexed)
+                .any(|inner| inner != folder && inner.starts_with(folder))
+    }
+
     /// The source the draft stands for. Blocking: `own_volume` is asked of the
     /// disk.
     pub fn source(&self, home: &Path) -> SortSource {
         let path = self.path(home);
+        let before = self.replacing.as_deref().map(|old| (old, self.own_volume));
         SortSource {
-            own_volume: is_on_own_volume(&path),
+            own_volume: own_volume_to_save(before, &path, is_on_own_volume(&path)),
             path,
             include: self.include.trim().to_owned(),
             exclude: self.exclude.trim().to_owned(),
@@ -381,6 +405,21 @@ mod tests {
         assert!(!once
             .problems(&filing)
             .contains(&SourceProblem::InsideTarget));
+    }
+
+    #[test]
+    fn a_watched_folder_that_holds_a_target_says_nothing_in_it_is_read_by_itself() {
+        let folder = Path::new("/home/me/Downloads");
+        let (filing, _) = filing_with_target(&folder.join("Filed"));
+        let mut draft = SourceDialog::new(SourceDialogKind::Watched, Some(folder), &filing);
+        assert!(!draft.is_not_read_by_itself(&filing));
+        draft.folder_check = FolderCheck::Found(folder.to_path_buf());
+        assert!(draft.is_not_read_by_itself(&filing));
+        draft.watch = false;
+        assert!(!draft.is_not_read_by_itself(&filing));
+        draft.watch = true;
+        draft.folder_check = FolderCheck::Found(PathBuf::from("/home/me/Scans"));
+        assert!(!draft.is_not_read_by_itself(&filing));
     }
 
     #[test]

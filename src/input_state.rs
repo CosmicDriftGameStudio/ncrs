@@ -118,6 +118,8 @@ pub struct InputState {
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
+    /// Another app's window has the keyboard. Until the first event it is ours.
+    pub window_unfocused: bool,
 }
 
 impl InputState {
@@ -262,7 +264,12 @@ impl InputState {
                 }
                 (nothing_else_up).then_some(Message::Files(MenuMessage::ContextMenuKey))
             }
+            event::Event::Window(window::Event::Focused) => {
+                self.window_unfocused = false;
+                None
+            }
             event::Event::Window(window::Event::Unfocused) => {
+                self.window_unfocused = true;
                 self.alt_tap.cancel();
                 self.panel_drag_armed
                     .then_some(Message::Panel(PanelMessage::PanelDragCancelled))

@@ -40,10 +40,14 @@ CREATE TABLE source_backlog (
     file_mtime INTEGER NOT NULL,
     PRIMARY KEY (source, path)
 );
+CREATE INDEX source_backlog_by_size ON source_backlog (source, file_size);
 
 -- A source whose files were taken stock of; one with an empty backlog is among them.
+-- own_volume: whether its folder was on a volume of its own then, NULL when that
+-- could not be told.
 CREATE TABLE source_watch (
-    source TEXT PRIMARY KEY
+    source TEXT PRIMARY KEY,
+    own_volume INTEGER
 );
 
 -- The batches of one run carry the id of its first batch. NULL is a run of its own.

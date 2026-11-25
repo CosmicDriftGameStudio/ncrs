@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use git_cli::{clone_of, repo, sh, with_origin, write, Repo};
 use ncrs_git::{
-    cleanup_list, refs, remote_state, remote_tips, ActionError, CleanupList, CleanupPlan, CleanupReason, CleanupTarget,
-    KeepReason, RemoteState,
+    cleanup_list, refs, remote_state, remote_tips, ActionError, CleanupBranch, CleanupList, CleanupPlan,
+    CleanupReason, CleanupTarget, KeepReason, RemoteState,
 };
 use tempfile::TempDir;
 
@@ -209,6 +209,48 @@ fn a_clean_merged_worktree_goes_with_its_folder_and_its_branch() {
     assert!(report.all_done(), "{report:?}");
     assert!(!folder.exists());
     assert!(!repo.sh(&["branch"]).contains("wt-branch"));
+}
+
+#[test]
+fn a_worktree_names_its_ignored_files_but_not_its_ignored_folders() {
+    let repo = repo();
+    repo.commit_file(".gitignore", ".env\n/build/\n", "ignore");
+    let folder = merged_worktree(&repo);
+    write(&folder, ".env", "SECRET=1\n");
+    write(&folder, "build/out.o", "o\n");
+
+    let list = scan(&repo, &BTreeMap::new());
+    assert_eq!(list.worktrees.len(), 1);
+    assert_eq!(list.worktrees[0].ignored_files, [".env"]);
+}
+
+#[test]
+fn a_branch_with_a_bad_name_fails_alone_and_the_undo_stays() {
+    let repo = repo();
+    repo.git.create_branch("done", "main", false).unwrap();
+    let good = CleanupBranch {
+        name: "done".to_string(),
+        sha: repo.sh(&["rev-parse", "done"]),
+        reason: CleanupReason::InDefault,
+        upstream: None,
+        tip_time: 0,
+        remote_tip: None,
+    };
+    let bad = CleanupBranch {
+        name: "-x".to_string(),
+        ..good.clone()
+    };
+    let report = repo
+        .git
+        .clean_up(&CleanupPlan {
+            branches: vec![good, bad],
+            ..CleanupPlan::default()
+        })
+        .unwrap();
+    let went: Vec<bool> = report.rows.iter().map(|row| row.result.is_ok()).collect();
+    assert_eq!(went, [true, false]);
+    repo.git.undo(&report.undo.unwrap()).unwrap();
+    assert!(repo.sh(&["branch"]).contains("done"));
 }
 
 #[test]

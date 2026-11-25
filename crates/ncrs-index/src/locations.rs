@@ -158,6 +158,22 @@ impl Index {
         Ok(found)
     }
 
+    /// The paths of all documents in `directory`, those marked as missing
+    /// included, compared by path components.
+    pub fn known_paths_under(&self, directory: &Path) -> Result<Vec<PathBuf>, IndexError> {
+        let (from, until) = SubtreeRange::of(directory)?.into_bounds();
+        let mut statement = self
+            .connection()
+            .prepare("SELECT path FROM document WHERE path >= ?1 AND path < ?2")?;
+        let mut found = statement
+            .query_map(params![from, until], |row| {
+                Ok(PathBuf::from(row.get::<_, String>(0)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        found.retain(|path| path.starts_with(directory));
+        Ok(found)
+    }
+
     /// Every document that is not missing and lies below `directory`, in one
     /// query. The manual tags are not loaded (`fields.tags` is empty).
     pub fn documents_beneath(&self, directory: &Path) -> Result<Vec<Document>, IndexError> {

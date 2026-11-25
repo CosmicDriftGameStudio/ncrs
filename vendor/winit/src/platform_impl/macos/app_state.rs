@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use objc2::rc::Retained;
-use objc2::{declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
 };
@@ -79,9 +79,12 @@ declare_class!(
 
     // NCRS-PATCH: Finder "Open With", `open -a` and a drop on the Dock icon.
     unsafe impl ApplicationDelegate {
-        // NCRS-PATCH: see `QUIT_REQUESTED`. 0 is NSTerminateCancel.
+        // NCRS-PATCH: see `QUIT_REQUESTED`. 0 is NSTerminateCancel, 1 NSTerminateNow.
         #[method(applicationShouldTerminate:)]
         fn app_should_terminate(&self, _sender: &NSApplication) -> usize {
+            if session_is_ending() {
+                return 1;
+            }
             QUIT_REQUESTED.store(true, Ordering::Release);
             0
         }
@@ -103,6 +106,22 @@ declare_class!(
 // the Metal backend then asserts in its static destructor. The request is
 // handed to the app instead, which frees the model and ends the event loop
 // (that stops the application and never goes through `terminate:` again).
+
+/// The quit Apple event of a logout, restart or shutdown carries a reason
+/// (kAEQuitReason, 'why?'); a plain quit has none. A cancel there would stop the
+/// whole logout.
+fn session_is_ending() -> bool {
+    const QUIT_REASON: u32 = u32::from_be_bytes(*b"why?");
+    let manager_class = class!(NSAppleEventManager);
+    unsafe {
+        let manager: Retained<NSObject> = msg_send_id![manager_class, sharedAppleEventManager];
+        let event: Option<Retained<NSObject>> = msg_send_id![&*manager, currentAppleEvent];
+        let Some(event) = event else { return false };
+        let reason: Option<Retained<NSObject>> =
+            msg_send_id![&*event, attributeDescriptorForKeyword: QUIT_REASON];
+        reason.is_some()
+    }
+}
 
 /// Whether a quit came in through `terminate:` and the app has not seen it.
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);

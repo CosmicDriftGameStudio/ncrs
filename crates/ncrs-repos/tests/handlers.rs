@@ -11,7 +11,7 @@
 mod common;
 
 use common::{fixture, read, repo, summary, ROOT};
-use ncrs_repos::{Action, GroupKey, Message, Origin, Reading, Store};
+use ncrs_repos::{open, Action, GroupKey, Message, Origin, Reading, Store, REFRESH_EVERY};
 use std::path::PathBuf;
 
 const NAMES: [&str; 5] = ["alpha", "bravo", "charlie", "delta", "echo"];
@@ -90,9 +90,9 @@ fn the_star_key_toggles_the_favourite_and_writes_it_down() {
     let mut fixture = fixture(&NAMES, 0);
     fixture.send(Message::ToggleFavouriteAtCursor);
     let file = fixture.ctx.file.clone().unwrap();
-    assert!(Store::read(&file).is_favourite(&repo("alpha")));
+    assert!(Store::read(&file).unwrap().is_favourite(&repo("alpha")));
     fixture.send(Message::ToggleFavouriteAtCursor);
-    assert!(!Store::read(&file).is_favourite(&repo("alpha")));
+    assert!(!Store::read(&file).unwrap().is_favourite(&repo("alpha")));
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn a_folder_that_is_gone_moves_to_its_own_group_and_can_be_removed() {
     fixture.send(Message::RowRemoved(repo("bravo")));
     assert!(!fixture.state.store().contains(&repo("bravo")));
     let file = fixture.ctx.file.clone().unwrap();
-    assert!(!Store::read(&file).contains(&repo("bravo")));
+    assert!(!Store::read(&file).unwrap().contains(&repo("bravo")));
 }
 
 #[test]
@@ -174,4 +174,34 @@ fn a_folded_group_hides_its_rows_and_keeps_its_count() {
     let group = fixture.state.groups().remove(0);
     assert_eq!(group.count, NAMES.len());
     assert!(group.rows.is_empty());
+}
+
+#[test]
+fn a_list_that_cannot_be_read_is_named_once_and_stays_as_it_is() {
+    let mut fixture = fixture(&["alpha"], 0);
+    let file = fixture.ctx.file.clone().unwrap();
+    let text = "version = 99\n";
+    std::fs::write(&file, text).unwrap();
+    let (state, _task) = open(&fixture.ctx);
+    fixture.state = state;
+    assert!(fixture.state.failure().is_some());
+
+    fixture.state.failure = None;
+    fixture.send(Message::Learn(repo("zulu")));
+    assert!(fixture.state.store().contains(&repo("zulu")));
+    assert_eq!(fixture.state.failure(), None);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+}
+
+#[test]
+fn showing_the_tab_reads_again_only_what_is_old() {
+    let mut fixture = fixture(&["alpha"], 0);
+    let opened = fixture.state.refreshed_at;
+    assert_eq!(opened, Some(fixture.ctx.now));
+    fixture.ctx.now += REFRESH_EVERY / 2;
+    fixture.send(Message::Shown);
+    assert_eq!(fixture.state.refreshed_at, opened);
+    fixture.ctx.now += REFRESH_EVERY / 2;
+    fixture.send(Message::Shown);
+    assert_eq!(fixture.state.refreshed_at, Some(fixture.ctx.now));
 }

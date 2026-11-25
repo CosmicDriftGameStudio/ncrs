@@ -229,14 +229,37 @@ fn back_up(target: &Path) -> Result<(), FilingWriteError> {
     let mut name = target.as_os_str().to_owned();
     name.push(BACKUP_SUFFIX);
     let backup = PathBuf::from(name);
-    // Never over an existing copy: that one is the config before 1.8.0.
-    if backup.symlink_metadata().is_ok() {
-        return Ok(());
+    // Never over an existing copy: that one is the config before 1.8.0. A link
+    // to nothing holds no copy; the rename replaces it, nothing is written
+    // where it points.
+    match std::fs::metadata(&backup) {
+        Ok(_) => return Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(io_error(&backup)(err)),
     }
-    // `copy` gives the copy the permissions of the original.
-    std::fs::copy(target, &backup)
-        .map(|_| ())
-        .map_err(io_error(&backup))
+    let mut partial = backup.as_os_str().to_owned();
+    partial.push(".partial");
+    let partial = PathBuf::from(partial);
+    copy_anew(target, &partial)
+        .and_then(|()| std::fs::rename(&partial, &backup))
+        .map_err(|err| {
+            let _what_is_left = std::fs::remove_file(&partial);
+            io_error(&backup)(err)
+        })
+}
+
+/// Copies to `copy` with the permissions of `original`. What an earlier try
+/// left there goes first, so nothing is written through a link.
+fn copy_anew(original: &Path, copy: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(copy) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => return Err(err),
+        _ => {}
+    }
+    let content = std::fs::read(original)?;
+    let mut file = std::fs::File::create_new(copy)?;
+    file.set_permissions(std::fs::metadata(original)?.permissions())?;
+    std::io::Write::write_all(&mut file, &content)?;
+    file.sync_all()
 }
 
 fn entry_is_at(entry: &toml_edit::Table, folder: &Path, home: Option<&Path>) -> bool {
@@ -352,17 +375,20 @@ fn numbered(id: &str) -> Option<i64> {
     id.strip_prefix('t')?.parse().ok().filter(|number| *number >= FIRST_NUMBERED_TARGET)
 }
 
+/// The ids in the file, whether the list is made of tables or inline.
 fn target_ids(filing: &toml_edit::Table) -> Vec<String> {
-    filing
-        .get(TARGETS)
-        .and_then(toml_edit::Item::as_array_of_tables)
-        .map(|list| {
-            list.iter()
-                .filter_map(|entry| entry.get("id").and_then(toml_edit::Item::as_str))
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default()
+    let ids: Vec<&str> = match filing.get(TARGETS) {
+        Some(toml_edit::Item::ArrayOfTables(list)) => list
+            .iter()
+            .filter_map(|entry| entry.get("id")?.as_str())
+            .collect(),
+        Some(toml_edit::Item::Value(toml_edit::Value::Array(list))) => list
+            .iter()
+            .filter_map(|entry| entry.as_inline_table()?.get("id")?.as_str())
+            .collect(),
+        _ => Vec::new(),
+    };
+    ids.into_iter().map(str::to_owned).collect()
 }
 
 /// Writes `next_target` so that no id of a target in the file is handed out

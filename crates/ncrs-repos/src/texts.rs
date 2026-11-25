@@ -3,6 +3,7 @@
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::bulk::{Outcome, SkipReason};
+use crate::store::StoreError;
 
 /// What a row says about how its repository ended; the sign comes from the kit.
 pub fn outcome_text(outcome: &Outcome, lang: Language) -> String {
@@ -19,6 +20,12 @@ pub fn outcome_text(outcome: &Outcome, lang: Language) -> String {
         Outcome::Skipped(SkipReason::LocalChanges(count)) => {
             number(Msg::ReposResultLocalChanges, &count.to_string())
         }
+        Outcome::Skipped(SkipReason::DetachedHead) => {
+            lang.text(Msg::ReposResultDetachedHead).to_owned()
+        }
+        Outcome::Skipped(SkipReason::ContentFilters) => {
+            lang.text(Msg::ReposResultContentFilters).to_owned()
+        }
         Outcome::Skipped(SkipReason::Diverged { ahead }) => {
             number(Msg::ReposResultAhead, &ahead.to_string())
         }
@@ -34,6 +41,20 @@ pub fn log_text(outcome: &Outcome, lang: Language) -> String {
     match outcome {
         Outcome::Failed { last_line } if !last_line.is_empty() => last_line.clone(),
         other => outcome_text(other, lang),
+    }
+}
+
+/// What the status bar says about a `repos.toml` that cannot be used.
+pub fn store_error_text(error: &StoreError, lang: Language) -> String {
+    match error {
+        StoreError::Unreadable(reason) => fill_template(
+            lang.text(Msg::ReposListUnreadable),
+            &[("{reason}", reason)],
+        ),
+        StoreError::Newer => lang.text(Msg::ReposListNewer).to_owned(),
+        StoreError::NotWritten(reason) => {
+            fill_template(lang.text(Msg::ReposSaveFailed), &[("{reason}", reason)])
+        }
     }
 }
 
@@ -54,6 +75,8 @@ mod tests {
             },
             Outcome::Skipped(SkipReason::Worktree),
             Outcome::Skipped(SkipReason::LocalChanges(4)),
+            Outcome::Skipped(SkipReason::DetachedHead),
+            Outcome::Skipped(SkipReason::ContentFilters),
             Outcome::Skipped(SkipReason::Diverged { ahead: 2 }),
             Outcome::NoAccess {
                 remote: "origin".to_owned(),

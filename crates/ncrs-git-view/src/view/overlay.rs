@@ -440,7 +440,7 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
             ),
             Msg::GitViewAskDeleteButton,
         ),
-        Question::DeleteOnRemote { remote, branch } => (
+        Question::DeleteOnRemote { remote, branch, .. } => (
             Msg::GitViewAskDeleteRemoteTitle,
             fill_template(
                 lang.text(Msg::GitViewAskDeleteRemoteText),
@@ -458,14 +458,28 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
         }
         Question::ResetHard { .. } => return super::commit_menu::reset_dialog(question, ctx),
         Question::ForcePush { plan } => return super::sync_menu::force_push_dialog(plan, ctx),
-        Question::RemoveWorktree { path } => (
-            Msg::GitViewAskRemoveWorktreeTitle,
-            fill_template(
+        Question::RemoveWorktree {
+            path,
+            ignored_files,
+        } => {
+            let mut text = fill_template(
                 lang.text(Msg::GitViewAskRemoveWorktreeText),
                 &[("{name}", &path.display().to_string())],
-            ),
-            Msg::GitViewAskDeleteButton,
-        ),
+            );
+            if !ignored_files.is_empty() {
+                let files = ncrs_ui_kit::check_rows::named_files(ignored_files, lang);
+                text.push(' ');
+                text.push_str(&fill_template(
+                    lang.text(Msg::GitViewAskRemoveWorktreeIgnored),
+                    &[("{files}", &files)],
+                ));
+            }
+            (
+                Msg::GitViewAskRemoveWorktreeTitle,
+                text,
+                Msg::GitViewAskDeleteButton,
+            )
+        }
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(

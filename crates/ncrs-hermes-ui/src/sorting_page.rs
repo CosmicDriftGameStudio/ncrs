@@ -3,11 +3,11 @@
 
 use std::path::{Path, PathBuf};
 
-use ncrs_config::config::{FilingWriteError, PauseReason, SourceSetting};
+use ncrs_config::config::{same_folder, FilingWriteError, PauseReason, SourceSetting};
 use ncrs_core::facts::RunFacts;
 use ncrs_filing::sorting::{question_count, SortingAccess, TargetState, WaitReason};
 use ncrs_index::TargetId;
-use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
+use ncrs_intake::{canonical_path, LocationTransfer, OnNoText, OnSeveralTargets, SortSource};
 
 use ncrs_config::config::Filing;
 
@@ -147,6 +147,30 @@ pub enum SortingMessage {
     Cancel,
 }
 
+/// Whether the folder is on a volume of its own, as it is saved. Blocking.
+/// `before` is the folder and what was saved for it. An unchanged folder never
+/// loses its drive: asked while the drive is away, the empty mount point would
+/// count as the folder from then on.
+pub fn own_volume_to_save(
+    before: Option<(&Path, Option<bool>)>,
+    folder: &Path,
+    now: Option<bool>,
+) -> Option<bool> {
+    let resolved = |path: &Path| canonical_path(path).unwrap_or_else(|_| path.to_path_buf());
+    match before {
+        Some((old, saved))
+            if same_folder(old, folder) || same_folder(&resolved(old), &resolved(folder)) =>
+        {
+            if now == Some(true) {
+                now
+            } else {
+                saved
+            }
+        }
+        _ => now,
+    }
+}
+
 /// A typed path: a leading `~` stands for the home folder.
 pub fn typed_path(text: &str, home: &Path) -> PathBuf {
     let text = text.trim();
@@ -154,5 +178,31 @@ pub fn typed_path(text: &str, home: &Path) -> PathBuf {
         Some(rest) => home.join(rest),
         None if text == "~" => home.to_path_buf(),
         None => PathBuf::from(text),
+    }
+}
+
+#[cfg(test)]
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unchanged_folder_keeps_the_drive_it_was_saved_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path();
+        let saved = |saved, now| own_volume_to_save(Some((folder, saved)), folder, now);
+        assert_eq!(saved(Some(true), Some(false)), Some(true));
+        assert_eq!(saved(Some(true), None), Some(true));
+        assert_eq!(saved(None, Some(false)), None);
+        assert_eq!(saved(None, Some(true)), Some(true));
+        assert_eq!(saved(Some(false), Some(true)), Some(true));
+
+        let other = dir.path().join("other");
+        assert_eq!(
+            own_volume_to_save(Some((folder, Some(true))), &other, Some(false)),
+            Some(false)
+        );
+        assert_eq!(own_volume_to_save(None, folder, Some(false)), Some(false));
     }
 }

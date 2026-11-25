@@ -5,7 +5,32 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use ncrs_config::config::replace_file_atomically;
 use serde::{Deserialize, Serialize};
+
+/// The newest shape of the file this build reads and the one it writes.
+const CURRENT_VERSION: u32 = 1;
+
+const fn first_version() -> u32 {
+    1
+}
+
+/// Why the list is not read or not written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoreError {
+    /// The file is there but is not a list this build understands.
+    Unreadable(String),
+    /// A newer ncrs wrote the file.
+    Newer,
+    NotWritten(String),
+}
+
+/// Read before the rest: a newer file may not have today's shape.
+#[derive(Deserialize)]
+struct VersionOnly {
+    #[serde(default = "first_version")]
+    version: u32,
+}
 
 /// How a repository came into the list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,8 +70,10 @@ impl ScanStamp {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Store {
+    #[serde(default = "first_version")]
+    version: u32,
     /// The scan of `~` ran once; from then on only on request.
     #[serde(default)]
     pub home_scanned: bool,
@@ -56,21 +83,47 @@ pub struct Store {
     pub repos: Vec<RepoEntry>,
 }
 
+impl Default for Store {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_VERSION,
+            home_scanned: false,
+            last_scan: None,
+            repos: Vec::new(),
+        }
+    }
+}
+
 impl Store {
-    /// The file at `path`; a missing or unreadable one is an empty list.
-    pub fn read(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| toml_edit::de::from_str(&text).ok())
-            .unwrap_or_default()
+    /// The file at `path`; a missing one is an empty list.
+    pub fn read(path: &Path) -> Result<Self, StoreError> {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default());
+            }
+            Err(error) => return Err(StoreError::Unreadable(error.to_string())),
+        };
+        let unreadable =
+            |error: toml_edit::de::Error| StoreError::Unreadable(error.message().to_owned());
+        let found: VersionOnly = toml_edit::de::from_str(&text).map_err(unreadable)?;
+        if found.version > CURRENT_VERSION {
+            return Err(StoreError::Newer);
+        }
+        toml_edit::de::from_str(&text).map_err(unreadable)
     }
 
-    pub fn write(&self, path: &Path) -> Result<(), String> {
-        let text = toml_edit::ser::to_string(self).map_err(|error| error.to_string())?;
+    /// Replaces the file at `path` in one step. One that cannot be read is left
+    /// alone: it holds a list this build would destroy.
+    pub fn write(&self, path: &Path) -> Result<(), StoreError> {
+        Self::read(path)?;
+        let not_written = |reason: &dyn std::fmt::Display| StoreError::NotWritten(reason.to_string());
+        let text = toml_edit::ser::to_string(self).map_err(|error| not_written(&error))?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(parent).map_err(|error| not_written(&error))?;
         }
-        std::fs::write(path, text).map_err(|error| error.to_string())
+        replace_file_atomically(path, ".repos.toml.", &text)
+            .map_err(|(_, error)| not_written(&error))
     }
 
     pub fn contains(&self, path: &Path) -> bool {
@@ -154,19 +207,46 @@ mod tests {
             millis: 2400,
         });
         store.write(&file).unwrap();
-        assert_eq!(Store::read(&file), store);
+        assert_eq!(Store::read(&file), Ok(store));
+        assert_eq!(
+            std::fs::read_dir(directory.path()).unwrap().count(),
+            1,
+            "no temporary file stays behind"
+        );
     }
 
     #[test]
-    fn a_missing_or_broken_file_is_an_empty_list() {
+    fn a_missing_file_is_an_empty_list() {
         let directory = tempfile::tempdir().unwrap();
         assert_eq!(
             Store::read(&directory.path().join("none.toml")),
-            Store::default()
+            Ok(Store::default())
         );
-        let broken = directory.path().join("broken.toml");
-        std::fs::write(&broken, "[[repo]]\npath = 3\n").unwrap();
-        assert_eq!(Store::read(&broken), Store::default());
+    }
+
+    #[test]
+    fn a_broken_or_newer_file_is_never_overwritten() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("repos.toml");
+        for text in [
+            "[[repo]]\npath = 3\n",
+            "[[repo",
+            "version = 2\n\n[[repository]]\npath = \"/a\"\n",
+        ] {
+            std::fs::write(&file, text).unwrap();
+            assert!(Store::read(&file).is_err(), "{text}");
+            assert!(Store::default().write(&file).is_err(), "{text}");
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        }
+        assert_eq!(Store::read(&file), Err(StoreError::Newer));
+    }
+
+    #[test]
+    fn a_file_without_a_version_is_the_first_one() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("repos.toml");
+        std::fs::write(&file, "home_scanned = true\n").unwrap();
+        assert!(Store::read(&file).unwrap().home_scanned);
     }
 
     #[test]

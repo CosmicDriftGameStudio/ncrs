@@ -210,9 +210,13 @@ pub enum Question {
     DeleteOnRemote {
         remote: String,
         branch: String,
+        /// The tip it is shown with.
+        tip: Option<String>,
     },
     RemoveWorktree {
         path: std::path::PathBuf,
+        /// Ignored files in it: git deletes them without a word.
+        ignored_files: Vec<String>,
     },
     DropStash {
         sha: String,
@@ -272,12 +276,17 @@ impl Question {
                 name: name.clone(),
                 force: false,
             },
-            Self::DeleteOnRemote { remote, branch } => Job::DeleteOnRemote {
+            Self::DeleteOnRemote {
+                remote,
+                branch,
+                tip,
+            } => Job::DeleteOnRemote {
                 remote: remote.clone(),
                 branch: branch.clone(),
+                tip: tip.clone(),
             },
             Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
-            Self::RemoveWorktree { path } => Job::RemoveWorktree(path.clone()),
+            Self::RemoveWorktree { path, .. } => Job::RemoveWorktree(path.clone()),
             Self::ForcePush { plan } => Job::ForcePushWithLease(plan.clone()),
             Self::Ignore {
                 path,

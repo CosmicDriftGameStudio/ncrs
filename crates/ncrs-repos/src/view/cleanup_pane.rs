@@ -9,7 +9,9 @@ use iced::widget::{column, container, row, text, Space};
 use iced::{alignment, Element, Length, Padding};
 use ncrs_git::KeepReason;
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_ui_kit::check_rows::{check_group_head, check_row, close_cross, CheckGroupHead, CheckRow, RowOutcome};
+use ncrs_ui_kit::check_rows::{
+    check_group_head, check_row, close_cross, worktree_detail, CheckGroupHead, CheckRow, RowOutcome,
+};
 use ncrs_ui_kit::format::time;
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
@@ -109,7 +111,10 @@ fn item_row<'a>(cleanup: &Cleanup, item: Item, ctx: ViewCtx<'a>) -> Element<'a, 
                 Check::Off
             },
             name: item.name.clone(),
-            detail: item.folder.as_ref().map(|folder| folder.display().to_string()),
+            detail: item
+                .folder
+                .as_ref()
+                .map(|folder| worktree_detail(folder, &item.ignored_files, ctx.lang)),
             reason: match (&item.remote, cleanup.delete_remote) {
                 (Some(remote), true) => format!("{} + {remote}", offer_text(cleanup, &item, ctx.lang)),
                 _ => offer_text(cleanup, &item, ctx.lang),

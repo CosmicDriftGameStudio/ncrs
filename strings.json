@@ -3963,8 +3963,8 @@
     {
       "key": "settings.ai_consent_item_documents",
       "context": "One point of the list of what goes to the AI model on another computer: the documents Hermes sorts into folders. Hermes is the module that sorts documents. Text recognition turns scans and photos into text.",
-      "en": "The text of every document Hermes reads to sort it, including the text recognised in scans and photos, also of all documents in sources, again after updates.",
-      "de": "Der Text jedes Dokuments, das Hermes zum Einsortieren liest, auch der Text, der in Scans und Fotos erkannt wurde, auch von allen Dokumenten in Quellen, erneut nach Updates."
+      "en": "The text of every document Hermes reads to sort it, including the text recognised in scans and photos, also of all documents in sources, targets and the folders of the index, again after updates.",
+      "de": "Der Text jedes Dokuments, das Hermes zum Einsortieren liest, auch der Text, der in Scans und Fotos erkannt wurde, auch von allen Dokumenten in Quellen, Zielen und Ordnern des Index, erneut nach Updates."
     },
     {
       "key": "settings.ai_consent_item_chat",
@@ -10813,6 +10813,24 @@
       "de": "Der Ordner überschneidet sich mit dem Ziel {name}."
     },
     {
+      "key": "sorting.confirm_target_title",
+      "context": "Title of the question before the folder of a target is confirmed as the right one, when none of its known documents is there.",
+      "en": "Confirm target",
+      "de": "Ziel bestätigen"
+    },
+    {
+      "key": "sorting.confirm_target_question",
+      "context": "Question before the folder of a target is confirmed as the right one. {count} is the number of documents the index knows in this folder; none of them is there, so the drive may not be connected.",
+      "en": "Of {count} known documents none is here. Is the drive connected?",
+      "de": "Von {count} bekannten Dokumenten liegt hier keins. Ist das Laufwerk angeschlossen?"
+    },
+    {
+      "key": "sorting.confirm_target_anyway",
+      "context": "Button of the question before the folder of a target is confirmed although none of its known documents is there.",
+      "en": "Confirm anyway",
+      "de": "Trotzdem bestätigen"
+    },
+    {
       "key": "sorting.remove_target_title",
       "context": "Title of the question before a target is removed.",
       "en": "Remove target",
@@ -11105,6 +11123,12 @@
       "context": "Source dialog: error under the Folder field when a watched folder lies in a target folder (or is one): filed files would be filed again.",
       "en": "A watched folder cannot be inside a target.",
       "de": "Ein überwachter Ordner darf nicht in einem Ziel liegen."
+    },
+    {
+      "key": "sorting.hint_holds_target",
+      "context": "Source dialog: warning under the choice Watch, when a target or a folder of the index lies inside the chosen folder. New files in the folder are then not read and filed by themselves, only with the plan.",
+      "en": "A target or a folder of the index lies inside this folder: new files are not filed by themselves, they appear in the plan.",
+      "de": "In diesem Ordner liegt ein Ziel oder ein Ordner des Index: Neue Dateien werden nicht von selbst einsortiert, sie erscheinen im Plan."
     },
     {
       "key": "sorting.hint_existing_stay",
@@ -13615,6 +13639,18 @@
       "de": "Die Liste konnte nicht gespeichert werden: {reason}"
     },
     {
+      "key": "repos.list_unreadable",
+      "context": "Message in the Repos tab when its list file repos.toml is damaged; the file is kept as it is and nothing is saved to it. The reason is what the parser said.",
+      "en": "repos.toml could not be read and stays unchanged, nothing is saved: {reason}",
+      "de": "repos.toml ist nicht lesbar und bleibt unverändert, nichts wird gespeichert: {reason}"
+    },
+    {
+      "key": "repos.list_newer",
+      "context": "Message in the Repos tab when its list file repos.toml was written by a newer version of ncrs; the file is kept as it is.",
+      "en": "repos.toml comes from a newer ncrs and stays unchanged, nothing is saved",
+      "de": "repos.toml stammt von einem neueren ncrs und bleibt unverändert, nichts wird gespeichert"
+    },
+    {
       "key": "repos.not_a_repo",
       "context": "Message in the Repos tab when the folder picked to add is not inside a Git repository.",
       "en": "{folder} is not a Git repository",
@@ -13721,6 +13757,18 @@
       "context": "Result column of a bulk action in the Repos tab: skipped because of this many files with local changes.",
       "en": "{n} local changes, skipped",
       "de": "{n} lokale Änderungen, übersprungen"
+    },
+    {
+      "key": "repos.result_detached_head",
+      "context": "Result column of a bulk action in the Repos tab: skipped because no branch is checked out (Git: detached HEAD), switching could lose commits.",
+      "en": "no branch checked out, skipped",
+      "de": "kein Branch ausgecheckt, übersprungen"
+    },
+    {
+      "key": "repos.result_content_filters",
+      "context": "Result column of a bulk action in the Repos tab: skipped because the repository's own Git config has content filters (git-crypt, Git LFS), which bulk actions do not run.",
+      "en": "own Git filters, skipped",
+      "de": "eigene Git-Filter, übersprungen"
     },
     {
       "key": "repos.result_ahead",
@@ -14297,6 +14345,18 @@
       "context": "Result next to an entry of the clean-up lists that could not be deleted. {reason} is the last line git said.",
       "en": "Not deleted: {reason}",
       "de": "Nicht gelöscht: {reason}"
+    },
+    {
+      "key": "git_cleanup.worktree_ignored",
+      "context": "Second line of a worktree in the clean-up lists when its folder holds files git ignores: they are deleted with it. {folder} is the folder name, {files} up to two file names and how many more. Short, fits a narrow column.",
+      "en": "{folder} · also deletes {files}",
+      "de": "{folder} · löscht auch {files}"
+    },
+    {
+      "key": "git_cleanup.ignored_more",
+      "context": "The first two ignored files of a worktree, then how many more there are. {names} is a comma separated list of file names, {count} the number left out.",
+      "en": "{names} and {count} more",
+      "de": "{names} und {count} weitere"
     },
     {
       "key": "settings.git_row_last_scan",
@@ -15059,6 +15119,12 @@
       "context": "Git tab, title of the question before a worktree folder is deleted.",
       "en": "Delete worktree?",
       "de": "Worktree löschen?"
+    },
+    {
+      "key": "git_view.ask_remove_worktree_ignored",
+      "context": "Git tab, sentence added to the question before a worktree folder is deleted when it holds files git ignores: they are lost. {files} is up to two file names and how many more.",
+      "en": "Ignored files in it are lost: {files}.",
+      "de": "Ignorierte Dateien darin gehen verloren: {files}."
     },
     {
       "key": "git_view.ask_remove_worktree_text",

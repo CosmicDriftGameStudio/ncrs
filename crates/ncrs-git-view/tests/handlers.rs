@@ -415,11 +415,13 @@ async fn dropping_a_stash_and_deleting_on_the_remote_ask_and_cannot_be_undone() 
     )
     .await;
     send(&mut state, Message::MenuPressed(MenuAction::DeleteOnRemote)).await;
+    let shown_tip = sh(dir.path(), &["rev-parse", "origin/topic"]);
     assert_eq!(
         state.actions.dialog,
         Some(Dialog::Ask(Question::DeleteOnRemote {
             remote: "origin".to_owned(),
-            branch: "topic".to_owned()
+            branch: "topic".to_owned(),
+            tip: Some(shown_tip.trim().to_owned()),
         }))
     );
     assert!(sh(origin.path(), &["branch", "--list", "topic"]).contains("topic"));

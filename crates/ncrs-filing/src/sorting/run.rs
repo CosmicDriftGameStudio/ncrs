@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use ncrs_fs::archive::is_device_name;
 use ncrs_fs::transfer::Progress;
 use ncrs_index::{BatchId, BatchKind, ContentHash, DocumentId, Index, TargetId, Transfer};
-use ncrs_intake::{hash_path, is_plain_literal, stays_below, LocationTransfer, SortSource};
+use ncrs_intake::{
+    has_lost_ending, hash_path, is_plain_literal, stays_below, LocationTransfer, SortSource,
+};
 
 use super::access::{text, SortingAccess};
 use super::plan_run::source_root;
@@ -434,7 +436,7 @@ fn is_usable(relative: &Path) -> bool {
             part.as_os_str().to_str().is_some_and(|name| {
                 is_plain_literal(name)
                     && name.len() <= NAME_LIMIT
-                    && !name.ends_with([' ', '.'])
+                    && !has_lost_ending(name)
                     && !is_device_name(name)
             })
         })
@@ -454,12 +456,17 @@ mod tests {
             "/x.pdf",
             "a/../x.pdf",
             "CON.pdf",
-            "a./x.pdf",
             "a:b.pdf",
-            "x.pdf ",
             &long,
         ] {
             assert!(!is_usable(Path::new(bad)), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_folder_that_ends_in_a_dot_is_usable_where_a_pattern_may_name_one() {
+        let may_be_named = ncrs_intake::pattern_is_valid("Company Inc./{year}");
+        assert_eq!(is_usable(Path::new("Company Inc./2025.pdf")), may_be_named);
+        assert_eq!(is_usable(Path::new("Company Inc./2025.pdf")), !cfg!(windows));
     }
 }

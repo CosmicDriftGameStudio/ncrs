@@ -62,8 +62,16 @@ fn a_known_line_is_a_no_op() {
 fn literal_patterns_escape_what_git_would_read_as_a_pattern() {
     assert_eq!(literal_pattern("src/main.rs"), "/src/main.rs");
     assert_eq!(
-        literal_pattern("dir\\file #1[x]!.txt"),
+        literal_pattern("dir/file #1[x]!.txt"),
         "/dir/file \\#1\\[x]\\!.txt"
+    );
+    assert_eq!(
+        literal_pattern("dir\\file"),
+        if cfg!(windows) {
+            "/dir/file"
+        } else {
+            "/dir\\\\file"
+        }
     );
     assert_eq!(literal_pattern("a*b?.txt"), "/a\\*b\\?.txt");
 }
@@ -96,4 +104,31 @@ fn a_symlink_as_gitignore_is_refused() {
     std::os::unix::fs::symlink(repo.path().join("real"), repo.path().join(".gitignore")).unwrap();
     repo.git.ignore_pattern("x").unwrap_err();
     assert_eq!(read(repo.path(), "real"), "keep\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_name_with_a_trailing_space_or_a_backslash_is_really_ignored() {
+    let repo = repo();
+    for name in ["two spaces  ", "back\\slash"] {
+        write(repo.path(), name, "x\n");
+        assert!(repo
+            .git
+            .ignore_pattern(&literal_pattern(name))
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            repo.git.ignore_pattern(&literal_pattern(name)).unwrap(),
+            None
+        );
+    }
+    let left: Vec<String> = repo
+        .git
+        .changes()
+        .unwrap()
+        .unstaged
+        .into_iter()
+        .map(|file| file.path)
+        .collect();
+    assert_eq!(left, [".gitignore"]);
 }

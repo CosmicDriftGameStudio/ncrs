@@ -18,8 +18,10 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::Message;
 use crate::state::Hermes;
+use crate::sorting_page::own_volume_to_save;
 use crate::target_dialog::{
-    target_name, Removed, SuggestAfter, TargetDialog, TargetRemoval, TargetsMessage,
+    target_name, ConfirmCheck, Removed, SuggestAfter, TargetConfirmation, TargetDialog,
+    TargetQuestion, TargetRemoval, TargetsMessage,
 };
 
 fn targets(message: TargetsMessage) -> Message {
@@ -67,7 +69,11 @@ pub(super) fn update(
                 .map(|setting| TargetDialog::new(Some(setting)));
             return check_folder(hermes, ctx);
         }
-        TargetsMessage::Confirm(index) => return confirm(hermes, index, ctx, actions),
+        TargetsMessage::Confirm(index) => return check_confirm(hermes, index, ctx, actions),
+        TargetsMessage::ConfirmChecked(check) => {
+            return confirm_checked(hermes, *check, ctx, actions);
+        }
+        TargetsMessage::ConfirmAnyway => return confirm_anyway(hermes, ctx, actions),
         TargetsMessage::FolderChecked { generation, exists } => {
             if let Some(dialog) = hermes.target_dialog.as_mut() {
                 dialog.folder_checked(generation, exists);
@@ -79,7 +85,19 @@ pub(super) fn update(
             }
         }
         TargetsMessage::AskRemove(index) => ask_remove(hermes, index),
-        TargetsMessage::CancelRemove => hermes.target_removal = None,
+        TargetsMessage::CancelQuestion => hermes.target_removal = None,
+        TargetsMessage::AnswerQuestion => {
+            let answer = answer_of(hermes.target_removal.as_ref());
+            return match answer {
+                Some(answer) => update(hermes, answer, ctx, actions),
+                None => Task::none(),
+            };
+        }
+        TargetsMessage::SwitchAnswer => {
+            if let Some(TargetQuestion::Confirm(asked)) = hermes.target_removal.as_mut() {
+                asked.confirm_focused = !asked.confirm_focused;
+            }
+        }
         TargetsMessage::ConfirmRemove => return confirm_remove(hermes, ctx, actions),
         TargetsMessage::Name(text) => {
             if let Some(dialog) = hermes.target_dialog.as_mut() {
@@ -160,10 +178,19 @@ pub(super) fn load_states(hermes: &Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     )
 }
 
-/// "Bestätigen": remembers whether the folder is on a drive of its own, which
-/// is what a target taken over from an older version lacks.
-fn confirm(
-    hermes: &mut Hermes,
+/// What Enter presses in the question that is up.
+fn answer_of(question: Option<&TargetQuestion>) -> Option<TargetsMessage> {
+    Some(match question? {
+        TargetQuestion::Remove(_) => TargetsMessage::ConfirmRemove,
+        TargetQuestion::Confirm(asked) if asked.confirm_focused => TargetsMessage::ConfirmAnyway,
+        TargetQuestion::Confirm(_) => TargetsMessage::CancelQuestion,
+    })
+}
+
+/// "Bestätigen": looks for the documents known in the folder. An empty mount
+/// point must not be confirmed unasked.
+fn check_confirm(
+    hermes: &Hermes,
     index: usize,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
@@ -171,14 +198,99 @@ fn confirm(
     let Some(setting) = hermes.filing_config.targets.get(index) else {
         return Task::none();
     };
+    let access = hermes
+        .filing
+        .as_ref()
+        .and_then(|module| module.sorting_access(std::sync::Arc::clone(&ctx.trash.0)));
+    let Some(access) = access else {
+        actions.push(Action::ShowError(ncrs_core::INDEX_NOT_OPEN.to_owned()));
+        return Task::none();
+    };
+    let target = setting.target.clone();
+    let asked = target.clone();
+    Task::perform(
+        tokio::task::spawn_blocking(move || {
+            // The volume first: unplugged in between, the documents are gone.
+            let own_volume = is_on_own_volume(&target.path);
+            ConfirmCheck {
+                own_volume,
+                gone: access.all_gone_below(&target.path),
+                target,
+            }
+        }),
+        move |joined| {
+            let check = joined.unwrap_or_else(|join| ConfirmCheck {
+                target: asked.clone(),
+                own_volume: None,
+                gone: Err(join.to_string()),
+            });
+            targets(TargetsMessage::ConfirmChecked(Box::new(check)))
+        },
+    )
+}
+
+fn confirm_checked(
+    hermes: &mut Hermes,
+    check: ConfirmCheck,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    match check.gone {
+        Ok(0) => write_confirmed(hermes, check.target, check.own_volume, ctx, actions),
+        Ok(gone) => {
+            ask_confirm(hermes, check.target, gone);
+            Task::none()
+        }
+        Err(reason) => {
+            actions.push(Action::ShowError(reason));
+            Task::none()
+        }
+    }
+}
+
+fn ask_confirm(hermes: &mut Hermes, target: SortTarget, gone: usize) {
+    // A question that is up is answered first.
+    hermes.target_removal.get_or_insert_with(|| {
+        TargetQuestion::Confirm(TargetConfirmation::new(target, gone))
+    });
+}
+
+/// The drive may have been plugged in since the question: the volume is asked
+/// again.
+fn confirm_anyway(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
+    match hermes.target_removal.take() {
+        Some(TargetQuestion::Confirm(asked)) => {
+            write_confirmed(hermes, asked.target, None, ctx, actions)
+        }
+        other => {
+            hermes.target_removal = other;
+            Task::none()
+        }
+    }
+}
+
+/// Remembers whether the folder is on a drive of its own, which is what a
+/// target taken over from an older version lacks. A target changed meanwhile
+/// is not the one that was looked at.
+fn write_confirmed(
+    hermes: &Hermes,
+    target: SortTarget,
+    own_volume: Option<bool>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    if !is_as_configured(hermes, &target) {
+        return Task::none();
+    }
     let Some(config_path) = ctx.config_path.map(PathBuf::from) else {
         no_config_path(ctx, actions);
         return Task::none();
     };
-    let target = setting.target.clone();
     Task::perform(
         tokio::task::spawn_blocking(move || {
-            let own_volume = is_on_own_volume(&target.path).unwrap_or(false);
+            let own_volume = own_volume
+                .or_else(|| is_on_own_volume(&target.path))
+                .unwrap_or(false);
             let confirmed = SortTarget {
                 own_volume: Some(own_volume),
                 ..target
@@ -187,6 +299,14 @@ fn confirm(
         }),
         |joined| targets(TargetsMessage::Written(Box::new(joined.unwrap_or_else(join_failed)))),
     )
+}
+
+fn is_as_configured(hermes: &Hermes, target: &SortTarget) -> bool {
+    hermes
+        .filing_config
+        .targets
+        .iter()
+        .any(|setting| setting.target == *target)
 }
 
 fn ask_remove(hermes: &mut Hermes, index: usize) {
@@ -198,12 +318,12 @@ fn ask_remove(hermes: &mut Hermes, index: usize) {
         .rules
         .as_ref()
         .map_or(0, |page| page.rows_of(&id).count());
-    hermes.target_removal = Some(TargetRemoval {
+    hermes.target_removal = Some(TargetQuestion::Remove(TargetRemoval {
         name: target_name(&setting.target),
         id,
         rules,
         busy: false,
-    });
+    }));
 }
 
 fn no_config_path(ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
@@ -225,13 +345,25 @@ fn save(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     };
     let draft = dialog.clone();
     let typed = dialog.path(ctx.home);
+    let before = draft.replacing.as_ref().and_then(|id| {
+        let setting = hermes
+            .filing_config
+            .targets
+            .iter()
+            .find(|setting| setting.target.id == *id)?;
+        Some((setting.target.path.clone(), setting.target.own_volume))
+    });
     if let Some(dialog) = hermes.target_dialog.as_mut() {
         dialog.saving = true;
     }
     Task::perform(
         tokio::task::spawn_blocking(move || {
             let folder = ncrs_intake::canonical_path(&typed).unwrap_or(typed);
-            let own_volume = is_on_own_volume(&folder);
+            let own_volume = own_volume_to_save(
+                before.as_ref().map(|(old, saved)| (old.as_path(), *saved)),
+                &folder,
+                is_on_own_volume(&folder),
+            );
             let config = match draft.replacing.clone() {
                 None => add_sort_target(&config_path, draft.name.trim(), &folder, own_volume)
                     .map(|(_, config)| config),
@@ -332,19 +464,20 @@ fn confirm_remove(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    let Some(removal) = hermes.target_removal.as_ref().filter(|asked| !asked.busy) else {
+    let Some(TargetQuestion::Remove(removal)) = hermes.target_removal.as_mut() else {
         return Task::none();
     };
+    if removal.busy {
+        return Task::none();
+    }
     let Some(config_path) = ctx.config_path.map(PathBuf::from) else {
         no_config_path(ctx, actions);
         return Task::none();
     };
     let id = removal.id.clone();
+    removal.busy = true;
     let sources = sources_without(hermes, &id);
     let access = hermes.filing.as_ref().and_then(FilingModule::rules_access);
-    if let Some(asked) = hermes.target_removal.as_mut() {
-        asked.busy = true;
-    }
     Task::perform(
         tokio::task::spawn_blocking(move || {
             let filing = sources
@@ -380,7 +513,9 @@ fn removed_target(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    hermes.target_removal = None;
+    if matches!(hermes.target_removal, Some(TargetQuestion::Remove(_))) {
+        hermes.target_removal = None;
+    }
     if let Some(reason) = removed.rules_failure {
         actions.push(Action::ShowError(reason));
     }
@@ -444,9 +579,42 @@ mod tests {
 
         ask_remove(&mut hermes, 0);
 
-        let asked = hermes.target_removal.expect("the question");
+        let Some(TargetQuestion::Remove(asked)) = hermes.target_removal else {
+            panic!("no question");
+        };
         assert_eq!((asked.name.as_str(), asked.rules, asked.busy), ("Company", 3, false));
         assert_eq!(hermes.filing_config.targets.len(), 1);
+    }
+
+    #[test]
+    fn a_target_without_its_documents_is_not_confirmed_by_enter_alone() {
+        let mut hermes = hermes_with_rules(0);
+        let target = hermes.filing_config.targets[0].target.clone();
+
+        ask_confirm(&mut hermes, target.clone(), 12);
+
+        let Some(TargetQuestion::Confirm(asked)) = hermes.target_removal.as_mut() else {
+            panic!("no question");
+        };
+        assert_eq!((&asked.target, asked.gone), (&target, 12));
+        assert_eq!(
+            answer_of(Some(&TargetQuestion::Confirm(asked.clone()))),
+            Some(TargetsMessage::CancelQuestion)
+        );
+        asked.confirm_focused = true;
+        assert_eq!(
+            answer_of(hermes.target_removal.as_ref()),
+            Some(TargetsMessage::ConfirmAnyway)
+        );
+    }
+
+    #[test]
+    fn a_target_that_changed_since_it_was_looked_at_is_not_confirmed() {
+        let mut hermes = hermes_with_rules(0);
+        let target = hermes.filing_config.targets[0].target.clone();
+        assert!(is_as_configured(&hermes, &target));
+        hermes.filing_config.targets[0].target.path = PathBuf::from("/data/other");
+        assert!(!is_as_configured(&hermes, &target));
     }
 
     #[test]

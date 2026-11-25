@@ -223,8 +223,20 @@ mod ui_tests {
         let state = with_dialog(Dialog::Ask(Question::DeleteOnRemote {
             remote: "origin".to_owned(),
             branch: "fix/rundung".to_owned(),
+            tip: None,
         }));
         picture(&state, "tests/snapshots/git-ask-delete-remote-cosmic");
+    }
+
+    #[test]
+    fn remove_worktree_question_with_ignored_files_picture() {
+        let state = with_dialog(Dialog::Ask(Question::RemoveWorktree {
+            path: "/work/kassenbuch-rundung".into(),
+            ignored_files: [".env", "lokal.toml", "notizen.md"]
+                .map(str::to_owned)
+                .to_vec(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-remove-worktree-cosmic");
     }
 
     #[test]

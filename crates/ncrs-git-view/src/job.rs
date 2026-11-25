@@ -78,6 +78,8 @@ pub enum Job {
     DeleteOnRemote {
         remote: String,
         branch: String,
+        /// The tip the branch was shown with; the delete fails once it moved.
+        tip: Option<String>,
     },
     StashDrop(String),
     Merge(String),
@@ -255,12 +257,7 @@ impl Job {
             Self::Ignore { pattern } => git.ignore_pattern(pattern).map(Done::Undoable),
             Self::Fetch => git.fetch(None).map(|()| Done::Plain),
             // A repository whose own config names programs is only fetched
-            // when the user asks; the skip is silent (an error nobody shows).
-            Self::BackgroundFetch if git.repository_config_runs_commands() => {
-                Err(ActionError::Other {
-                    git_output: "the repository config runs commands".to_owned(),
-                })
-            }
+            // when the user asks: the unattended fetch fails, and nobody shows that error.
             Self::BackgroundFetch => git.fetch(None).map(|()| Done::Plain),
             Self::FetchForCleanup => crate::cleanup::scan(git),
             Self::CleanUp(plan) => git.clean_up(plan).map(Done::Cleaned),
@@ -304,8 +301,12 @@ impl Job {
                 .delete_branch(name, *force)
                 .map(|record| Done::Undoable(Some(record))),
             Self::RenameBranch { from, to } => git.rename_branch(from, to).map(|()| Done::Plain),
-            Self::DeleteOnRemote { remote, branch } => git
-                .delete_remote_branch(remote, branch, None)
+            Self::DeleteOnRemote {
+                remote,
+                branch,
+                tip,
+            } => git
+                .delete_remote_branch(remote, branch, tip.as_deref())
                 .map(|()| Done::Plain),
             Self::StashDrop(sha) => git.stash_drop(sha).map(|()| Done::Plain),
             Self::Merge(name) => git.merge(name).map(|_| Done::Plain),
