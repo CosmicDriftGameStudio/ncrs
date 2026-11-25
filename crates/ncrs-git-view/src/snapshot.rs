@@ -1,6 +1,5 @@
 //! What the actions show of the repository, read in one go off the UI thread.
 
-use std::fs;
 use std::path::Path;
 
 use ncrs_git::{
@@ -106,10 +105,6 @@ fn hunk_side(side: ChangeSide) -> HunkSide {
     }
 }
 
-fn read_text(root: &Path, path: &str) -> Option<String> {
-    String::from_utf8(fs::read(root.join(path)).ok()?).ok()
-}
-
 fn integration_of(
     git: &Git,
     detail: IntegrationDetail,
@@ -126,7 +121,7 @@ fn integration_of(
                     file.kind,
                     ConflictKind::BothModified | ConflictKind::BothAdded
                 )
-                && read_text(git.root(), &file.path).is_some(),
+                && ncrs_git::is_text_without_markers(git.root(), &file.path),
         })
         .collect();
     let shown = want
@@ -135,7 +130,7 @@ fn integration_of(
         .and_then(|path| conflicts.iter().find(|conflict| &conflict.path == path))
         .or_else(|| conflicts.first());
     let preview = shown.map(|conflict| {
-        let text = read_text(git.root(), &conflict.path).unwrap_or_default();
+        let text = ncrs_git::read_working_text(git.root(), &conflict.path).unwrap_or_default();
         (conflict.path.clone(), ncrs_git::preview_lines(&text))
     });
     Ok(IntegrationSnapshot {

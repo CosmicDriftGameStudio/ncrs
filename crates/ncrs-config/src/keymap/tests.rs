@@ -491,3 +491,24 @@ fn the_git_view_is_on_primary_shift_g() {
         )]
     );
 }
+
+#[test]
+fn the_history_and_the_blame_of_a_file_have_keys_and_can_be_rebound() {
+    let keys_of = |wanted: KeyAction, mac: bool| -> Vec<Binding> {
+        default_bindings_for(mac)
+            .into_iter()
+            .filter(|(action, _)| *action == wanted)
+            .map(|(_, binding)| binding)
+            .collect()
+    };
+    for mac in [true, false] {
+        for (action, letter) in [(KeyAction::GitFileHistory, "y"), (KeyAction::GitFileBlame, "i")] {
+            let key = Key::Character(letter.into());
+            let command = if mac { Modifiers::LOGO } else { Modifiers::CTRL };
+            let expected = Binding::with_modifiers(key, command);
+            assert_eq!(keys_of(action, mac), [expected]);
+        }
+    }
+    let (_, reason) = failure("[keys]\ngit_file_history = \"alt+x\"\ngit_file_blame = \"alt+x\"\n");
+    assert!(reason.contains("already bound"), "{reason}");
+}

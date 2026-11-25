@@ -476,11 +476,11 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
     })
 }
 
-fn number_text<'a, M: 'a>(number: Option<u32>, palette: &Palette) -> Element<'a, M> {
+pub(crate) fn number_text<'a, M: 'a>(number: Option<u32>, ink: Color) -> Element<'a, M> {
     container(
         text(number.map(|count| count.to_string()).unwrap_or_default())
             .size(font_size::SMALL)
-            .color(palette.dim_text),
+            .color(ink),
     )
     .width(NUMBER_WIDTH)
     .padding([0.0, spacing::XS])
@@ -522,8 +522,7 @@ fn fit_code(content: &str, width_px: f32) -> String {
 }
 
 /// The line of a diff: it takes the room that is left and ends in `…` where it is cut.
-fn code_text<'a, M: 'a>(content: String, palette: &Palette) -> Element<'a, M> {
-    let ink = palette.text;
+pub(crate) fn code_text<'a, M: 'a>(content: String, ink: Color) -> Element<'a, M> {
     responsive(move |bounds| {
         text(fit_code(&content, bounds.width))
             .font(crate::APP_FONT)
@@ -614,9 +613,9 @@ pub fn diff_cell<'a, M: 'a>(
     }
     washed(
         row![
-            number_text(number, palette),
+            number_text(number, palette.dim_text),
             sign_text(tone, palette),
-            code_text(content, palette)
+            code_text(content, palette.text)
         ]
         .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center)
@@ -637,10 +636,10 @@ pub fn diff_unified_line<'a, M: 'a>(
 ) -> Element<'a, M> {
     washed(
         row![
-            number_text(old, palette),
-            number_text(new, palette),
+            number_text(old, palette.dim_text),
+            number_text(new, palette.dim_text),
             sign_text(tone, palette),
-            code_text(content, palette)
+            code_text(content, palette.text)
         ]
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center)

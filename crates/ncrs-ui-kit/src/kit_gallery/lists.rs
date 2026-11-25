@@ -6,6 +6,7 @@ use iced::{Element, Length, Size};
 use ncrs_i18n::Language;
 
 use super::matches_picture;
+use crate::blame_rows::{blame_row, BlameRow};
 use crate::commit_graph::{graph_cell, GraphCell};
 use crate::git_lines::{
     mark_head, summarize_refs, wip_row, worktree_line, WipRow, WorktreeLine, WorktreeState,
@@ -362,4 +363,34 @@ fn the_state_chips_look_the_same() {
     .spacing(spacing::M)
     .padding(spacing::XXL);
     matches_picture("state-chips", Size::new(1000.0, 220.0), content.into());
+}
+
+#[test]
+fn the_blame_rows_look_the_same() {
+    let p = palette();
+    let line = |line_no: u32, sha: &str, author: &str, text: &str| -> Cell<'_> {
+        blame_row(
+            BlameRow {
+                sha_short: sha.to_owned(),
+                author: author.to_owned(),
+                date: "2026-09-21 16:13".to_owned(),
+                line_no,
+                text: text.to_owned(),
+                first_of_group: !sha.is_empty(),
+                chosen: line_no == 4,
+                on_sha_press: (),
+                on_press: (),
+            },
+            &p,
+        )
+    };
+    let content = column![
+        line(1, "9e3779b", "Lena Hartmann", "pub fn total(rows: &[Row]) -> u64 {"),
+        line(2, "", "", "    rows.iter().map(|row| row.size).sum()"),
+        line(3, "3c6ef37", "Maximiliane von Hohenstein-Wartenberg", "}"),
+        line(4, "daa66d2", "Mira Sommer", "#[derive(Debug)]"),
+        line(1234, "", "", "pub struct Row { pub name: String, pub size: u64, pub time: i64 }"),
+    ]
+    .padding(spacing::XXL);
+    matches_picture("blame-rows", Size::new(900.0, 220.0), content.into());
 }

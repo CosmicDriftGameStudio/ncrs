@@ -4,6 +4,7 @@ use crate::cli::Git;
 use crate::detail::{ChangeKind, ChangedFile};
 use crate::diff::line_counts;
 use crate::undo::{SavedFile, UndoAction, UndoRecord, UndoSummary};
+use crate::working_file::read_working_file;
 use crate::ActionError;
 
 /// One line of `git status --porcelain`, reduced to what the actions need.
@@ -94,7 +95,7 @@ impl Git {
             }
             if entry.is_untracked() || entry.has_unstaged_change() {
                 let old = self.blob(&format!(":{path}")).unwrap_or_default();
-                let new = fs::read(self.root().join(path)).unwrap_or_default();
+                let new = read_working_file(self.root(), path).unwrap_or_default();
                 let mut file = changed(path, kind_of_letter(entry.worktree), &old, &new);
                 file.untracked = entry.is_untracked();
                 lists.unstaged.push(file);

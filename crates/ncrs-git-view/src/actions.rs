@@ -121,8 +121,13 @@ pub enum MenuTarget {
     RemoteBranch(usize),
     /// The id of the stash: its place in the list moves when stashes come and go.
     Stash(String),
-    /// The index into the conflicts of the merge.
-    Conflict(usize),
+    /// The path of the file in conflict.
+    Conflict(String),
+    /// A file of the pane at the right, with the commit it is shown in (`None`: the working copy).
+    File {
+        path: String,
+        at: Option<String>,
+    },
     /// The full SHA of the commit: its row moves when the list reloads.
     Commit(String),
 }
@@ -147,7 +152,7 @@ pub enum MenuAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenMenu {
     pub target: MenuTarget,
-    /// The entry of a commit menu the keys are on.
+    /// The entry of a commit or file menu the keys are on.
     pub cursor: usize,
     /// The entry of the open reset submenu the keys are on.
     pub submenu: Option<usize>,

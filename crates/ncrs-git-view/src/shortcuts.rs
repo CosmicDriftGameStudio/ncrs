@@ -53,6 +53,8 @@ pub enum Shortcut {
     GoParent,
     ToggleTree,
     CherryPick,
+    FileHistory,
+    Blame,
 }
 
 impl Shortcut {
@@ -95,6 +97,8 @@ impl Shortcut {
         Self::GoParent,
         Self::ToggleTree,
         Self::CherryPick,
+        Self::FileHistory,
+        Self::Blame,
     ];
 
     /// The name of the action in `[keys.git]`.
@@ -138,6 +142,8 @@ impl Shortcut {
             Self::GoParent => "parent",
             Self::ToggleTree => "toggle_tree",
             Self::CherryPick => "cherry_pick",
+            Self::FileHistory => "file_history",
+            Self::Blame => "blame",
         }
     }
 
@@ -157,9 +163,9 @@ impl Shortcut {
     }
 
     /// The default key is one the whole app already gives the same meaning:
-    /// edit, menu, rename; Space, ⌘↑ and ⌘↓ are the app's keys too, but the
-    /// tab only reads them where its files are. The check against the app
-    /// keymap skips these.
+    /// edit, menu, rename, history and blame of a file; Space, ⌘↑ and ⌘↓ are
+    /// the app's keys too, but the tab only reads them where its files are.
+    /// The check against the app keymap skips these.
     pub const fn shares_an_app_key(self) -> bool {
         matches!(
             self,
@@ -171,6 +177,8 @@ impl Shortcut {
                 | Self::ToggleStage
                 | Self::PreviousFile
                 | Self::NextFile
+                | Self::FileHistory
+                | Self::Blame
         )
     }
 
@@ -220,6 +228,8 @@ impl Shortcut {
             Self::GoParent => named(Modifiers::empty(), Named::Backspace),
             Self::ToggleTree => letter(Modifiers::empty(), "t"),
             Self::CherryPick => letter(command | Modifiers::ALT, "k"),
+            Self::FileHistory => letter(command, "y"),
+            Self::Blame => letter(command, "i"),
         }
     }
 
@@ -278,7 +288,8 @@ impl Shortcut {
             Self::CopySha => Msg::GitViewCommandCopySha,
             Self::GoParent => Msg::GitViewCommandParent,
             Self::ToggleTree => Msg::GitViewCommandToggleTree,
-            Self::CherryPick => return None,
+            // The app lists the last two itself: they work over the panels too.
+            Self::CherryPick | Self::FileHistory | Self::Blame => return None,
         })
     }
 
@@ -322,6 +333,8 @@ impl Shortcut {
             Self::GoParent => Message::GoToParent,
             Self::ToggleTree => Message::ToggleTreeKey,
             Self::CherryPick => Message::CommitAction(CommitAction::CherryPick),
+            Self::FileHistory => Message::HistoryKey,
+            Self::Blame => Message::BlameKey,
         }
     }
 

@@ -167,9 +167,9 @@ fn only_a_file_git_does_not_know_can_be_ignored() {
     let mut state = with_local_changes(&["src/new.log", "known.rs"], &[]);
     state.actions.sync = Some(crate::actions::SyncBar::default());
     state.actions.local.as_mut().unwrap().unstaged[0].untracked = true;
-    send(&mut state, Message::IgnoreFile(1));
+    send(&mut state, Message::IgnoreFile("known.rs".to_owned()));
     assert!(state.actions.dialog.is_none());
-    send(&mut state, Message::IgnoreFile(0));
+    send(&mut state, Message::IgnoreFile("src/new.log".to_owned()));
     let Some(Dialog::Ask(Question::Ignore {
         folder, extension, ..
     })) = &state.actions.dialog

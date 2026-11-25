@@ -57,9 +57,16 @@ impl App {
     /// as in an archive.
     pub(in crate::app) fn commands_the_panel_refuses(&self) -> Vec<KeyAction> {
         let panel = self.active_panel();
+        let has_git_file = match self.shown_git_tab().and_then(|id| self.git_tabs.get(id)) {
+            Some(tab) => ncrs_git_view::file_views::current_file(tab).is_some(),
+            None => self.git_file_under_cursor().is_some(),
+        };
         ncrs_config::commands::all()
             .map(|command| command.action)
             .filter(|action| {
+                if matches!(action, KeyAction::GitFileHistory | KeyAction::GitFileBlame) {
+                    return !has_git_file;
+                }
                 refusal_for(panel, &action.message()).is_some()
                     || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
             })

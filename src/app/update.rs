@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::GitFileView;
 
 /// What a list of search hits has no use for: it is not a folder, so nothing is
 /// made, pasted or measured in it.
@@ -25,7 +26,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     panel.archive.as_ref()?;
     match message {
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
-        Message::OpenGitView => Some(Msg::GitViewNotARepository),
+        Message::OpenGitView | Message::OpenGitFile(_) => Some(Msg::GitViewNotARepository),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
@@ -81,7 +82,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
-        Message::OpenGitView => Some(Msg::GitViewNotARepository),
+        Message::OpenGitView | Message::OpenGitFile(_) => Some(Msg::GitViewNotARepository),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
         | Message::OpenExternal(fs::OpenKind::Edit)
@@ -467,6 +468,7 @@ impl App {
             }
             Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
             Message::OpenGitView => self.open_git_view(),
+            Message::OpenGitFile(view) => self.open_git_file(view),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),
             Message::NoteOnFile => self.note_on_file(),
             Message::HandoffPoll => self.poll_handoffs(),
@@ -537,6 +539,13 @@ impl App {
             if self.hermes.is_off() {
                 return self.explain_hermes_is_off();
             }
+        }
+        if let (Message::OpenGitFile(view), Some(id)) = (&message, self.shown_git_tab()) {
+            let file = match view {
+                GitFileView::History => ncrs_git_view::Message::HistoryKey,
+                GitFileView::Blame => ncrs_git_view::Message::BlameKey,
+            };
+            return self.update_git_tab(id, file);
         }
         let panel = self.panel(self.source_side());
         if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {

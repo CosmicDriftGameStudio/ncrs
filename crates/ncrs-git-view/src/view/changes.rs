@@ -8,33 +8,24 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::hunk_bar;
 use ncrs_ui_kit::format::fit_middle;
 use ncrs_ui_kit::git_rows::{diff_cell, diff_note, diff_unified_line, DiffTone};
-use ncrs_ui_kit::kit::{
-    compact_button, focused_frame, icon_button, key_button, labelled_checkbox, segmented, Check,
-    Icon, Tone,
-};
+use ncrs_ui_kit::kit::{compact_button, focused_frame, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
+use super::diff_toolbar::{
+    bar, change_stepper, file_row, kind_letter, layout_choice, whitespace_choice, FileButtons,
+    TOOLBAR_NARROW,
+};
 use crate::actions::{ChangeSide, LocalChanges};
 use crate::ctx::ViewCtx;
 use crate::diff_layout::{hunk_title, pairs};
 use crate::message::Message;
-use crate::shortcuts::Shortcut;
 
 pub const HUNKS_ID: &str = "git-local-diff";
 
 /// How much of the path the first row of the toolbar shows before the middle of it is cut out.
 const PATH_ROOM: f32 = 240.0;
-
-pub fn kind_letter(kind: ChangeKind) -> &'static str {
-    match kind {
-        ChangeKind::Added => "A",
-        ChangeKind::Modified => "M",
-        ChangeKind::Deleted => "D",
-        ChangeKind::Renamed => "R",
-    }
-}
 
 fn tone_of(kind: RowKind) -> DiffTone {
     match kind {
@@ -43,9 +34,6 @@ fn tone_of(kind: RowKind) -> DiffTone {
         RowKind::Removed => DiffTone::Removed,
     }
 }
-
-/// Below this width of the middle the toolbar drops what the buttons already say.
-const TOOLBAR_NARROW: f32 = 1000.0;
 
 /// The file with what can be done to it and how it is shown, then where it
 /// comes from and the way to the editor: two rows of one line each.
@@ -99,7 +87,7 @@ fn toolbar_rows<'a>(
     let hunk_tip = local
         .ignore_whitespace
         .then(|| lang.text(Msg::GitViewHunkLockedWhitespace));
-    let mut first = Row::new()
+    let first = Row::new()
         .spacing(spacing::M)
         .align_y(alignment::Vertical::Center)
         .push(page_line(
@@ -136,110 +124,15 @@ fn toolbar_rows<'a>(
             Tone::Secondary,
             palette,
         ))
-        .push(segmented(
-            &[
-                (
-                    lang.text(Msg::GitViewDiffSideBySide),
-                    Message::SetUnified(false),
-                ),
-                (
-                    lang.text(Msg::GitViewDiffUnified),
-                    Message::SetUnified(true),
-                ),
-            ],
-            usize::from(local.unified),
-            true,
-            palette,
-        ))
-        .push(labelled_checkbox(
-            if local.ignore_whitespace {
-                Check::On
-            } else {
-                Check::Off
-            },
-            Some(Message::ToggleIgnoreWhitespace),
-            Some(lang.text(Msg::GitViewDiffIgnoreWhitespace)),
-            palette,
-        ));
-    first = first.push(change_stepper(local, narrow, ctx));
-    column![
-        bar(first.into()),
-        bar(row![
-            page_line(
-                fill_template(lang.text(comparison), &[("{path}", &file.path)]),
-                font_size::SMALL,
-                palette.dim_text
-            ),
-            Space::new().width(Length::Fill),
-            key_button(
-                lang.text(Msg::GitViewOpenEditor),
-                &Shortcut::OpenEditor.label(ctx.keys),
-                Some(Message::OpenSelectedInEditor),
-                Tone::Secondary,
-                palette,
-            ),
-        ]
-        .spacing(spacing::M)
-        .align_y(alignment::Vertical::Center)
-        .into()),
-    ]
-    .into()
-}
-
-/// One line of the toolbar: 32 px, no wrapping.
-fn bar<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
-    container(content)
-        .padding([0.0, spacing::M])
-        .height(size::COMPARE_BAR)
-        .center_y(size::COMPARE_BAR)
-        .clip(true)
-        .into()
-}
-
-/// "↑ ↓ Change x of y": which change of the file has the keys.
-fn change_stepper<'a>(
-    local: &'a LocalChanges,
-    narrow: bool,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
-    let palette = ctx.palette;
-    let lang = ctx.lang;
-    let total = local.diff.as_ref().map_or(0, |diff| diff.hunks.len());
-    let current = local.hunk.min(total.saturating_sub(1)) + usize::from(total > 0);
-    row![
-        icon_button(
-            Icon::ArrowUp,
-            None,
-            lang.text(Msg::GitViewDiffPreviousChange),
-            (current > 1).then_some(Message::PreviousHunk),
-            Tone::Secondary,
-            palette,
-        ),
-        icon_button(
-            Icon::ArrowDown,
-            None,
-            lang.text(Msg::GitViewDiffNextChange),
-            (current < total).then_some(Message::NextHunk),
-            Tone::Secondary,
-            palette,
-        ),
-    ]
-    .extend((!narrow).then(|| {
-        page_line(
-            fill_template(
-                lang.text(Msg::GitViewDiffChangeOf),
-                &[
-                    ("{current}", &current.to_string()),
-                    ("{total}", &total.to_string()),
-                ],
-            ),
-            font_size::SMALL,
-            palette.dim_text,
-        )
-    }))
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center)
-    .into()
+        .push(layout_choice(local.unified, ctx))
+        .push(whitespace_choice(local.ignore_whitespace, ctx))
+        .push(change_stepper(local.hunk, total, narrow, ctx));
+    let buttons = FileButtons {
+        committed: !file.untracked,
+        on_disk: file.kind != ChangeKind::Deleted,
+    };
+    let sides = fill_template(lang.text(comparison), &[("{path}", &file.path)]);
+    column![bar(first.into()), file_row(buttons, sides, ctx)].into()
 }
 
 fn side_cell<'a>(line: Option<&DiffRow>, old: bool, ctx: ViewCtx<'a>) -> Element<'a, Message> {

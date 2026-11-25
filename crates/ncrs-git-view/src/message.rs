@@ -1,11 +1,12 @@
 //! What happens in the Git tab.
 
 use ncrs_git::{
-    ActionError, ChangedFile, CommitDetail, FileDiff, Log, PullStrategy, RefLabel, RefsOverview,
-    ResetLoss,
+    ActionError, Blame, ChangedFile, CommitDetail, FileDiff, FileHistory, Log, PullStrategy,
+    RefLabel, RefsOverview, ResetLoss,
 };
 
 use crate::commit_menu::CommitAction;
+use crate::file_views::FileAction;
 use crate::state::Subject;
 
 use ncrs_ui_kit::git_rows::CommitColumn;
@@ -98,8 +99,8 @@ pub enum Message {
     WipFocused(WipFocus),
     /// The pointer pressed in the title or the body: the field has the focus.
     WipFieldPressed(WipFocus),
-    /// "Ignore…" on an unstaged file; the key asks for the chosen file.
-    IgnoreFile(usize),
+    /// "Ignore…" on an unstaged file, by its path; the key asks for the chosen file.
+    IgnoreFile(String),
     IgnoreSelected,
     IgnoreChoiceChanged(IgnoreChoice),
     /// F4 on a change: opens the chosen file in the editor.
@@ -128,7 +129,7 @@ pub enum Message {
     /// A choice for one block of the chosen file: the number of the block.
     TakeBlock(usize, Side),
     /// An action of the menu of a file in conflict.
-    ConflictPressed(usize, ConflictAction),
+    ConflictPressed(String, ConflictAction),
     /// The key of an action: it acts on the chosen file.
     ConflictShortcut(ConflictAction),
     PullFirst,
@@ -182,6 +183,23 @@ pub enum Message {
     ResetLossLoaded(String, Box<Result<ResetLoss, ActionError>>),
     /// The files of a comparison: the generation of the read, what is compared.
     CompareLoaded(u64, Subject, Box<Result<Vec<ChangedFile>, String>>),
+    /// The commits that changed a file, from its path in the repository.
+    OpenHistory(String),
+    /// Who last changed each line of a file, at a commit or (`None`) the last one.
+    OpenBlame(String, Option<String>),
+    /// The keys of both: they mean the file the user is at.
+    HistoryKey,
+    BlameKey,
+    HistoryLoaded(u64, Box<Result<FileHistory, String>>),
+    HistoryDiffLoaded(u64, Box<Result<FileDiff, String>>),
+    BlameLoaded(u64, Box<Result<Blame, String>>),
+    HistoryPressed(usize),
+    HistoryMore,
+    HistoryScrolled(f32),
+    BlamePressed(usize),
+    BlameScrolled(f32),
+    /// An entry of the menu of a file: it acts on the file of the open menu.
+    FileMenu(FileAction),
 }
 
 /// The state chips of the head that jump somewhere when pressed.

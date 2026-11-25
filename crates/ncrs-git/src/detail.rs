@@ -7,6 +7,7 @@ use gix::diff::tree_with_rewrites::Change;
 use crate::diff::{blob_at, line_counts};
 use crate::repo_access::{open, parse_id, short_hash};
 use crate::status::check_stop;
+use crate::working_file::read_working_file;
 use crate::{status, FileState, GitError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -202,7 +203,7 @@ pub fn working_changes(root: &Path, stop: &Arc<AtomicBool>) -> Result<Vec<Change
         };
         for path in files_under(root, relative) {
             let old = blob_at(&repository, &head_tree, &path);
-            let new = std::fs::read(root.join(&path)).unwrap_or_default();
+            let new = read_working_file(root, &path).unwrap_or_default();
             let counts = line_counts(&old, &new);
             files.push(ChangedFile {
                 path,

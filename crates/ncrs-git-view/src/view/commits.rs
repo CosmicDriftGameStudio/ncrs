@@ -15,10 +15,9 @@ use ncrs_ui_kit::git_rows::{
 };
 use ncrs_ui_kit::kit::{button, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_tracked;
-use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
-use super::COMMITS_ID;
+use super::{notice, COMMITS_ID};
 use crate::actions::MenuTarget;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
@@ -141,16 +140,6 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Message::CommitsScrolled
         )
     ]
-    .into()
-}
-
-fn notice<'a>(ctx: ViewCtx<'a>, text: Msg) -> Element<'a, Message> {
-    container(page_line(
-        ctx.lang.text(text),
-        font_size::BODY,
-        ctx.palette.dim_text,
-    ))
-    .padding(spacing::M)
     .into()
 }
 

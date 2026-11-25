@@ -5,7 +5,7 @@ use iced::widget::{column, container, row, Column, Space};
 use iced::{alignment, Element, Length};
 use ncrs_git::ChangedFile;
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::action_rows::{action_row, ActionRow};
+use ncrs_ui_kit::action_rows::{action_row, context_area, ActionRow};
 use ncrs_ui_kit::format::{estimated_width, fit_middle};
 use ncrs_ui_kit::git_rows::{ref_chip, RefChipKind};
 use ncrs_ui_kit::kit::{focused, small_button, Tone};
@@ -13,9 +13,9 @@ use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::section_head::{section_head_with, SectionHead};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
-use super::changes::kind_letter;
+use super::diff_toolbar::kind_letter;
 use super::commit_box;
-use crate::actions::{ChangeSide, LocalChanges, WipFocus};
+use crate::actions::{ChangeSide, LocalChanges, MenuTarget, WipFocus};
 use crate::ctx::ViewCtx;
 use crate::handlers::current_branch;
 use crate::message::Message;
@@ -52,7 +52,7 @@ fn file_rows<'a>(
                 if file.untracked {
                     add(
                         lang.text(Msg::GitViewIgnore),
-                        Message::IgnoreFile(index),
+                        Message::IgnoreFile(file.path.clone()),
                         Tone::Secondary,
                     );
                 }
@@ -77,7 +77,7 @@ fn file_rows<'a>(
             .map(|label| estimated_width(label, font_size::SMALL) + 2.0 * (spacing::M - 2.0) + spacing::M)
             .chain(trail.iter().map(|(count, _)| estimated_width(count, font_size::SMALL) + spacing::M))
             .sum();
-        action_row(
+        let shown = action_row(
             ActionRow {
                 lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
                 label: fit_middle(&file.path, width - taken - ROW_OVERHEAD, font_size::BODY),
@@ -88,7 +88,12 @@ fn file_rows<'a>(
                 on_press: Message::SelectChange(side, index),
             },
             palette,
-        )
+        );
+        let target = MenuTarget::File {
+            path: file.path.clone(),
+            at: None,
+        };
+        context_area(shown, Message::OpenMenu(target))
     }))
     .into()
 }

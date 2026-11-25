@@ -38,7 +38,7 @@ mod ui_tests {
 
     mod fixtures;
     use fixtures::*;
-
+    mod file_views;
 
     #[test]
     fn local_changes_picture() {
@@ -262,7 +262,8 @@ mod ui_tests {
     fn conflict_menu_picture() {
         let mut state = repository();
         state.actions.merge = Some(merge());
-        state.actions.menu = Some(OpenMenu::new(MenuTarget::Conflict(2)));
+        let conflict = merge().conflicts.swap_remove(2).path;
+        state.actions.menu = Some(OpenMenu::new(MenuTarget::Conflict(conflict)));
         picture(&state, "tests/snapshots/git-conflict-menu-cosmic");
     }
 

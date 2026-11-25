@@ -541,8 +541,8 @@ async fn ignoring_an_untracked_file_hides_it_and_can_be_undone() {
             .iter()
             .position(|file| file.path == "junk.log")
     };
-    let index = place(&state).expect("the new file is listed");
-    send(&mut state, Message::IgnoreFile(index)).await;
+    assert!(place(&state).is_some(), "the new file is listed");
+    send(&mut state, Message::IgnoreFile("junk.log".to_owned())).await;
     send(
         &mut state,
         Message::IgnoreChoiceChanged(ncrs_git_view::actions::IgnoreChoice::Extension),
@@ -561,7 +561,7 @@ async fn a_tracked_file_is_not_offered_for_ignoring() {
     let dir = repo();
     write(dir.path(), "a.txt", &two_hunks());
     let mut state = opened(dir.path()).await;
-    send(&mut state, Message::IgnoreFile(0)).await;
+    send(&mut state, Message::IgnoreFile("a.txt".to_owned())).await;
     assert!(state.actions.dialog.is_none());
 }
 

@@ -100,7 +100,8 @@ fn target_row(state: &State) -> Option<usize> {
             MenuTarget::Commit(sha) => state.row_of_commit(sha),
             _ => None,
         },
-        None => (state.area == Area::Commits).then_some(state.commit_cursor),
+        None => (state.area == Area::Commits && !state.list_is_covered())
+            .then_some(state.commit_cursor),
     }
 }
 
@@ -108,6 +109,7 @@ fn target_row(state: &State) -> Option<usize> {
 pub fn of_shortcut(state: &State, action: MenuAction) -> Option<CommitAction> {
     let on_commit = state.actions.menu.is_none()
         && state.area == Area::Commits
+        && !state.list_is_covered()
         && state.commit_at(state.commit_cursor).is_some();
     match action {
         MenuAction::Checkout if on_commit => Some(CommitAction::Checkout),

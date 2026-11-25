@@ -6,8 +6,8 @@ use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::messages::PanelMessage;
 use crate::messages::{
-    ClipboardKind, CompareMessage, HermesFileMessage, HitListMessage, Message, QuickFixMessage,
-    TransferKind,
+    ClipboardKind, CompareMessage, GitFileView, HermesFileMessage, HitListMessage, Message,
+    QuickFixMessage, TransferKind,
 };
 
 pub trait ContextActionMessage {
@@ -32,6 +32,8 @@ impl ContextActionMessage for ContextAction {
             ContextAction::ComputeFolderSizes => Message::ComputeFolderSizes,
             ContextAction::CompareFolders => Message::Compare(CompareMessage::Open),
             ContextAction::GitView => Message::OpenGitView,
+            ContextAction::GitHistory => Message::OpenGitFile(GitFileView::History),
+            ContextAction::GitBlame => Message::OpenGitFile(GitFileView::Blame),
             ContextAction::AddFavourite => Message::AddFavourite,
             ContextAction::RemoveFavourite => Message::RemoveFavourite,
             ContextAction::Trash => Message::Delete { permanent: false },

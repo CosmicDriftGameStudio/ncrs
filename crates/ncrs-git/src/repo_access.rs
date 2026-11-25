@@ -118,3 +118,42 @@ pub fn default_branch(repository: &gix::Repository) -> Option<DefaultBranch> {
         .and_then(describe)
         .or_else(|| ["main", "master"].into_iter().find_map(describe))
 }
+
+/// `path` as `tree` spells it. Where the disk ignores case, a file panel or an
+/// older commit may have another spelling than the tree.
+pub fn path_as_in_tree(repository: &gix::Repository, tree: &gix::Tree<'_>, path: &str) -> String {
+    let ignores_case = repository
+        .config_snapshot()
+        .boolean("core.ignorecase")
+        .unwrap_or(false);
+    let is_exact = matches!(tree.lookup_entry_by_path(path), Ok(Some(_)));
+    if !ignores_case || is_exact {
+        return path.to_string();
+    }
+    respelled(tree.clone(), path).unwrap_or_else(|| path.to_string())
+}
+
+fn respelled(mut tree: gix::Tree<'_>, path: &str) -> Option<String> {
+    let mut spelled: Vec<String> = Vec::new();
+    let mut parts = path.split('/').peekable();
+    while let Some(part) = parts.next() {
+        let wanted = part.to_lowercase();
+        let (name, below) = {
+            let found = tree
+                .iter()
+                .filter_map(Result::ok)
+                .find(|entry| entry.filename().to_string().to_lowercase() == wanted)?;
+            let name = found.filename().to_string();
+            let below = match parts.peek() {
+                Some(_) => Some(found.object().ok()?.try_into_tree().ok()?),
+                None => None,
+            };
+            (name, below)
+        };
+        spelled.push(name);
+        if let Some(folder) = below {
+            tree = folder;
+        }
+    }
+    Some(spelled.join("/"))
+}

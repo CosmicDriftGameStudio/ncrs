@@ -415,6 +415,7 @@ mod tests {
                 | Msg::GitViewCommitCounter
                 | Msg::GitViewColumnGraph
                 | Msg::GitViewTagNamePlaceholder
+                | Msg::GitViewBlame
                 | Msg::RepoRowColumnName
                 | Msg::RepoRowColumnBranch
                 | Msg::KeyBindingsGitHeading
@@ -426,6 +427,8 @@ mod tests {
                 | Msg::GitViewPickerRepository
                 | Msg::GitViewTabTitle
                 | Msg::GitViewWorktreeWip
+                | Msg::GitViewDiffSides
+                | Msg::GitViewStatusDiffRight
                 // A number and a unit, the same in every language.
                 | Msg::SplitterWidth
                 | Msg::SettingsHermesSectionChats

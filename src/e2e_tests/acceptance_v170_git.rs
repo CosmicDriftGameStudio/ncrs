@@ -734,10 +734,14 @@ fn a_merge_with_conflicts_is_resolved_block_by_block_and_by_file() {
         "docs/guide.md"
     );
 
-    flow.send(View::OpenMenu(MenuTarget::Conflict(0)));
+    let conflicted = "docs/guide.md".to_owned();
+    flow.send(View::OpenMenu(MenuTarget::Conflict(conflicted.clone())));
     assert!(flow.view().actions.menu.is_some());
     flow.shoot("11-konflikt-datei-menue");
-    flow.send(View::ConflictPressed(0, ConflictAction::Take(Side::Both)));
+    flow.send(View::ConflictPressed(
+        conflicted,
+        ConflictAction::Take(Side::Both),
+    ));
     assert!(flow.view().actions.menu.is_none(), "the menu closes");
     let guide = flow.read("docs/guide.md");
     assert!(

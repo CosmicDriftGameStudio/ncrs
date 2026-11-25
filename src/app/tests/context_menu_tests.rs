@@ -1,5 +1,6 @@
 use crate::app::*;
 use crate::context_menu::MenuEntry;
+use crate::messages::GitFileView;
 
 const LEFT: PanelSide = PanelSide::Left;
 // Rows of the fixed left panel: `..`, a directory, two files.
@@ -516,9 +517,11 @@ fn in_an_archive_the_f4_slot_is_dimmed_and_the_palette_drops_the_command() {
         app.commands_the_panel_refuses(),
         vec![
             ncrs_config::keymap::KeyAction::UndoRename,
-            ncrs_config::keymap::KeyAction::GitView
+            ncrs_config::keymap::KeyAction::GitView,
+            ncrs_config::keymap::KeyAction::GitFileHistory,
+            ncrs_config::keymap::KeyAction::GitFileBlame,
         ],
-        "no batch is remembered and the folder is no repository, so only the undo and the Git view are refused"
+        "no batch is remembered and the folder is no repository: the undo and Git are refused"
     );
 
     app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));
@@ -545,4 +548,57 @@ fn extract_here_is_in_the_menu_of_an_archive_file_only_and_packing_is_not_for_ar
     open_at(&mut app, LEFT, FILE);
     assert!(!enabled_actions(&app).contains(&ContextAction::ExtractHere));
     assert!(!enabled_actions(&app).contains(&ContextAction::Pack));
+}
+
+#[test]
+fn history_and_blame_are_in_the_menu_of_a_file_in_a_repository_only() {
+    let git_entries = |app: &App| -> Vec<ContextAction> {
+        app.context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .filter(|action| {
+                matches!(
+                    action,
+                    ContextAction::GitHistory | ContextAction::GitBlame
+                )
+            })
+            .collect()
+    };
+    let mut app = App::with_fixed_panels();
+    open_at(&mut app, LEFT, FILE);
+    assert!(git_entries(&app).is_empty(), "no repository");
+
+    let repository = tempfile::tempdir().unwrap();
+    std::fs::create_dir(repository.path().join(".git")).unwrap();
+    app.panel_mut(LEFT).path = repository.path().to_path_buf();
+    open_at(&mut app, LEFT, DIRECTORY);
+    assert!(git_entries(&app).is_empty(), "a folder has no blame");
+    open_at(&mut app, LEFT, FILE);
+    assert_eq!(
+        git_entries(&app),
+        [ContextAction::GitHistory, ContextAction::GitBlame]
+    );
+}
+
+#[test]
+fn the_history_of_the_file_under_the_cursor_opens_in_the_git_tab() {
+    let repository = tempfile::tempdir().unwrap();
+    std::fs::create_dir(repository.path().join(".git")).unwrap();
+    let mut app = App::with_fixed_panels();
+    app.panel_mut(LEFT).path = repository.path().to_path_buf();
+    app.panel_mut(LEFT).selected = PARENT;
+    drop(app.update(Message::OpenGitFile(GitFileView::History)));
+    assert!(app.shown_git_tab().is_none(), "no file under the cursor");
+
+    app.panel_mut(LEFT).selected = FILE;
+    let name = app.panel(LEFT).entries[FILE].name.to_string_lossy().into_owned();
+    drop(app.update(Message::OpenGitFile(GitFileView::History)));
+    let id = app.shown_git_tab().unwrap();
+    let history = app.git_tabs.get(id).unwrap().history.as_ref().unwrap();
+    assert_eq!(history.path, name);
 }

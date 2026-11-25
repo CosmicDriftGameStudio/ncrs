@@ -4,6 +4,9 @@ use crate::changes::PorcelainEntry;
 use crate::cli::{Git, Output};
 use crate::conflict::{parse_blocks, resolve_blocks, ConflictBlock, ConflictChoice};
 use crate::refname::plain_ref;
+use crate::working_file::{
+    large_text_has_conflict_marker, read_whole_working_file, read_working_text,
+};
 use crate::ActionError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -181,9 +184,7 @@ impl Git {
             .iter()
             .filter(|entry| entry.is_unmerged())
             .map(|entry| {
-                let blocks = fs::read(self.root().join(&entry.path))
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                let blocks = read_working_text(self.root(), &entry.path)
                     .map(|text| parse_blocks(&text))
                     .unwrap_or_default();
                 ConflictedFile {
@@ -224,6 +225,7 @@ impl Git {
         if !conflict.blocks.is_empty() {
             return self.rewrite_conflicts(path, None, choice);
         }
+        self.refuse_unread_markers(path)?;
         let (ours, theirs) = sides_with_file(conflict.kind);
         if matches!(
             choice,
@@ -260,6 +262,7 @@ impl Git {
         if remaining > 0 {
             return Err(ActionError::UnresolvedConflicts { count: remaining });
         }
+        self.refuse_unread_markers(path)?;
         self.ok(&["add", "--", path])?;
         Ok(())
     }
@@ -336,6 +339,17 @@ impl Git {
         })
     }
 
+    /// A file too large for its blocks to be read counts as one without blocks:
+    /// taking a whole side or marking it resolved would lose the merged rest.
+    fn refuse_unread_markers(&self, path: &str) -> Result<(), ActionError> {
+        if large_text_has_conflict_marker(self.root(), path) {
+            return Err(other(format!(
+                "{path} is too large for this: resolve it in the editor"
+            )));
+        }
+        Ok(())
+    }
+
     fn rewrite_conflicts(
         &self,
         path: &str,
@@ -344,7 +358,7 @@ impl Git {
     ) -> Result<(), ActionError> {
         crate::undo::refuse_symlinks(self.root(), path)?;
         let file = self.root().join(path);
-        let bytes = fs::read(&file).map_err(io_error)?;
+        let bytes = read_whole_working_file(self.root(), path)?;
         let text = String::from_utf8(bytes)
             .map_err(|cause| other(format!("{path} is not text: {cause}")))?;
         let resolved = resolve_blocks(&text, block, choice)

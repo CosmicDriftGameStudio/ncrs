@@ -311,3 +311,76 @@ fn blame_refuses_binary_files_and_honours_stop() {
     assert!(result.lines.is_empty());
     blame(repo.path(), "a.txt", None, &Arc::new(AtomicBool::new(true))).unwrap_err();
 }
+
+#[test]
+fn a_file_in_a_subfolder_has_its_history_and_stop_is_honoured() {
+    let repo = repo();
+    repo.commit_file("src/deep/x.rs", "1\n", "add x");
+    repo.commit_file("src/deep/x.rs", "2\n", "edit x");
+    let history = file_history(repo.path(), "src/deep/x.rs", 10, &go()).unwrap();
+    let summaries: Vec<_> = history
+        .commits
+        .iter()
+        .map(|row| row.commit.summary.as_str())
+        .collect();
+    assert_eq!(summaries, vec!["edit x", "add x"]);
+    let stopped = Arc::new(AtomicBool::new(true));
+    file_history(repo.path(), "src/deep/x.rs", 10, &stopped).unwrap_err();
+}
+
+#[test]
+fn where_case_is_ignored_another_spelling_finds_the_file() {
+    let repo = repo();
+    repo.commit_file("Src/Main.rs", "fn main() {}\n", "add main");
+    repo.sh(&["config", "core.ignorecase", "true"]);
+    assert_eq!(
+        file_history(repo.path(), "src/main.rs", 10, &go())
+            .unwrap()
+            .commits
+            .len(),
+        1
+    );
+    let blamed = blame(repo.path(), "src/main.rs", None, &go()).unwrap();
+    assert_eq!(blamed.lines.len(), 1);
+    repo.sh(&["config", "core.ignorecase", "false"]);
+    let refused = blame(repo.path(), "src/main.rs", None, &go()).unwrap();
+    assert_eq!(refused.refused, BlameLimit::NotCommitted);
+}
+
+#[test]
+fn blame_names_each_author() {
+    let repo = repo();
+    write(repo.path(), "a.txt", "one\nTWO\nthree\n");
+    repo.sh(&["add", "a.txt"]);
+    repo.sh(&["commit", "-q", "-m", "second", "--author=Ada <ada@example.com>"]);
+    let blamed = blame(repo.path(), "a.txt", None, &go()).unwrap();
+    let authors: Vec<_> = blamed
+        .lines
+        .iter()
+        .map(|line| blamed.groups[line.group].author.as_str())
+        .collect();
+    assert_eq!(authors, vec!["Test", "Ada", "Test"]);
+}
+
+#[test]
+fn blame_refuses_what_is_too_large_or_not_committed() {
+    let repo = repo();
+    let first = head(&repo);
+    repo.commit_file("big.txt", &"0123456\n".repeat(5 * 1024 * 128), "big");
+    let of = |path: &str, at: Option<&str>| blame(repo.path(), path, at, &go()).unwrap().refused;
+    assert_eq!(of("big.txt", None), BlameLimit::TooLarge);
+    assert_eq!(of("big.txt", Some(&first)), BlameLimit::NotCommitted);
+    write(repo.path(), "new.txt", "x\n");
+    assert_eq!(of("new.txt", None), BlameLimit::NotCommitted);
+}
+
+#[cfg(unix)]
+#[test]
+fn blame_refuses_a_symlink() {
+    let repo = repo();
+    std::os::unix::fs::symlink("a.txt", repo.path().join("link")).unwrap();
+    repo.sh(&["add", "link"]);
+    repo.sh(&["commit", "-q", "-m", "link"]);
+    let blamed = blame(repo.path(), "link", None, &go()).unwrap();
+    assert_eq!(blamed.refused, BlameLimit::NotAFile);
+}

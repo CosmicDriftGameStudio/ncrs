@@ -319,6 +319,16 @@ pub fn default_bindings_for(mac: bool) -> Vec<(KeyAction, Binding)> {
             A::GitView,
             Binding::with_modifiers(Character("g".into()), command | Modifiers::SHIFT),
         ),
+        // The history and the blame of the file under the cursor; the Git tab
+        // has the same keys for the file it shows.
+        (
+            A::GitFileHistory,
+            Binding::with_modifiers(Character("y".into()), command),
+        ),
+        (
+            A::GitFileBlame,
+            Binding::with_modifiers(Character("i".into()), command),
+        ),
         // The list of all repositories, K for the keep of projects;
         // Cmd+Shift+K, Ctrl+Shift+K elsewhere.
         (

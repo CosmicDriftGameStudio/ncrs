@@ -11,6 +11,7 @@ use ncrs_git::{
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
 use crate::actions::{Actions, MenuTarget, WipFocus};
+use crate::file_views::{self, BlameState, HistoryState};
 use crate::panes::{PaneDrag, Split};
 use crate::picker::Picker;
 
@@ -237,13 +238,14 @@ pub struct Slot {
 impl Slot {
     pub fn begin(&mut self) -> (u64, Arc<AtomicBool>) {
         self.cancel();
-        self.generation += 1;
         let stop = Arc::new(AtomicBool::new(false));
         self.stop = Some(Arc::clone(&stop));
         (self.generation, stop)
     }
 
+    /// Stops the read and drops its answer, also where the work could not be stopped.
     pub fn cancel(&mut self) {
+        self.generation += 1;
         if let Some(stop) = self.stop.take() {
             stop.store(true, Ordering::Relaxed);
         }
@@ -262,6 +264,27 @@ pub struct Loads {
     pub diff: Slot,
     pub actions: Slot,
     pub containing: Slot,
+    pub history: Slot,
+    pub history_diff: Slot,
+    pub blame: Slot,
+}
+
+impl Loads {
+    pub fn cancel_all(&mut self) {
+        for slot in [
+            &mut self.refs,
+            &mut self.log,
+            &mut self.detail,
+            &mut self.diff,
+            &mut self.actions,
+            &mut self.containing,
+            &mut self.history,
+            &mut self.history_diff,
+            &mut self.blame,
+        ] {
+            slot.cancel();
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -301,6 +324,10 @@ pub struct State {
     pub tree_mode: bool,
     pub detail: Option<Detail>,
     pub diff: Option<DiffState>,
+    /// The history of a file; a diff opened from it lies over it.
+    pub history: Option<HistoryState>,
+    /// The blame of a file; it lies over the diff and the history.
+    pub blame: Option<BlameState>,
     /// Ready to show: why a read failed.
     pub problem: Option<String>,
     /// The actions of #338, filled by the caller while the design is open.
@@ -314,23 +341,48 @@ impl State {
     }
 
     pub fn close(&mut self) {
-        self.loads.refs.cancel();
-        self.loads.log.cancel();
-        self.loads.detail.cancel();
-        self.loads.diff.cancel();
-        self.loads.actions.cancel();
-        self.loads.containing.cancel();
-        *self = Self::default();
+        self.stop();
+        // The counters go on: an answer for the closed repository must not fit a new read.
+        let loads = std::mem::take(&mut self.loads);
+        *self = Self {
+            loads,
+            ..Self::default()
+        };
     }
 
     /// Stops every read in flight, at quit.
     pub fn stop(&mut self) {
-        self.loads.refs.cancel();
-        self.loads.log.cancel();
-        self.loads.detail.cancel();
+        self.loads.cancel_all();
+    }
+
+    /// Closes what lies over the commit list: the blame, the diff and the history.
+    pub fn close_layers(&mut self) {
+        self.blame = None;
+        self.diff = None;
+        self.history = None;
+        self.loads.blame.cancel();
         self.loads.diff.cancel();
-        self.loads.actions.cancel();
-        self.loads.containing.cancel();
+        self.loads.history.cancel();
+        self.loads.history_diff.cancel();
+    }
+
+    /// Something lies over the commit list: its keys must not act on rows nobody sees.
+    pub fn list_is_covered(&self) -> bool {
+        self.blame.is_some() || self.diff.is_some() || self.history.is_some()
+    }
+
+    /// The diff lists its files itself: the detail pane is about something else.
+    pub fn diff_has_own_list(&self) -> bool {
+        self.diff.as_ref().is_some_and(|shown| {
+            self.detail
+                .as_ref()
+                .is_none_or(|detail| detail.subject != shown.subject)
+        })
+    }
+
+    /// A diff has the keys of a diff.
+    fn diff_has_keys(&self) -> bool {
+        self.blame.is_none() && (self.diff.is_some() || self.wip_diff_has_keys())
     }
 
     /// The diff of a local change is open and no commit field has the keys.
@@ -345,7 +397,8 @@ impl State {
     pub fn key_context(&self) -> crate::keys::KeyContext {
         crate::keys::KeyContext {
             filter_focused: self.filter_focused,
-            in_diff: self.diff.is_some() || self.wip_diff_has_keys(),
+            in_diff: self.diff_has_keys(),
+            list_covered: self.list_is_covered(),
             dialog_open: self.actions.dialog_open(),
             picker_open: self.picker.is_some(),
             area: self.area,
@@ -472,9 +525,13 @@ impl State {
     }
 
     /// The right side shows the staging of the local changes: the row of the
-    /// working copy is the chosen one and git can write.
+    /// working copy is the chosen one, git can write and no diff or history of a
+    /// file took its place.
     pub fn changes_shown(&self) -> bool {
-        self.actions.local.is_some() && self.working_row_chosen()
+        self.actions.local.is_some()
+            && self.working_row_chosen()
+            && self.diff.is_none()
+            && self.history.is_none()
     }
 
     pub fn row_count(&self) -> usize {
@@ -498,12 +555,18 @@ impl State {
         Some(index + usize::from(self.has_working_row()))
     }
 
-    /// Closes the open menu when the commit or stash it was opened on is gone.
+    /// Closes the open menu when the commit, stash or file it was opened on is gone.
     pub fn close_menu_if_stale(&mut self) {
         let gone = match self.actions.menu.as_ref().map(|open| &open.target) {
             Some(MenuTarget::Commit(sha)) => self.row_of_commit(sha).is_none(),
             Some(MenuTarget::Stash(id)) => !self.actions.stash_ids.contains(id),
-            _ => false,
+            Some(MenuTarget::Conflict(path)) => !self
+                .actions
+                .merge
+                .as_ref()
+                .is_some_and(|merge| merge.conflicts.iter().any(|it| it.path == *path)),
+            Some(MenuTarget::File { path, .. }) => file_views::row_of_file(self, path).is_none(),
+            Some(MenuTarget::LocalBranch(_) | MenuTarget::RemoteBranch(_)) | None => false,
         };
         if gone {
             self.actions.menu = None;

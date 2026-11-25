@@ -3,7 +3,7 @@
 
 use crate::app::update::git_repository_of;
 use crate::app::*;
-use crate::messages::GitTabId;
+use crate::messages::{GitFileView, GitTabId};
 use ncrs_git_view::Action as Ask;
 use ncrs_ui_kit::git_rows::CommitColumns;
 use std::path::{Path, PathBuf};
@@ -95,6 +95,36 @@ impl App {
             return Task::none();
         };
         self.open_git_tab_at(root)
+    }
+
+    /// The repository and the path in it of the file under the cursor of the
+    /// active panel.
+    pub(in crate::app) fn git_file_under_cursor(&self) -> Option<(PathBuf, String)> {
+        let file = self.file_under_cursor()?;
+        let root = ncrs_git::repository_root_of(file.parent()?)?;
+        let path = ncrs_git::path_in_repository(&root, &file)?;
+        Some((root, path))
+    }
+
+    /// Shows the history or the blame of the file under the cursor in the Git
+    /// tab of its repository.
+    pub(in crate::app) fn open_git_file(&mut self, view: GitFileView) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let Some((root, path)) = self.git_file_under_cursor() else {
+            self.set_status_error(self.lang.text(Msg::GitViewNotARepositoryFile));
+            return Task::none();
+        };
+        let opened = self.open_git_tab_at(root);
+        let Some(id) = self.shown_git_tab() else {
+            return opened;
+        };
+        let message = match view {
+            GitFileView::History => ncrs_git_view::Message::OpenHistory(path),
+            GitFileView::Blame => ncrs_git_view::Message::OpenBlame(path, None),
+        };
+        Task::batch([opened, self.update_git_tab(id, message)])
     }
 
     /// Shows the Git tab of the repository at `root`, opening one if it has

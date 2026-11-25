@@ -16,10 +16,10 @@ use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    CompareMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
-    HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferDialogMessage,
-    TransferKind, TrashMessage,
+    CompareMessage, FilingStatusMessage, GitFileView, GrantMessage, HermesChatMessage,
+    HermesFileMessage, HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferDialogMessage, TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
 
@@ -138,6 +138,8 @@ impl KeyActionMessage for KeyAction {
             Self::Notes => Message::OpenNotes,
             Self::NoteOnFile => Message::NoteOnFile,
             Self::GitView => Message::OpenGitView,
+            Self::GitFileHistory => Message::OpenGitFile(GitFileView::History),
+            Self::GitFileBlame => Message::OpenGitFile(GitFileView::Blame),
             Self::Repos => Message::OpenRepos,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),

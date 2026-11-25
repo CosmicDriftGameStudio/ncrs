@@ -16,6 +16,8 @@ use crate::state::Area;
 pub struct KeyContext {
     pub filter_focused: bool,
     pub in_diff: bool,
+    /// A diff, a history or a blame lies over the commit list.
+    pub list_covered: bool,
     pub dialog_open: bool,
     pub picker_open: bool,
     pub area: Area,
@@ -41,7 +43,9 @@ pub fn git_view_key(
         return None;
     }
     if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
-        if shortcut == Shortcut::ToggleStage && context.area == Area::Commits && !context.in_diff {
+        let in_commit_list =
+            context.area == Area::Commits && !context.in_diff && !context.list_covered;
+        if shortcut == Shortcut::ToggleStage && in_commit_list {
             return Some(Message::MarkCommit);
         }
         let applies = match shortcut {
@@ -49,7 +53,7 @@ pub fn git_view_key(
                 context.in_diff || context.area == Area::Detail
             }
             Shortcut::ToggleStage => context.area == Area::Detail,
-            Shortcut::CherryPick => context.area == Area::Commits,
+            Shortcut::CherryPick => context.area == Area::Commits && !context.list_covered,
             _ => true,
         };
         return applies.then(|| shortcut.message());

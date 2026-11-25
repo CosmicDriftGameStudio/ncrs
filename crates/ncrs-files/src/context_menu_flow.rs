@@ -104,6 +104,8 @@ impl MenuFacts {
                 | ContextAction::ComputeFolderSizes
                 | ContextAction::CompareFolders
                 | ContextAction::GitView
+                | ContextAction::GitHistory
+                | ContextAction::GitBlame
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
                 | ContextAction::NoteOnFile
@@ -145,6 +147,10 @@ impl MenuFacts {
             ContextAction::GitView => panels
                 .local_folder_target()
                 .is_some_and(|folder| ncrs_git::repository_root_of(&folder).is_some()),
+            ContextAction::GitHistory | ContextAction::GitBlame => {
+                cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
+                    && ncrs_git::repository_root_of(&panel.path).is_some()
+            }
             ContextAction::OpenTerminal => panels.local_folder_target().is_some(),
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,

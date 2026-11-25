@@ -8,7 +8,7 @@ use gix::traverse::commit::simple::CommitTimeOrder;
 use crate::graph::GraphRow;
 use crate::log::LogCommit;
 use crate::refs::labels_by_commit;
-use crate::repo_access::{open, short_hash};
+use crate::repo_access::{open, path_as_in_tree, short_hash};
 use crate::status::check_stop;
 use crate::GitError;
 
@@ -51,7 +51,11 @@ pub fn file_history(
         ))
         .all()
         .map_err(GitError::read)?;
-    let mut current = path.to_string();
+    let head_tree = repository
+        .find_commit(head)
+        .and_then(|commit| commit.tree())
+        .map_err(GitError::read)?;
+    let mut current = path_as_in_tree(&repository, &head_tree, path);
     for walked in walk {
         check_stop(stop)?;
         let info = walked.map_err(GitError::read)?;

@@ -417,3 +417,31 @@ fn the_input_state_closes_it_on_escape_too() {
         Some(palette_message(CommandPaletteMessage::Close))
     );
 }
+
+#[test]
+fn the_history_of_a_file_is_listed_once_and_only_with_a_file() {
+    let times_listed = |app: &App| {
+        let palette = app.command_palette_for_test().unwrap();
+        palette
+            .hits()
+            .filter_map(|hit| palette.entry(hit))
+            .filter(|entry| entry.label == app.lang.text(Msg::ActionGitFileHistory))
+            .count()
+    };
+    let mut panels = App::with_fixed_panels();
+    open_palette(&mut panels);
+    assert_eq!(times_listed(&panels), 0, "the folder is no repository");
+
+    let mut without_file = app_showing_git(false);
+    open_palette(&mut without_file);
+    assert_eq!(times_listed(&without_file), 0);
+
+    let mut in_the_blame = app_showing_git(false);
+    let id = in_the_blame.shown_git_tab().unwrap();
+    drop(in_the_blame.update(Message::GitView(
+        id,
+        ncrs_git_view::Message::OpenBlame("main.rs".to_owned(), None),
+    )));
+    open_palette(&mut in_the_blame);
+    assert_eq!(times_listed(&in_the_blame), 1);
+}

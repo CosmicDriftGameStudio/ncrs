@@ -216,6 +216,8 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::ContextMenu
         | KeyAction::NoteOnFile
         | KeyAction::GitView
+        | KeyAction::GitFileHistory
+        | KeyAction::GitFileBlame
         | KeyAction::Repos => at(2),
         KeyAction::CompareFolders => at(1).dialog(),
         KeyAction::SortByName
@@ -360,6 +362,8 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Notes => Command::plain(action, Go, Msg::ActionNotes),
         KeyAction::NoteOnFile => Command::plain(action, File, Msg::ActionNoteOnFile),
         KeyAction::GitView => Command::plain(action, File, Msg::ActionGitView),
+        KeyAction::GitFileHistory => Command::plain(action, File, Msg::ActionGitFileHistory),
+        KeyAction::GitFileBlame => Command::plain(action, File, Msg::ActionGitFileBlame),
         KeyAction::Repos => Command::plain(action, Go, Msg::ActionRepos),
         KeyAction::FileListTagsToggle => {
             Command::plain(action, View, Msg::ActionFileListTagsToggle)

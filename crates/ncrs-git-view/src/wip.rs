@@ -8,9 +8,9 @@ use ncrs_git::ChangedFile;
 use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::theme::size;
 
-use crate::action::Action;
 use crate::actions::{ChangeSide, Dialog, IgnoreChoice, LocalChanges, Question, WipFocus};
 use crate::diff_layout::rows_before;
+use crate::file_views;
 use crate::handlers::{ask, commit, start};
 use crate::job::Job;
 use crate::load;
@@ -26,6 +26,10 @@ fn selected(local: &LocalChanges) -> Option<(ChangeSide, usize, &ChangedFile)> {
         ChangeSide::Staged => &local.staged,
     };
     files.get(index).map(|file| (side, index, file))
+}
+
+pub fn selected_path(local: &LocalChanges) -> Option<&str> {
+    selected(local).map(|(_, _, file)| file.path.as_str())
 }
 
 pub fn focus_of(side: ChangeSide) -> WipFocus {
@@ -63,6 +67,7 @@ pub fn focus_title(state: &mut State) -> Task<Message> {
     if state.actions.local.is_none() || !state.has_working_row() {
         return Task::none();
     }
+    state.close_layers();
     state.commit_cursor = 0;
     state.area = Area::Detail;
     if let Some(local) = state.actions.local.as_mut() {
@@ -302,12 +307,12 @@ fn ignore_question(file: &ChangedFile) -> Option<Question> {
 
 /// "Ignore…" on a file that git does not know yet; a tracked file is not
 /// offered, `git rm --cached` is a decision of its own.
-pub fn ignore_file(state: &mut State, index: usize) -> Outcome {
+pub fn ignore_file(state: &mut State, path: &str) -> Outcome {
     let question = state
         .actions
         .local
         .as_ref()
-        .and_then(|local| local.unstaged.get(index))
+        .and_then(|local| local.unstaged.iter().find(|file| file.path == path))
         .and_then(ignore_question);
     ask(state, question)
 }
@@ -342,13 +347,20 @@ pub fn choose_ignore(state: &mut State, choice: IgnoreChoice) {
     }
 }
 
+/// F4: the file of the diff, the history or the blame, else the chosen local change.
 pub fn open_selected_in_editor(state: &State) -> Outcome {
-    let file = state
-        .actions
-        .local
-        .as_ref()
-        .and_then(selected)
-        .zip(state.root.as_ref())
-        .map(|((_, _, file), root)| root.join(&file.path));
-    (Task::none(), file.map(Action::OpenInEditor))
+    let shown = match (&state.blame, &state.diff, &state.history) {
+        // At an old commit the file may have had another name.
+        (None, None, Some(history)) => Some(history.path.clone()),
+        _ => file_views::current_file(state).map(|(path, _)| path),
+    };
+    let chosen = || {
+        let local = state.actions.local.as_ref()?;
+        selected_path(local).map(str::to_owned)
+    };
+    let file = shown.or_else(chosen);
+    (
+        Task::none(),
+        file.and_then(|path| file_views::editor_of(state, &path)),
+    )
 }

@@ -17,11 +17,13 @@ use ncrs_ui_kit::popup_menu::{
 use ncrs_ui_kit::theme::{size, spacing};
 use ncrs_ui_kit::tree_list::{LIST_INSET, ROW_OVERHEAD, TREE_INDENT};
 
+use super::file_menu;
 use crate::actions::{
     ConflictAction, Dialog, IgnoreChoice, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu,
     Question, RenameBranch, Side,
 };
 use crate::ctx::ViewCtx;
+use crate::file_views;
 use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
@@ -70,7 +72,9 @@ fn checked_out(state: &State) -> String {
 fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
     let lang = ctx.lang;
     let text = |msg| lang.text(msg).to_owned();
-    let entry = |label, action, enabled| entry(ctx.keys, label, action, enabled);
+    let writable = state.actions.unavailable.is_none();
+    let entry =
+        |label, action, enabled: bool| entry(ctx.keys, label, action, enabled && writable);
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
     match &menu.target {
@@ -156,21 +160,26 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
             MenuRow::Separator,
             entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true),
         ],
-        &MenuTarget::Conflict(index) => {
+        MenuTarget::File { path, .. } => file_views::menu_entries(state, path)
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| file_menu::row(menu, index, entry, ctx))
+            .collect(),
+        MenuTarget::Conflict(path) => {
             let conflict = state
                 .actions
                 .merge
                 .as_ref()
-                .and_then(|merge| merge.conflicts.get(index));
+                .and_then(|merge| merge.conflicts.iter().find(|it| it.path == *path));
             let resolved = conflict.is_some_and(|found| found.resolved);
             let edited = conflict.is_some_and(|found| found.edited);
-            let choice = |msg, action: ConflictAction, enabled| {
+            let choice = |msg, action: ConflictAction, enabled: bool| {
                 row(
                     ctx.keys,
                     text(msg),
                     Shortcut::of_conflict(action),
-                    Message::ConflictPressed(index, action),
-                    enabled,
+                    Message::ConflictPressed(path.clone(), action),
+                    enabled && (writable || action == ConflictAction::OpenEditor),
                 )
             };
             vec![
@@ -206,18 +215,23 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
     }
 }
 
-/// Where the menu of `target` hangs: under its row, in the left list or among
-/// the files in conflict.
+/// Where the menu of `target` hangs: under its row, in the left list or in the
+/// pane at the right.
 fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
     let top = super::body_top(state);
     match &target {
         MenuTarget::Commit(sha) => {
             super::commit_menu::anchor(state, state.row_of_commit(sha).unwrap_or_default(), ctx)
         }
-        &MenuTarget::Conflict(index) => Point::new(
-            ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
-            top + (index + 1) as f32 * size::ROW_TALL,
-        ),
+        MenuTarget::Conflict(path) => {
+            let conflicts = state.actions.merge.iter().flat_map(|merge| &merge.conflicts);
+            let row = conflicts.into_iter().position(|it| it.path == *path);
+            Point::new(
+                ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
+                top + (row.unwrap_or_default() + 1) as f32 * size::ROW_TALL,
+            )
+        }
+        MenuTarget::File { path, .. } => file_menu::anchor(state, path, ctx),
         _ => {
             let row = state
                 .sidebar_items()

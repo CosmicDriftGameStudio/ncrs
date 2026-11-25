@@ -12817,6 +12817,12 @@
       "de": "Dieser Ordner liegt in keinem Git-Repository."
     },
     {
+      "key": "git_view.not_a_repository_file",
+      "context": "Status line when the history or the blame of a file is asked for while the cursor is not on a file inside a Git repository.",
+      "en": "The cursor is not on a file inside a Git repository.",
+      "de": "Der Cursor steht auf keiner Datei in einem Git-Repository."
+    },
+    {
       "key": "git_view.tab_title",
       "context": "Title of the Git tab. {repo} is the name of the repository folder. Git is the product name and stays as it is.",
       "en": "Git · {repo}",
@@ -13028,9 +13034,9 @@
     },
     {
       "key": "git_view.status_diff",
-      "context": "Git tab: status line while a diff is shown. n and p are keys, ⌘↑ and ⌘↓ are Cmd or Ctrl with the arrows, F3 is the function key. Keep all key names.",
-      "en": "↑↓ scroll · n/p next/previous change · ⌘↑/⌘↓ other file · F3 view file · Esc back",
-      "de": "↑↓ scrollen · n/p nächste/vorige Änderung · ⌘↑/⌘↓ andere Datei · F3 Datei ansehen · Esc zurück"
+      "context": "Git tab: status line while a diff is shown. The placeholders are keys as the platform spells them. Keep the arrows, the keys n, p and F3 and the key name Esc.",
+      "en": "↑↓ scroll · n/p next/previous change · {previous_file}/{next_file} other file · F3 view file · Esc back",
+      "de": "↑↓ scrollen · n/p nächste/vorige Änderung · {previous_file}/{next_file} andere Datei · F3 Datei ansehen · Esc zurück"
     },
     {
       "key": "git_view.changes_unstaged",
@@ -15049,12 +15055,6 @@
       "de": "GRAPH"
     },
     {
-      "key": "git_view.diff_back",
-      "context": "Git tab: hint at the top left of a file's diff that Escape goes back to the commit list. Keep the arrow and the key name Esc.",
-      "en": "← Esc back to the list",
-      "de": "← Esc zurück zur Liste"
-    },
-    {
       "key": "git_view.detached_head",
       "context": "Git tab: stands for the branch name in the commit menu and its questions while no branch is checked out (HEAD points at a commit). Short, lower case.",
       "en": "detached HEAD",
@@ -15194,7 +15194,7 @@
     },
     {
       "key": "git_view.compare_working",
-      "context": "Git tab, header of a comparison: stands for the files in the folder (the right side of the arrow).",
+      "context": "Git tab, diff: stands for the files in the folder, as the right side of the arrow in the header of a comparison and in brackets after a path. Lower case.",
       "en": "working copy",
       "de": "Arbeitskopie"
     },
@@ -15209,6 +15209,120 @@
       "context": "Git tab, banner while a revert stopped on conflicts. {sha} is the short id of the commit being taken back.",
       "en": "Revert of {sha} has conflicts",
       "de": "Revert von {sha} hat Konflikte"
+    },
+    {
+      "key": "git_view.history",
+      "context": "Git tab, button and menu entry: shows the commits that changed the file. Short, noun.",
+      "en": "History",
+      "de": "Historie"
+    },
+    {
+      "key": "git_view.blame",
+      "context": "Git tab, button and menu entry: shows for every line of the file which commit it comes from. Blame is the Git word for it; keep it where the language has no own word.",
+      "en": "Blame",
+      "de": "Blame"
+    },
+    {
+      "key": "git_view.history_title",
+      "context": "Git tab, headline over the list of commits that changed one file. {path} is the path of the file in the repository.",
+      "en": "History of {path}",
+      "de": "Historie von {path}"
+    },
+    {
+      "key": "git_view.history_empty",
+      "context": "Git tab, in place of the list of commits that changed one file when there is none.",
+      "en": "No commit changes this file",
+      "de": "Kein Commit ändert diese Datei"
+    },
+    {
+      "key": "git_view.history_renamed",
+      "context": "Git tab, history of a file: small note in front of the message of a commit that renamed the file. {old} is the path it had before. Lower case.",
+      "en": "renamed from {old}",
+      "de": "umbenannt von {old}"
+    },
+    {
+      "key": "git_view.blame_title",
+      "context": "Git tab, headline over the lines of a file with the commit each line comes from. {path} is the path of the file, {sha} the short id of the commit the file is taken from, or HEAD.",
+      "en": "Blame of {path} at {sha}",
+      "de": "Blame von {path} bei {sha}"
+    },
+    {
+      "key": "git_view.blame_head_only",
+      "context": "Git tab, note beside the headline of a blame: the lines shown are those of the last commit.",
+      "en": "Shows the last commit; local changes are not included",
+      "de": "Zeigt den Stand des letzten Commits, lokale Änderungen fehlen"
+    },
+    {
+      "key": "git_view.blame_binary",
+      "context": "Git tab, in place of a blame: the file is not text.",
+      "en": "Binary file, no blame",
+      "de": "Binärdatei, kein Blame"
+    },
+    {
+      "key": "git_view.blame_too_large",
+      "context": "Git tab, in place of a blame: the file has more lines or bytes than the app reads.",
+      "en": "File too large for blame",
+      "de": "Datei zu groß für Blame"
+    },
+    {
+      "key": "git_view.blame_not_a_file",
+      "context": "Git tab, in place of a blame: the path is a symbolic link or a submodule, so it has no lines.",
+      "en": "A link or submodule has no lines to blame",
+      "de": "Ein Link oder Submodul hat keine Zeilen für Blame"
+    },
+    {
+      "key": "git_view.blame_not_committed",
+      "context": "Git tab, in place of a blame: the file is not in the commit the blame would start from.",
+      "en": "This file is not in the commit yet",
+      "de": "Diese Datei ist noch nicht im Commit"
+    },
+    {
+      "key": "git_view.diff_sides",
+      "context": "Git tab, second line of the diff toolbar: what is compared with what. {old} and {new} are paths, {old_side} and {new_side} say which state of the file: a short commit id, HEAD or the words for the working copy. Keep a/ and b/ as they are in a Git diff.",
+      "en": "a/{old} ({old_side}) → b/{new} ({new_side})",
+      "de": "a/{old} ({old_side}) → b/{new} ({new_side})"
+    },
+    {
+      "key": "git_view.status_history",
+      "context": "Git tab: status line while the history of a file is shown. Keep the arrows and the key names.",
+      "en": "↑↓ choose · Enter show diff · Esc back",
+      "de": "↑↓ wählen · Enter Diff zeigen · Esc zurück"
+    },
+    {
+      "key": "git_view.status_blame",
+      "context": "Git tab: status line while the blame of a file is shown. {history} is a key as the platform spells it. Keep the arrows and the other key names.",
+      "en": "↑↓ line · Enter commit of the line · {history} history · Esc back",
+      "de": "↑↓ Zeile · Enter Commit der Zeile · {history} Historie · Esc zurück"
+    },
+    {
+      "key": "git_view.status_diff_right",
+      "context": "Git tab: right end of the status line while a diff is shown. {file} is the name of the file, {added} and {removed} count its changed lines.",
+      "en": "{file} · +{added} −{removed}",
+      "de": "{file} · +{added} −{removed}"
+    },
+    {
+      "key": "context_menu.git_history",
+      "context": "Entry of the context menu of a file in a panel: opens the Git tab with the commits that changed the file. Only offered for a file inside a Git repository.",
+      "en": "Git history",
+      "de": "Git-Historie"
+    },
+    {
+      "key": "context_menu.git_blame",
+      "context": "Entry of the context menu of a file in a panel: opens the Git tab with the commit each line of the file comes from. Only offered for a file inside a Git repository.",
+      "en": "Git blame",
+      "de": "Git-Blame"
+    },
+    {
+      "key": "action.git_file_history",
+      "context": "Entry of the command list and of the shortcut table: the commits that changed the file under the cursor.",
+      "en": "Git history",
+      "de": "Git-Historie"
+    },
+    {
+      "key": "action.git_file_blame",
+      "context": "Entry of the command list and of the shortcut table: the commit each line of the file under the cursor comes from.",
+      "en": "Git blame",
+      "de": "Git-Blame"
     }
   ]
 }

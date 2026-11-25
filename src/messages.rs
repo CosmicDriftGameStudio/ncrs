@@ -176,6 +176,7 @@ pub enum Message {
     // --- The Git tab, opened from the command list or the folder context menu ---
     GitView(GitTabId, ncrs_git_view::Message),
     OpenGitView,
+    OpenGitFile(GitFileView),
     // --- The Repos tab, every repository of the machine in one list ---
     Repos(ncrs_repos::Message),
     OpenRepos,
@@ -298,6 +299,13 @@ pub enum StoreMessage {
 /// same while other Git tabs open and close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct GitTabId(pub u32);
+
+/// What the Git tab shows of a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitFileView {
+    History,
+    Blame,
+}
 
 /// What the area under the title bar shows. Settings, the System page and the
 /// Hermes chat stay open while the panels are shown.

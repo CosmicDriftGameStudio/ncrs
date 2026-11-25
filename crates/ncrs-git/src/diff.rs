@@ -7,6 +7,7 @@ use gix::diff::blob::{sources, Algorithm, Diff, InternedInput};
 
 use crate::repo_access::{open, parse_id};
 use crate::status::check_stop;
+use crate::working_file::read_working_file;
 use crate::GitError;
 
 const CONTEXT_LINES: u32 = 3;
@@ -111,7 +112,7 @@ pub fn file_diff(
             };
             (
                 blob_at(&repository, &head_tree, old_path),
-                std::fs::read(root.join(&target.path)).unwrap_or_default(),
+                read_working_file(root, &target.path).unwrap_or_default(),
             )
         }
     };

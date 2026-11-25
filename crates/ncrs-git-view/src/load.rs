@@ -213,3 +213,45 @@ pub fn containing(state: &mut State, sha: String) -> Task<Message> {
         move |result| Message::ContainingLoaded(generation, id.clone(), Box::new(result)),
     )
 }
+
+/// The commits that changed the file whose history is open.
+pub fn file_history(state: &mut State) -> Task<Message> {
+    let Some((root, history)) = root_of(state).zip(state.history.as_ref()) else {
+        return Task::none();
+    };
+    let (path, limit) = (history.path.clone(), history.limit);
+    let (generation, stop) = state.loads.history.begin();
+    blocking(
+        stop,
+        move |cancelled| ncrs_git::file_history(&root, &path, limit, cancelled),
+        move |result| Message::HistoryLoaded(generation, Box::new(result)),
+    )
+}
+
+/// What the commit under the cursor of the history changed in the file.
+pub fn history_diff(state: &mut State, target: DiffTarget) -> Task<Message> {
+    let Some(root) = root_of(state) else {
+        return Task::none();
+    };
+    let (generation, stop) = state.loads.history_diff.begin();
+    blocking(
+        stop,
+        move |cancelled| ncrs_git::file_diff(&root, &target, false, cancelled),
+        move |result| Message::HistoryDiffLoaded(generation, Box::new(result)),
+    )
+}
+
+/// The blame that is open. A walk that has begun runs to its end; its answer
+/// is dropped when it is no longer wanted.
+pub fn blame(state: &mut State) -> Task<Message> {
+    let Some((root, blame)) = root_of(state).zip(state.blame.as_ref()) else {
+        return Task::none();
+    };
+    let (path, at) = (blame.path.clone(), blame.at.clone());
+    let (generation, stop) = state.loads.blame.begin();
+    blocking(
+        stop,
+        move |cancelled| ncrs_git::blame(&root, &path, at.as_deref(), cancelled),
+        move |result| Message::BlameLoaded(generation, Box::new(result)),
+    )
+}

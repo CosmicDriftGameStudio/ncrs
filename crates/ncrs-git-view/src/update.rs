@@ -16,6 +16,7 @@ use crate::actions::{Dialog, MenuTarget, OpenMenu};
 use crate::commit_menu;
 use crate::ctx::Ctx;
 use crate::diff_layout::rows_before;
+use crate::file_views;
 use crate::handlers;
 use crate::load;
 use crate::message::Message;
@@ -29,7 +30,7 @@ use crate::view::{DIFF_ID, FILTER_ID};
 use crate::wip;
 
 /// Lines an arrow key scrolls the diff by.
-const SCROLL_LINES: f32 = 3.0;
+pub(crate) const SCROLL_LINES: f32 = 3.0;
 
 pub type Outcome = (Task<Message>, Option<Action>);
 
@@ -61,6 +62,18 @@ pub fn open(state: &mut State, root: PathBuf, name: String, ctx: &Ctx) -> Task<M
 }
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
+    let before = file_views::middle(state);
+    let (task, action) = dispatch(state, message, ctx);
+    if file_views::middle(state) == before {
+        return (task, action);
+    }
+    (
+        Task::batch([file_views::scroll_into_place(state), task]),
+        action,
+    )
+}
+
+fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
     match message {
         Message::RefsLoaded(generation, result) => {
             if !state.loads.refs.is_current(generation) {
@@ -114,6 +127,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                         files: info.files.clone(),
                         info: Some(info),
                     });
+                    state.close_menu_if_stale();
                     quiet(load::containing(state, sha))
                 }
                 Err(reason) => failed(state, ctx, &reason),
@@ -131,6 +145,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                         info: None,
                         files,
                     });
+                    state.close_menu_if_stale();
                     quiet(Task::none())
                 }
                 Err(reason) => failed(state, ctx, &reason),
@@ -191,11 +206,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::FilePressed(index) => {
             state.area = Area::Detail;
             state.file_cursor = index;
-            let comparing = state
-                .diff
-                .as_ref()
-                .is_some_and(|shown| matches!(shown.subject, Subject::Compare { .. }));
-            if comparing {
+            file_views::close_blame(state);
+            if state.diff_has_own_list() {
                 if let Some(shown) = state.diff.as_mut().filter(|shown| index < shown.files.len()) {
                     shown.file = index;
                     shown.diff = None;
@@ -264,6 +276,11 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         {
             commit_menu::key(state, &message)
         }
+        Message::Up | Message::Down | Message::Left | Message::Right | Message::Enter
+            if file_views::menu_is_open(state) =>
+        {
+            file_views::menu_key(state, &message)
+        }
         Message::Up if state.picker.is_some() => {
             picker::move_cursor(state, -1);
             quiet(Task::none())
@@ -319,9 +336,6 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.close();
             (Task::none(), Some(Action::Close))
         }
-        Message::OpenMenu(_) | Message::OpenMenuKey if state.actions.unavailable.is_some() => {
-            quiet(Task::none())
-        }
         Message::OpenMenu(target) => {
             if let MenuTarget::Commit(sha) = &target {
                 let Some(row) = state.row_of_commit(sha) else {
@@ -330,23 +344,45 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 state.area = Area::Commits;
                 state.commit_cursor = row;
             }
+            if let MenuTarget::File { path, .. } = &target {
+                state.area = Area::Detail;
+                let mut listed = state.files_in_detail().iter();
+                if let Some(index) = listed.position(|file| file.path == *path) {
+                    state.file_cursor = index;
+                }
+            }
             state.actions.menu = Some(OpenMenu::new(target));
+            state.close_menu_if_stale();
             quiet(Task::none())
         }
         Message::OpenMenuKey => {
-            let target = if state.area == Area::Commits {
-                state
+            let target = match state.area {
+                Area::Commits if state.list_is_covered() => file_views::menu_of_current(state),
+                Area::Commits => state
                     .commit_at(state.commit_cursor)
-                    .map(|commit| MenuTarget::Commit(commit.id.clone()))
-            } else {
-                state
+                    .map(|commit| MenuTarget::Commit(commit.id.clone())),
+                Area::Detail => file_views::menu_of_current(state),
+                Area::Sidebar | Area::SidebarSplit | Area::DetailSplit => state
                     .sidebar_items()
                     .get(state.sidebar_cursor)
-                    .and_then(|item| menu_target_of(state, *item))
+                    .and_then(|item| menu_target_of(state, *item)),
             };
             state.actions.menu = target.map(OpenMenu::new);
             quiet(Task::none())
         }
+        file @ (Message::OpenHistory(_)
+        | Message::OpenBlame(..)
+        | Message::HistoryKey
+        | Message::BlameKey
+        | Message::HistoryLoaded(..)
+        | Message::HistoryDiffLoaded(..)
+        | Message::BlameLoaded(..)
+        | Message::HistoryPressed(_)
+        | Message::HistoryMore
+        | Message::HistoryScrolled(_)
+        | Message::BlamePressed(_)
+        | Message::BlameScrolled(_)
+        | Message::FileMenu(_)) => file_views::handle(state, file, ctx),
         Message::ConfirmDialog if matches!(state.actions.dialog, Some(Dialog::Tag(_))) => {
             commit_menu::handle(state, Message::CreateTag, ctx)
         }
@@ -365,7 +401,8 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Refresh => {
             state.problem = None;
-            quiet(load::everything(state))
+            let files = file_views::reload(state);
+            quiet(Task::batch([load::everything(state), files]))
         }
         forwarded @ (Message::ActionsLoaded(..)
         | Message::JobDone(_)
@@ -564,7 +601,10 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
         };
         return handlers::act(state, answer, ctx);
     }
-    if state.diff.is_some() {
+    if file_views::has_keys(state) {
+        return quiet(file_views::key(state, &Message::Enter));
+    }
+    if state.diff.is_some() && state.area != Area::Sidebar {
         return quiet(Task::none());
     }
     match state.area {
@@ -597,14 +637,22 @@ fn close_wip_diff(state: &mut State) {
     }
 }
 
-fn step(cursor: usize, delta: isize, len: usize) -> usize {
+pub(crate) fn step(cursor: usize, delta: isize, len: usize) -> usize {
     cursor
         .saturating_add_signed(delta)
         .min(len.saturating_sub(1))
 }
 
 fn move_cursor(state: &mut State, delta: isize) -> Task<Message> {
-    if state.diff.is_some() {
+    if file_views::has_keys(state) {
+        let key = if delta < 0 {
+            Message::Up
+        } else {
+            Message::Down
+        };
+        return file_views::key(state, &key);
+    }
+    if state.diff.is_some() && matches!(state.area, Area::Commits | Area::Detail) {
         return scroll_page_by(DIFF_ID, delta as f32 * SCROLL_LINES * size::ROW);
     }
     match state.area {
@@ -691,7 +739,9 @@ fn step_file(state: &mut State, delta: isize) -> Task<Message> {
     }
     shown.file = next;
     shown.diff = None;
-    state.file_cursor = next;
+    if !state.diff_has_own_list() {
+        state.file_cursor = next;
+    }
     reload_diff(state)
 }
 
@@ -710,6 +760,16 @@ fn step_hunk(state: &mut State, forward: bool) -> Task<Message> {
         (shown.hunk + 1).min(last)
     } else {
         shown.hunk.saturating_sub(1)
+    };
+    scroll_to_hunk(state)
+}
+
+pub(crate) fn scroll_to_hunk(state: &State) -> Task<Message> {
+    let Some(shown) = &state.diff else {
+        return Task::none();
+    };
+    let Some(diff) = &shown.diff else {
+        return Task::none();
     };
     let rows = rows_before(diff, shown.unified, shown.hunk);
     operation::scroll_to(
@@ -738,6 +798,9 @@ fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
     if state.filter_focused {
         state.filter_focused = false;
         return quiet(release_focus());
+    }
+    if file_views::escape_step(state) {
+        return quiet(Task::none());
     }
     if let Some(task) = wip::escape_step(state) {
         return quiet(task);

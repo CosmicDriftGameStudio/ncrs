@@ -106,14 +106,16 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             wip::typed_in(state, focus);
             quiet(Task::none())
         }
-        Message::IgnoreFile(index) => wip::ignore_file(state, index),
+        Message::IgnoreFile(path) => wip::ignore_file(state, &path),
         Message::IgnoreSelected => wip::ignore_selected(state),
         Message::IgnoreChoiceChanged(choice) => {
             wip::choose_ignore(state, choice);
             quiet(Task::none())
         }
         Message::OpenSelectedInEditor => wip::open_selected_in_editor(state),
-        Message::ConflictShortcut(ConflictAction::OpenEditor) if state.actions.merge.is_none() => {
+        Message::ConflictShortcut(ConflictAction::OpenEditor)
+            if state.actions.merge.is_none() || state.list_is_covered() =>
+        {
             wip::open_selected_in_editor(state)
         }
         Message::Commit => commit(state, false),
@@ -195,10 +197,23 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 _ => quiet(Task::none()),
             }
         }
-        Message::ConflictPressed(index, action) => {
+        Message::ConflictPressed(path, action) => {
             state.actions.menu = None;
+            let place = state.actions.merge.as_ref().and_then(|merge| {
+                merge
+                    .conflicts
+                    .iter()
+                    .position(|conflict| conflict.path == path)
+            });
+            let Some(index) = place else {
+                return quiet(Task::none());
+            };
             select_conflict(state, index);
             conflict_action(state, action)
+        }
+        // A diff or a history over a merge hides the file the key would act on.
+        Message::ConflictShortcut(_) if state.diff.is_some() || state.history.is_some() => {
+            quiet(Task::none())
         }
         Message::ConflictShortcut(action) => conflict_action(state, action),
         Message::DeleteBranchAnyway => match &state.actions.notice {
@@ -364,7 +379,10 @@ fn branch_of(state: &State, target: &MenuTarget) -> Option<String> {
             overview.local.get(*index).map(|branch| branch.name.clone())
         }
         MenuTarget::RemoteBranch(index) => overview.remote.get(*index).cloned(),
-        MenuTarget::Stash(_) | MenuTarget::Conflict(_) | MenuTarget::Commit(_) => None,
+        MenuTarget::Stash(_)
+        | MenuTarget::Conflict(_)
+        | MenuTarget::File { .. }
+        | MenuTarget::Commit(_) => None,
     }
 }
 
@@ -444,6 +462,9 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         return ask(state, question);
     }
     if target_action == MenuAction::Rename {
+        if state.actions.unavailable.is_some() {
+            return quiet(Task::none());
+        }
         if let (MenuTarget::LocalBranch(_), Some(from)) = (&chosen, branch.clone()) {
             state.actions.dialog = Some(Dialog::Rename(RenameBranch {
                 name: from.clone(),
@@ -598,7 +619,7 @@ fn switch_off(state: &mut State, reason: Unavailable) {
     actions.notice = None;
     actions.new_branch = None;
     actions.dialog = None;
-    actions.menu = None;
+    state.close_menu_if_stale();
 }
 
 fn apply(state: &mut State, ctx: &Ctx, snapshot: Snapshot) {
@@ -620,6 +641,7 @@ fn apply(state: &mut State, ctx: &Ctx, snapshot: Snapshot) {
     state.sidebar_cursor = state
         .sidebar_cursor
         .min(state.sidebar_items().len().saturating_sub(1));
+    state.close_menu_if_stale();
 }
 
 fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) {

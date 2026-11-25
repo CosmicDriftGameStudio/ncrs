@@ -4,7 +4,7 @@
 use iced::advanced::widget::operation::scrollable;
 use iced::advanced::widget::Id;
 use iced::widget::scrollable::{AbsoluteOffset, Direction, RelativeOffset, Scrollbar};
-use iced::widget::{container, scrollable as scrollable_widget, Scrollable};
+use iced::widget::{container, scrollable as scrollable_widget, Column, Scrollable, Space};
 use iced::{Element, Length, Padding, Task};
 
 use crate::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
@@ -35,6 +35,48 @@ pub fn page_scroll_tracked<'a, M: 'a>(
     page_scrollable(id, content, Padding::from([spacing::XL, spacing::XXL]))
         .on_scroll(move |viewport| on_scroll(viewport.absolute_offset().y))
         .into()
+}
+
+/// Rows built above and below the ones in view.
+const ROWS_AROUND: usize = 24;
+
+/// The part of a long list that is built.
+#[derive(Debug, Clone, Copy)]
+pub struct RowWindow {
+    pub count: usize,
+    pub row_height: f32,
+    /// How far down the list is scrolled, in pixels.
+    pub offset: f32,
+    /// At least the height of the list on the screen.
+    pub height: f32,
+}
+
+impl RowWindow {
+    fn built(self) -> std::ops::Range<usize> {
+        let visible = (self.height / self.row_height).ceil() as usize;
+        let top = (self.offset.max(0.0) / self.row_height) as usize;
+        let top = top.min(self.count.saturating_sub(visible));
+        top.saturating_sub(ROWS_AROUND)..(top + visible + ROWS_AROUND).min(self.count)
+    }
+}
+
+/// [`page_scroll_tracked`] for a list of many rows of one height: only those
+/// near the scroll position are built. Every scroll, by task too, has to end up
+/// in [`RowWindow::offset`].
+pub fn page_rows<'a, M: 'a>(
+    id: &'static str,
+    window: RowWindow,
+    row: impl Fn(usize) -> Element<'a, M>,
+    on_scroll: impl Fn(f32) -> M + 'a,
+) -> Element<'a, M> {
+    let built = window.built();
+    let room = |rows: usize| Space::new().height(rows as f32 * window.row_height);
+    let rows = Column::new()
+        .push(room(built.start))
+        .extend(built.clone().map(row))
+        .push(room(window.count - built.end))
+        .width(Length::Fill);
+    page_scroll_tracked(id, rows.into(), on_scroll)
 }
 
 fn page_scrollable<'a, M: 'a>(
@@ -72,4 +114,34 @@ pub fn scroll_page_to_edge<T: Send + 'static>(id: &'static str, end: bool) -> Ta
             y: Some(if end { 1.0 } else { 0.0 }),
         },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn built(count: usize, offset: f32) -> std::ops::Range<usize> {
+        RowWindow {
+            count,
+            row_height: 20.0,
+            offset,
+            height: 200.0,
+        }
+        .built()
+    }
+
+    #[test]
+    fn only_the_rows_near_the_scroll_position_are_built() {
+        assert_eq!(built(10_000, 0.0), 0..10 + ROWS_AROUND);
+        let middle = built(10_000, 100_000.0);
+        assert_eq!(middle, 5_000 - ROWS_AROUND..5_010 + ROWS_AROUND);
+    }
+
+    #[test]
+    fn the_window_stays_inside_the_list() {
+        assert_eq!(built(3, 0.0), 0..3);
+        assert_eq!(built(0, 400.0), 0..0);
+        assert_eq!(built(100, 1_000_000.0).end, 100);
+        assert_eq!(built(100, -50.0).start, 0);
+    }
 }

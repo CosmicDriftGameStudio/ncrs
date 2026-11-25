@@ -2,8 +2,9 @@
 
 use iced::widget::{column, container, row, Column, Row, Space};
 use iced::{Element, Length};
-use ncrs_git::{ChangeKind, CommitDetail};
+use ncrs_git::CommitDetail;
 use ncrs_i18n::Msg;
+use ncrs_ui_kit::action_rows::context_area;
 use ncrs_ui_kit::git_lines::{fact_row, purple_link, summarize_refs};
 use ncrs_ui_kit::git_rows::ref_chip;
 use ncrs_ui_kit::kit::{key_cap, segmented};
@@ -15,8 +16,11 @@ use ncrs_ui_kit::tree_list::{
 };
 
 use super::commits::{chip_kind, moment};
+use super::diff_toolbar::kind_letter;
 use super::DETAIL_ID;
+use crate::actions::MenuTarget;
 use crate::ctx::ViewCtx;
+use crate::file_views::commit_of;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::{Area, DetailRow, State, Subject};
@@ -93,6 +97,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang)
     );
     let width = super::detail_width(state, ctx);
+    let lit = state.area == Area::Detail || state.diff.is_some();
+
     let files = state.detail_rows().into_iter().map(|entry| match entry {
         DetailRow::Folder { depth, name } => tree_row(
             TreeRow {
@@ -128,19 +134,24 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                     - SCROLL_BAR_ROOM
                     - TREE_INDENT * depth as f32
                     - trail_room;
-                tree_row(
+                let shown = tree_row(
                     TreeRow {
                         depth,
                         open: None,
                         label: fit_middle(&name, room, font_size::BODY),
-                        chosen: state.area == Area::Detail && state.file_cursor == index,
+                        chosen: lit && state.file_cursor == index,
                         dim: false,
                         lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
                         trail,
                         on_press: Message::FilePressed(index),
                     },
                     palette,
-                )
+                );
+                let target = MenuTarget::File {
+                    path: file.path.clone(),
+                    at: commit_of(&detail.subject),
+                };
+                context_area(shown, Message::OpenMenu(target))
             }
             None => Space::new().into(),
         },
@@ -162,15 +173,6 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         tree_scroll(DETAIL_ID, list.into()),
     ]
     .into()
-}
-
-fn kind_letter(kind: ChangeKind) -> &'static str {
-    match kind {
-        ChangeKind::Added => "A",
-        ChangeKind::Modified => "M",
-        ChangeKind::Deleted => "D",
-        ChangeKind::Renamed => "R",
-    }
 }
 
 /// The facts under the title: who wrote it and when, who committed it, the

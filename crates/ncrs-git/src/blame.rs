@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use gix::bstr::{BStr, ByteSlice as _};
 
-use crate::repo_access::{open, parse_id, short_hash};
+use crate::repo_access::{open, parse_id, path_as_in_tree, short_hash};
 use crate::status::check_stop;
 use crate::GitError;
 
 /// Larger files are not blamed: it would walk the history for every line.
-const MAX_BLAMED_BYTES: usize = 4 * 1024 * 1024;
+const MAX_BLAMED_BYTES: u64 = 4 * 1024 * 1024;
 
 /// A run of consecutive lines that one commit introduced.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,6 +43,10 @@ pub enum BlameLimit {
     /// Contains NUL bytes (binary, or a large-file pointer): no lines to blame.
     Binary,
     TooLarge,
+    /// A symlink or a submodule.
+    NotAFile,
+    /// The commit does not have the file: new or ignored in the working copy.
+    NotCommitted,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -65,11 +69,32 @@ pub fn blame(
     let repository = open(root)?;
     let suspect = match at {
         Some(sha) => parse_id(sha)?,
-        None => repository.head_id().map_err(GitError::read)?.detach(),
+        None => match repository.head().map_err(GitError::read)?.id() {
+            Some(head) => head.detach(),
+            None => {
+                return Ok(Blame {
+                    refused: BlameLimit::NotCommitted,
+                    ..Blame::default()
+                })
+            }
+        },
     };
+    let tree = repository
+        .find_commit(suspect)
+        .and_then(|commit| commit.tree())
+        .map_err(GitError::read)?;
+    let path = path_as_in_tree(&repository, &tree, path);
+    let refused = refusal(&repository, &tree, &path)?;
+    if refused != BlameLimit::None {
+        return Ok(Blame {
+            refused,
+            ..Blame::default()
+        });
+    }
+    check_stop(stop)?;
     let outcome = repository
         .blame_file(
-            BStr::new(path),
+            BStr::new(path.as_str()),
             suspect,
             gix::repository::blame_file::Options {
                 rewrites: Some(gix::diff::Rewrites::default()),
@@ -78,19 +103,6 @@ pub fn blame(
         )
         .map_err(GitError::read)?;
     check_stop(stop)?;
-    let refused = if outcome.blob.contains(&0) {
-        BlameLimit::Binary
-    } else if outcome.blob.len() > MAX_BLAMED_BYTES {
-        BlameLimit::TooLarge
-    } else {
-        BlameLimit::None
-    };
-    if refused != BlameLimit::None {
-        return Ok(Blame {
-            refused,
-            ..Blame::default()
-        });
-    }
     let texts: Vec<String> = outcome
         .blob
         .lines_with_terminator()
@@ -139,4 +151,31 @@ pub fn blame(
         }
     }
     Ok(result)
+}
+
+/// Why the file is not blamed, known before the history is walked for it.
+fn refusal(
+    repository: &gix::Repository,
+    tree: &gix::Tree<'_>,
+    path: &str,
+) -> Result<BlameLimit, GitError> {
+    let Some(entry) = tree.lookup_entry_by_path(path).map_err(GitError::read)? else {
+        return Ok(BlameLimit::NotCommitted);
+    };
+    if !entry.mode().is_blob() {
+        return Ok(BlameLimit::NotAFile);
+    }
+    let size = repository
+        .find_header(entry.id())
+        .map_err(GitError::read)?
+        .size();
+    if size > MAX_BLAMED_BYTES {
+        return Ok(BlameLimit::TooLarge);
+    }
+    let blob = repository.find_blob(entry.id()).map_err(GitError::read)?;
+    Ok(if blob.data.contains(&0) {
+        BlameLimit::Binary
+    } else {
+        BlameLimit::None
+    })
 }

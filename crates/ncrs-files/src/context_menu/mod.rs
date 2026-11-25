@@ -28,6 +28,10 @@ pub enum ContextAction {
     CopyName,
     ComputeFolderSizes,
     CompareFolders,
+    /// Only for a file inside a Git repository: the commits that changed it.
+    GitHistory,
+    /// Only for a file inside a Git repository: the commit of each line.
+    GitBlame,
     /// Only inside a Git repository.
     GitView,
     /// Only for a folder that is not a favourite yet.
@@ -49,7 +53,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 24] = [
+    pub const ALL: [ContextAction; 26] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -65,6 +69,8 @@ impl ContextAction {
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
         ContextAction::GitView,
+        ContextAction::GitHistory,
+        ContextAction::GitBlame,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
         ContextAction::Trash,
@@ -104,6 +110,8 @@ impl ContextAction {
             | ContextAction::ExtractHere
             | ContextAction::Pack
             | ContextAction::GitView
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -135,6 +143,8 @@ impl ContextAction {
             | ContextAction::ExtractHere
             | ContextAction::Pack
             | ContextAction::GitView
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
             | ContextAction::DeletePermanently => false,
         }
     }
@@ -156,6 +166,8 @@ impl ContextAction {
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
             ContextAction::CompareFolders => Msg::ActionCompareFolders,
             ContextAction::GitView => Msg::ActionGitView,
+            ContextAction::GitHistory => Msg::ContextMenuGitHistory,
+            ContextAction::GitBlame => Msg::ContextMenuGitBlame,
             ContextAction::AddFavourite => Msg::ContextMenuAddFavourite,
             ContextAction::RemoveFavourite => Msg::ContextMenuRemoveFavourite,
             ContextAction::Trash => Msg::ContextMenuTrash,
@@ -194,6 +206,8 @@ pub const GROUPS: [&[ContextAction]; 6] = [
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
         ContextAction::GitView,
+        ContextAction::GitHistory,
+        ContextAction::GitBlame,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
     ],
@@ -224,7 +238,10 @@ const HIT_LIST_GROUPS: [&[ContextAction]; 5] = [
 fn is_left_out_unless_enabled(action: ContextAction) -> bool {
     matches!(
         action,
-        ContextAction::ShowPackageContents | ContextAction::ExtractHere
+        ContextAction::ShowPackageContents
+            | ContextAction::ExtractHere
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
     )
 }
 

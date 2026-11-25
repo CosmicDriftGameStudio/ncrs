@@ -8,11 +8,13 @@ use ncrs_ui_kit::theme::size;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::file_views;
 use crate::handlers;
+use crate::load;
 use crate::message::{Chip, Message};
 use crate::panes::PaneDrag;
 use crate::picker;
-use crate::state::{Area, State};
+use crate::state::{Area, State, PAGE};
 use crate::update::{ensure_detail, quiet, Outcome};
 use crate::view::COMMITS_ID;
 
@@ -88,11 +90,11 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             }
         }
         Message::CopySha => {
-            let copied = state
-                .detail
-                .as_ref()
-                .and_then(|detail| detail.info.as_ref())
-                .map(|info| (info.id.clone(), info.short.clone()));
+            let shown = || {
+                let info = state.detail.as_ref()?.info.as_ref()?;
+                Some((info.id.clone(), info.short.clone()))
+            };
+            let copied = file_views::commit_of_layer(state).or_else(shown);
             match copied {
                 Some((id, short)) => {
                     state.copied_sha = Some(short);
@@ -111,6 +113,7 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             Chip::Behind | Chip::Ahead => quiet(jump_to_head(state)),
             Chip::Changes => quiet(jump_to_working_copy(state)),
             Chip::Conflicts => {
+                state.close_layers();
                 state.area = Area::Detail;
                 quiet(Task::none())
             }
@@ -137,18 +140,29 @@ fn resized(ctx: &Ctx, widths: crate::panes::PaneWidths) -> Outcome {
     )
 }
 
-/// Puts the cursor of the commit list on `sha`. A commit the list has not
-/// reached yet is waited for: the list reads on and `LogLoaded` tries again.
+/// Puts the cursor of the commit list on `sha`; what lies over the list is
+/// closed. A commit the list has not reached yet is waited for: the list reads
+/// on and `LogLoaded` tries again. From a history or a blame the filter of the
+/// list is lifted when it hides the commit.
 pub fn jump_to(state: &mut State, sha: String) -> Task<Message> {
     state.pending_jump = None;
     let found = state
         .log
         .as_ref()
         .and_then(|log| log.commits.iter().position(|commit| commit.id == sha));
+    let from_a_file = state.history.is_some() || state.blame.is_some();
+    state.close_layers();
     let Some(index) = found else {
+        if from_a_file && !state.filter.is_empty() {
+            state.filter.clear();
+            state.pending_jump = Some(sha);
+            return load::log(state);
+        }
         if state.log.as_ref().is_some_and(|log| log.has_more) {
             state.pending_jump = Some(sha);
-            return crate::update::load_more(state);
+            // Doubled, not one page more: every read begins at the newest commit again.
+            state.limit = state.limit.saturating_mul(2).max(PAGE);
+            return load::log(state);
         }
         return Task::none();
     };
@@ -161,6 +175,7 @@ pub fn jump_to(state: &mut State, sha: String) -> Task<Message> {
 
 fn jump_to_working_copy(state: &mut State) -> Task<Message> {
     if state.has_working_row() {
+        state.close_layers();
         state.area = Area::Commits;
         state.commit_cursor = 0;
         return Task::batch([ensure_detail(state), scroll_to_cursor(state)]);
