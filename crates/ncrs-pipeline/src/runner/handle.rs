@@ -24,11 +24,8 @@ impl Runner {
             first_step: VecDeque::new(),
             continuations: VecDeque::new(),
             waiting_first: HashSet::new(),
-            continuous_roots: locations
-                .iter()
-                .filter(|location| location.continuous)
-                .map(|location| location.path.clone())
-                .collect(),
+            late: VecDeque::new(),
+            waits_for_the_rest: steps.iter().map(|step| step.waits_for_the_rest()).collect(),
             taken: HashMap::new(),
             deferred: Vec::new(),
             gone: Default::default(),
@@ -41,8 +38,6 @@ impl Runner {
             rate: VecDeque::new(),
             errors: VecDeque::new(),
             left_pipeline: 0,
-            plans_made: 0,
-            candidates: Candidates::default(),
             changes: ChangeLog::default(),
         };
         let shared = Arc::new(Shared {
@@ -94,8 +89,7 @@ impl Runner {
     }
 
     /// Takes a location that came after the start: it is watched and scanned
-    /// from now on, and files its new files by itself when `continuous`.
-    /// Nothing happens for a path the runner has.
+    /// from now on. Nothing happens for a path the runner has.
     pub fn add_location(&self, location: Location) {
         if self.shared.location_of(&location.path).is_some() {
             return;
@@ -108,9 +102,6 @@ impl Runner {
         let forward = forward_watch_events(&self.shared);
         let at = self.shared.clock.now();
         self.shared.update(|state| {
-            if location.continuous {
-                state.continuous_roots.insert(location.path.clone());
-            }
             if state.stopping {
                 return;
             }
@@ -122,44 +113,6 @@ impl Runner {
             state.queue_scan(&location);
         });
         self.shared.work_ready.notify_all();
-    }
-
-    /// Whether the candidates were read from the index once for this runner.
-    pub fn continuous_seeded(&self) -> bool {
-        self.shared.lock().candidates.is_seeded()
-    }
-
-    /// Hands over the files the index holds as new and without review in
-    /// the continuous locations, which the runner does not look at again
-    /// after a restart.
-    pub fn seed_continuous_candidates(&self, found: Vec<ContinuousCandidate>) {
-        self.shared.update(|state| state.candidates.seed(found));
-    }
-
-    pub fn continuous_candidates_waiting(&self) -> usize {
-        self.shared.lock().candidates.len()
-    }
-
-    /// Whether files the rules left open wait in a continuous location for
-    /// which `wanted` says yes (given the location's root).
-    pub fn has_continuous_candidates(&self, wanted: &dyn Fn(&Path) -> bool) -> bool {
-        self.shared.lock().candidates.any_in(wanted)
-    }
-
-    /// Takes the waiting files of the continuous locations for which `wanted`
-    /// says yes; the others keep waiting.
-    pub fn take_continuous_candidates(
-        &self,
-        wanted: &dyn Fn(&Path) -> bool,
-    ) -> Vec<ContinuousCandidate> {
-        self.shared.update(|state| state.candidates.take_in(wanted))
-    }
-
-    /// The locations (by root) that file by themselves from now on; files
-    /// that are already running keep what they started with.
-    pub fn set_continuous_roots(&self, new_roots: impl IntoIterator<Item = PathBuf>) {
-        let roots: HashSet<PathBuf> = new_roots.into_iter().collect();
-        self.shared.update(|state| state.continuous_roots = roots);
     }
 
     /// Workers that are above the new target leave after their current job.

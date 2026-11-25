@@ -90,22 +90,53 @@ pub struct ActivityBatch {
 }
 
 impl ActivityReader {
-    pub fn read(self, batches: usize) -> Result<Vec<ActivityBatch>, String> {
+    /// The latest `runs` runs, newest first; a run of several batches is one.
+    pub fn read(self, runs: usize) -> Result<Vec<ActivityBatch>, String> {
         let guard = lock(&self.slot);
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        let recent = index
-            .recent_batches(batches)
-            .map_err(|err| err.to_string())?;
-        Ok(recent
-            .into_iter()
-            .map(|(info, items)| ActivityBatch {
-                kind: info.kind,
-                at: info.finished_at.unwrap_or(info.started_at),
-                undone: info.undone_at.is_some(),
-                moves: items.into_iter().map(|item| (item.from, item.to)).collect(),
-            })
-            .collect())
+        let mut fetched = runs.saturating_add(1);
+        loop {
+            let recent = index
+                .recent_batches(fetched)
+                .map_err(|err| err.to_string())?;
+            let is_everything = recent.len() < fetched;
+            let mut grouped = grouped_by_run(recent);
+            // A run more than asked for: the last one shown is not cut off.
+            if is_everything || grouped.len() > runs {
+                grouped.truncate(runs);
+                return Ok(grouped);
+            }
+            fetched = fetched.saturating_mul(2);
+        }
     }
+}
+
+fn grouped_by_run(
+    recent: Vec<(ncrs_index::BatchInfo, Vec<ncrs_index::JournalItem>)>,
+) -> Vec<ActivityBatch> {
+    let mut grouped: Vec<(Option<ncrs_index::BatchId>, ActivityBatch)> = Vec::new();
+    for (info, items) in recent {
+        let at = info.finished_at.unwrap_or(info.started_at);
+        let undone = info.undone_at.is_some();
+        let moves = items.into_iter().map(|item| (item.from, item.to));
+        let same_run = grouped
+            .iter_mut()
+            .find(|(run, _)| run.is_some() && *run == info.run);
+        if let Some((_, activity)) = same_run {
+            activity.at = activity.at.max(at);
+            activity.undone &= undone;
+            activity.moves.extend(moves);
+        } else {
+            let activity = ActivityBatch {
+                kind: info.kind,
+                at,
+                undone,
+                moves: moves.collect(),
+            };
+            grouped.push((info.run, activity));
+        }
+    }
+    grouped.into_iter().map(|(_, activity)| activity).collect()
 }
 
 /// Reads what one panel's Hermes column needs, on a blocking thread like

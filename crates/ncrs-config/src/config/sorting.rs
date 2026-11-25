@@ -59,6 +59,9 @@ pub struct SourceEntry {
     /// `ask` or `copy_to_all`; `ask` without the key.
     #[serde(default)]
     pub several: Option<String>,
+    /// Whether the folder was on a volume of its own when it was saved.
+    #[serde(default)]
+    pub own_volume: Option<bool>,
 }
 
 /// Why a source or target does not work although it is in the file.
@@ -201,6 +204,7 @@ fn sorting_of_entries(section: &FilingSection, home: Option<&Path>) -> Sorting {
                 transfer,
                 no_text,
                 several,
+                own_volume: entry.own_volume,
             },
             paused,
         });
@@ -279,6 +283,7 @@ fn sorting_of_locations(listed: &[FilingLocation]) -> Sorting {
                 transfer: location.transfer,
                 no_text: OnNoText::Ask,
                 several: OnSeveralTargets::Ask,
+                own_volume: None,
             },
             paused: None,
         });

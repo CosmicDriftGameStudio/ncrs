@@ -40,3 +40,11 @@ CREATE TABLE source_backlog (
     file_mtime INTEGER NOT NULL,
     PRIMARY KEY (source, path)
 );
+
+-- A source whose files were taken stock of; one with an empty backlog is among them.
+CREATE TABLE source_watch (
+    source TEXT PRIMARY KEY
+);
+
+-- The batches of one run carry the id of its first batch. NULL is a run of its own.
+ALTER TABLE execution_batch ADD COLUMN run_id INTEGER;

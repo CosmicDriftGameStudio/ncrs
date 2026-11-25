@@ -18,9 +18,6 @@ pub struct Location {
     pub path: PathBuf,
     pub mode: LocationMode,
     pub images: bool,
-    /// Hermes files what the rules leave open by itself, so such a file gets
-    /// no review entry.
-    pub continuous: bool,
 }
 
 /// The path as the rules see it: relative to the innermost location root it
@@ -113,14 +110,7 @@ impl Location {
             path: canonical,
             mode,
             images,
-            continuous: false,
         })
-    }
-
-    #[must_use]
-    pub fn with_continuous(mut self, continuous: bool) -> Self {
-        self.continuous = continuous;
-        self
     }
 }
 

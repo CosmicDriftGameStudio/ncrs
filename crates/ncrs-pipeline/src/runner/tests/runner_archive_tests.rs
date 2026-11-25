@@ -9,7 +9,6 @@ use ncrs_index::{DocumentFields, DocumentId, Field, FieldOrigin};
 use ncrs_intake::test_archive::{test_archive, TestArchive, TestFile};
 use ncrs_intake::FIELDS_READ_VERSION;
 
-use super::rule_tests::invoice_rule;
 use super::*;
 
 /// The content of the file as text when it is UTF-8, as the PDF source would
@@ -132,7 +131,6 @@ fn a_whole_archive_gets_fields_and_dates_without_plans_or_reviews() {
     let first = scan_with_files(&fixture, &location, &calls);
 
     assert!(first.errors.is_empty(), "{:?}", first.errors);
-    assert_eq!(first.plans_made, 0);
     let index = fixture.index.lock().unwrap();
     assert!(index.open_reviews().unwrap().is_empty());
     let documents = index.documents_under(&location.path).unwrap();
@@ -278,7 +276,7 @@ fn a_guessed_date_is_read_again_and_a_date_set_by_hand_stays() {
 }
 
 #[test]
-fn an_inbox_letter_gets_its_letter_date_and_still_goes_to_review() {
+fn an_inbox_letter_gets_its_letter_date_and_stays_new() {
     let root = TempDir::new().unwrap();
     let letter = first_letter();
     let inbox = location(&root, LocationMode::Inbox);
@@ -296,7 +294,6 @@ fn an_inbox_letter_gets_its_letter_date_and_still_goes_to_review() {
     });
 
     assert!(report.errors.is_empty(), "{:?}", report.errors);
-    assert_eq!(report.plans_made, 0);
     let id = only_document(&fixture, &inbox);
     let index = fixture.index.lock().unwrap();
     let document = index.document(id).unwrap().unwrap();
@@ -305,12 +302,12 @@ fn an_inbox_letter_gets_its_letter_date_and_still_goes_to_review() {
         index.field_origins(id).unwrap().of(Field::Date),
         FieldOrigin::Detected
     );
-    assert_eq!(document.status, DocumentStatus::InReview);
-    assert_eq!(index.open_reviews().unwrap().len(), 1);
+    assert_eq!(document.status, DocumentStatus::New);
+    assert!(index.open_reviews().unwrap().is_empty());
 }
 
 #[test]
-fn a_value_of_a_deleted_rule_stays_when_the_archive_is_read_again() {
+fn a_value_set_by_hand_stays_when_the_archive_is_read_again() {
     let root = TempDir::new().unwrap();
     let (location, letter) = archive_with_one_letter(&root);
     let fixture = IndexFixture::new();
@@ -318,15 +315,11 @@ fn a_value_of_a_deleted_rule_stays_when_the_archive_is_read_again() {
     scan_with_files(&fixture, &location, &calls);
     let id = only_document(&fixture, &location);
     let mut writer = fixture.index.lock().unwrap();
-    let rule = writer
-        .create_rule(&invoice_rule("{number}.pdf", true))
-        .unwrap();
     let mut fields = writer.document(id).unwrap().unwrap().fields;
     fields.date = NaiveDate::from_ymd_opt(1978, 1, 2);
     writer
-        .set_document_fields(id, &fields, |_| FieldOrigin::Rule(Some(rule)))
+        .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
         .unwrap();
-    writer.delete_rule(rule).unwrap();
     writer.set_fields_read_version(id, 1).unwrap();
     drop(writer);
     assert_ne!(letter.date, NaiveDate::from_ymd_opt(1978, 1, 2));

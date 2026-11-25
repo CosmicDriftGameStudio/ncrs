@@ -49,7 +49,9 @@ pub use live::{
 };
 pub use pattern::PatternLevel;
 pub use picks::{remember_folder_picks, LEFT_UNKNOWN};
-pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
+pub use crate::reading_support::{ReadError, ReadProgress, FILE_LIMIT};
+pub use reading::{AiCoverage, FolderReading};
+pub(crate) use runs::{remove_emptied_folders, runs_of_index, undo_run};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use snapshots::Snapshots;
 pub use trial::{

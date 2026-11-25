@@ -34,8 +34,22 @@ impl Index {
             ])?;
         }
         drop(insert);
+        tx.execute(
+            "INSERT OR IGNORE INTO source_watch (source) VALUES (?1)",
+            [source],
+        )?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Whether the files of `source` were taken stock of, even if there were none.
+    pub fn has_source_backlog(&self, source: &Path) -> Result<bool, IndexError> {
+        let found = self.connection().query_row(
+            "SELECT EXISTS (SELECT 1 FROM source_watch WHERE source = ?1)",
+            [utf8(source)?],
+            |row| row.get(0),
+        )?;
+        Ok(found)
     }
 
     /// Whether the file is one `source` held before watching, unchanged: the
@@ -61,8 +75,11 @@ impl Index {
     }
 
     pub fn forget_backlog(&self, source: &Path) -> Result<(), IndexError> {
-        self.connection()
-            .execute("DELETE FROM source_backlog WHERE source = ?1", [utf8(source)?])?;
+        let source = utf8(source)?;
+        let tx = self.connection().unchecked_transaction()?;
+        tx.execute("DELETE FROM source_backlog WHERE source = ?1", [source])?;
+        tx.execute("DELETE FROM source_watch WHERE source = ?1", [source])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -129,5 +146,18 @@ mod tests {
         index.forget_backlog(inbox).unwrap();
         assert!(!index.is_backlog(inbox, &a, stamp(1, 1)).unwrap());
         assert!(index.is_backlog(other, &a, stamp(1, 1)).unwrap());
+        assert!(!index.has_source_backlog(inbox).unwrap());
+        assert!(index.has_source_backlog(other).unwrap());
+    }
+
+    #[test]
+    fn an_empty_source_has_a_backlog_too() {
+        let (_dir, mut index) = encrypted_index();
+        let inbox = Path::new("inbox");
+        assert!(!index.has_source_backlog(inbox).unwrap());
+
+        index.set_source_backlog(inbox, &[]).unwrap();
+
+        assert!(index.has_source_backlog(inbox).unwrap());
     }
 }

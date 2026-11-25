@@ -51,6 +51,8 @@ impl FilingModule {
             store,
             index: Arc::default(),
             locations: Vec::new(),
+            sources: filing.sources.clone(),
+            targets: filing.targets.clone(),
             phase: Phase::Starting,
             load: filing.load,
             generation: 0,

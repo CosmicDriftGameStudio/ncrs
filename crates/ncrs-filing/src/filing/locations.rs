@@ -30,7 +30,7 @@ pub fn resolve_locations(configured: &[FilingLocation]) -> Vec<ResolvedLocation>
         .map(|entry| ResolvedLocation {
             configured: entry.clone(),
             status: match Location::new(&entry.path, entry.mode, entry.images) {
-                Ok(location) => LocationStatus::Ready(location.with_continuous(entry.continuous)),
+                Ok(location) => LocationStatus::Ready(location),
                 Err(err) => LocationStatus::NotReachable {
                     reason: err.to_string(),
                 },

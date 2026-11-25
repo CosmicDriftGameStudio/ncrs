@@ -1,5 +1,6 @@
 //! The runs of the chat: filing, trashing duplicates, and undoing the last one.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -118,6 +119,10 @@ fn plan_refusal(run: &RunPlan) -> Option<String> {
             run.target_root.display()
         ));
     }
+    outside_refusal(run)
+}
+
+fn outside_refusal(run: &RunPlan) -> Option<String> {
     for item in &run.items {
         let below_source = item
             .from
@@ -214,7 +219,10 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
 
 /// The folders below `root` a run emptied by moving files out of them; `root`
 /// and every folder that still holds anything stay.
-fn remove_emptied_folders<'a>(root: &Path, moved_from: impl Iterator<Item = &'a Path>) {
+pub(crate) fn remove_emptied_folders<'a>(
+    root: &Path,
+    moved_from: impl Iterator<Item = &'a Path>,
+) {
     let mut folders: Vec<&Path> = moved_from
         .filter_map(Path::parent)
         .flat_map(|parent| parent.ancestors().take_while(|folder| *folder != root))
@@ -262,20 +270,39 @@ fn common_parent<'a>(paths: impl Iterator<Item = &'a Path>) -> Option<PathBuf> {
     common
 }
 
-/// The newest batches that can be put back, newest first: the runs Hermes
+/// The run a batch belongs to, by its first batch; itself when it is a run of
+/// its own.
+fn run_of(index: &Index, batch: BatchId) -> Result<BatchId, String> {
+    Ok(index
+        .batch_info(batch)
+        .map_err(|err| err.to_string())?
+        .and_then(|info| info.run)
+        .unwrap_or(batch))
+}
+
+/// The newest runs that can be put back, newest first: the runs Hermes
 /// carried out on request and the files it filed by itself.
 fn undoable(index: &Index, limit: usize) -> Result<Vec<BatchId>, String> {
     let mut batches = Vec::new();
     for kind in [BatchKind::Hermes, BatchKind::Filing] {
         batches.extend(
             index
-                .undoable_batches(kind, limit)
+                .undoable_batches(kind, usize::MAX)
                 .map_err(|err| err.to_string())?,
         );
     }
     batches.sort_by_key(|batch| std::cmp::Reverse(batch.number()));
-    batches.truncate(limit);
-    Ok(batches)
+    let mut runs = Vec::new();
+    for batch in batches {
+        if runs.len() == limit {
+            break;
+        }
+        let run = run_of(index, batch)?;
+        if !runs.contains(&run) {
+            runs.push(run);
+        }
+    }
+    Ok(runs)
 }
 
 pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
@@ -289,25 +316,70 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
 
 /// The runs that can still be put back, newest first.
 pub fn recent_runs(access: &ChatAccess, limit: usize) -> Result<Vec<RecentRun>, String> {
-    access.with_index(|index| {
-        let mut runs = Vec::new();
-        for batch in undoable(index, limit)? {
-            runs.extend(recent_run(index, batch)?);
-        }
-        Ok(runs)
-    })
+    access.with_index(|index| runs_of_index(index, limit))
 }
 
-fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String> {
-    let Some(info) = index.batch_info(batch).map_err(|err| err.to_string())? else {
-        return Ok(None);
-    };
-    let done: Vec<_> = index
+pub(crate) fn runs_of_index(index: &Index, limit: usize) -> Result<Vec<RecentRun>, String> {
+    let mut runs = Vec::new();
+    for batch in undoable(index, limit)? {
+        runs.extend(recent_run(index, batch)?);
+    }
+    Ok(runs)
+}
+
+fn done_items(index: &Index, batch: BatchId) -> Result<Vec<ncrs_index::JournalItem>, String> {
+    Ok(index
         .journal_items(batch)
         .map_err(|err| err.to_string())?
         .into_iter()
         .filter(|item| matches!(item.state, JournalState::Moved | JournalState::UndoSkipped))
-        .collect();
+        .collect())
+}
+
+/// All batches of a run as one. The files are counted by where they came from:
+/// one copied into two targets is one file.
+fn recent_run(index: &Index, run: BatchId) -> Result<Option<RecentRun>, String> {
+    let mut whole: Option<RecentRun> = None;
+    let mut sources: BTreeSet<PathBuf> = BTreeSet::new();
+    for batch in index.batches_of_run(run).map_err(|err| err.to_string())? {
+        let done = done_items(index, batch)?;
+        if done.is_empty() {
+            continue;
+        }
+        let Some(part) = batch_as_run(index, batch)? else {
+            continue;
+        };
+        sources.extend(done.into_iter().map(|item| item.from));
+        match &mut whole {
+            None => whole = Some(part),
+            Some(sum) => {
+                sum.summary.finished_at = sum.summary.finished_at.max(part.summary.finished_at);
+                sum.undoable &= part.undoable;
+                if sum.target_folder != part.target_folder {
+                    sum.target_folder = None;
+                }
+                for folder in part.examples {
+                    if sum.examples.len() < EXAMPLE_FOLDERS && !sum.examples.contains(&folder) {
+                        sum.examples.push(folder);
+                    }
+                }
+            }
+        }
+    }
+    let Some(mut sum) = whole else {
+        return batch_as_run(index, run);
+    };
+    sum.summary.batch = run;
+    sum.summary.items = sources.len();
+    sum.summary.source_folder = common_parent(sources.iter().map(PathBuf::as_path));
+    Ok(Some(sum))
+}
+
+fn batch_as_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String> {
+    let Some(info) = index.batch_info(batch).map_err(|err| err.to_string())? else {
+        return Ok(None);
+    };
+    let done = done_items(index, batch)?;
     let target_folder = info.target_root.as_ref().map(|root| root.given.clone());
     let examples = target_folder
         .as_deref()
@@ -334,7 +406,12 @@ fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String
                 items: items.into_iter().map(run_item).collect(),
                 inside: inside.into_iter().map(run_item).collect(),
             };
-            plan_refusal(&plan).is_none()
+            // A sorting run may file into a target below its source.
+            if info.run.is_some() {
+                outside_refusal(&plan).is_none()
+            } else {
+                plan_refusal(&plan).is_none()
+            }
         }
         _ => info.transfer != Transfer::Trash,
     };
@@ -382,22 +459,62 @@ pub fn undo_all(access: &ChatAccess, batches: &[BatchId]) -> Result<UndoReport, 
 }
 
 pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {
-    access.with_index(|index| {
-        let items = index.journal_items(batch).map_err(|err| err.to_string())?;
-        // The recorded source and target folders are added by the undo
-        // itself; older runs fall back on the parent the targets share.
-        let has_target = index
-            .batch_info(batch)
-            .map_err(|err| err.to_string())?
-            .is_some_and(|info| info.target_root.is_some());
-        let roots: Vec<PathBuf> = if has_target {
-            Vec::new()
-        } else {
-            common_parent(items.iter().map(|item| item.to.as_path()))
-                .into_iter()
-                .collect()
-        };
-        execute::undo_with_trash(index, batch, &roots, Some(&*access.trash))
-            .map_err(|err| err.to_string())
-    })
+    access.with_index(|index| undo_run(index, &*access.trash, batch))
+}
+
+/// Takes back all batches of the run, the last one first. A batch that cannot
+/// be taken back at all leaves its files where they are; the others still go.
+pub(crate) fn undo_run(
+    index: &Index,
+    trash: &dyn ncrs_fs::Trash,
+    batch: BatchId,
+) -> Result<UndoReport, String> {
+    let run = run_of(index, batch)?;
+    let mut batches = index.batches_of_run(run).map_err(|err| err.to_string())?;
+    if batches.is_empty() {
+        return undo_batch(index, trash, batch);
+    }
+    batches.reverse();
+    let mut total = UndoReport::default();
+    let mut refused = None;
+    let mut taken_back = false;
+    for part in batches {
+        match undo_batch(index, trash, part) {
+            Ok(report) => {
+                total.undone += report.undone;
+                total.left += report.left;
+                taken_back = true;
+            }
+            Err(err) => {
+                total.left += done_items(index, part)?.len();
+                refused = Some(err);
+            }
+        }
+    }
+    match refused {
+        Some(err) if !taken_back => Err(err),
+        _ => Ok(total),
+    }
+}
+
+fn undo_batch(
+    index: &Index,
+    trash: &dyn ncrs_fs::Trash,
+    batch: BatchId,
+) -> Result<UndoReport, String> {
+    let items = index.journal_items(batch).map_err(|err| err.to_string())?;
+    // The recorded source and target folders are added by the undo
+    // itself; older runs fall back on the parent the targets share.
+    let has_target = index
+        .batch_info(batch)
+        .map_err(|err| err.to_string())?
+        .is_some_and(|info| info.target_root.is_some());
+    let roots: Vec<PathBuf> = if has_target {
+        Vec::new()
+    } else {
+        common_parent(items.iter().map(|item| item.to.as_path()))
+            .into_iter()
+            .collect()
+    };
+    execute::undo_with_trash(index, batch, &roots, Some(trash)).map_err(|err| err.to_string())
 }

@@ -311,7 +311,12 @@ fn fill_target(entry: &mut toml_edit::Table, target: &SortTarget) -> Result<(), 
     entry.insert("id", toml_edit::value(target.id.as_str()));
     entry.insert("name", toml_edit::value(target.name.as_str()));
     entry.insert("path", toml_edit::value(path_text(&target.path)?));
-    match target.own_volume {
+    put_own_volume(entry, target.own_volume);
+    Ok(())
+}
+
+fn put_own_volume(entry: &mut toml_edit::Table, own_volume: Option<bool>) {
+    match own_volume {
         Some(own) => {
             entry.insert("own_volume", toml_edit::value(own));
         }
@@ -319,7 +324,6 @@ fn fill_target(entry: &mut toml_edit::Table, target: &SortTarget) -> Result<(), 
             entry.remove("own_volume");
         }
     }
-    Ok(())
 }
 
 fn fill_source(entry: &mut toml_edit::Table, source: &SortSource) -> Result<(), FilingWriteError> {
@@ -340,6 +344,7 @@ fn fill_source(entry: &mut toml_edit::Table, source: &SortSource) -> Result<(), 
     entry.insert("files", toml_edit::value(files_word(source.transfer)));
     entry.insert("no_text", toml_edit::value(no_text_word(source.no_text)));
     entry.insert("several", toml_edit::value(several_word(source.several)));
+    put_own_volume(entry, source.own_volume);
     Ok(())
 }
 

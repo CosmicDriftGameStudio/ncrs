@@ -76,6 +76,7 @@ fn source(targets: &[&str]) -> SortSource {
         transfer: LocationTransfer::Move,
         no_text: OnNoText::Ask,
         several: OnSeveralTargets::Ask,
+        own_volume: None,
     }
 }
 

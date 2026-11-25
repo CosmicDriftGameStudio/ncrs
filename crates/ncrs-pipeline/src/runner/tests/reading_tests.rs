@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn the_backlog_is_taken_in_and_only_inbox_documents_are_reviewed() {
+fn the_backlog_is_taken_in_and_read_and_no_document_gets_a_review() {
     let inbox_dir = TempDir::new().unwrap();
     let archive_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
@@ -18,69 +18,33 @@ fn the_backlog_is_taken_in_and_only_inbox_documents_are_reviewed() {
     );
 
     let report = runner.wait_for("the backlog taken in", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 3
+        is_idle(snapshot) && snapshot.steps[2].done == 3
     });
 
     assert_eq!(report.steps[0].name, "intake");
     assert_eq!(report.steps[0].done, 3);
     assert_eq!(report.steps[1].name, "text");
-    assert_eq!(report.steps[2].name, "rules");
-    assert_eq!(report.steps[3].name, "review");
+    assert_eq!(report.steps[2].name, "fields");
+    assert_eq!(report.steps.len(), 3);
     assert!(report.errors.is_empty(), "{:?}", report.errors);
     let index = fixture.index.lock().unwrap();
     assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
     let archived = index.documents_under(&archive.path).unwrap();
     assert_eq!(archived.len(), 1);
-    let reviews = index.open_reviews().unwrap();
-    assert_eq!(reviews.len(), 2);
-    assert!(reviews
-        .iter()
-        .all(|review| review.document_id != archived[0].0));
+    assert!(index.open_reviews().unwrap().is_empty());
+    assert_eq!(
+        index
+            .documents_with_status(DocumentStatus::New)
+            .unwrap()
+            .len(),
+        2
+    );
     let document = index.document(archived[0].0).unwrap().unwrap();
     assert_eq!(document.status, DocumentStatus::Filed);
 }
 
 #[test]
-fn a_continuous_location_gets_no_review_entry_but_reports_the_open_file_as_a_candidate() {
-    let continuous_dir = TempDir::new().unwrap();
-    let plain_dir = TempDir::new().unwrap();
-    let continuous = location(&continuous_dir, LocationMode::Inbox).with_continuous(true);
-    let plain = location(&plain_dir, LocationMode::Inbox);
-    let wanted = put(&continuous, "invoice.pdf", INVOICE);
-    put(&plain, "reminder.pdf", REMINDER);
-    let fixture = IndexFixture::new();
-    let runner = Runner::start(
-        settings(workers(2)),
-        fixture.steps(),
-        vec![continuous.clone(), plain.clone()],
-        stepping_clock(),
-    );
-
-    runner.wait_for("both files passed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
-    });
-
-    let index = fixture.index.lock().unwrap();
-    let reviews = index.open_reviews().unwrap();
-    assert_eq!(reviews.len(), 1);
-    let reviewed = index.document(reviews[0].document_id).unwrap().unwrap();
-    assert!(reviewed.path.starts_with(&plain.path));
-    drop(index);
-    assert!(!runner.has_continuous_candidates(&|root| root == plain.path));
-    assert!(runner.has_continuous_candidates(&|root| root == continuous.path));
-    let taken = runner.take_continuous_candidates(&|root| root == continuous.path);
-    assert_eq!(
-        taken,
-        [ContinuousCandidate {
-            location: continuous.path.clone(),
-            path: wanted,
-        }]
-    );
-    assert!(!runner.has_continuous_candidates(&|_| true));
-}
-
-#[test]
-fn a_file_the_watcher_reports_reaches_the_review_list() {
+fn a_file_the_watcher_reports_is_read_like_the_backlog() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
     put(&inbox, "invoice.pdf", INVOICE);
@@ -92,7 +56,7 @@ fn a_file_the_watcher_reports_reaches_the_review_list() {
         stepping_clock(),
     );
     runner.wait_for("the backlog reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
 
     let reminder = put(&inbox, "reminder.pdf", REMINDER);
@@ -100,11 +64,9 @@ fn a_file_the_watcher_reports_reaches_the_review_list() {
     // the watcher tests in ncrs-intake cover the backend itself.
     runner.shared.on_watch_event(WatchEvent::File(reminder));
 
-    runner.wait_for("the new file reviewed", |snapshot| {
-        snapshot.steps[3].done == 2
-    });
+    runner.wait_for("the new file read", |snapshot| snapshot.steps[2].done == 2);
     let index = fixture.index.lock().unwrap();
-    assert_eq!(index.open_reviews().unwrap().len(), 2);
+    assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
 }
 
 #[test]
@@ -120,7 +82,7 @@ fn a_watcher_error_rescans_the_location_for_missed_files() {
         stepping_clock(),
     );
     runner.wait_for("the backlog reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
 
     put(&inbox, "reminder.pdf", REMINDER);
@@ -129,11 +91,9 @@ fn a_watcher_error_rescans_the_location_for_missed_files() {
         message: "the system dropped file events".to_owned(),
     });
 
-    runner.wait_for("the missed file reviewed", |snapshot| {
-        snapshot.steps[3].done == 2
-    });
+    runner.wait_for("the missed file read", |snapshot| snapshot.steps[2].done == 2);
     let index = fixture.index.lock().unwrap();
-    assert_eq!(index.open_reviews().unwrap().len(), 2);
+    assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
 }
 
 #[derive(Debug)]
@@ -162,7 +122,7 @@ fn the_text_of_a_file_is_stored_in_the_index() {
     );
 
     let report = runner.wait_for("the file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
 
     assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -195,19 +155,21 @@ fn a_known_file_processed_again_passes_the_text_step_again() {
         stepping_clock(),
     );
     runner.wait_for("the file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
     assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
 
     assert!(runner.process_again(&inbox.path.join("invoice.pdf")));
 
     runner.wait_for("the file reviewed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+        is_idle(snapshot) && snapshot.steps[2].done == 2
     });
     assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert!(!runner.process_again(Path::new("/elsewhere/invoice.pdf")));
-    let index = fixture.index.lock().unwrap();
-    assert_eq!(index.open_reviews().unwrap().len(), 1);
+    assert_eq!(
+        first_document_status(&fixture, &inbox),
+        DocumentStatus::New
+    );
 }
 
 pub fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
@@ -237,7 +199,7 @@ pub fn reviewed_once(
         stepping_clock(),
     );
     runner.wait_for("the file taken in", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
     runner
 }
@@ -254,10 +216,9 @@ fn a_filed_document_in_an_inbox_location_stays_filed_when_processed_again() {
 
     assert!(runner.process_again(&path));
 
-    let report = runner.wait_for("the file passed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+    runner.wait_for("the file passed again", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[2].done == 2
     });
-    assert_eq!(report.plans_made, 0);
     assert_eq!(
         first_document_status(&fixture, &inbox),
         DocumentStatus::Filed
@@ -276,10 +237,9 @@ fn a_document_in_an_archive_location_is_never_planned_when_processed_again() {
 
     assert!(runner.process_again(&path));
 
-    let report = runner.wait_for("the file passed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+    runner.wait_for("the file passed again", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[2].done == 2
     });
-    assert_eq!(report.plans_made, 0);
     assert_eq!(reads.load(Ordering::SeqCst), 2);
     assert_eq!(
         first_document_status(&fixture, &archive),
@@ -335,41 +295,51 @@ fn a_file_included_again_is_found_by_a_scan_without_waiting_for_the_rescan() {
     assert!(runner.rescan_around(&path));
     assert!(!runner.rescan_around(Path::new("/elsewhere/invoice.pdf")));
 
-    runner.wait_for("the file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+    runner.wait_for("the file read", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
     assert_eq!(
-        fixture.index.lock().unwrap().open_reviews().unwrap().len(),
-        1
+        first_document_status(&fixture, &inbox),
+        DocumentStatus::New
     );
 }
 
 #[test]
-fn a_file_without_text_still_reaches_the_review_list() {
+fn a_file_without_text_stays_new_without_a_review_or_an_exclusion_and_is_not_read_again() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
-    put(&inbox, "invoice.pdf", INVOICE);
+    let path = put(&inbox, "invoice.pdf", INVOICE);
     let fixture = IndexFixture::new();
-    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::NotApplicable)));
-    let runner = Runner::start(
-        settings(workers(1)),
-        fixture.steps_reading(chain),
-        vec![inbox],
-        stepping_clock(),
-    );
+    let reads = Arc::new(AtomicUsize::new(0));
+    let chain = || TextChain::new().with_source(CountingNoText(Arc::clone(&reads)));
 
-    runner.wait_for("the file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
-    });
+    let first = archive_scan(&fixture, &inbox, chain());
+    let second = archive_scan(&fixture, &inbox, chain());
 
+    assert_eq!(first.steps[2].done, 1);
+    assert_eq!(second.steps[1].done, 0, "the second scan reads nothing");
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
     assert_eq!(
-        fixture.index.lock().unwrap().open_reviews().unwrap().len(),
-        1
+        first_document_status(&fixture, &inbox),
+        DocumentStatus::New
     );
+    let index = fixture.index.lock().unwrap();
+    assert!(index.open_reviews().unwrap().is_empty());
+    assert!(!index.is_excluded(&path).unwrap());
+}
+
+#[derive(Debug)]
+struct CountingNoText(Arc<AtomicUsize>);
+
+impl TextSource for CountingNoText {
+    fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(Extracted::NotApplicable)
+    }
 }
 
 #[test]
-fn a_scan_without_the_ocr_models_goes_to_the_review_list_without_text() {
+fn a_scan_without_the_ocr_models_leaves_the_file_new_without_text() {
     let inbox_dir = TempDir::new().unwrap();
     let models_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
@@ -390,15 +360,13 @@ fn a_scan_without_the_ocr_models_goes_to_the_review_list_without_text() {
         stepping_clock(),
     );
 
-    let report = runner.wait_for("the scan reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 1
+    let report = runner.wait_for("the scan read", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[2].done == 1
     });
 
     assert!(report.errors.is_empty(), "{:?}", report.errors);
     let index = fixture.index.lock().unwrap();
-    let reviews = index.open_reviews().unwrap();
-    assert_eq!(reviews.len(), 1);
-    assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::NoMatchingRule);
+    assert!(index.open_reviews().unwrap().is_empty());
     assert!(index.search_text("4711", 10).unwrap().is_empty());
     assert!(
         !models_dir.path().join("ocr-models").exists(),
@@ -430,7 +398,7 @@ fn a_missing_pdf_library_holds_the_file_back_without_an_error_or_a_review() {
     assert!(report.errors.is_empty(), "{:?}", report.errors);
     assert_eq!(report.steps[1].failed, 0);
     assert_eq!(report.steps[2].done, 0);
-    assert_eq!(report.steps[3].done, 0);
+    assert_eq!(report.steps[2].done, 0);
     let index = fixture.index.lock().unwrap();
     assert!(index.open_reviews().unwrap().is_empty());
     let statuses = index.documents_with_status(DocumentStatus::New).unwrap();
@@ -758,110 +726,32 @@ fn an_unreadable_archive_text_file_stores_no_text_and_is_read_on_a_later_scan() 
 }
 
 #[test]
-fn a_new_inbox_document_with_an_empty_stored_text_goes_to_the_review_list_on_the_next_scan() {
+fn a_new_inbox_document_with_an_empty_stored_text_gets_no_review_and_is_left_alone_on_the_next_scan(
+) {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
     put(&inbox, "scan.pdf", INVOICE);
     let fixture = IndexFixture::new();
     let chain = || TextChain::new().with_source(FixedText(Ok(Extracted::Text(" \n".to_owned()))));
     archive_scan(&fixture, &inbox, chain());
-    let document = {
-        // The app quit after the text was stored and before the review.
-        let index = fixture.index.lock().unwrap();
-        let reviews = index.open_reviews().unwrap();
-        assert_eq!(reviews.len(), 1);
-        index.resolve_review(reviews[0].id).unwrap();
-        index
-            .set_document_status(reviews[0].document_id, ncrs_index::DocumentStatus::New)
-            .unwrap();
-        reviews[0].document_id
-    };
 
-    archive_scan(&fixture, &inbox, chain());
+    let second = archive_scan(&fixture, &inbox, chain());
 
-    let index = fixture.index.lock().unwrap();
+    assert_eq!(second.steps[0].unchanged, 1);
+    assert_eq!(second.steps[1].done, 0);
     assert_eq!(
-        index.document(document).unwrap().unwrap().status,
-        ncrs_index::DocumentStatus::InReview
+        first_document_status(&fixture, &inbox),
+        DocumentStatus::New
     );
-    assert!(index.open_review_of(document).unwrap().is_some());
+    assert!(fixture.index.lock().unwrap().open_reviews().unwrap().is_empty());
 }
 
 #[test]
-fn seeded_candidates_are_taken_once_and_not_doubled_with_found_ones() {
-    let dir = TempDir::new().unwrap();
-    let location = location(&dir, LocationMode::Inbox).with_continuous(true);
-    let fixture = IndexFixture::new();
-    let runner = Runner::start(
-        settings(workers(1)),
-        fixture.steps(),
-        vec![location.clone()],
-        stepping_clock(),
-    );
-    assert!(!runner.continuous_seeded());
-    let candidate = |name: &str| ContinuousCandidate {
-        location: location.path.clone(),
-        path: location.path.join(name),
-    };
-
-    runner.seed_continuous_candidates(vec![candidate("a.pdf"), candidate("b.pdf")]);
-    runner.seed_continuous_candidates(vec![candidate("a.pdf")]);
-
-    assert!(runner.continuous_seeded());
-    let taken = runner.take_continuous_candidates(&|root| root == location.path);
-    assert_eq!(taken, [candidate("a.pdf"), candidate("b.pdf")]);
-    assert!(!runner.has_continuous_candidates(&|_| true));
-}
-
-#[test]
-fn a_location_set_to_continuous_after_the_start_takes_its_next_file_as_a_candidate() {
-    let inbox_dir = TempDir::new().unwrap();
-    let inbox = location(&inbox_dir, LocationMode::Inbox);
-    put(&inbox, "invoice.pdf", INVOICE);
-    let fixture = IndexFixture::new();
-    // With text, a second pass of a file (the watcher and the rescan can both
-    // queue it) leaves it as it was; without, it would go to the review list
-    // as unreadable.
-    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
-        "Reminder 12 from Agency B".to_owned(),
-    ))));
-    let runner = Runner::start(
-        settings(workers(2)),
-        fixture.steps_reading(chain),
-        vec![inbox.clone()],
-        stepping_clock(),
-    );
-    let first = runner.wait_for("the first file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done >= 1
-    });
-
-    runner.set_continuous_roots([inbox.path.clone()]);
-    let later = put(&inbox, "reminder.pdf", REMINDER);
-    assert!(runner.rescan_around(&later));
-    runner.wait_for("the second file passed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done > first.steps[3].done
-    });
-
-    let reviews = fixture.index.lock().unwrap().open_reviews().unwrap();
-    assert_eq!(reviews.len(), 1, "only the file from before is reviewed");
-    assert_eq!(
-        runner.take_continuous_candidates(&|root| root == inbox.path),
-        [ContinuousCandidate {
-            location: inbox.path.clone(),
-            path: later,
-        }]
-    );
-}
-
-#[test]
-fn a_location_added_after_the_start_is_scanned_and_files_by_itself() {
+fn a_location_added_after_the_start_is_scanned_and_watched() {
     let first_dir = TempDir::new().unwrap();
     let second_dir = TempDir::new().unwrap();
     let first = location(&first_dir, LocationMode::Inbox);
-    let second = Location {
-        continuous: true,
-        ..location(&second_dir, LocationMode::Inbox)
-    };
+    let second = location(&second_dir, LocationMode::Inbox);
     put(&first, "invoice.pdf", INVOICE);
     let fixture = IndexFixture::new();
     let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
@@ -874,22 +764,15 @@ fn a_location_added_after_the_start_is_scanned_and_files_by_itself() {
         stepping_clock(),
     );
     let before = runner.wait_for("the first file reviewed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done >= 1
+        is_idle(snapshot) && snapshot.steps[2].done >= 1
     });
     let arrived = put(&second, "reminder.pdf", REMINDER);
 
     runner.add_location(second.clone());
 
     runner.wait_for("the file of the new location passed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done > before.steps[3].done
+        is_idle(snapshot) && snapshot.steps[2].done > before.steps[2].done
     });
-    assert_eq!(
-        runner.take_continuous_candidates(&|root| root == second.path),
-        [ContinuousCandidate {
-            location: second.path.clone(),
-            path: arrived.clone(),
-        }]
-    );
     assert!(runner.rescan_around(&arrived));
     assert!(runner.process_again(&arrived));
 
@@ -903,38 +786,3 @@ fn a_location_added_after_the_start_is_scanned_and_files_by_itself() {
     });
 }
 
-#[test]
-fn a_file_the_background_filing_took_once_is_not_offered_again_by_a_rescan() {
-    let inbox_dir = TempDir::new().unwrap();
-    let inbox = location(&inbox_dir, LocationMode::Inbox);
-    let fixture = IndexFixture::new();
-    let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
-        "Reminder 12 from Agency B".to_owned(),
-    ))));
-    let runner = Runner::start(
-        settings(workers(2)),
-        fixture.steps_reading(chain),
-        vec![inbox.clone()],
-        stepping_clock(),
-    );
-    runner.set_continuous_roots([inbox.path.clone()]);
-    let left = put(&inbox, "reminder.pdf", REMINDER);
-    assert!(runner.rescan_around(&left));
-    let passed = runner.wait_for("the file passed", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done >= 1
-    });
-    assert_eq!(
-        runner.take_continuous_candidates(&|root| root == inbox.path),
-        [ContinuousCandidate {
-            location: inbox.path.clone(),
-            path: left.clone(),
-        }]
-    );
-
-    assert!(runner.rescan_around(&left));
-    runner.wait_for("the file passed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done > passed.steps[3].done
-    });
-
-    assert!(!runner.has_continuous_candidates(&|_| true));
-}

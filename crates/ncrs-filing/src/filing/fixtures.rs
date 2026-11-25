@@ -15,6 +15,8 @@ impl FilingModule {
             store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
             index: Arc::default(),
             locations: Vec::new(),
+            sources: Vec::new(),
+            targets: Vec::new(),
             phase,
             load: Load::default(),
             generation: 0,

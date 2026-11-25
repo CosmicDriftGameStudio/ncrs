@@ -46,8 +46,11 @@ use crate::filing_work::FilingAccess;
 use crate::query_work::QueryAccess;
 use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
+use crate::sorting::SortingAccess;
 use crate::tags_work::TagsAccess;
-use ncrs_config::config::{AiSetting, Filing, FilingLocation, LocationTransfer};
+use ncrs_config::config::{
+    AiSetting, Filing, FilingLocation, LocationTransfer, SourceSetting, TargetSetting,
+};
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -128,6 +131,9 @@ pub struct FilingModule {
     store: SharedStore,
     index: IndexSlot,
     locations: Vec<ResolvedLocation>,
+    /// As saved last, paused ones included.
+    sources: Vec<SourceSetting>,
+    targets: Vec<TargetSetting>,
     phase: Phase,
     load: Load,
     /// Changes with every new `Work` and with a dismissal: a result of an older

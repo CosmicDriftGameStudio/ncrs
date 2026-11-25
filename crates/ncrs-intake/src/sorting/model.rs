@@ -50,4 +50,6 @@ pub struct SortSource {
     pub transfer: LocationTransfer,
     pub no_text: OnNoText,
     pub several: OnSeveralTargets,
+    /// As `SortTarget::own_volume`.
+    pub own_volume: Option<bool>,
 }

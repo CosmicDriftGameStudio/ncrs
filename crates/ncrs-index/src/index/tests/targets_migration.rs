@@ -87,4 +87,7 @@ fn a_version_36_database_loses_planned_documents_and_open_questions_and_keeps_fi
     index
         .set_source_backlog(std::path::Path::new("inbox"), &[])
         .unwrap();
+    assert!(table_exists(&index, "source_watch"));
+    let batch = index.begin_batch(crate::BatchKind::Filing).unwrap();
+    assert_eq!(index.batch_info(batch).unwrap().unwrap().run, None);
 }

@@ -344,7 +344,10 @@ fn undoing_a_move_puts_a_filed_document_back_into_review() {
     let document = setup.index.document(id).unwrap().unwrap();
     assert_eq!(document.path, item.from);
     assert_eq!(document.status, DocumentStatus::InReview);
-    assert!(setup.index.open_review_of(id).unwrap().is_some());
+    assert_eq!(
+        setup.index.open_review_of(id).unwrap().unwrap().reason,
+        ncrs_index::ReviewReason::Undone
+    );
 }
 
 /// A pending item as an interrupted run leaves it.

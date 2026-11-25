@@ -44,18 +44,7 @@ fn the_index_is_free_for_others_while_the_intake_step_hashes_a_file() {
         OwnDetails::default(),
     )
     .remove(0);
-    let item = || Item {
-        location: location.clone(),
-        path: big.clone(),
-        document: None,
-        text: None,
-        review: None,
-        plan: None,
-        force: false,
-        stored_text_is_current: false,
-        not_a_document: false,
-        continuous_candidate: false,
-    };
+    let item = || Item::at_first_step(&location, &big, false);
     let first_seen = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
     assert_eq!(
         step.run(&mut item(), first_seen).unwrap(),

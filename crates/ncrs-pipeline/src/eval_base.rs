@@ -30,7 +30,7 @@ use chrono::{DateTime, Utc};
 use ncrs_ai::{FakeProvider, Provider};
 use ncrs_index::{
     ContentHash, Document, DocumentFields, DocumentSource, DocumentStatus, Field, FieldOrigin,
-    FileStamp, InMemoryKeyStore, Index, NewDocument, ReviewReason, SenderAliases,
+    FileStamp, InMemoryKeyStore, Index, NewDocument, SenderAliases,
 };
 use ncrs_intake::{
     canonical_path, detect_fields, hash_path, Location, LocationMode, OwnNames, TextChain,
@@ -180,22 +180,13 @@ impl Base<'_> {
             })
             .unwrap();
         self.index.set_ai_read_version(id, ai_version).unwrap();
-        match mode {
-            LocationMode::Archive => {
-                self.index
-                    .set_fields_read_version(id, FIELDS_READ_VERSION)
-                    .unwrap();
-                self.index
-                    .set_document_status(id, DocumentStatus::Filed)
-                    .unwrap();
-            }
-            // What the review step leaves when there are no rules. The reading
-            // of the fields is only noted for archive documents.
-            LocationMode::Inbox => {
-                self.index
-                    .add_review(id, ReviewReason::NoMatchingRule)
-                    .unwrap();
-            }
+        self.index
+            .set_fields_read_version(id, FIELDS_READ_VERSION)
+            .unwrap();
+        if mode == LocationMode::Archive {
+            self.index
+                .set_document_status(id, DocumentStatus::Filed)
+                .unwrap();
         }
     }
 
@@ -540,18 +531,7 @@ impl Started {
             Some(Arc::clone(&self.provider) as Arc<dyn Provider>),
             OwnDetails::default(),
         );
-        let mut item = Item {
-            location: location.clone(),
-            path: location.path.join(file),
-            document: None,
-            text: None,
-            review: None,
-            plan: None,
-            force: false,
-            stored_text_is_current: false,
-            not_a_document: false,
-            continuous_candidate: false,
-        };
+        let mut item = Item::at_first_step(location, &location.path.join(file), false);
         let known = {
             let index = self.index.0.lock().unwrap();
             index.document_by_path(&item.path).unwrap().is_some()
@@ -658,7 +638,7 @@ fn the_documents_are_in_the_state_a_fresh_reading_leaves_them_in() {
     let by_rule = run.document(&run.archive, "2019/by-rule.txt").unwrap();
     assert_eq!(by_rule.fields.number.as_deref(), Some("4711"));
     let scan = run.document(&run.downloads, "scan.txt").unwrap();
-    assert_eq!(scan.status, DocumentStatus::InReview);
+    assert_eq!(scan.status, DocumentStatus::New);
     assert_eq!(scan.source, DocumentSource::Inbox);
     assert_eq!(scan.fields.sender.as_deref(), Some("Sender of the AI"));
     for (location, file) in [
@@ -674,8 +654,11 @@ fn the_documents_are_in_the_state_a_fresh_reading_leaves_them_in() {
         assert!(index.has_document_text_row(document.id).unwrap());
     }
     let index = run.index.0.lock().unwrap();
-    assert_eq!(index.statistics().unwrap().open_reviews, 2);
-    assert_eq!(index.fields_read_version(scan.id).unwrap(), 0);
+    assert_eq!(index.statistics().unwrap().open_reviews, 0);
+    assert_eq!(
+        index.fields_read_version(scan.id).unwrap(),
+        FIELDS_READ_VERSION
+    );
     assert_eq!(index.ai_read_version(scan.id).unwrap(), AI_READ_VERSION);
     assert_eq!(
         index.fields_read_version(read.id).unwrap(),

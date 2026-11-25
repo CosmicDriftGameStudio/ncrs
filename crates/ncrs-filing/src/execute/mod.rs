@@ -25,8 +25,11 @@ use ncrs_fs::transfer::{
 };
 
 mod respell;
+mod run_steps;
 mod trash;
-use respell::{is_respelling, is_same_entry, respell, respell_back, restore_respelled};
+pub(crate) use respell::is_respelling;
+use respell::{is_same_entry, respell, respell_back, restore_respelled};
+pub(crate) use run_steps::{open_run_batch, run_one};
 pub use trash::{
     trash_can_restore, trash_replaced, trash_run, ReplacedItem, TrashItem, TrashReport,
 };
@@ -174,19 +177,8 @@ pub fn execute_run<P: Progress>(
         }),
     };
     let moves = effect_for(transfer)?;
-    let source = remember_source_root(places.source)?;
-    let batch = index.begin_named_batch(kind, name, transfer)?;
-    index.set_batch_source_root(batch, &source)?;
-    // A target not made yet has nothing to resolve; the undo then falls back
-    // on the places in the journal.
-    if let Ok(target) = remember_source_root(places.target) {
-        index.set_batch_target_root(batch, &target)?;
-    }
-    let checked = Places {
-        target: places.target,
-        source: Some(places.source),
-        inside_target: places.inside_target,
-    };
+    let batch = open_run_batch(index, kind, name, transfer, &places)?;
+    let checked = Places::from(&places);
     if moves {
         run_batch(index, batch, transfer, checked, items, progress, &Move)
     } else {
@@ -212,6 +204,16 @@ struct Places<'a> {
     source: Option<&'a Path>,
     /// Items may also come from below `target`.
     inside_target: bool,
+}
+
+impl<'a> From<&RunPlaces<'a>> for Places<'a> {
+    fn from(places: &RunPlaces<'a>) -> Self {
+        Self {
+            target: places.target,
+            source: Some(places.source),
+            inside_target: places.inside_target,
+        }
+    }
 }
 
 pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRoot, ExecuteError> {
@@ -582,13 +584,16 @@ fn settle_moved(
     {
         // Only what ends up in the folder the run files into counts as
         // filed; a move inside a side archive does not.
-        let lands_in_target = index
-            .batch_info(batch)?
-            .and_then(|info| info.target_root)
+        let info = index.batch_info(batch)?;
+        let lands_in_target = info
+            .as_ref()
+            .and_then(|found| found.target_root.as_ref())
             .is_none_or(|root| {
                 item.to.starts_with(&root.given) || item.to.starts_with(&root.resolved)
             });
-        if lands_in_target {
+        if lands_in_target && run_steps::is_sorting(info.as_ref()) {
+            index.mark_document_filed(id)?;
+        } else if lands_in_target {
             index.set_document_status(id, DocumentStatus::Filed)?;
         }
     }
@@ -602,6 +607,9 @@ fn settle_copied(
     batch: BatchId,
     item: &JournalItem,
 ) -> Result<ItemOutcome, ExecuteError> {
+    if run_steps::is_sorting(index.batch_info(batch)?.as_ref()) {
+        run_steps::note_copy(index, item)?;
+    }
     index.set_journal_state(batch, item.seq, JournalState::Moved, None)?;
     Ok(ItemOutcome::Moved)
 }
@@ -761,6 +769,7 @@ pub fn undo_with_trash(
     let transfer = recorded
         .as_ref()
         .map_or(Transfer::Move, |found| found.transfer);
+    let sorting = run_steps::is_sorting(recorded.as_ref());
     let mut all_roots = roots.to_vec();
     if let Some(found) = recorded {
         for recorded_root in [found.source_root, found.target_root].into_iter().flatten() {
@@ -782,6 +791,9 @@ pub fn undo_with_trash(
         };
         match undone {
             None => {
+                if sorting && transfer == Transfer::Copy {
+                    run_steps::forget_copy(index, item)?;
+                }
                 index.set_journal_state(batch, item.seq, JournalState::Undone, None)?;
                 report.undone += 1;
             }
@@ -849,13 +861,12 @@ fn ask_again_about_filed_document(index: &Index, item: &JournalItem) -> Result<(
     if !filed {
         return Ok(());
     }
-    match index.add_review_shared(id, ReviewReason::NoMatchingRule) {
-        Ok(_) => Ok(()),
-        Err(IndexError::ReviewAlreadyOpen(_)) => {
-            Ok(index.set_document_status(id, DocumentStatus::InReview)?)
-        }
-        Err(other) => Err(other.into()),
+    // Any other open question would be decided again by itself.
+    if let Some(open) = index.open_review_of(id)? {
+        index.resolve_review(open.id)?;
     }
+    index.add_review_shared(id, ReviewReason::Undone)?;
+    Ok(())
 }
 
 /// A link between a location and one of the item's two places could lead out

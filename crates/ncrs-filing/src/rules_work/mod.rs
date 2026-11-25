@@ -548,7 +548,7 @@ impl Trial<'_> {
 /// name that two documents want goes to the first, and a swap or a circle of
 /// renames has no first step. A move whose target is the source of another
 /// move waits for that one.
-fn order_moves(mut moves: Vec<ArchiveMove>) -> (Vec<ArchiveMove>, usize) {
+pub(crate) fn order_moves(mut moves: Vec<ArchiveMove>) -> (Vec<ArchiveMove>, usize) {
     moves.sort_by(|left, right| (&left.root, &left.from).cmp(&(&right.root, &right.from)));
     let mut wanted: HashSet<(PathBuf, PathBuf)> = HashSet::new();
     let total = moves.len();

@@ -30,6 +30,7 @@ fn source_at(path: &Path, targets: &[&str]) -> SortSource {
         transfer: LocationTransfer::Move,
         no_text: OnNoText::Ask,
         several: OnSeveralTargets::Ask,
+        own_volume: None,
     }
 }
 
@@ -69,6 +70,7 @@ fn assert_the_sorting_of_the_filing_fixtures(config: &Config) {
     assert_eq!(source.transfer, LocationTransfer::Move);
     assert_eq!(source.no_text, OnNoText::Ask);
     assert_eq!(source.several, OnSeveralTargets::Ask);
+    assert_eq!(source.own_volume, None);
     assert_eq!(sources[0].paused, None);
 }
 
@@ -207,7 +209,7 @@ fn new_form(base: &tempfile::TempDir) -> String {
          [[modules.filing.targets]]\nid = \"main\"\nname = \"Documents\"\npath = {}\nown_volume = true\n\n\
          [[modules.filing.targets]]\nid = \"t2\"\npath = {}\n\n\
          [[modules.filing.sources]]\npath = {}\ninclude = \"*.pdf\"\nexclude = \"private/\"\n\
-         targets = [\"main\", \"t2\"]\nwhen = \"watch\"\nfiles = \"copy\"\nno_text = \"skip\"\nseveral = \"copy_to_all\"\n",
+         targets = [\"main\", \"t2\"]\nwhen = \"watch\"\nfiles = \"copy\"\nno_text = \"skip\"\nseveral = \"copy_to_all\"\nown_volume = true\n",
         quoted(&archive),
         quoted(&other),
         quoted(&inbox),
@@ -256,6 +258,7 @@ fn the_new_form_is_read_with_every_value() {
                 transfer: LocationTransfer::Copy,
                 no_text: OnNoText::Skip,
                 several: OnSeveralTargets::CopyToAll,
+                own_volume: Some(true),
             },
             paused: None,
         }]
@@ -544,6 +547,7 @@ fn what_is_written_is_what_is_read() {
         transfer: LocationTransfer::Copy,
         no_text: OnNoText::Skip,
         several: OnSeveralTargets::CopyToAll,
+        own_volume: Some(true),
         ..source_at(&inbox, &["main"])
     };
     upsert_sort_target_with_home(&path, &target, None).unwrap();

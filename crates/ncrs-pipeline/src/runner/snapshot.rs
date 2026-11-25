@@ -100,8 +100,11 @@ pub struct ErrorEntry {
 pub enum ChangeOutcome {
     /// A step changed the file's state and more steps follow.
     Advanced,
-    /// The file left the pipeline: filed, planned or waiting for a review.
+    /// The steps that need no model are done: the fields are stored, or the
+    /// file has no text. What happens to the document next is decided later.
     Finished,
+    /// The step that waits for the rest (the model) changed a field.
+    FilledByAi,
     /// A file that was processed again on request and found nothing to do.
     Unchanged,
     /// The step failed on this file.
@@ -159,18 +162,16 @@ pub struct Snapshot {
     pub steps: Vec<StepSnapshot>,
     /// Documents that went through the pipeline, `[0]` being the last minute up
     /// to now and `[i]` the minute `i` before that. A document is an item that
-    /// ends with `Finished` or passes the last step with `Continue`; files a
-    /// rescan finds unchanged are not counted.
+    /// has passed all steps that do not wait for the rest; files a rescan
+    /// finds unchanged are not counted.
     pub documents_per_minute: Vec<usize>,
     /// Newest last.
     pub errors: Vec<ErrorEntry>,
     /// Files that left the pipeline since the start: finished, unchanged,
     /// failed, or passed the last step.
     pub left_pipeline: usize,
-    /// Documents a step has planned a place for since the start.
-    pub plans_made: usize,
-    /// Files whose state changed, oldest first: taken into the index, planned,
-    /// finished or failed. Files a rescan finds unchanged are not listed.
+    /// Files whose state changed, oldest first: taken into the index, read,
+    /// filled by the model or failed. Files a rescan finds unchanged are not listed.
     pub changed_paths: Vec<ChangedPath>,
     /// The sequence of the newest change, 0 before the first.
     pub changed_sequence: u64,
@@ -190,7 +191,6 @@ impl Snapshot {
             documents_per_minute: vec![0; RATE_MINUTES],
             errors: Vec::new(),
             left_pipeline: 0,
-            plans_made: 0,
             changed_paths: Vec::new(),
             changed_sequence: 0,
             changed_sequence_floor: 0,

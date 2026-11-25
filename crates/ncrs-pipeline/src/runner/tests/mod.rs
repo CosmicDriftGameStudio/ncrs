@@ -673,7 +673,7 @@ fn a_file_processed_again_is_listed_even_when_nothing_changed() {
 }
 
 #[test]
-fn a_file_processed_again_without_a_matching_rule_ends_in_review_and_is_announced() {
+fn a_file_processed_again_is_read_again_and_announced_without_a_review() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
     let path = put(&inbox, "invoice.pdf", INVOICE);
@@ -685,16 +685,16 @@ fn a_file_processed_again_without_a_matching_rule_ends_in_review_and_is_announce
     assert!(runner.process_again(&path));
 
     let report = runner.wait_for("the file passed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+        is_idle(snapshot) && snapshot.steps[2].done == 2
     });
     assert!(nothing_busy(&report));
     assert_eq!(
         first_document_status(&fixture, &inbox),
-        DocumentStatus::InReview
+        DocumentStatus::New
     );
     assert_eq!(
         fixture.index.lock().unwrap().open_reviews().unwrap().len(),
-        1
+        0
     );
     let last = report.changed_paths.last().unwrap();
     assert_eq!(last.path, path);
@@ -751,10 +751,10 @@ fn dropping_a_runner_right_after_the_start_does_not_hang() {
 mod archive_fields;
 
 mod gone_tests;
-mod review_tests;
-use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
-mod inquiry_tests;
-mod rule_tests;
+mod reading_tests;
+use reading_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
+mod ai_late_tests;
+mod fields_tests;
 
 fn handled_everything(runner: &Runner, count: usize) -> Snapshot {
     runner.wait_for("every file handled", |snapshot| {

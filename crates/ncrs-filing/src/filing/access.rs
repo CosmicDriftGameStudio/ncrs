@@ -49,6 +49,25 @@ impl FilingModule {
         )
     }
 
+    /// The handle of sorting, with the sources and targets as saved last; one
+    /// copy per job.
+    pub fn sorting_access(&self, trash: Arc<dyn ncrs_fs::Trash>) -> Option<SortingAccess> {
+        if !matches!(self.phase, Phase::Ready) {
+            return None;
+        }
+        Some(SortingAccess {
+            slot: Arc::clone(&self.index),
+            sources: self.sources.clone(),
+            targets: self.targets.clone(),
+            text_chain: Arc::clone(chat_text_chain(&self.chat_text_chain, &self.db_path)),
+            own: self.own.clone(),
+            load: self.load,
+            trash,
+            snapshots: self.snapshots.clone(),
+            index_work: self.index_work.clone(),
+        })
+    }
+
     /// Takes the document kinds of a (re)loaded config; an open index uses
     /// them from now on, a pipeline already running keeps the ones it started with.
     pub fn set_kinds(&mut self, kinds: Arc<KindCatalog>) {
@@ -153,18 +172,19 @@ impl FilingModule {
             .collect()
     }
 
-    /// Takes copy or move and the continuous flag of the saved entries for the
-    /// locations this module already has, so the next job copies or moves as
-    /// saved. A saved location the module does not have is left to the next
-    /// start.
-    pub fn adopt_saved_transfers(&mut self, saved: &[FilingLocation]) {
+    /// Takes the saved sources and targets, and copy or move for the locations
+    /// this module already has, so the next job works as saved. A saved
+    /// location the module does not have is left to the next start.
+    pub fn adopt_sorting(&mut self, saved: &Filing) {
+        self.sources.clone_from(&saved.sources);
+        self.targets.clone_from(&saved.targets);
         for entry in &mut self.locations {
             if let Some(chosen) = saved
+                .locations
                 .iter()
                 .find(|candidate| candidate.path == entry.configured.path)
             {
                 entry.configured.transfer = chosen.transfer;
-                entry.configured.continuous = chosen.continuous;
             }
         }
     }
