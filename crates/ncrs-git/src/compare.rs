@@ -7,6 +7,7 @@ use crate::detail::{changed_files, working_changes, ChangeKind, ChangedFile};
 use crate::diff::{blob_at, diff_bytes, line_counts, FileDiff};
 use crate::repo_access::{open, parse_id};
 use crate::status::check_stop;
+use crate::working_file::read_working_file;
 use crate::GitError;
 
 fn tree_of<'r>(repository: &'r gix::Repository, sha: &str) -> Result<gix::Tree<'r>, GitError> {
@@ -55,7 +56,7 @@ pub fn compare_files(
             .ok()
             .flatten()
             .is_some();
-        let new = std::fs::read(root.join(&path)).ok();
+        let new = read_working_file(root, &path);
         let kind = match (in_old, &new) {
             (false, None) => continue,
             (false, Some(_)) => ChangeKind::Added,
@@ -99,7 +100,7 @@ fn pair_renames(
         .iter_mut()
         .filter(|file| file.kind == ChangeKind::Added)
     {
-        let Ok(content) = std::fs::read(root.join(&file.path)) else {
+        let Some(content) = read_working_file(root, &file.path) else {
             continue;
         };
         let Ok(id) =
@@ -140,7 +141,7 @@ pub fn compare_diff(
     let old = blob_at(&repository, &from_tree, old_path.unwrap_or(path));
     let new = match to {
         Some(sha) => blob_at(&repository, &tree_of(&repository, sha)?, path),
-        None => std::fs::read(root.join(path)).unwrap_or_default(),
+        None => read_working_file(root, path).unwrap_or_default(),
     };
     check_stop(stop)?;
     Ok(diff_bytes(path, &old, &new, ignore_whitespace))

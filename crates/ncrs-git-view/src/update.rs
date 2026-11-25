@@ -84,7 +84,14 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             }
             match *result {
                 Ok(log) => {
+                    let cursor_sha = state
+                        .commit_at(state.commit_cursor)
+                        .map(|commit| commit.id.clone());
                     state.log = Some(log);
+                    if let Some(row) = cursor_sha.and_then(|sha| state.row_of_commit(&sha)) {
+                        state.commit_cursor = row;
+                    }
+                    state.close_menu_if_stale();
                     let jump = match state.pending_jump.take() {
                         Some(sha) => navigate::jump_to(state, sha),
                         None => Task::none(),
@@ -316,6 +323,13 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         Message::OpenMenu(target) => {
+            if let MenuTarget::Commit(sha) = &target {
+                let Some(row) = state.row_of_commit(sha) else {
+                    return quiet(Task::none());
+                };
+                state.area = Area::Commits;
+                state.commit_cursor = row;
+            }
             state.actions.menu = Some(OpenMenu::new(target));
             quiet(Task::none())
         }
@@ -323,12 +337,12 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             let target = if state.area == Area::Commits {
                 state
                     .commit_at(state.commit_cursor)
-                    .map(|_| MenuTarget::Commit(state.commit_cursor))
+                    .map(|commit| MenuTarget::Commit(commit.id.clone()))
             } else {
                 state
                     .sidebar_items()
                     .get(state.sidebar_cursor)
-                    .and_then(|item| menu_target_of(*item))
+                    .and_then(|item| menu_target_of(state, *item))
             };
             state.actions.menu = target.map(OpenMenu::new);
             quiet(Task::none())
@@ -501,11 +515,15 @@ fn fold_at_cursor(state: &mut State, collapse: bool) -> Option<Action> {
 }
 
 /// What a menu on this row of the left list is about.
-pub fn menu_target_of(item: SidebarItem) -> Option<MenuTarget> {
+pub fn menu_target_of(state: &State, item: SidebarItem) -> Option<MenuTarget> {
     match item {
         SidebarItem::Local(branch) => Some(MenuTarget::LocalBranch(branch)),
         SidebarItem::Remote(branch) => Some(MenuTarget::RemoteBranch(branch)),
-        SidebarItem::Stash(stash) => Some(MenuTarget::Stash(stash)),
+        SidebarItem::Stash(stash) => state
+            .actions
+            .stash_ids
+            .get(stash)
+            .map(|id| MenuTarget::Stash(id.clone())),
         _ => None,
     }
 }

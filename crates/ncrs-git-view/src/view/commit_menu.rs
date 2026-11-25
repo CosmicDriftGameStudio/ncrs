@@ -39,7 +39,7 @@ fn shortcut_of(action: CommitAction) -> Option<Shortcut> {
 }
 
 /// The rows of the menu of the commit in `row`.
-pub fn rows(state: &State, open: OpenMenu, row: usize, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
+pub fn rows(state: &State, open: &OpenMenu, row: usize, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
     let lang = ctx.lang;
     let branch = commit_menu::branch_label(state, lang);
     let with_branch = |msg: Msg| fill_template(lang.text(msg), &[("{branch}", &branch)]);
@@ -87,7 +87,7 @@ pub fn rows(state: &State, open: OpenMenu, row: usize, ctx: ViewCtx<'_>) -> Vec<
 
 fn reset_submenu(
     state: &State,
-    open: OpenMenu,
+    open: &OpenMenu,
     row: usize,
     label: String,
     label_of: &impl Fn(CommitAction) -> String,

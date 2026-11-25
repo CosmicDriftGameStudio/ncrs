@@ -102,7 +102,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             },
             palette,
         );
-        context_area(shown, Message::OpenMenu(MenuTarget::Commit(row)))
+        context_area(shown, Message::OpenMenu(MenuTarget::Commit(commit.id.clone())))
     });
     let mut rows = Column::new();
     rows = rows.extend(working);

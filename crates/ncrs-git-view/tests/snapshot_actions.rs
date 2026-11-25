@@ -145,6 +145,9 @@ mod ui_tests {
         state.actions.sync = Some(sync());
         state.area = Area::Sidebar;
         state.sidebar_cursor = cursor;
+        state.actions.stash_ids = (0..state.actions.stashes.len())
+            .map(|index| format!("stash-{index}"))
+            .collect();
         state.actions.menu = Some(OpenMenu::new(target));
         state
     }
@@ -163,7 +166,7 @@ mod ui_tests {
 
     #[test]
     fn stash_menu_picture() {
-        let state = with_menu(MenuTarget::Stash(0), 24);
+        let state = with_menu(MenuTarget::Stash("stash-0".to_owned()), 24);
         picture(&state, "tests/snapshots/git-stash-menu-cosmic");
     }
 
@@ -559,8 +562,9 @@ mod ui_tests {
         state.area = Area::Commits;
         state.commit_cursor = 3;
         state.marked_commit = Some(commit(6).id);
+        let opened_on = state.commit_at(3).unwrap().id.clone();
         state.actions.menu = Some(OpenMenu {
-            target: MenuTarget::Commit(3),
+            target: MenuTarget::Commit(opened_on),
             cursor,
             submenu,
         });

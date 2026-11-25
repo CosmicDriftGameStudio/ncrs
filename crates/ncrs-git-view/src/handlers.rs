@@ -349,21 +349,21 @@ pub fn current_branch(state: &State) -> String {
 
 /// The row a menu action is about: the open menu's, else the one under the cursor.
 fn menu_subject(state: &State) -> Option<MenuTarget> {
-    state.actions.menu.map(|open| open.target).or_else(|| {
+    state.actions.menu.clone().map(|open| open.target).or_else(|| {
         state
             .sidebar_items()
             .get(state.sidebar_cursor)
-            .and_then(|item| menu_target_of(*item))
+            .and_then(|item| menu_target_of(state, *item))
     })
 }
 
-fn branch_of(state: &State, target: MenuTarget) -> Option<String> {
+fn branch_of(state: &State, target: &MenuTarget) -> Option<String> {
     let overview = state.overview.as_ref()?;
     match target {
         MenuTarget::LocalBranch(index) => {
-            overview.local.get(index).map(|branch| branch.name.clone())
+            overview.local.get(*index).map(|branch| branch.name.clone())
         }
-        MenuTarget::RemoteBranch(index) => overview.remote.get(index).cloned(),
+        MenuTarget::RemoteBranch(index) => overview.remote.get(*index).cloned(),
         MenuTarget::Stash(_) | MenuTarget::Conflict(_) | MenuTarget::Commit(_) => None,
     }
 }
@@ -390,25 +390,29 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
     state.actions.menu = None;
     if action == MenuAction::NewBranchFrom {
         let from = target
-            .and_then(|found| branch_of(state, found))
+            .and_then(|found| branch_of(state, &found))
             .unwrap_or_else(|| current_branch(state));
         return begin_new_branch(state, from);
     }
     let Some(chosen) = target else {
         return quiet(Task::none());
     };
-    let branch = branch_of(state, chosen);
-    let stash = match chosen {
-        MenuTarget::Stash(index) => state.actions.stash_ids.get(index).cloned(),
+    let branch = branch_of(state, &chosen);
+    let stash = match &chosen {
+        MenuTarget::Stash(id) => state
+            .actions
+            .stash_ids
+            .contains(id)
+            .then(|| id.clone()),
         _ => None,
     };
     // The one key for "delete" means what the row it is pressed on can lose.
-    let target_action = match (action, chosen) {
+    let target_action = match (action, &chosen) {
         (MenuAction::Delete, MenuTarget::RemoteBranch(_)) => MenuAction::DeleteOnRemote,
         (MenuAction::Delete, MenuTarget::Stash(_)) => MenuAction::StashDrop,
         (other, _) => other,
     };
-    let question = match (target_action, chosen) {
+    let question = match (target_action, &chosen) {
         (MenuAction::Delete, MenuTarget::LocalBranch(_)) => {
             branch.clone().map(|name| Question::DeleteBranch { name })
         }
@@ -421,13 +425,15 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                 })
             })
         }
-        (MenuAction::StashDrop, MenuTarget::Stash(index)) => {
+        (MenuAction::StashDrop, MenuTarget::Stash(id)) => {
             stash.clone().map(|sha| Question::DropStash {
                 sha,
                 message: state
                     .actions
-                    .stashes
-                    .get(index)
+                    .stash_ids
+                    .iter()
+                    .position(|known| known == id)
+                    .and_then(|index| state.actions.stashes.get(index))
                     .map(|entry| entry.message.clone())
                     .unwrap_or_default(),
             })
@@ -438,7 +444,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         return ask(state, question);
     }
     if target_action == MenuAction::Rename {
-        if let (MenuTarget::LocalBranch(_), Some(from)) = (chosen, branch.clone()) {
+        if let (MenuTarget::LocalBranch(_), Some(from)) = (&chosen, branch.clone()) {
             state.actions.dialog = Some(Dialog::Rename(RenameBranch {
                 name: from.clone(),
                 from,
@@ -447,7 +453,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         }
         return quiet(Task::none());
     }
-    let job = match (target_action, chosen) {
+    let job = match (target_action, &chosen) {
         (MenuAction::Checkout, MenuTarget::LocalBranch(_)) => branch.map(Job::Checkout),
         (MenuAction::CheckoutAsLocal, MenuTarget::RemoteBranch(_)) => {
             branch.map(Job::CheckoutRemote)

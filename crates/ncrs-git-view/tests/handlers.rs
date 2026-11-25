@@ -389,7 +389,8 @@ async fn dropping_a_stash_and_deleting_on_the_remote_ask_and_cannot_be_undone() 
     sh(dir.path(), &["stash", "push", "-q", "-m", "work"]);
     let mut state = opened(dir.path()).await;
 
-    send(&mut state, Message::OpenMenu(MenuTarget::Stash(0))).await;
+    let stash = state.actions.stash_ids[0].clone();
+    send(&mut state, Message::OpenMenu(MenuTarget::Stash(stash))).await;
     send(&mut state, Message::MenuPressed(MenuAction::StashDrop)).await;
     let Some(Dialog::Ask(question)) = state.actions.dialog.clone() else {
         panic!("no question: {:?}", state.actions.dialog);
@@ -674,7 +675,8 @@ fn row_of(state: &State, summary: &str) -> usize {
 /// Opens the menu on the commit and runs one entry, as the menu does.
 async fn run(state: &mut State, summary: &str, action: CommitAction) {
     let row = row_of(state, summary);
-    send(state, Message::OpenMenu(MenuTarget::Commit(row))).await;
+    let sha = state.commit_at(row).unwrap().id.clone();
+    send(state, Message::OpenMenu(MenuTarget::Commit(sha))).await;
     send(state, Message::CommitAction(action)).await;
 }
 
@@ -838,18 +840,19 @@ async fn the_keys_walk_the_menu_and_its_submenu() {
     state.area = Area::Commits;
     state.commit_cursor = row_of(&state, "second");
     send(&mut state, Message::OpenMenuKey).await;
-    let open = state.actions.menu.unwrap();
-    assert_eq!(open.target, MenuTarget::Commit(state.commit_cursor));
+    let open = state.actions.menu.clone().unwrap();
+    let cursor_sha = state.commit_at(state.commit_cursor).unwrap().id.clone();
+    assert_eq!(open.target, MenuTarget::Commit(cursor_sha));
     for _ in 0..6 {
         send(&mut state, Message::Down).await;
     }
-    assert_eq!(state.actions.menu.unwrap().cursor, 6);
+    assert_eq!(state.actions.menu.clone().unwrap().cursor, 6);
     send(&mut state, Message::Right).await;
-    assert_eq!(state.actions.menu.unwrap().submenu, Some(0));
+    assert_eq!(state.actions.menu.clone().unwrap().submenu, Some(0));
     send(&mut state, Message::Down).await;
-    assert_eq!(state.actions.menu.unwrap().submenu, Some(1));
+    assert_eq!(state.actions.menu.clone().unwrap().submenu, Some(1));
     send(&mut state, Message::Left).await;
-    assert_eq!(state.actions.menu.unwrap().submenu, None);
+    assert_eq!(state.actions.menu.clone().unwrap().submenu, None);
     send(&mut state, Message::Escape).await;
     assert_eq!(state.actions.menu, None);
 }
@@ -878,6 +881,7 @@ async fn space_marks_a_commit_and_the_comparison_runs() {
     );
     assert_eq!(shown.files.len(), 1);
     assert!(shown.diff.is_some());
+    state.commit_cursor = row_of(&state, "second");
     send(&mut state, Message::MarkCommit).await;
     assert_eq!(state.marked_commit, None);
 }
@@ -895,4 +899,58 @@ async fn comparing_with_the_working_copy_lists_the_differences() {
     let shown = state.diff.as_ref().unwrap();
     assert_eq!(shown.file, 1);
     assert!(shown.diff.is_some());
+}
+
+#[tokio::test]
+async fn a_right_click_on_a_commit_moves_the_cursor_to_it() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    state.area = Area::Sidebar;
+    let sha = state.commit_at(row_of(&state, "second")).unwrap().id.clone();
+    send(&mut state, Message::OpenMenu(MenuTarget::Commit(sha))).await;
+    assert_eq!(state.commit_cursor, row_of(&state, "second"));
+    assert_eq!(state.area, Area::Commits);
+}
+
+#[tokio::test]
+async fn a_commit_menu_closes_when_its_commit_is_gone_after_a_reload() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    let sha = state.commit_at(row_of(&state, "second")).unwrap().id.clone();
+    send(&mut state, Message::OpenMenu(MenuTarget::Commit(sha.clone()))).await;
+    state.log.as_mut().unwrap().commits.retain(|commit| commit.id != sha);
+    send(&mut state, Message::CommitAction(CommitAction::CopySha)).await;
+    assert_eq!(state.actions.menu, None);
+    assert_eq!(state.copied_sha, None, "nothing is copied for a commit that is gone");
+}
+
+#[tokio::test]
+async fn the_mark_stays_on_its_commit_when_the_list_grows_at_the_top() {
+    let dir = menu_repo();
+    let mut state = opened(dir.path()).await;
+    state.area = Area::Commits;
+    state.commit_cursor = row_of(&state, "second");
+    commit_file(dir.path(), "c.txt", "c\n", "newest");
+    send(&mut state, Message::Refresh).await;
+    send(&mut state, Message::MarkCommit).await;
+    let marked = state.marked_commit.clone().unwrap();
+    assert_eq!(
+        state.commit_at(row_of(&state, "second")).unwrap().id,
+        marked,
+        "the cursor followed its commit down one row"
+    );
+}
+
+#[tokio::test]
+async fn a_stash_menu_acts_on_nothing_once_its_stash_is_gone() {
+    let dir = menu_repo();
+    write(dir.path(), "a.txt", "dirty\n");
+    sh(dir.path(), &["stash", "push", "-q", "-m", "work"]);
+    let mut state = opened(dir.path()).await;
+    let stash = state.actions.stash_ids[0].clone();
+    send(&mut state, Message::OpenMenu(MenuTarget::Stash(stash))).await;
+    sh(dir.path(), &["stash", "drop", "-q"]);
+    send(&mut state, Message::Refresh).await;
+    send(&mut state, Message::MenuPressed(MenuAction::StashDrop)).await;
+    assert_eq!(state.actions.dialog, None);
 }

@@ -5,9 +5,9 @@ use iced::widget::{column, container, row, Column, Space};
 use iced::{alignment, Element, Length};
 use ncrs_git::{FileDiff, RowKind};
 use ncrs_i18n::Msg;
-use ncrs_ui_kit::format::ellipsize_end;
+use ncrs_ui_kit::format::{ellipsize_end, fit_middle};
 use ncrs_ui_kit::git_rows::{
-    change_row, diff_cell, diff_hunk_header, diff_unified_line, ChangeRow, DiffTone,
+    change_row, diff_cell, COUNT_WIDTH, diff_hunk_header, diff_unified_line, ChangeRow, DiffTone,
 };
 use ncrs_ui_kit::kit::{labelled_checkbox, segmented, Check};
 use ncrs_ui_kit::page_scroll::page_scroll;
@@ -22,6 +22,8 @@ use crate::message::Message;
 use crate::state::{Detail, DiffState};
 
 const COMMIT_LINE_CHARS: usize = 48;
+/// What a file name of the list at the right keeps of the pane: the counts, the scroll bar and the padding take the rest.
+const FILE_LABEL_ROOM: f32 = size::SIDE_PANE - COUNT_WIDTH - 70.0;
 
 /// The commit line of the header: the short hash and the first line of the
 /// message, as far as `detail` is the commit this diff is about.
@@ -117,6 +119,7 @@ pub fn view<'a>(
     .height(size::HEADER)
     .center_y(size::HEADER);
     let body = match &shown.diff {
+        _ if shown.files.is_empty() => notice(ctx, Msg::GitViewCompareNoDifferences),
         Some(diff) => lines(diff, shown.unified, ctx),
         None => notice(ctx, Msg::GitViewDiffLoading),
     };
@@ -124,7 +127,7 @@ pub fn view<'a>(
         change_row(
             ChangeRow {
                 depth: 0,
-                label: file.path.clone(),
+                label: fit_middle(&file.path, FILE_LABEL_ROOM, font_size::BODY),
                 added: file.added,
                 removed: file.removed,
                 no_counts: file.binary,

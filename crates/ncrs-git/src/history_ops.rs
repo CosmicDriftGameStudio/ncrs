@@ -30,8 +30,12 @@ impl ResetMode {
 pub struct ResetLoss {
     /// Commits of the branch that are not reachable from the target.
     pub commits: u32,
-    /// Tracked files with changes, staged or not. Untracked files stay.
+    /// Tracked files with changes, staged or not. Untracked files stay unless
+    /// the target has a file at their place, see `overwritten_untracked`.
     pub changed_files: u32,
+    /// Files, links or folders that git does not track now, ignored ones too,
+    /// but the target does: the reset writes its own over them.
+    pub overwritten_untracked: u32,
 }
 
 /// A pick or revert: it either went through (with its undo) or stopped on conflicts.
@@ -103,7 +107,7 @@ impl Git {
         let branch = self.current_branch().unwrap_or_else(|| "HEAD".to_string());
         let index_before = self.index_tree();
         let mut saved = if mode == ResetMode::Hard {
-            self.save_changed_tracked()?
+            self.save_changed_tracked(&target)?
         } else {
             Vec::new()
         };
@@ -140,9 +144,11 @@ impl Git {
             .iter()
             .filter(|entry| !entry.is_untracked())
             .count();
+        let overwritten = self.untracked_in_the_way(&target)?.len();
         Ok(ResetLoss {
             commits,
             changed_files: u32::try_from(changed_files).unwrap_or(u32::MAX),
+            overwritten_untracked: u32::try_from(overwritten).unwrap_or(u32::MAX),
         })
     }
 

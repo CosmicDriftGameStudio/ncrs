@@ -99,7 +99,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             };
             let current = is_current_branch(state, item);
             let fitted = fit_end(&label, label_budget(width, depth, &trail), font_size::BODY);
-            let menu_target = menu_target_of(item);
+            let menu_target = menu_target_of(state, item);
             let tree = TreeRow {
                 depth,
                 open,

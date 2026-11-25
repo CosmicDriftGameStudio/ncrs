@@ -12895,28 +12895,10 @@
       "de": "WIP {count}"
     },
     {
-      "key": "git_view.worktree_clean",
-      "context": "Git tab: part of a worktree line that says the worktree has no changes. One word.",
-      "en": "clean",
-      "de": "sauber"
-    },
-    {
-      "key": "git_view.worktree_to_main",
-      "context": "Git tab: second line of a worktree row, after the branch name, when the worktree has changes or commits of its own: the arrows on the first line count commits against the main branch. {main} is the name of the main branch, e.g. main. Short, lower case.",
-      "en": "to {main}",
-      "de": "zu {main}"
-    },
-    {
       "key": "git_view.worktree_merged",
       "context": "Git tab: part of a worktree line that says everything on its branch is already in the main branch, so the worktree can go. One word.",
       "en": "merged",
       "de": "gemergt"
-    },
-    {
-      "key": "git_view.worktree_detached",
-      "context": "Git tab: part of a worktree line that says no branch is checked out in it, only a single commit. One word.",
-      "en": "detached",
-      "de": "losgelöst"
     },
     {
       "key": "git_view.worktree_detached_at",
@@ -13001,6 +12983,12 @@
       "context": "Git tab: what the diff says for a text file that is too large to compare line by line.",
       "en": "The file is too large to compare.",
       "de": "Die Datei ist zu groß zum Vergleichen."
+    },
+    {
+      "key": "git_view.compare_no_differences",
+      "context": "Git tab: what a comparison of two commits, or of a commit with the working copy, says when they do not differ in any file.",
+      "en": "These two versions do not differ.",
+      "de": "Diese beiden Stände unterscheiden sich nicht."
     },
     {
       "key": "git_view.diff_no_changes",
@@ -14083,24 +14071,6 @@
       "de": "Repository suchen…"
     },
     {
-      "key": "git_view.command_choose_repository",
-      "context": "Command list (F1) entry of the Git tab that opens the list of repositories in the header. Imperative.",
-      "en": "Choose repository",
-      "de": "Repository wählen"
-    },
-    {
-      "key": "git_view.command_choose_branch",
-      "context": "Command list (F1) entry of the Git tab that opens the list of branches in the header. Imperative.",
-      "en": "Choose branch",
-      "de": "Branch wählen"
-    },
-    {
-      "key": "git_view.command_reset_panes",
-      "context": "Command list (F1) entry of the Git tab that puts the sidebar and the detail pane back to their standard widths. Imperative.",
-      "en": "Reset pane widths",
-      "de": "Breiten zurücksetzen"
-    },
-    {
       "key": "git_view.wip_title",
       "context": "Git tab, commit list: title of the first row, which stands for the changes in the folder that are not committed yet (work in progress). Short.",
       "en": "Local changes",
@@ -14349,8 +14319,8 @@
     {
       "key": "git_view.status_commits_keys",
       "context": "Git tab: status line while the commit list has the keys. {head} jumps to the checked-out commit, {wip} to the local changes, {parent} to the parent commit, {copy} copies the SHA; each is the key as written on the keyboard.",
-      "en": "↑↓ choose · Enter to the files · {head} HEAD · {wip} local changes · {parent} parent · {copy} copy SHA · Tab next area · / filter · Esc closes",
-      "de": "↑↓ wählen · Enter zu den Dateien · {head} HEAD · {wip} lokale Änderungen · {parent} Eltern · {copy} SHA kopieren · Tab nächster Bereich · / Filter · Esc schließt"
+      "en": "↑↓ choose · Enter to the files · {head} HEAD · {wip} local changes · {parent} parent · {copy} copy SHA · Space mark for compare · Tab next area · / filter · Esc closes",
+      "de": "↑↓ wählen · Enter zu den Dateien · {head} HEAD · {wip} lokale Änderungen · {parent} Eltern · {copy} SHA kopieren · Leertaste markiert zum Vergleich · Tab nächster Bereich · / Filter · Esc schließt"
     },
     {
       "key": "git_view.command_repo_picker",

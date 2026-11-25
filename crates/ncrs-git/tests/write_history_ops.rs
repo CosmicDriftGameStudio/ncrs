@@ -232,3 +232,42 @@ fn a_hard_reset_will_not_follow_a_symlink() {
     repo.git.reset(ResetMode::Hard, &base).unwrap_err();
     assert_eq!(read(repo.path(), "outside.txt"), "outside\n");
 }
+
+/// The commit after `target` adds c.txt; b.txt is tracked at `target`, dropped
+/// from the index since and rewritten on disk with other content.
+fn untracked_file_the_target_tracks() -> (Repo, String) {
+    let repo = repo();
+    repo.commit_file("b.txt", "committed\n", "add b");
+    let target = repo.sh(&["rev-parse", "HEAD"]);
+    repo.commit_file("c.txt", "c\n", "add c");
+    repo.sh(&["rm", "--cached", "-q", "b.txt"]);
+    write(repo.path(), "b.txt", "precious\n");
+    (repo, target)
+}
+
+#[test]
+fn a_hard_reset_counts_and_backs_up_an_untracked_file_the_target_tracks() {
+    let (repo, target) = untracked_file_the_target_tracks();
+    let loss = repo.git.reset_loss(&target).unwrap();
+    assert_eq!(loss.overwritten_untracked, 1);
+
+    let undo = repo.git.reset(ResetMode::Hard, &target).unwrap();
+    assert_eq!(read(repo.path(), "b.txt"), "committed\n");
+
+    repo.git.undo(&undo).unwrap();
+    assert_eq!(read(repo.path(), "b.txt"), "precious\n");
+}
+
+#[test]
+fn a_hard_reset_stops_when_a_folder_stands_where_the_target_has_a_file() {
+    let repo = repo();
+    repo.commit_file("b.txt", "committed\n", "add b");
+    let target = repo.sh(&["rev-parse", "HEAD"]);
+    repo.sh(&["rm", "-q", "b.txt"]);
+    repo.sh(&["commit", "-q", "-m", "drop b"]);
+    std::fs::create_dir(repo.path().join("b.txt")).unwrap();
+    write(repo.path(), "b.txt/inner.txt", "precious\n");
+
+    repo.git.reset(ResetMode::Hard, &target).unwrap_err();
+    assert_eq!(read(repo.path(), "b.txt/inner.txt"), "precious\n");
+}

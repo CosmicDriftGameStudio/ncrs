@@ -404,8 +404,30 @@ mod tests {
                 | Msg::GitViewSectionStashes
                 | Msg::GitViewSectionTags
                 | Msg::GitViewSectionWorktrees
+                | Msg::GitViewPickerBranch
+                | Msg::GitViewPickerGroupRemote
+                | Msg::GitViewWorktreePath
+                | Msg::GitViewWipWorktree
+                | Msg::GitViewToolbarBranch
+                | Msg::GitViewDetailCommitter
+                | Msg::GitViewDetailSha
+                | Msg::GitViewDetailBranches
+                | Msg::GitViewCommitCounter
+                | Msg::GitViewColumnGraph
+                | Msg::GitViewTagNamePlaceholder
+                | Msg::RepoRowColumnName
+                | Msg::RepoRowColumnBranch
+                | Msg::KeyBindingsGitHeading
+                | Msg::SettingsFeatureGit
+                | Msg::ActionRepos
+                | Msg::ReposTitle
+                | Msg::ReposMode
+                | Msg::GitViewWipMarker
+                | Msg::GitViewPickerRepository
                 | Msg::GitViewTabTitle
                 | Msg::GitViewWorktreeWip
+                // A number and a unit, the same in every language.
+                | Msg::SplitterWidth
                 | Msg::SettingsHermesSectionChats
                 | Msg::SettingsNotesKeyHidden
                 | Msg::SettingsNotesTitleHermes

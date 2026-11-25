@@ -9,7 +9,10 @@ use ncrs_ui_kit::git_rows::ref_chip;
 use ncrs_ui_kit::kit::{key_cap, segmented};
 use ncrs_ui_kit::page_text::{page_heading_wrapped, page_line, page_paragraph};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
-use ncrs_ui_kit::tree_list::{tree_row, tree_scroll, TreeRow};
+use ncrs_ui_kit::format::{estimated_width, fit_middle};
+use ncrs_ui_kit::tree_list::{
+    tree_row, tree_scroll, TreeRow, LIST_INSET, ROW_OVERHEAD, TREE_INDENT,
+};
 
 use super::commits::{chip_kind, moment};
 use super::DETAIL_ID;
@@ -18,6 +21,10 @@ use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::{Area, DetailRow, State, Subject};
 
+/// Room the scroll bar of the list takes from a label.
+const SCROLL_BAR_ROOM: f32 = 12.0;
+/// The change letter before the name of a file and its gap.
+const FILE_LEAD_ROOM: f32 = 20.0;
 /// How many characters of a parent's id are written.
 const PARENT_SHORT: usize = 7;
 
@@ -85,6 +92,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         "{} \u{b7} +{added} \u{2212}{removed}",
         ncrs_ui_kit::format::files_counted(detail.files.len(), ctx.lang)
     );
+    let width = super::detail_width(state, ctx);
     let files = state.detail_rows().into_iter().map(|entry| match entry {
         DetailRow::Folder { depth, name } => tree_row(
             TreeRow {
@@ -100,26 +108,40 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             palette,
         ),
         DetailRow::File { depth, name, index } => match detail.files.get(index) {
-            Some(file) => tree_row(
-                TreeRow {
-                    depth,
-                    open: None,
-                    label: name,
-                    chosen: state.area == Area::Detail && state.file_cursor == index,
-                    dim: false,
-                    lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
-                    trail: if file.binary {
-                        Vec::new()
-                    } else {
-                        vec![
-                            (format!("+{}", file.added), palette.success),
-                            (format!("\u{2212}{}", file.removed), palette.error),
-                        ]
+            Some(file) => {
+                let trail = if file.binary {
+                    Vec::new()
+                } else {
+                    vec![
+                        (format!("+{}", file.added), palette.success),
+                        (format!("\u{2212}{}", file.removed), palette.error),
+                    ]
+                };
+                let trail_room: f32 = trail
+                    .iter()
+                    .map(|(count, _)| estimated_width(count, font_size::SMALL) + spacing::XS)
+                    .sum();
+                let room = width
+                    - 2.0 * LIST_INSET
+                    - ROW_OVERHEAD
+                    - FILE_LEAD_ROOM
+                    - SCROLL_BAR_ROOM
+                    - TREE_INDENT * depth as f32
+                    - trail_room;
+                tree_row(
+                    TreeRow {
+                        depth,
+                        open: None,
+                        label: fit_middle(&name, room, font_size::BODY),
+                        chosen: state.area == Area::Detail && state.file_cursor == index,
+                        dim: false,
+                        lead: Some((kind_letter(file.kind).to_owned(), palette.text)),
+                        trail,
+                        on_press: Message::FilePressed(index),
                     },
-                    on_press: Message::FilePressed(index),
-                },
-                palette,
-            ),
+                    palette,
+                )
+            }
             None => Space::new().into(),
         },
     });

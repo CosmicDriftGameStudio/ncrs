@@ -89,14 +89,15 @@ pub fn is_open(state: &State) -> bool {
     state
         .actions
         .menu
+        .as_ref()
         .is_some_and(|open| matches!(open.target, MenuTarget::Commit(_)))
 }
 
 /// The row of the open commit menu, else the commit under the cursor of the list.
 fn target_row(state: &State) -> Option<usize> {
-    match state.actions.menu {
-        Some(open) => match open.target {
-            MenuTarget::Commit(row) => Some(row),
+    match &state.actions.menu {
+        Some(open) => match &open.target {
+            MenuTarget::Commit(sha) => state.row_of_commit(sha),
             _ => None,
         },
         None => (state.area == Area::Commits).then_some(state.commit_cursor),
@@ -176,7 +177,7 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                         branch,
                         sha,
                         commits: lost.commits,
-                        changed_files: lost.changed_files,
+                        changed_files: lost.changed_files + lost.overwritten_untracked,
                     }),
                 )
             }
@@ -216,7 +217,8 @@ pub fn handle(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
 
 /// An arrow or Enter while the commit menu is open.
 pub fn key(state: &mut State, message: &Message) -> Outcome {
-    let Some(mut open) = state.actions.menu else {
+    state.close_menu_if_stale();
+    let Some(mut open) = state.actions.menu.clone() else {
         return quiet(Task::none());
     };
     let last = |len: usize| len.saturating_sub(1);
@@ -270,6 +272,11 @@ pub fn key(state: &mut State, message: &Message) -> Outcome {
 }
 
 pub fn act(state: &mut State, action: CommitAction) -> Outcome {
+    let was_open = state.actions.menu.is_some();
+    state.close_menu_if_stale();
+    if was_open && state.actions.menu.is_none() {
+        return quiet(Task::none());
+    }
     let Some(row) = target_row(state) else {
         return quiet(Task::none());
     };

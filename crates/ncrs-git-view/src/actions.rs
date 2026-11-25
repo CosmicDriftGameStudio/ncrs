@@ -114,16 +114,17 @@ pub struct SyncBar {
 }
 
 /// What a menu is opened on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuTarget {
     LocalBranch(usize),
     /// The index into the remote branches of the overview.
     RemoteBranch(usize),
-    Stash(usize),
+    /// The id of the stash: its place in the list moves when stashes come and go.
+    Stash(String),
     /// The index into the conflicts of the merge.
     Conflict(usize),
-    /// The row of the commit list, the working copy row counted.
-    Commit(usize),
+    /// The full SHA of the commit: its row moves when the list reloads.
+    Commit(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,7 +144,7 @@ pub enum MenuAction {
 }
 
 /// The menu that is open: it hangs at the row of its target in the left list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenMenu {
     pub target: MenuTarget,
     /// The entry of a commit menu the keys are on.

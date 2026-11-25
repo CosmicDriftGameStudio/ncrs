@@ -13,7 +13,7 @@ use crate::theme::{self, font_size, git, size, spacing};
 use crate::tree_list::TREE_INDENT;
 
 const NUMBER_WIDTH: f32 = 44.0;
-const COUNT_WIDTH: f32 = 90.0;
+pub const COUNT_WIDTH: f32 = 90.0;
 const SIGN_WIDTH: f32 = 16.0;
 const WASH_ALPHA: f32 = 0.18;
 /// The hatching of the side that has no line: thin diagonals, one every 6 px.

@@ -12,7 +12,7 @@ use crate::GitError;
 const CONTEXT_LINES: u32 = 3;
 const SECTION_CHARS: usize = 80;
 /// Larger files are not diffed line by line.
-const MAX_DIFFED_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_DIFFED_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowKind {

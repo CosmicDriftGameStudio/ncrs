@@ -10,7 +10,7 @@ use ncrs_git::{
 };
 use ncrs_ui_kit::git_rows::{CommitColumn, CommitColumns};
 
-use crate::actions::{Actions, WipFocus};
+use crate::actions::{Actions, MenuTarget, WipFocus};
 use crate::panes::{PaneDrag, Split};
 use crate::picker::Picker;
 
@@ -485,6 +485,29 @@ impl State {
     pub fn commit_at(&self, row: usize) -> Option<&LogCommit> {
         let index = row.checked_sub(usize::from(self.has_working_row()))?;
         self.log.as_ref()?.commits.get(index)
+    }
+
+    /// The row of the list that shows the commit, the working copy row counted.
+    pub fn row_of_commit(&self, sha: &str) -> Option<usize> {
+        let index = self
+            .log
+            .as_ref()?
+            .commits
+            .iter()
+            .position(|commit| commit.id == sha)?;
+        Some(index + usize::from(self.has_working_row()))
+    }
+
+    /// Closes the open menu when the commit or stash it was opened on is gone.
+    pub fn close_menu_if_stale(&mut self) {
+        let gone = match self.actions.menu.as_ref().map(|open| &open.target) {
+            Some(MenuTarget::Commit(sha)) => self.row_of_commit(sha).is_none(),
+            Some(MenuTarget::Stash(id)) => !self.actions.stash_ids.contains(id),
+            _ => false,
+        };
+        if gone {
+            self.actions.menu = None;
+        }
     }
 
     pub fn subject_at(&self, row: usize) -> Option<Subject> {

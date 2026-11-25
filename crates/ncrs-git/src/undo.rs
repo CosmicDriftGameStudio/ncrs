@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::hash::{Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
@@ -353,17 +354,73 @@ impl Git {
     }
 
     /// The files a hard reset is about to lose, saved as `save_files` does.
-    pub(crate) fn save_changed_tracked(&self) -> Result<Vec<SavedFile>, ActionError> {
+    /// Together with what lies where the reset to `target` writes a tracked
+    /// file: a folder cannot be saved, so it stops the reset.
+    pub(crate) fn save_changed_tracked(&self, target: &str) -> Result<Vec<SavedFile>, ActionError> {
         let output = self.ok(&["diff", "--name-only", "-z", "HEAD", "--"])?;
-        let paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        let mut paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
             .split('\0')
             .filter(|path| !path.is_empty())
             .map(str::to_string)
             .collect();
+        for path in self.untracked_in_the_way(target)? {
+            let is_folder = fs::symlink_metadata(self.root().join(&path))
+                .is_ok_and(|found| found.is_dir());
+            if is_folder {
+                return Err(ActionError::Io(format!(
+                    "{path} is a folder the reset would replace"
+                )));
+            }
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
         for path in &paths {
             refuse_symlinks(self.root(), path)?;
         }
         self.save_files(&paths)
+    }
+
+    /// Paths with something on the disk that the index does not track and
+    /// `target` does, or that stand where `target` needs a folder.
+    pub(crate) fn untracked_in_the_way(&self, target: &str) -> Result<Vec<String>, ActionError> {
+        let names = |output: crate::cli::Output| -> Vec<String> {
+            String::from_utf8_lossy(&output.stdout)
+                .split('\0')
+                .filter(|path| !path.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+        let in_target = names(self.ok(&["ls-tree", "-r", "-z", "--name-only", target, "--"])?);
+        let in_index: HashSet<String> = names(self.ok(&["ls-files", "-z"])?).into_iter().collect();
+        let mut found = BTreeSet::new();
+        for path in in_target.iter().filter(|path| !in_index.contains(*path)) {
+            found.extend(self.thing_at_or_above(path, &in_index));
+        }
+        Ok(found.into_iter().collect())
+    }
+
+    /// `path` if something is there, else the first untracked non-folder on the
+    /// way to it.
+    fn thing_at_or_above(&self, path: &str, in_index: &HashSet<String>) -> Option<String> {
+        let mut current = self.root().to_path_buf();
+        let mut prefix = String::new();
+        let parts: Vec<&str> = path.split('/').collect();
+        for (place, part) in parts.iter().enumerate() {
+            current.push(part);
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            let here = fs::symlink_metadata(&current).ok()?;
+            if place + 1 == parts.len() {
+                return Some(prefix);
+            }
+            if !here.is_dir() {
+                return (!in_index.contains(&prefix)).then_some(prefix);
+            }
+        }
+        None
     }
 
     fn check_saved(&self, saved: &[SavedFile]) -> Result<(), ActionError> {

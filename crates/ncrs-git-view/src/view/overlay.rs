@@ -67,15 +67,18 @@ fn checked_out(state: &State) -> String {
         .unwrap_or_default()
 }
 
-fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
+fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
     let lang = ctx.lang;
     let text = |msg| lang.text(msg).to_owned();
     let entry = |label, action, enabled| entry(ctx.keys, label, action, enabled);
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
-    match menu.target {
-        MenuTarget::Commit(row) => super::commit_menu::rows(state, menu, row, ctx),
-        MenuTarget::LocalBranch(index) => {
+    match &menu.target {
+        MenuTarget::Commit(sha) => state
+            .row_of_commit(sha)
+            .map(|row| super::commit_menu::rows(state, menu, row, ctx))
+            .unwrap_or_default(),
+        &MenuTarget::LocalBranch(index) => {
             let branch = state
                 .overview
                 .as_ref()
@@ -153,7 +156,7 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
             MenuRow::Separator,
             entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true),
         ],
-        MenuTarget::Conflict(index) => {
+        &MenuTarget::Conflict(index) => {
             let conflict = state
                 .actions
                 .merge
@@ -207,9 +210,11 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
 /// the files in conflict.
 fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
     let top = super::body_top(state);
-    match target {
-        MenuTarget::Commit(row) => super::commit_menu::anchor(state, row, ctx),
-        MenuTarget::Conflict(index) => Point::new(
+    match &target {
+        MenuTarget::Commit(sha) => {
+            super::commit_menu::anchor(state, state.row_of_commit(sha).unwrap_or_default(), ctx)
+        }
+        &MenuTarget::Conflict(index) => Point::new(
             ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
             top + (index + 1) as f32 * size::ROW_TALL,
         ),
@@ -217,7 +222,7 @@ fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
             let row = state
                 .sidebar_items()
                 .iter()
-                .position(|item| menu_target_of(*item) == Some(target))
+                .position(|item| menu_target_of(state, *item).as_ref() == Some(&target))
                 .unwrap_or_default();
             Point::new(
                 LIST_INSET + ROW_OVERHEAD + 2.0 * TREE_INDENT,
@@ -228,9 +233,9 @@ fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
 }
 
 fn menu<'a>(state: &State, open: OpenMenu, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let rows = rows_of(state, open, ctx);
+    let rows = rows_of(state, &open, ctx);
     let height = menu_rows_height(&rows);
-    let mut origin = anchor(state, open.target, ctx);
+    let mut origin = anchor(state, open.target.clone(), ctx);
     origin.y = origin.y.min(ctx.window.height - height).max(0.0);
     popup_layer(
         popup_menu_rows_in(rows, MENU_WIDTH, origin, ctx.window, ctx.palette),
@@ -661,7 +666,7 @@ pub fn over<'a>(
         }
         None => {}
     }
-    if let Some(open) = state.actions.menu {
+    if let Some(open) = state.actions.menu.clone() {
         return stack![page, menu(state, open, ctx)].into();
     }
     page

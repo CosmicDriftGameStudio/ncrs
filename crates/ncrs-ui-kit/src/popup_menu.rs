@@ -6,7 +6,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{
     button, column, container, mouse_area, opaque, pin, row, stack, text, Column, Space,
 };
-use iced::{alignment, Color, Element, Length, Point, Size};
+use iced::{alignment, Background, Color, Element, Length, Point, Size};
 
 use crate::layout::{
     MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_SUB_WIDTH, MENU_WIDTH,
@@ -50,13 +50,37 @@ pub fn menu_item<'a, M: Clone + 'a>(
     on_hover: Option<M>,
     palette: &Palette,
 ) -> Element<'a, M> {
+    menu_item_toned(content, is_selected, false, on_press, on_hover, palette)
+}
+
+/// [`menu_item`], with the cursor filled in the error color when `danger`.
+fn menu_item_toned<'a, M: Clone + 'a>(
+    content: impl Into<Element<'a, M>>,
+    is_selected: bool,
+    danger: bool,
+    on_press: Option<M>,
+    on_hover: Option<M>,
+    palette: &Palette,
+) -> Element<'a, M> {
     let enabled = on_press.is_some();
     let item = button(content)
         .on_press_maybe(on_press)
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(MENU_ITEM_HEIGHT)
-        .width(Length::Fill)
-        .style(theme::menu_item(palette, is_selected));
+        .width(Length::Fill);
+    let item = if danger {
+        let plain = theme::menu_item(palette, is_selected);
+        let error = palette.error;
+        item.style(move |theme, status| {
+            let mut style = plain(theme, status);
+            if is_selected {
+                style.background = Some(Background::Color(error));
+            }
+            style
+        })
+    } else {
+        item.style(theme::menu_item(palette, is_selected))
+    };
     match (enabled, on_hover) {
         (true, Some(hover)) => Element::from(mouse_area(item).on_enter(hover)),
         _ => item.into(),
@@ -183,8 +207,12 @@ fn entry_item<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let (mut label_color, key_color) =
         menu_entry_colors(palette, entry.on_press.is_some(), entry.is_selected);
-    if danger && entry.on_press.is_some() && !entry.is_selected {
-        label_color = palette.error;
+    if danger && entry.on_press.is_some() {
+        label_color = if entry.is_selected {
+            palette.cursor_text
+        } else {
+            palette.error
+        };
     }
     let key_text = trail.map(str::to_owned).or(entry.key).unwrap_or_default();
     let content = row![
@@ -199,9 +227,10 @@ fn entry_item<'a, M: Clone + 'a>(
             .wrapping(Wrapping::None),
     ]
     .align_y(alignment::Vertical::Center);
-    menu_item(
+    menu_item_toned(
         content,
         entry.is_selected,
+        danger,
         entry.on_press,
         entry.on_hover,
         palette,

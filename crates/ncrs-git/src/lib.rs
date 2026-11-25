@@ -36,6 +36,7 @@ mod status;
 mod summary;
 mod sync;
 mod undo;
+mod working_file;
 
 pub use action_error::ActionError;
 pub use blame::{blame, Blame, BlameGroup, BlameLimit, BlameLine};
