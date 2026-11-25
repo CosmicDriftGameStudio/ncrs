@@ -244,8 +244,10 @@ fn an_unattended_pull_is_refused_while_a_merge_has_left_its_stash() {
     unattended.pull(None).unwrap();
 
     let head = repo.sh(&["rev-parse", "HEAD"]);
-    write(repo.path(), ".git/MERGE_AUTOSTASH", &head);
-    unattended.pull(None).unwrap_err();
+    for left in [head.as_str(), "refs/stash", &head[..8], ""] {
+        write(repo.path(), ".git/MERGE_AUTOSTASH", left);
+        unattended.pull(None).unwrap_err();
+    }
 }
 
 #[cfg(unix)]

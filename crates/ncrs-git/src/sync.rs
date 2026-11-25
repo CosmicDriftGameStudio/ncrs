@@ -141,13 +141,22 @@ impl Git {
 
     /// A pull applies a stash left by an earlier merge, which looks into submodules.
     fn refuse_left_autostash(&self) -> Result<(), ActionError> {
-        let left = ["rev-parse", "--verify", "--quiet", "MERGE_AUTOSTASH"];
-        if self.is_unattended() && self.try_text(&left).is_some() {
+        if self.is_unattended() && self.has_left_autostash()? {
             return Err(ActionError::Other {
                 git_output: "a merge has left its stash (MERGE_AUTOSTASH)".to_string(),
             });
         }
         Ok(())
+    }
+
+    /// An older git takes whatever the file says, a newer one only a ref, which
+    /// need not be a file.
+    fn has_left_autostash(&self) -> Result<bool, ActionError> {
+        let file = self.text(&["rev-parse", "--git-path", "MERGE_AUTOSTASH"])?;
+        let is_file_absent = std::fs::symlink_metadata(self.root().join(file))
+            .is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound);
+        let as_ref = ["rev-parse", "--verify", "--quiet", "MERGE_AUTOSTASH"];
+        Ok(!is_file_absent || self.run(&as_ref, None)?.success)
     }
 
     /// `core.worktree` can name a folder outside the repository, whose files a
