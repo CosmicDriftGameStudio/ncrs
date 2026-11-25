@@ -17,12 +17,15 @@ impl Git {
     }
 
     pub fn checkout(&self, branch: &str) -> Result<(), ActionError> {
+        // A partial clone fetches what the checkout lacks.
+        self.refuse_commands_of_the_repository()?;
         self.ok(&["checkout", plain_ref(branch)?, "--"])?;
         Ok(())
     }
 
     /// `remote_branch` is `origin/feature`: makes a local `feature` that tracks it.
     pub fn checkout_remote_branch(&self, remote_branch: &str) -> Result<(), ActionError> {
+        self.refuse_commands_of_the_repository()?;
         self.ok(&["checkout", "--track", plain_ref(remote_branch)?])?;
         Ok(())
     }

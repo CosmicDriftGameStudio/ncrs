@@ -58,6 +58,7 @@ fn an_unattended_fetch_is_refused_when_the_repository_config_runs_commands() {
     unattended.fetch(Some("origin")).unwrap_err();
     unattended.pull(None).unwrap_err();
     unattended.push().unwrap_err();
+    unattended.switch_to_default().unwrap_err();
     repo.git.fetch(Some("origin")).unwrap();
 }
 
@@ -71,4 +72,35 @@ fn content_filters_of_the_repository_are_found_and_the_users_own_are_not() {
     assert!(repo.git.has_content_filters().unwrap());
     let unattended = Git::open_unattended(repo.path()).unwrap();
     assert!(unattended.has_content_filters().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unattended_pull_leaves_submodules_alone() {
+    let (_origin, repo) = with_origin();
+    let library = git_cli::repo();
+    let marker = library.path().join("program-ran");
+    repo.sh(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        library.path().to_str().unwrap(),
+        "library",
+    ]);
+    repo.sh(&["commit", "-q", "-m", "library"]);
+    repo.sh(&["push", "-q", "origin", "HEAD"]);
+    repo.sh(&["config", "submodule.recurse", "true"]);
+    repo.sh(&["config", "submodule.library.fetchRecurseSubmodules", "true"]);
+    let command = format!("touch {}; git-upload-pack", marker.display());
+    repo.sh(&["-C", "library", "config", "remote.origin.uploadpack", &command]);
+
+    let unattended = Git::open_unattended(repo.path()).unwrap();
+    unattended.fetch(Some("origin")).unwrap();
+    unattended.pull(None).unwrap();
+    unattended.push().unwrap();
+    assert!(!marker.exists());
+
+    let _attended = repo.git.pull(None);
+    assert!(marker.exists(), "the program of the submodule would run");
 }

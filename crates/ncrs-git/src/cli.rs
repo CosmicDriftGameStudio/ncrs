@@ -241,10 +241,17 @@ pub enum Prompts {
 
 /// The only transports an unattended call may use: no `ext::` command transport.
 const UNATTENDED_PROTOCOLS: &str = "https:http:ssh:git:file";
-/// `-c` settings of an unattended call: no command transport, and no
-/// background maintenance that a fetch would start (it runs the repository's
-/// own gc hooks).
-const UNATTENDED_SETTINGS: [&str; 3] = ["protocol.ext.allow=never", "maintenance.auto=false", "gc.auto=0"];
+/// `-c` settings of an unattended call: no command transport, no background
+/// maintenance that a fetch would start (it runs the repository's own gc hooks),
+/// and nothing in submodules: their config is not checked for commands.
+const UNATTENDED_SETTINGS: [&str; 6] = [
+    "protocol.ext.allow=never",
+    "maintenance.auto=false",
+    "gc.auto=0",
+    "submodule.recurse=false",
+    "fetch.recurseSubmodules=false",
+    "push.recurseSubmodules=no",
+];
 /// How long an unattended call may take before its git is killed.
 const UNATTENDED_TIMEOUT: Duration = Duration::from_secs(300);
 /// What a killed git's pipes may still deliver; a child of git (ssh) can hold them open.

@@ -86,7 +86,7 @@ impl Git {
 
     /// Nobody looks at what an unattended call starts, so the repository's own
     /// config must not name a program for it.
-    fn refuse_commands_of_the_repository(&self) -> Result<(), ActionError> {
+    pub(crate) fn refuse_commands_of_the_repository(&self) -> Result<(), ActionError> {
         if self.is_unattended() && self.repository_config_runs_commands() {
             return Err(ActionError::Other {
                 git_output: "the repository config runs commands".to_string(),
@@ -124,13 +124,17 @@ impl Git {
             .current_branch()
             .and_then(|branch| self.branch_setting(&branch, "remote"))
             .unwrap_or_else(|| "origin".to_string());
-        let output = match strategy {
-            Some(chosen) => {
-                let [rebase, fast_forward] = chosen.settings();
-                self.run(&["-c", rebase, "-c", fast_forward, "pull"], None)?
-            }
-            None => self.run(&["pull"], None)?,
-        };
+        let mut args = Vec::new();
+        if let Some(chosen) = strategy {
+            let [rebase, fast_forward] = chosen.settings();
+            args.extend(["-c", rebase, "-c", fast_forward]);
+        }
+        args.push("pull");
+        if self.is_unattended() {
+            // A setting of one submodule beats `fetch.recurseSubmodules`.
+            args.push("--no-recurse-submodules");
+        }
+        let output = self.run(&args, None)?;
         if output.success {
             return Ok(IntegrateOutcome::Completed);
         }
@@ -339,6 +343,10 @@ fn setting_runs_commands(name: &str, value: &str) -> bool {
         "core.sshcommand" | "core.gitproxy" | "core.askpass" | "core.alternaterefscommand"
         | "gc.recentobjectshook" => true,
         _ if starts("credential.") => last == "helper",
+        _ if starts("gpg.") => matches!(last, "program" | "defaultkeycommand"),
+        // Hooks from the config run whatever `core.hooksPath` says.
+        _ if starts("hook.") => last == "command",
+        _ if starts("merge.") => last == "driver",
         _ if starts("remote.") => {
             matches!(last, "uploadpack" | "receivepack" | "vcs")
                 || (matches!(last, "url" | "pushurl") && value.contains("::"))
@@ -373,6 +381,16 @@ mod config_tests {
         assert!(runs(&["worktree\tcore.sshcommand==ssh -o ProxyCommand=evil"]));
         assert!(runs(&["local\tremote.origin.uploadpack==evil"]));
         assert!(runs(&["local\tgc.recentobjectshook==evil"]));
+    }
+
+    #[test]
+    fn signing_config_hooks_and_merge_drivers_run_a_program() {
+        assert!(runs(&["local\tgpg.program==evil"]));
+        assert!(runs(&["local\tgpg.ssh.program==evil"]));
+        assert!(runs(&["local\tgpg.ssh.defaultkeycommand==evil"]));
+        assert!(runs(&["local\thook.x.command==evil"]));
+        assert!(runs(&["local\tmerge.x.driver==evil"]));
+        assert!(!runs(&["local\tgpg.format==ssh", "local\tmerge.ff==only"]));
     }
 
     #[test]
