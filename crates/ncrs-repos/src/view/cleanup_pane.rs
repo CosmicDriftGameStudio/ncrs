@@ -457,10 +457,16 @@ fn buttons<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 /// The pane, with a rule at its left edge.
 pub fn view<'a>(cleanup: &'a Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    let title = fill_template(
-        ctx.lang.text(Msg::ReposCleanupTitle),
-        &[("{count}", &cleanup.order.len().to_string())],
-    );
+    let title = match cleanup.order.as_slice() {
+        [only] => fill_template(
+            ctx.lang.text(Msg::GitViewCleanupTitle),
+            &[("{name}", &name_of(only))],
+        ),
+        repos => fill_template(
+            ctx.lang.text(Msg::ReposCleanupTitle),
+            &[("{count}", &repos.len().to_string())],
+        ),
+    };
     let mut entries = column![].width(Length::Fill);
     for repo in cleanup.offering() {
         entries = entries.push(group(cleanup, repo, ctx));

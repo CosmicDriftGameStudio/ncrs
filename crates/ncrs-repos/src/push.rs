@@ -106,6 +106,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     fn git(dir: &Path, args: &[&str]) {
         let output = std::process::Command::new("git")
             .arg("-C")
@@ -148,6 +149,7 @@ mod tests {
         work
     }
 
+    #[cfg(unix)]
     fn push_of(work: &Path) -> Executed {
         let stop = Arc::new(AtomicBool::new(false));
         let summary::Reading::Read(before) = summary::read(work, &stop) else {
