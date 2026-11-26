@@ -94,6 +94,7 @@ fn lazy_with_pin_of(path: PathBuf, bytes: &[u8]) -> LazyLocalModel {
 
 #[test]
 fn a_missing_model_file_is_an_error_at_once_and_the_status_says_so() {
+    let _beside = super::lazy::beside_shutdown_all();
     let dir = tempfile::TempDir::new().unwrap();
     let lazy = lazy_with_pin_of(dir.path().join("test.gguf"), b"model bytes");
 
@@ -107,6 +108,7 @@ fn a_missing_model_file_is_an_error_at_once_and_the_status_says_so() {
 
 #[test]
 fn a_model_that_is_not_downloaded_cannot_answer_and_one_that_is_there_can() {
+    let _beside = super::lazy::beside_shutdown_all();
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("test.gguf");
     let lazy = lazy_with_pin_of(path.clone(), b"model bytes");
@@ -120,6 +122,7 @@ fn a_model_that_is_not_downloaded_cannot_answer_and_one_that_is_there_can() {
 
 #[test]
 fn a_file_that_arrives_later_is_looked_at_again() {
+    let _beside = super::lazy::beside_shutdown_all();
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("test.gguf");
     let lazy = lazy_with_pin_of(path.clone(), b"model bytes");
@@ -132,6 +135,7 @@ fn a_file_that_arrives_later_is_looked_at_again() {
 
 #[test]
 fn a_file_that_fails_the_check_is_not_checked_again_until_it_changes() {
+    let _beside = super::lazy::beside_shutdown_all();
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("test.gguf");
     fs::write(&path, b"MODEL BYTES").unwrap();

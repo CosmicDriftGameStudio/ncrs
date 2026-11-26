@@ -44,6 +44,19 @@ fn workers() -> &'static Mutex<Vec<Worker>> {
     WORKERS.get_or_init(Mutex::default)
 }
 
+/// `shutdown_all` closes every model in the process, also those of tests that
+/// run beside it: its test holds this for writing, every test that makes a
+/// model holds it for reading.
+#[cfg(test)]
+pub fn beside_shutdown_all() -> std::sync::RwLockReadGuard<'static, ()> {
+    SHUTDOWN_ALL_ALONE
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+static SHUTDOWN_ALL_ALONE: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
 fn join_all(taken: Vec<Worker>) {
     for worker in &taken {
         worker.shared.close();
@@ -343,6 +356,9 @@ mod tests {
 
     #[test]
     fn a_dropped_model_is_still_joined_on_shutdown_all() {
+        let _alone = SHUTDOWN_ALL_ALONE
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
         let model = missing_model();
         let shared = Arc::clone(&model.shared);
         let turn = ChatTurn {
@@ -359,6 +375,7 @@ mod tests {
 
     #[test]
     fn ensure_worker_twice_keeps_one_worker_and_shutdown_removes_it() {
+        let _beside = beside_shutdown_all();
         let model = missing_model();
         let shared = Arc::clone(&model.shared);
         model.ensure_worker().expect("first worker");
