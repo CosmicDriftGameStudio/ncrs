@@ -80,6 +80,30 @@ impl LocationWatcher {
         )
     }
 
+    /// Watches one more location with the same `forward`. Only a watcher that
+    /// relies on change notifications can take one.
+    pub fn add_forwarding(
+        &mut self,
+        location: &Location,
+        forward: impl Fn(WatchEvent) + Clone + Send + 'static,
+    ) -> Result<(), IntakeError> {
+        let Backend::Native { _watchers } = &mut self._backend else {
+            return Err(IntakeError::Watch(notify::Error::generic(
+                "a polling watcher cannot take another location",
+            )));
+        };
+        let (mut added, mut failed) = watch_locations::<RecommendedWatcher>(
+            std::slice::from_ref(location),
+            Config::default().with_follow_symlinks(false),
+            &forward,
+        );
+        if let Some((_, err)) = failed.pop() {
+            return Err(err);
+        }
+        _watchers.append(&mut added);
+        Ok(())
+    }
+
     /// Like `start`, but compares the folders every `interval` instead of
     /// relying on change notifications of the file system. For file systems
     /// that send none, such as network shares. A rewrite is seen by its
@@ -146,7 +170,7 @@ fn watch_locations<W: Watcher>(
                 io::ErrorKind::NotFound => notify::Error::path_not_found(),
                 _ => notify::Error::io(err),
             })
-            .and_then(|_| W::new(handler, config))
+            .and_then(|_| W::new(handler, config.clone()))
             .and_then(|mut watcher| {
                 watcher
                     .watch(&location.path, RecursiveMode::Recursive)

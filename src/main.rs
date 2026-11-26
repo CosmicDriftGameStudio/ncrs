@@ -43,16 +43,16 @@ pub use ncrs_fs as fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use ncrs_ops::drag_out;
 mod input_state;
-pub use ncrs_filing::{
-    execute, filing, filing_work, query_work, review_work, rules_work, tags_work,
-};
+pub use ncrs_filing::{execute, filing, query_work, rules_work, tags_work};
 pub use ncrs_hermes_ui::{
-    condition_editor, filing_pieces, filing_setup, filing_status, hermes_column, hermes_overview,
-    hermes_status, quick_fix, reading_again, rule_form, rules_page, saved_queries, tags_page,
+    condition_editor, filing_setup, filing_status, hermes_column, hermes_overview, hermes_status,
+    reading_again, rule_form, rules_page, saved_queries, tags_page,
 };
 pub use ncrs_i18n as i18n;
 pub use ncrs_jobs as jobs;
+mod git_keys;
 mod keymap;
+mod repos_keys;
 pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]
 mod menu;
@@ -309,6 +309,15 @@ fn data_dir_of(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> 
 }
 
 fn main() -> iced::Result {
+    // Git and ssh start this binary as their askpass helper: that run answers
+    // the prompt and exits, before anything else (console, instance lock, GUI).
+    // The program name stays in front: the prompt is the argument after it.
+    let helper_arguments: Vec<String> = env::args_os()
+        .map(|given| given.to_string_lossy().into_owned())
+        .collect();
+    if let Some(code) = ncrs_git::askpass::run_if_asked(&helper_arguments) {
+        std::process::exit(code);
+    }
     let mut arguments: Vec<std::ffi::OsString> = env::args_os().skip(1).collect();
     if !arguments.is_empty() {
         // The Windows build has no console of its own; every command line run

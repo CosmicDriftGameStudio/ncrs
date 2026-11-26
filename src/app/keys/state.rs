@@ -32,15 +32,14 @@ impl App {
         input.viewer = state.viewer;
         input.notes = self.notes_shown() && !self.blocking_overlay_is_open();
         input.filing = self.filing_shown() && !self.blocking_overlay_is_open();
-        input.filing_renaming = input.filing
-            && self
-                .filing_view
-                .session
-                .as_ref()
-                .is_some_and(|session| session.renaming.is_some());
+        input.filing_renaming = input.filing && state.filing_keys.renaming;
+        input.filing_question = input.filing && state.filing_keys.question;
+        input.repos = self.repos_shown() && !self.blocking_overlay_is_open();
         input.git = self
             .shown_git_tab()
             .filter(|_| !self.blocking_overlay_is_open());
+        input.repos_menu_key = input.repos && !state.repos_text && !state.repos_menu;
+        input.git_menu_key = input.git.is_some() && state.git_context.takes_menu_key();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
@@ -74,8 +73,8 @@ impl App {
             .context_menu
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
-        let quick_fix = self.hermes.quick_fix.is_some();
         let confirm_again = self.hermes.confirm_again.is_some();
+        let hermes_dialog = self.hermes_dialog_keys();
         let path_editing =
             self.panels.path_field.is_some() || self.panels.renaming_side().is_some();
         let command_line = self.command_line.is_focused();
@@ -115,17 +114,15 @@ impl App {
         let notes = self.notes_shown();
         let notes_editing = notes && self.notes.editing();
         let filing = self.filing_shown();
-        let filing_renaming = filing
-            && self
-                .filing_view
-                .session
-                .as_ref()
-                .is_some_and(|session| session.renaming.is_some());
+        let filing_keys = ncrs_filing_view::key_facts(&self.filing_view);
+        let repos = self.repos_shown();
+        let repos_text = repos && self.repos.as_ref().is_some_and(|state| state.takes_text());
+        let repos_menu = repos && self.repos.as_ref().is_some_and(|state| state.menu_open());
         let git = self.shown_git_tab();
         let git_state = git.and_then(|id| self.git_tabs.get(id));
-        let git_filter = git_state.is_some_and(|state| state.filter_focused);
-        let git_diff = git_state.is_some_and(|state| state.diff.is_some());
-        let git_dialog = git_state.is_some_and(|state| state.actions.dialog_open());
+        let git_context = git_state
+            .map(|state| state.key_context())
+            .unwrap_or_default();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
@@ -140,6 +137,8 @@ impl App {
         };
         let shared = PromptKeyState {
             keymap: Arc::clone(&self.keymap),
+            git_keys: Arc::clone(&self.git_keys),
+            repos_keys: Arc::clone(&self.repos_keys),
             job_running,
             config_error,
             delete_dialog,
@@ -151,8 +150,8 @@ impl App {
             context_menu,
             favourite_menu,
             context_submenu,
-            quick_fix,
             confirm_again,
+            hermes_dialog,
             path_editing,
             command_line,
             search,
@@ -183,11 +182,12 @@ impl App {
             notes,
             notes_editing,
             filing,
-            filing_renaming,
+            filing_keys,
             git,
-            git_filter,
-            git_diff,
-            git_dialog,
+            repos,
+            repos_text,
+            repos_menu,
+            git_context,
             // A conflict is asked while no prompt is open — the prompt is
             // gone by then, the transfer is what is running. Without this
             // the dialog's keys would fall through to the panels.

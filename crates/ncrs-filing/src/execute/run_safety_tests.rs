@@ -1,10 +1,10 @@
 //! What a run and its undo do when the folders under them are swapped for
 //! links, and which leftovers a settle may remove.
 
-use ncrs_fs::transfer::Counting;
 use ncrs_fs::{FolderBackend, JournaledTrash, Trash as _};
 use tempfile::TempDir;
 
+use super::test_runs::{execute_run, ExecutionReport};
 use super::*;
 
 struct Place {
@@ -62,7 +62,6 @@ impl Place {
                 inside_target: false,
             },
             items,
-            &mut Counting,
         )
         .unwrap()
     }
@@ -142,7 +141,7 @@ fn a_source_subfolder_swapped_for_a_link_before_the_run_is_not_transferred() {
         let report = place.run(transfer, std::slice::from_ref(&item));
 
         assert_eq!(
-            report.items[0].outcome,
+            report.outcomes[0],
             ItemOutcome::Skipped(SkipReason::LeavesLocation)
         );
         assert!(outside.join("a.pdf").exists());
@@ -161,7 +160,7 @@ fn a_file_that_is_not_below_the_source_is_not_transferred() {
     let report = place.run(Transfer::Move, std::slice::from_ref(&item));
 
     assert_eq!(
-        report.items[0].outcome,
+        report.outcomes[0],
         ItemOutcome::Skipped(SkipReason::OutsideLocation)
     );
     assert!(elsewhere.exists());

@@ -137,6 +137,8 @@ fn what_the_git_tab_remembers_survives_a_write_and_a_read() {
         author_width: Some(180),
         date_width: None,
         sha_width: Some(90),
+        sidebar_width: Some(280),
+        detail_width: Some(520),
         ..Default::default()
     }
     .with_folded(

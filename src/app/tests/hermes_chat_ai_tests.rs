@@ -124,22 +124,18 @@ fn with_the_ai_off_the_chat_gets_no_model() {
     assert!(ctx_on.model.is_some());
 }
 
-/// The flow takes Hermes out of the app while it runs; the background filing
-/// must still see the module it needs, or it never files anything.
+/// The background filing needs no model: the flow sees that the app allows it
+/// whether or not the AI is on.
 #[test]
-fn a_hermes_flow_gets_the_background_filing_tools_the_app_has() {
+fn a_hermes_flow_sees_that_the_background_filing_is_allowed_without_a_model() {
     let mut app = App::with_fixed_panels();
     app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
-    app.hermes.filing_config.ai = AiSetting::Local { threads: None };
+    app.hermes.filing_config.ai = AiSetting::Off;
     app.hermes.filing_config.enabled = true;
     app.hermes.filing_config.first_run = false;
-    app.chat_model = Some(Arc::new(ScriptedChatModel::new(
-        LocalModelStatus::NotLoadedYet,
-        [],
-    )));
-    assert!(app.continuous_tools().is_some());
+    app.chat_model = None;
 
-    let seen_in_flow = app.with_hermes(Vec::new(), |_, ctx| ctx.continuous.is_some());
+    let seen_in_flow = app.with_hermes(|_, ctx| ctx.watching_allowed);
 
     assert!(seen_in_flow);
 }

@@ -6,12 +6,14 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 use crate::condition_store::{read_conditions, replace_conditions, require_compilable_regexes};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec};
+use crate::model::{
+    corrupt, Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec, TargetId,
+};
 use crate::names::{name_id, optional_kind_id, NameTable};
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name,
-        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin, r.name
+        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin, r.name, r.target
     FROM rule r
     LEFT JOIN document_kind k ON k.id = r.kind_id";
 
@@ -28,6 +30,7 @@ struct RuleRow {
     position: i64,
     origin: String,
     name: Option<String>,
+    target: String,
 }
 
 impl RuleRow {
@@ -45,6 +48,7 @@ impl RuleRow {
             position: row.get(9)?,
             origin: row.get(10)?,
             name: row.get(11)?,
+            target: row.get(12)?,
         })
     }
 
@@ -53,6 +57,8 @@ impl RuleRow {
             id: RuleId::new(self.id),
             position: self.position,
             origin: RuleOrigin::parse(&self.origin)?,
+            target: TargetId::new(&self.target)
+                .ok_or_else(|| corrupt("rule.target", &self.target))?,
             spec: RuleSpec {
                 name: self.name,
                 conditions: RuleConditions {
@@ -70,13 +76,6 @@ impl RuleRow {
             },
         })
     }
-}
-
-/// Whether a chat rule was added or an existing one changed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuleSaved {
-    Added,
-    Changed,
 }
 
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
@@ -105,14 +104,17 @@ fn replace_rule_tags(
 }
 
 impl Index {
+    /// A rule of the main target.
     pub fn create_rule(&mut self, spec: &RuleSpec) -> Result<RuleId, IndexError> {
-        self.create_rule_from(spec, RuleOrigin::Hand)
+        self.create_rule_in(spec, RuleOrigin::Hand, &TargetId::main())
     }
 
-    pub fn create_rule_from(
+    /// Appended to the order of all rules, so last among those of `target`.
+    pub fn create_rule_in(
         &mut self,
         spec: &RuleSpec,
         origin: RuleOrigin,
+        target: &TargetId,
     ) -> Result<RuleId, IndexError> {
         require_condition(spec)?;
         let kinds = Arc::clone(self.kinds());
@@ -120,8 +122,8 @@ impl Index {
         let kind_id = optional_kind_id(&tx, &kinds, spec.kind.as_deref())?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, filing_pattern, confirmed, enabled, origin, name, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                 kind_id, filing_pattern, confirmed, enabled, origin, name, target, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
                 spec.conditions.combinator.as_str(),
@@ -137,6 +139,7 @@ impl Index {
                     .as_deref()
                     .map(str::trim)
                     .filter(|name| !name.is_empty()),
+                target.as_str(),
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
@@ -163,13 +166,26 @@ impl Index {
         row.into_rule(list, tags).map(Some)
     }
 
-    /// In evaluation order: by position, then id.
+    /// Of all targets, in evaluation order: by position, then id.
     pub fn rules(&self) -> Result<Vec<Rule>, IndexError> {
-        let mut statement = self
-            .connection()
-            .prepare(&format!("{RULE_COLUMNS} ORDER BY r.position, r.id"))?;
+        self.rules_where("", [])
+    }
+
+    /// The rules of one target, in evaluation order.
+    pub fn rules_of(&self, target: &TargetId) -> Result<Vec<Rule>, IndexError> {
+        self.rules_where("WHERE r.target = ?1", [target.as_str()])
+    }
+
+    fn rules_where(
+        &self,
+        filter: &str,
+        values: impl rusqlite::Params,
+    ) -> Result<Vec<Rule>, IndexError> {
+        let mut statement = self.connection().prepare(&format!(
+            "{RULE_COLUMNS} {filter} ORDER BY r.position, r.id"
+        ))?;
         let rows = statement
-            .query_map([], RuleRow::read)?
+            .query_map(values, RuleRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
         rows.into_iter()
             .map(|row| {
@@ -180,55 +196,7 @@ impl Index {
             .collect()
     }
 
-    /// Stores a rule from the chat: a rule with the same name is changed in
-    /// place, keeping its id and position, otherwise a new one is added. Says
-    /// whether an existing rule was changed.
-    pub fn save_rule_from(
-        &mut self,
-        spec: &RuleSpec,
-        origin: RuleOrigin,
-    ) -> Result<RuleSaved, IndexError> {
-        match self.rule_replaced_by(spec)? {
-            Some(id) => {
-                self.update_rule_with_origin(id, spec, Some(origin))?;
-                Ok(RuleSaved::Changed)
-            }
-            None => {
-                self.create_rule_from(spec, origin)?;
-                Ok(RuleSaved::Added)
-            }
-        }
-    }
-
-    /// The stored rule a chat rule takes the place of: the first one with the
-    /// same name. Not the same conditions: two folders of one sender share
-    /// them, and each keeps its own rule.
-    pub fn rule_replaced_by(&self, spec: &RuleSpec) -> Result<Option<RuleId>, IndexError> {
-        let Some(name) = spec
-            .name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-        else {
-            return Ok(None);
-        };
-        Ok(self
-            .rules()?
-            .into_iter()
-            .find(|rule| rule.spec.name.as_deref() == Some(name))
-            .map(|rule| rule.id))
-    }
-
     pub fn update_rule(&mut self, id: RuleId, spec: &RuleSpec) -> Result<(), IndexError> {
-        self.update_rule_with_origin(id, spec, None)
-    }
-
-    fn update_rule_with_origin(
-        &mut self,
-        id: RuleId,
-        spec: &RuleSpec,
-        origin: Option<RuleOrigin>,
-    ) -> Result<(), IndexError> {
         require_condition(spec)?;
         let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
@@ -236,7 +204,7 @@ impl Index {
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, filing_pattern = ?7,
-                 confirmed = ?8, enabled = ?9, name = ?10, origin = COALESCE(?11, origin)
+                 confirmed = ?8, enabled = ?9, name = ?10
              WHERE id = ?1",
             params![
                 id.get(),
@@ -252,7 +220,6 @@ impl Index {
                     .as_deref()
                     .map(str::trim)
                     .filter(|name| !name.is_empty()),
-                origin.map(RuleOrigin::as_str),
             ],
         )?;
         if changed == 0 {
@@ -264,23 +231,34 @@ impl Index {
         Ok(())
     }
 
-    /// Moves a rule to `to_index` of the ordered list (clamped to the end) and
-    /// renumbers all positions from 1.
+    /// Moves a rule to `to_index` of the ordered list of its target (clamped
+    /// to the end). The rules of the target trade the positions they held, so
+    /// the order of the other targets does not change.
     pub fn move_rule(&mut self, id: RuleId, to_index: usize) -> Result<(), IndexError> {
         let tx = self.conn_mut().transaction()?;
-        let mut ids = tx
-            .prepare("SELECT id FROM rule ORDER BY position, id")?
-            .query_map([], |row| row.get::<_, i64>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let target: String = tx
+            .query_row("SELECT target FROM rule WHERE id = ?1", [id.get()], |row| {
+                row.get(0)
+            })
+            .optional()?
+            .ok_or(IndexError::RuleNotFound(id))?;
+        let (mut ids, slots): (Vec<i64>, Vec<i64>) = tx
+            .prepare("SELECT id, position FROM rule WHERE target = ?1 ORDER BY position, id")?
+            .query_map([&target], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .unzip();
         let Some(from) = ids.iter().position(|&existing| existing == id.get()) else {
             return Err(IndexError::RuleNotFound(id));
         };
         ids.remove(from);
         ids.insert(to_index.min(ids.len()), id.get());
-        for (index, rule_id) in ids.iter().enumerate() {
+        for (rule_id, slot) in ids.iter().zip(slots) {
             tx.execute(
                 "UPDATE rule SET position = ?2 WHERE id = ?1",
-                params![rule_id, i64::try_from(index + 1).unwrap_or(i64::MAX)],
+                params![rule_id, slot],
             )?;
         }
         tx.commit()?;
@@ -321,6 +299,37 @@ impl Index {
         Ok(changed > 0)
     }
 
+    /// Hands one rule to `target` as its last; the rules left behind keep
+    /// their order, the id and the hits stay. Nothing changes when the rule is
+    /// there already.
+    pub fn set_rule_target(&mut self, id: RuleId, target: &TargetId) -> Result<(), IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let current: String = tx
+            .query_row("SELECT target FROM rule WHERE id = ?1", [id.get()], |row| {
+                row.get(0)
+            })
+            .optional()?
+            .ok_or(IndexError::RuleNotFound(id))?;
+        if current != target.as_str() {
+            tx.execute(
+                "UPDATE rule SET target = ?2,
+                     position = (SELECT COALESCE(MAX(position), 0) + 1 FROM rule)
+                 WHERE id = ?1",
+                params![id.get(), target.as_str()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Deletes every rule of `target` with what hangs on it; how many went.
+    pub fn delete_rules_of(&mut self, target: &TargetId) -> Result<usize, IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let deleted = tx.execute("DELETE FROM rule WHERE target = ?1", [target.as_str()])?;
+        tx.commit()?;
+        Ok(deleted)
+    }
+
     fn rule_conditions(&self, id: i64) -> Result<Vec<Condition>, IndexError> {
         read_conditions(self.connection(), id)
     }
@@ -342,6 +351,34 @@ mod tests {
     use super::*;
     use crate::model::ConditionKind;
     use crate::test_support::{encrypted_index, rule_spec};
+
+    #[test]
+    fn a_rule_handed_to_another_target_comes_last_there_and_keeps_its_id() {
+        let (_dir, mut index) = encrypted_index();
+        let other = TargetId::new("t2").unwrap();
+        let first = index.create_rule(&rule_spec()).unwrap();
+        let second = index.create_rule(&rule_spec()).unwrap();
+        let there = index
+            .create_rule_in(&rule_spec(), RuleOrigin::Hand, &other)
+            .unwrap();
+
+        index.set_rule_target(first, &other).unwrap();
+
+        let main_ids: Vec<RuleId> = index
+            .rules_of(&TargetId::main())
+            .unwrap()
+            .iter()
+            .map(|rule| rule.id)
+            .collect();
+        let other_ids: Vec<RuleId> = index
+            .rules_of(&other)
+            .unwrap()
+            .iter()
+            .map(|rule| rule.id)
+            .collect();
+        assert_eq!(main_ids, vec![second]);
+        assert_eq!(other_ids, vec![there, first]);
+    }
 
     #[test]
     fn a_rule_may_have_a_name_a_tag_condition_and_no_kind() {
@@ -375,40 +412,6 @@ mod tests {
     }
 
     #[test]
-    fn a_chat_rule_changes_the_rule_of_its_name_and_not_one_of_the_same_sender() {
-        let (_dir, mut index) = encrypted_index();
-        let named = |name: &str, pattern: &str| RuleSpec {
-            name: Some(name.to_owned()),
-            conditions: RuleConditions::all_of(vec![Condition::new(
-                ConditionKind::Sender,
-                "Cosmicdrift GmbH",
-            )]),
-            filing_pattern: pattern.to_owned(),
-            ..rule_spec()
-        };
-
-        let salary = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}/{date}");
-        let contracts = named("Arbeit / Verträge", "Arbeit/Verträge/{date}");
-        let saved = [
-            index.save_rule_from(&salary, RuleOrigin::Chat).unwrap(),
-            index.save_rule_from(&contracts, RuleOrigin::Chat).unwrap(),
-        ];
-        assert_eq!(saved, [RuleSaved::Added, RuleSaved::Added]);
-        let first = ids_in_order(&index)[0];
-
-        let changed = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}-{month}/{date}");
-        assert_eq!(
-            index.save_rule_from(&changed, RuleOrigin::Chat).unwrap(),
-            RuleSaved::Changed
-        );
-        let rules = index.rules().unwrap();
-        assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].id, first);
-        assert_eq!(rules[0].spec.filing_pattern, changed.filing_pattern);
-        assert_eq!(rules[1].spec.filing_pattern, contracts.filing_pattern);
-    }
-
-    #[test]
     fn rule_round_trips_and_is_listed_by_id() {
         let (_dir, mut index) = encrypted_index();
         let first = rule_spec();
@@ -431,6 +434,7 @@ mod tests {
                 id: first_id,
                 position: 1,
                 origin: RuleOrigin::Hand,
+                target: TargetId::main(),
                 spec: first.clone()
             })
         );
@@ -441,12 +445,14 @@ mod tests {
                     id: first_id,
                     position: 1,
                     origin: RuleOrigin::Hand,
+                    target: TargetId::main(),
                     spec: first
                 },
                 Rule {
                     id: second_id,
                     position: 2,
                     origin: RuleOrigin::Hand,
+                    target: TargetId::main(),
                     spec: second
                 },
             ]
@@ -687,13 +693,13 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let by_hand = index.create_rule(&rule_spec()).unwrap();
         let from_filing = index
-            .create_rule_from(&rule_spec(), RuleOrigin::Filing)
+            .create_rule_in(&rule_spec(), RuleOrigin::Filing, &TargetId::main())
             .unwrap();
         let from_chat = index
-            .create_rule_from(&rule_spec(), RuleOrigin::Chat)
+            .create_rule_in(&rule_spec(), RuleOrigin::Chat, &TargetId::main())
             .unwrap();
         let outcome = index
-            .suggest_rule(
+            .suggest_rule_in(
                 &RuleSpec {
                     conditions: RuleConditions::all_of(vec![Condition::new(
                         ConditionKind::Word,
@@ -707,6 +713,7 @@ mod tests {
                     matching_elsewhere: 0,
                     subtree: None,
                 },
+                &TargetId::main(),
             )
             .unwrap();
         let crate::model::RuleSuggestion::Created(suggested) = outcome else {

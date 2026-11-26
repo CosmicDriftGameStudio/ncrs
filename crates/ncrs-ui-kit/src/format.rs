@@ -425,6 +425,19 @@ pub fn middle_cut(text: &str, max_chars: usize) -> Option<MiddleCut> {
     })
 }
 
+/// `path` with the home folder written `~`; a path outside it, or no known
+/// home, stays whole.
+pub fn home_relative(path: &Path, home: &Path) -> String {
+    if home.as_os_str().is_empty() {
+        return path.display().to_string();
+    }
+    match path.strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Err(_) => path.display().to_string(),
+    }
+}
+
 /// `text` with the middle cut out so at most `max_chars` characters remain, for
 /// paths: the end stays, so the last component (the file name) is visible.
 pub fn ellipsize_middle(text: &str, max_chars: usize) -> String {
@@ -438,26 +451,6 @@ pub fn ellipsize_middle(text: &str, max_chars: usize) -> String {
     let mut shortened: String = text.chars().take(cut.head).collect();
     shortened.push(ELLIPSIS);
     shortened.extend(text.chars().skip(count.saturating_sub(cut.tail)));
-    shortened
-}
-
-/// `text` with the middle cut out so at most `max_chars` characters remain,
-/// about half from the start and the rest from the end: for a single name,
-/// where both its beginning and its end tell it apart from similar ones.
-pub fn ellipsize_keeping_both_ends(text: &str, max_chars: usize) -> String {
-    let count = text.chars().count();
-    if count <= max_chars {
-        return text.to_owned();
-    }
-    if max_chars == 0 {
-        return String::new();
-    }
-    let kept = max_chars - 1;
-    let head = kept.div_ceil(2);
-    let tail = kept - head;
-    let mut shortened: String = text.chars().take(head).collect();
-    shortened.push(ELLIPSIS);
-    shortened.extend(text.chars().skip(count - tail));
     shortened
 }
 
@@ -711,18 +704,6 @@ mod tests {
         assert_eq!(ellipsize_end("日本語のファイル名", 4), "日本語…");
     }
 
-    #[test]
-    fn a_long_name_keeps_its_start_and_its_end() {
-        let name = "2021_01_29_Abrechnung_KD401N05013001112401591.pdf";
-        let cut = ellipsize_keeping_both_ends(name, 26);
-        assert_eq!(cut.chars().count(), 26);
-        assert_eq!(cut, "2021_01_29_Ab…12401591.pdf");
-        assert!(cut.contains('…'));
-        assert_eq!(ellipsize_keeping_both_ends("short.pdf", 26), "short.pdf");
-        assert_eq!(ellipsize_keeping_both_ends("anything", 0), "");
-        assert_eq!(ellipsize_keeping_both_ends("Büro-Größe-€€€", 6), "Bür…€€");
-    }
-
     const BODY: f32 = 12.0;
 
     #[test]
@@ -952,5 +933,16 @@ mod local_time_tests {
         assert!(local_time(UNIX_EPOCH + Duration::from_secs(1_700_000_000)).is_some());
         assert!(local_time(UNIX_EPOCH - Duration::from_secs(86_400 * 365)).is_some());
         assert!(!time(Some(UNIX_EPOCH + Duration::from_secs(1_700_000_000))).is_empty());
+    }
+
+    #[test]
+    fn paths_below_home_are_shown_with_a_tilde() {
+        let home = Path::new("/home/user");
+        assert_eq!(shown_path(home, home), "~");
+        assert_eq!(
+            shown_path(&home.join("Documents"), home),
+            format!("~{}Documents", std::path::MAIN_SEPARATOR)
+        );
+        assert_eq!(shown_path(Path::new("/srv/files"), home), "/srv/files");
     }
 }

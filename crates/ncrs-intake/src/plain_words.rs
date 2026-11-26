@@ -4,7 +4,7 @@
 
 use ncrs_i18n::{fill_template, Language, Msg};
 
-use crate::structure::{Area, Branch, Level, PlaceholderLabel};
+use crate::structure::{Branch, Level, PlaceholderLabel};
 
 const PLAIN_JOINER: &str = " › ";
 
@@ -58,12 +58,4 @@ pub fn levels_plain(lang: Language, levels: &[Level]) -> String {
         })
         .collect::<Vec<_>>()
         .join(PLAIN_JOINER)
-}
-
-/// The order of the area's main branch, the one with most documents.
-pub fn area_order_plain(lang: Language, area: &Area) -> String {
-    area.branches.first().map_or_else(
-        || lang.text(Msg::HermesChatAreaFlat).to_owned(),
-        |branch| branch_plain(lang, branch),
-    )
 }

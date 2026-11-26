@@ -79,6 +79,7 @@ impl GitTabs {
         for (_, state) in &mut self.tabs {
             state.stop();
         }
+        ncrs_git::askpass::cancel_all();
     }
 }
 

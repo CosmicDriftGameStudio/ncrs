@@ -1,8 +1,7 @@
-//! Flow 2: from the status chip to the reviews page, in a laptop window.
+//! Flow 2: the status chip and the activity page behind it, in a laptop window.
 
 use std::time::Duration;
 
-use ncrs_hermes_ui::reviews_page::Question;
 use ncrs_hermes_ui::HermesPage;
 
 use super::drive::{self, SHOT_FOLDER};
@@ -35,47 +34,14 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
         "the activity page failed"
     );
 
-    session.send(Message::Activity(ActivityMessage::OpenReviews));
-    assert_eq!(session.app.open_hermes_page(), Some(HermesPage::Reviews));
-    drive::page_ready(session);
-
-    let open = drive::open_reviews(world);
-    assert!(open > 0);
-    let page = drive::page(session);
-    assert_eq!(
-        page.total(),
-        open + page.already_filed().len(),
-        "the page lists what the index holds and the copies of archive files"
-    );
-    assert_eq!(
-        world.index().hermes_counts().unwrap().open_reviews,
-        page.total() as u64,
-        "the sidebar and the status badge count what the page lists"
-    );
-    assert!(
-        page.already_filed().len() >= world.inbox.duplicates.len(),
-        "the copies of archive files are not asked about"
-    );
-    for (question, group_size) in [
-        (Question::TargetTaken, world.inbox.clashes.len()),
-        (Question::Date, world.inbox.no_date.len()),
-        (
-            Question::Missing(ncrs_index::Field::Amount),
-            world.inbox.no_amount.len(),
-        ),
-        (
-            Question::NoRule,
-            world.inbox.no_rule.len() + world.inbox.unsure_sender.len(),
-        ),
-        (Question::RuleUnconfirmed, world.inbox.unconfirmed.len()),
-        (Question::Sender, world.inbox.unsure_sender_marked.len()),
-    ] {
-        assert_eq!(page.members(question).len(), group_size, "{question:?}");
-    }
+    // No file waits for an answer: the link stays on the page.
+    assert_eq!(drive::open_reviews(world), 0);
+    session.send(Message::Activity(ActivityMessage::OpenWaiting));
+    assert_eq!(session.app.open_hermes_page(), Some(HermesPage::Activity));
     drive::config_intact(world);
 
-    // Whether the sidebar scrolled to "Rückfragen": the harness runs the task
-    // of the click, a widget operation, like the window does.
+    // Whether the sidebar scrolled to the page: the harness runs the task of
+    // the click, a widget operation, like the window does.
     let look = drive::look_at_sidebar(session);
     println!(
         "sidebar: scrolled {} px, the chosen row in view: {}",
@@ -87,24 +53,7 @@ pub fn run<P: Live>(world: &World, session: &mut Session<P>) {
         Some(true),
         "the chosen sidebar entry lies outside the visible part of the list"
     );
-
-    drive::shot(session, "reviews-start");
     sidebar_picture(session, look.scrolled());
-    for (question, name) in [
-        (Question::TargetTaken, "reviews-taken"),
-        (Question::Date, "reviews-date"),
-        (
-            Question::Missing(ncrs_index::Field::Amount),
-            "reviews-amount",
-        ),
-        (Question::RuleUnconfirmed, "reviews-rule"),
-        (Question::NoRule, "reviews-no-rule"),
-        (Question::Sender, "reviews-sender"),
-    ] {
-        drive::toggle(session, question);
-        drive::shot(session, name);
-        drive::toggle(session, question);
-    }
 }
 
 /// The sidebar at the laptop size, scrolled as far as the app scrolled it.

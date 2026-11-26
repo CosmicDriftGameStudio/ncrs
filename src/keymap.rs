@@ -10,16 +10,15 @@ use iced::keyboard::{Key, Modifiers};
 pub use ncrs_config::keymap::*;
 
 use crate::fs::OpenKind;
-use crate::hermes_column::FolderRole;
 use crate::messages::BatchRenameMessage;
 use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    CompareMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
-    HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferDialogMessage,
-    TransferKind, TrashMessage,
+    CompareMessage, FilingStatusMessage, GitFileView, GrantMessage, HermesChatMessage,
+    HermesFileMessage, HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide,
+    QuickOpenMessage, RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferDialogMessage, TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
 
@@ -114,30 +113,20 @@ impl KeyActionMessage for KeyAction {
             Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Open),
-            Self::Rules => Message::HermesPage(HermesPage::Rules),
-            Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
-            Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
+            Self::Rules => Message::HermesPage(HermesPage::Sorting),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
             Self::HermesFileOnce => Message::HermesFile(HermesFileMessage::FileOnce),
-            Self::HermesFileContinuously => {
-                Message::HermesFile(HermesFileMessage::FileContinuously)
-            }
-            Self::HermesStopContinuous => Message::HermesFile(HermesFileMessage::StopContinuous),
-            Self::HermesSetInbox => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
-            }
-            Self::HermesSetFilingLocation => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
-            }
-            Self::HermesSetArchive => {
-                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Archive))
-            }
+            Self::WatchSource => Message::HermesFile(HermesFileMessage::WatchSource),
+            Self::AddTarget => Message::HermesFile(HermesFileMessage::AddTarget),
             Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::HermesPage(HermesPage::SavedQueries),
             Self::Notes => Message::OpenNotes,
             Self::NoteOnFile => Message::NoteOnFile,
             Self::GitView => Message::OpenGitView,
+            Self::GitFileHistory => Message::OpenGitFile(GitFileView::History),
+            Self::GitFileBlame => Message::OpenGitFile(GitFileView::Blame),
+            Self::Repos => Message::OpenRepos,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
@@ -237,34 +226,89 @@ mod tests {
 
     #[test]
     fn no_git_view_shortcut_is_taken_by_the_app_keymap() {
-        use ncrs_git_view::shortcuts::Shortcut;
-        let same_key = |left: &Key, right: &Key| match (left, right) {
-            (Key::Character(a), Key::Character(b)) => a.eq_ignore_ascii_case(b),
-            _ => left == right,
-        };
-        for shortcut in Shortcut::ALL {
-            // These mean in the Git tab what they mean in the app: edit, menu, rename.
-            if matches!(
-                shortcut,
-                Shortcut::OpenEditor | Shortcut::OpenMenu | Shortcut::Rename
-            ) {
-                continue;
-            }
-            let (modifiers, key) = shortcut.binding();
-            let taken_by: Vec<_> = Keymap::built_in()
-                .bindings()
-                .iter()
-                .filter(|(_, binding)| {
-                    binding.modifiers == modifiers && same_key(&binding.key, &key)
-                })
-                .map(|(action, _)| *action)
-                .collect();
-            assert!(
-                taken_by.is_empty(),
-                "{shortcut:?} ({}) is also {taken_by:?}",
-                shortcut.label()
-            );
+        use crate::git_keys::clashes;
+        use ncrs_git_view::GitKeys;
+        // The keys depend on the platform; both sets are checked here, not
+        // only the one this binary was built for.
+        for mac in [true, false] {
+            let taken = clashes(&GitKeys::defaults_for(mac), &default_bindings_for(mac));
+            assert!(taken.is_empty(), "mac: {mac}: {taken:?}");
         }
+    }
+
+    #[test]
+    fn no_repos_shortcut_is_taken_by_the_app_keymap() {
+        use crate::repos_keys::clashes;
+        use ncrs_repos::ReposKeys;
+        for mac in [true, false] {
+            let taken = clashes(&ReposKeys::defaults_for(mac), &default_bindings_for(mac));
+            assert!(taken.is_empty(), "mac: {mac}: {taken:?}");
+        }
+    }
+
+    #[test]
+    fn a_repos_key_set_in_the_config_is_checked_against_the_app_keymap() {
+        let (_dir, path) = written("[keys.repos]\nfetch = \"primary+shift+n\"\n");
+        let config = config::load(&path).unwrap();
+        let clash = crate::repos_keys::resolve(
+            &config.repos_keys,
+            &config.keymap,
+            cfg!(target_os = "macos"),
+        );
+        // Cmd+Shift+N is note_on_file on a Mac, Ctrl+Shift+N elsewhere.
+        assert!(clash.is_err(), "{clash:?}");
+    }
+
+    #[test]
+    fn a_git_key_set_in_the_config_is_checked_against_the_app_keymap() {
+        let (_dir, path) = written("[keys.git]\nfetch = \"primary+shift+c\"\n");
+        let config = config::load(&path).unwrap();
+        let clash =
+            crate::git_keys::resolve(&config.git_keys, &config.keymap, cfg!(target_os = "macos"));
+        // Ctrl+Shift+C is copy_name elsewhere, free on a Mac.
+        assert_eq!(clash.is_err(), !cfg!(target_os = "macos"), "{clash:?}");
+        let (_second_dir, second_path) = written("[keys.git]\nfetch = \"primary+alt+shift+k\"\n");
+        let second_config = config::load(&second_path).unwrap();
+        let keys = crate::git_keys::resolve(
+            &second_config.git_keys,
+            &second_config.keymap,
+            cfg!(target_os = "macos"),
+        )
+        .unwrap();
+        assert_eq!(
+            keys.pressed(
+                &Key::Character("k".into()),
+                Modifiers::COMMAND | Modifiers::ALT | Modifiers::SHIFT
+            ),
+            Some(ncrs_git_view::shortcuts::Shortcut::Fetch)
+        );
+    }
+
+    #[test]
+    fn an_unknown_git_action_is_reported_at_its_line() {
+        let (_dir, path) = written("[keys.git]\n\nteleport = \"f9\"\n");
+        let config = config::load(&path).unwrap();
+        let problem =
+            crate::git_keys::resolve(&config.git_keys, &config.keymap, false).unwrap_err();
+        assert_eq!(problem.line, Some(3));
+        assert!(problem.reason.contains("teleport"));
+    }
+
+    #[test]
+    fn a_git_key_that_does_not_parse_fails_the_config_at_its_line() {
+        let (line, reason) = failure("[keys.git]\nfetch = \"hyper+nothing\"\n");
+        assert_eq!(line, Some(2));
+        assert!(
+            reason.contains("nothing") || reason.contains("hyper"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_table_of_an_unknown_tab_fails_the_config() {
+        let (line, reason) = failure("[keys.folders]\nfetch = \"f9\"\n");
+        assert_eq!(line, Some(1));
+        assert!(reason.contains("folders"), "{reason}");
     }
 
     #[test]
@@ -305,8 +349,8 @@ mod tests {
     }
 
     #[test]
-    fn primary_shift_b_opens_the_rules_in_the_panel_and_can_be_rebound() {
-        let message = Some(Message::HermesPage(HermesPage::Rules));
+    fn primary_shift_b_opens_the_sorting_page_in_the_panel_and_can_be_rebound() {
+        let message = Some(Message::HermesPage(HermesPage::Sorting));
         assert_eq!(
             map_key(
                 Key::Character("b".into()),
@@ -580,6 +624,14 @@ mod tests {
         assert_eq!(
             keymap.function_keys(Language::English, KeyScope::Panel)[0],
             Some("Copy")
+        );
+    }
+
+    #[test]
+    fn the_menu_key_opens_the_context_menu_like_shift_f10() {
+        assert_eq!(
+            map_key(Key::Named(Named::ContextMenu), Modifiers::default()),
+            Some(Message::Files(MenuMessage::ContextMenuKey))
         );
     }
 

@@ -272,30 +272,6 @@ pub fn panel_frame<'a, M: 'a>(
         .into()
 }
 
-/// One setting: its name, the name of the theme it belongs to and a
-/// description on the left, the control in a column of `control_width` on the
-/// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
-/// description.
-pub fn form_row_with_problem<'a, M: Clone + 'a>(
-    label: &str,
-    theme_name: Option<&str>,
-    description: Option<&str>,
-    lines_below: Vec<Element<'a, M>>,
-    control: Element<'a, M>,
-    control_width: Length,
-    palette: &Palette,
-) -> Element<'a, M> {
-    form_row_titled(
-        paragraph(label.to_owned(), palette),
-        theme_name,
-        description,
-        lines_below,
-        control,
-        control_width,
-        palette,
-    )
-}
-
 /// A paragraph that can be pressed, in the accent: the name of a row that
 /// opens what it names.
 pub fn text_link<'a, M: Clone + 'a>(
@@ -314,8 +290,10 @@ pub fn text_link<'a, M: Clone + 'a>(
         .into()
 }
 
-/// [`form_row_with_problem`] with the title as an element, for a title that
-/// is more than text.
+/// One setting: its title, the name of the theme it belongs to and a
+/// description on the left, the control in a column of `control_width` on the
+/// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
+/// description.
 pub fn form_row_titled<'a, M: Clone + 'a>(
     title: Element<'a, M>,
     theme_name: Option<&str>,
@@ -381,4 +359,35 @@ pub fn tooltip<'a, M: 'a>(
         position,
     )
     .into()
+}
+
+/// Like [`focused`], for content with a background of its own that reaches
+/// its edges, such as a hunk with its header: the frame has its own line, so
+/// the content does not paint over it.
+pub fn focused_frame<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    has_focus: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    focused(
+        container(content).padding(theme::spacing::BORDER_WIDTH),
+        has_focus,
+        palette,
+    )
+}
+
+/// `content` with the one look of keyboard focus around it while `has_focus`;
+/// without focus it takes the same room, so focus moves nothing.
+pub fn focused<'a, M: 'a>(
+    content: impl Into<Element<'a, M>>,
+    has_focus: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ring = has_focus.then(|| theme::focus_border(palette));
+    container(content)
+        .style(move |_: &iced::Theme| container::Style {
+            border: ring.unwrap_or_default(),
+            ..container::Style::default()
+        })
+        .into()
 }

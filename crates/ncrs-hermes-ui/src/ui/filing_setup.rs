@@ -1,37 +1,17 @@
-//! The sentences for what is wrong with a list of read folders and for a
-//! failed write of the config.
+//! The sentences for a failed write of the config.
 
 use std::path::Path;
 
-use crate::filing_setup::{shown_path, SetupProblem};
 use ncrs_config::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format::shown_path;
 
 /// The language and the home folder the sentences are worded with.
 #[derive(Clone, Copy)]
 struct Wording<'a> {
     lang: Language,
     home: &'a Path,
-}
-
-/// The sentence for a problem found in the list of folders.
-pub fn problem_sentence(
-    problem: SetupProblem,
-    chosen: &[FilingLocation],
-    lang: Language,
-    home: &Path,
-) -> String {
-    let wording = Wording { lang, home };
-    match problem {
-        SetupProblem::NoDocumentFolder => lang
-            .text(Msg::FilingSetupProblemNoDocumentFolder)
-            .to_owned(),
-        SetupProblem::ChooseFilingLocation => lang
-            .text(Msg::FilingSetupProblemChooseFilingLocation)
-            .to_owned(),
-        SetupProblem::Rule(violation) => rule_text(violation, chosen, wording),
-    }
 }
 
 fn rule_text(
@@ -47,12 +27,6 @@ fn rule_text(
             .unwrap_or_default()
     };
     match violation {
-        FilingRuleViolation::SecondTarget { .. } => {
-            lang.text(Msg::FilingSetupRuleSecondTarget).to_owned()
-        }
-        FilingRuleViolation::InboxAsTarget { .. } => {
-            lang.text(Msg::FilingSetupRuleInboxTarget).to_owned()
-        }
         FilingRuleViolation::Overlap { earlier, later } => fill_template(
             lang.text(Msg::FilingSetupRuleOverlap),
             &[

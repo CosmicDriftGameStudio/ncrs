@@ -1,4 +1,4 @@
-//! The protocol run of the Hermes chat: the real program, driven through eight
+//! The protocol run of the Hermes chat: the real program, driven through seven
 //! flows in German and English against a copy of a real archive, with an image
 //! and a duration for every step.
 //!
@@ -40,16 +40,20 @@ use iced::Task;
 use iced_test::futures::futures::StreamExt as _;
 use ncrs_hermes_chat::{ChipReply, Entry, Message as ChatMessage, Step};
 use ncrs_i18n::Language;
+use ncrs_index::TargetId;
+use ncrs_intake::{OnNoText, OnSeveralTargets, SortSource, SortTarget};
 
 use crate::app::App;
-use crate::config::{AiSetting, Config, Filing, FilingLocation};
+use crate::config::{
+    AiSetting, Config, Filing, FilingLocation, LocationTransfer, SourceSetting, TargetSetting,
+};
 use crate::e2e_tests::{Outcome, Session};
 use crate::filing::FilingMessage;
 use crate::messages::{Message, SettingsMessage};
 
 mod continuous_flow;
 mod eval;
-mod free_sentences;
+mod quiet_window;
 pub mod real_start;
 mod scratch;
 pub mod thread;
@@ -178,7 +182,7 @@ struct Protocol<P: iced::Program<State = App, Message = Message> + 'static> {
     /// The run started from the kept index.
     reused: bool,
     /// What each background filing job reported, in the order it came.
-    background_reports: Vec<Result<Vec<(PathBuf, usize)>, String>>,
+    background_reports: Vec<Result<Vec<ncrs_hermes_ui::SourceRun>, String>>,
     /// The longest `deliver` since `NCRS_EVAL_CONTINUOUS` started its wait.
     longest_deliver: Duration,
     /// The message that took `longest_deliver`, cut to its variant path.
@@ -259,8 +263,37 @@ fn start_protocol(
     ));
     let expected_documents = count_indexable(&archive) + count_indexable(&downloads);
 
+    let watched = env_path("NCRS_EVAL_CONTINUOUS").is_some();
+    let copies = std::env::var("NCRS_EVAL_FILE").is_ok_and(|value| value == "copy");
     let filing = Filing {
         enabled: true,
+        targets: vec![TargetSetting {
+            target: SortTarget {
+                id: TargetId::main(),
+                name: "Ablage".to_owned(),
+                path: archive.clone(),
+                own_volume: None,
+            },
+            paused: None,
+        }],
+        sources: vec![SourceSetting {
+            source: SortSource {
+                path: downloads.clone(),
+                include: String::new(),
+                exclude: String::new(),
+                targets: vec![TargetId::main()],
+                watch: watched,
+                transfer: if copies {
+                    LocationTransfer::Copy
+                } else {
+                    LocationTransfer::Move
+                },
+                no_text: OnNoText::Ask,
+                several: OnSeveralTargets::Ask,
+                own_volume: None,
+            },
+            paused: None,
+        }],
         locations: vec![
             FilingLocation {
                 path: archive.clone(),
@@ -303,15 +336,18 @@ fn start_protocol(
     // The start work runs at once on the blocking pool; its report is the
     // task held back here, so the chat can be opened while the module starts.
     let Session { app, runtime, .. } = &mut session;
-    if env_path("NCRS_EVAL_CONTINUOUS").is_some() {
-        // The run sets a folder to file continuously, which is saved to the
-        // config file: a scratch one, with the switches the run needs.
+    if watched {
+        // The pictures show the settings, which read the config file: a scratch
+        // one with the same source and target.
         let config_file = scratch.join("config.toml");
-        std::fs::write(
-            &config_file,
-            "[modules.filing]\nenabled = true\nai = { provider = \"local\" }\n",
-        )
-        .unwrap();
+        let text = format!(
+            "[modules.filing]\nenabled = true\nai = {{ provider = \"local\" }}\n\
+             [[modules.filing.targets]]\nid = \"main\"\nname = \"Ablage\"\npath = {archive:?}\n\
+             [[modules.filing.sources]]\npath = {downloads:?}\ntargets = [\"main\"]\n\
+             when = \"watch\"\nfiles = \"{}\"\n",
+            if copies { "copy" } else { "move" }
+        );
+        std::fs::write(&config_file, text).unwrap();
         app.set_config_path_for_test(config_file);
     }
     let start = runtime.enter(|| {
@@ -550,11 +586,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             }
             let pressed = self
                 .press_chip(|reply| *reply == ChipReply::Cancel)
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::KeepYes))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::FineAsIs))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Later))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LeaveThem))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo));
+                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LevelsDone))
+                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LevelsKeep))
+                // Levels that fit badly are left by way of their change.
+                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LevelsChange));
             if pressed.is_err() {
                 return;
             }
@@ -582,9 +618,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.flow_3_leave_and_return();
         self.flow_4_errors();
         self.flow_5_tidy();
-        self.flow_6_structure();
+        self.flow_6_levels();
         self.flow_7_unknown();
-        self.flow_8_free_sentences();
     }
 
     fn flow_1_greeting_while_starting(&mut self) {
@@ -683,7 +718,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     fn flow_2_reading(&mut self) {
         let archive = self.archive.to_string_lossy().into_owned();
         self.ask_for_folder();
-        chat_mut(&mut self.session.app).session.readings.clear();
         let (seconds, image, limit) =
             self.say_and_wait(&archive, Some(("reading-warm", last_working_has_digit)));
         let result = all([
@@ -751,7 +785,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
 
     fn flow_3_leave_and_return(&mut self) {
         self.ask_for_folder();
-        chat_mut(&mut self.session.app).session.readings.clear();
         let original = self.original.to_string_lossy().into_owned();
         let started = Instant::now();
         self.type_sentence(&original);
@@ -857,8 +890,4 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     fn files_below(&self, dir: &Path) -> usize {
         count_files(dir)
     }
-}
-
-fn chat_mut(app: &mut App) -> &mut ncrs_hermes_chat::State {
-    app.hermes_chat_mut_for_test()
 }

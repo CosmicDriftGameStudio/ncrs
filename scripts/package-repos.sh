@@ -20,7 +20,7 @@ fail() {
   exit 1
 }
 
-if [ "$#" -ne 4 ]; then
+if [[ "$#" -ne 4 ]]; then
   echo "usage: $0 <packages-dir> <public-key.asc> <base-url> <out-dir>" >&2
   exit 2
 fi
@@ -29,20 +29,20 @@ public_key="$2"
 base_url="$3"
 out="$4"
 
-[ -d "$packages" ] || { echo "not a directory: $packages" >&2; exit 2; }
-[ -f "$public_key" ] || { echo "not a file: $public_key" >&2; exit 2; }
+[[ -d "$packages" ]] || { echo "not a directory: $packages" >&2; exit 2; }
+[[ -f "$public_key" ]] || { echo "not a file: $public_key" >&2; exit 2; }
 base_url_pattern='^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*[A-Za-z0-9._-])?$'
 if ! [[ "$base_url" =~ $base_url_pattern ]]; then
   echo "not a base URL without a trailing slash: $base_url" >&2
   exit 2
 fi
-if [ -e "$out" ]; then
-  if ! [ -d "$out" ] || [ -n "$(ls -A "$out")" ]; then
+if [[ -e "$out" ]]; then
+  if ! [[ -d "$out" ]] || [[ -n "$(ls -A "$out")" ]]; then
     echo "output folder exists and is not empty: $out" >&2
     exit 2
   fi
 fi
-[ -n "${PACKAGES_GPG_PRIVATE_KEY:-}" ] || fail "PACKAGES_GPG_PRIVATE_KEY is empty"
+[[ -n "${PACKAGES_GPG_PRIVATE_KEY:-}" ]] || fail "PACKAGES_GPG_PRIVATE_KEY is empty"
 
 # Absolute, because the apt steps run from inside the output folder.
 mkdir -p "$out"
@@ -64,12 +64,12 @@ unset PACKAGES_GPG_PRIVATE_KEY
 
 # The committed public key is what users trust. Signing with any other key
 # would publish a repository nobody can verify, so that stops here.
-if [ "$(gpg --show-keys --with-colons "$public_key" | grep -c '^pub:')" != 1 ]; then
+if [[ "$(gpg --show-keys --with-colons "$public_key" | grep -c '^pub:')" != 1 ]]; then
   fail "$public_key must hold exactly one public key"
 fi
 fpr=$(gpg --show-keys --with-colons "$public_key" | awk -F: '/^fpr:/ { print $10; exit }')
 secret_fpr=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ { found = 1; next } found && /^fpr:/ { print $10; exit }')
-if [ "$secret_fpr" != "$fpr" ]; then
+if [[ "$secret_fpr" != "$fpr" ]]; then
   fail "the signing key ${secret_fpr:-<none>} does not match $public_key ($fpr)"
 fi
 
@@ -84,23 +84,23 @@ while IFS= read -r -d '' file; do
       name=$(deb_field "$file" Package)
       version=$(deb_field "$file" Version)
       arch=$(deb_field "$file" Architecture)
-      [ "$name" = ncrs ] || fail "$file is the package '$name', not ncrs"
+      [[ "$name" = ncrs ]] || fail "$file is the package '$name', not ncrs"
       [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]] || fail "$file has an unexpected version: $version"
       case "$arch" in amd64 | arm64) ;; *) fail "$file has an unexpected architecture: $arch" ;; esac
       # The name is what `apt-ftparchive --arch` filters on.
       target="$out/deb/pool/main/n/ncrs/ncrs_${version}_${arch}.deb"
-      [ ! -e "$target" ] || fail "duplicate package: ncrs $version $arch"
+      [[ ! -e "$target" ]] || fail "duplicate package: ncrs $version $arch"
       cp "$file" "$target"
       found["deb-$arch"]=1
       ;;
     *.rpm)
       read -r name version release arch < <(rpm -qp --nosignature --qf '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' "$file")
-      [ "$name" = ncrs ] || fail "$file is the package '$name', not ncrs"
+      [[ "$name" = ncrs ]] || fail "$file is the package '$name', not ncrs"
       [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "$file has an unexpected version: $version"
       [[ "$release" =~ ^[0-9]+$ ]] || fail "$file has an unexpected release: $release"
       case "$arch" in x86_64 | aarch64) ;; *) fail "$file has an unexpected architecture: $arch" ;; esac
       target="$out/rpm/ncrs-$version-$release.$arch.rpm"
-      [ ! -e "$target" ] || fail "duplicate package: ncrs $version-$release $arch"
+      [[ ! -e "$target" ]] || fail "duplicate package: ncrs $version-$release $arch"
       cp "$file" "$target"
       rpm_files+=("$target")
       found["rpm-$arch"]=1
@@ -109,7 +109,7 @@ while IFS= read -r -d '' file; do
 done < <(find "$packages" -type f \( -name '*.deb' -o -name '*.rpm' \) -print0 | sort -z)
 
 for combination in deb-amd64 deb-arm64 rpm-x86_64 rpm-aarch64; do
-  [ -n "${found[$combination]:-}" ] || fail "no $combination package in $packages"
+  [[ -n "${found[$combination]:-}" ]] || fail "no $combination package in $packages"
 done
 
 # apt: the index per architecture, then the signed Release.

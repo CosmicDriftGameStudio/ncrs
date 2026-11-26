@@ -7,8 +7,6 @@ fn turn(message: &str) -> ChatTurn {
         message: message.to_owned(),
         question: None,
         previous_search: None,
-        previous_request: None,
-        previous_message: None,
     }
 }
 
@@ -263,55 +261,6 @@ fn the_grammar_allows_a_name_and_the_star_area() {
 }
 
 #[test]
-fn a_request_written_as_json_reads_back_to_the_same_intent() {
-    for raw in [
-        r#"{"intent":"tidy_folder","source":"Downloads","target":"Archiv","schedule":"always","transfer":"copy"}"#,
-        r#"{"intent":"tidy_folder","source":"Mails"}"#,
-        r#"{"intent":"change_structure","area":"Bank","scope":"2020","order":"by_month"}"#,
-        r#"{"intent":"change_structure","area":"*","order":"flat","name":["year","sender"],"separator":" "}"#,
-        r#"{"intent":"change_structure","area":"Bank","name":["day"],"separator":"."}"#,
-    ] {
-        let intent = parse(raw).unwrap();
-        let json = intent_json(&intent).unwrap();
-        assert_eq!(json, raw);
-        assert_eq!(parse(&json), Ok(intent));
-    }
-    assert_eq!(intent_json(&ChatIntent::Undo), None);
-    assert_eq!(intent_json(&ChatIntent::SmallTalk), None);
-}
-
-#[test]
-fn the_user_message_carries_the_previous_request_and_message() {
-    let asked = ChatTurn {
-        previous_request: Some(r#"{"intent":"tidy_folder","source":"A"}"#.to_owned()),
-        previous_message: Some("mach mal".to_owned()),
-        ..turn("nur bank")
-    };
-    assert_eq!(
-        chat_user_message(&asked).unwrap(),
-        "Hermes' last question: none\nPrevious search: none\n\
-         Previous request: {\"intent\":\"tidy_folder\",\"source\":\"A\"}\n\
-         Previous message: mach mal\nMessage: nur bank"
-    );
-    assert!(chat_user_message(&turn("x"))
-        .unwrap()
-        .contains("Previous request: none\nPrevious message: none\n"));
-}
-
-#[test]
-fn the_previous_request_of_every_row_is_a_request_the_parser_reads() {
-    let mut checked = 0;
-    for row in rows(MAIN_ROWS).iter().chain(&rows(HOLDOUT_ROWS)) {
-        if let Some(json) = &row.previous_request {
-            let intent = parse(json).unwrap();
-            assert_eq!(&intent_json(&intent).unwrap(), json, "row {}", row.id);
-            checked += 1;
-        }
-    }
-    assert!(checked >= 8);
-}
-
-#[test]
 fn an_answer_is_the_index_of_the_option_it_names() {
     let asked = ChatTurn {
         question: question("?", &["ja", "nein", "später"]),
@@ -427,7 +376,7 @@ fn the_rows_are_all_there_and_make_turns() {
         .chain(rows(HOLDOUT_ROWS))
         .collect();
 
-    assert_eq!(all.len(), 202);
+    assert_eq!(all.len(), 192);
     for row in &all {
         let turn = row.turn();
         assert_eq!(turn.message, row.text);

@@ -6,6 +6,60 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Sorting works with sources, targets and rules: several sources and several
+  targets, freely combined, with file name patterns to include or exclude.
+- A source is filed once or watched, moves or copies, and has its own answer
+  for files without text and for files that match several targets (ask, skip or
+  copy to all).
+- Hermes suggests a scheme or further rules for a target, or a rule for one
+  file. Nothing is saved before you take it.
+- Context menu of a folder: "File…", "Watch as source…" and "Set up as target…".
+- Git tab: a header with repository, branch, state and worktree, panes you can
+  resize, sidebar sections, and your local changes as a row of the graph with
+  staging and commit next to it. "Ignore…" adds a file, its folder or its type
+  to `.gitignore`.
+- Git: context menu of a commit (check out, branch, tag, cherry-pick, revert,
+  reset, compare), file history that follows renames, and blame.
+- Git: pull fast-forward only, force push with lease, a dialog for passwords git
+  asks for (nothing is stored), and fetching in the background.
+- Git: clean up merged branches and worktrees, each with its reason, in one
+  repository or in several.
+- Repos tab: all repositories in one list with favorites and state; switch to
+  the default branch, pull and fetch for the marked ones.
+- All Git and Repos actions have a key, are in the command list (F1) and can be
+  changed in `[keys.git]` and `[keys.repos]`. In the App Store build Git stays
+  read only.
+
+### Changed
+
+- One page, Settings › Sorting, holds sources, targets with their rules and the
+  history with undo. It replaces the separate pages for rules and questions.
+- Rules decide where a file goes. The AI no longer picks a folder; a file no
+  rule matches stays where it is, and a pattern with a missing value files
+  nothing.
+- The plan shows the source on the left and the targets on the right. Nothing
+  moves before "Copy" or "Move".
+- Watching a source leaves the files that are in it already; they appear only in
+  the plan.
+- The chat recognises the order of a folder and opens the suggestions. It files
+  nothing itself and can still put back the last run.
+- Folders set up in an older version are read as sources and targets. The first
+  change writes them in the new form and keeps the old settings file as
+  `config.toml.before-1.8.0`. ncrs 1.7 and older cannot read the new settings.
+
+### Removed
+
+- The read folder and write folder roles, continuous filing as a command of its
+  own, and the chat's filing runs.
+
+### Fixed
+
+- ncrs quits cleanly while an AI model is loaded.
+- A run that was put back only in part can be put back again.
+- The idle load of 1.7.1, where Hermes kept preparing folder suggestions.
+
 ## [1.7.1] — 2026-11-25
 
 ### Changed

@@ -3,8 +3,6 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use ncrs_config::config::FilingLocation;
-use ncrs_intake::LocationMode;
 use ncrs_ui_kit::file_icon::SpecialFolder;
 
 use crate::platform::Platform;
@@ -50,22 +48,24 @@ pub fn first_start_favourites() -> Vec<PathBuf> {
         .collect()
 }
 
-/// The folders with a symbol of their own: the ones Hermes reads and files
-/// into first, so a home folder that is also one of them shows that role.
-pub fn special_folders_of(
-    locations: &[FilingLocation],
+/// The folders with a symbol of their own: the targets and the sources of
+/// Hermes first, so a home folder that is also one of them shows that role,
+/// and one that is both shows the target.
+pub fn special_folders_of<'a>(
+    targets: impl IntoIterator<Item = &'a Path>,
+    sources: impl IntoIterator<Item = &'a Path>,
     home: &Path,
 ) -> Vec<(PathBuf, SpecialFolder)> {
-    let hermes = locations.iter().filter_map(|location| {
-        if location.is_target {
-            Some((location.path.clone(), SpecialFolder::WriteFolder))
-        } else if location.mode == LocationMode::Inbox {
-            Some((location.path.clone(), SpecialFolder::ReadFolder))
-        } else {
-            None
-        }
-    });
-    hermes.chain(system_folders(home)).collect()
+    let target_folders = targets
+        .into_iter()
+        .map(|path| (path.to_path_buf(), SpecialFolder::WriteFolder));
+    let source_folders = sources
+        .into_iter()
+        .map(|path| (path.to_path_buf(), SpecialFolder::ReadFolder));
+    target_folders
+        .chain(source_folders)
+        .chain(system_folders(home))
+        .collect()
 }
 
 /// What `folders` say about `path`. The first entry for a path wins, so a
@@ -123,33 +123,28 @@ mod tests {
     }
 
     #[test]
-    fn the_hermes_folders_come_before_the_system_ones() {
-        let location = |name: &str, mode, is_target| FilingLocation {
-            path: PathBuf::from("/home/m").join(name),
-            mode,
-            images: false,
-            is_target,
-            transfer: Default::default(),
-            continuous: Default::default(),
-        };
-        let locations = [
-            location("Downloads", LocationMode::Inbox, false),
-            location("Documents", LocationMode::Archive, true),
-            location("Old", LocationMode::Archive, false),
-        ];
-        let folders = special_folders_of(&locations, Path::new("/home/m"));
+    fn the_hermes_folders_come_before_the_system_ones_and_a_target_before_a_source() {
+        let home = Path::new("/home/m");
+        let [downloads, documents, both] =
+            ["Downloads", "Documents", "Both"].map(|name| home.join(name));
+        let folders = special_folders_of(
+            [documents.as_path(), both.as_path()],
+            [downloads.as_path(), both.as_path()],
+            home,
+        );
         assert_eq!(
-            special_folder_of(&folders, Path::new("/home/m/Downloads")),
+            special_folder_of(&folders, &downloads),
             Some(SpecialFolder::ReadFolder)
         );
         assert_eq!(
-            special_folder_of(&folders, Path::new("/home/m/Documents")),
+            special_folder_of(&folders, &documents),
             Some(SpecialFolder::WriteFolder)
         );
-        assert_eq!(special_folder_of(&folders, Path::new("/home/m/Old")), None);
         assert_eq!(
-            special_folder_of(&folders, Path::new("/home/m")),
-            Some(SpecialFolder::Home)
+            special_folder_of(&folders, &both),
+            Some(SpecialFolder::WriteFolder)
         );
+        assert_eq!(special_folder_of(&folders, &home.join("Old")), None);
+        assert_eq!(special_folder_of(&folders, home), Some(SpecialFolder::Home));
     }
 }

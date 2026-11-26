@@ -1,10 +1,18 @@
 //! What the Git tab takes from the app: data it reads, never state it changes.
 
+use std::path::Path;
+
 use iced::Size;
+use ncrs_config::keymap::Keymap;
+use ncrs_git::PullStrategy;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::format::DateFormat;
 use ncrs_ui_kit::git_rows::CommitColumns;
 use ncrs_ui_kit::palette::Palette;
+
+use crate::git_keys::GitKeys;
+use crate::panes::PaneWidths;
+use crate::picker::RepoEntry;
 
 /// What `update` reads from the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +23,12 @@ pub struct Ctx {
     pub folded: Vec<String>,
     /// The widths of the commit columns the app remembers.
     pub columns: CommitColumns,
+    /// The widths of the sidebar and the detail pane the app remembers.
+    pub panes: PaneWidths,
+    /// The repositories the app knows besides the open one, for the repository picker.
+    pub repositories: Vec<RepoEntry>,
+    /// How the Pull button joins the fetched commits; the Pull menu picks another way for one pull.
+    pub pull_default: PullStrategy,
 }
 
 impl Ctx {
@@ -24,6 +38,9 @@ impl Ctx {
             lang,
             folded: Vec::new(),
             columns: CommitColumns::STANDARD,
+            panes: PaneWidths::STANDARD,
+            repositories: Vec::new(),
+            pull_default: PullStrategy::FastForwardOnly,
         }
     }
 }
@@ -38,4 +55,14 @@ pub struct ViewCtx<'a> {
     pub window: Size,
     /// The widths of the commit columns the app remembers.
     pub columns: CommitColumns,
+    /// The widths of the sidebar and the detail pane the app remembers.
+    pub panes: PaneWidths,
+    /// The home folder, to write paths with `~`; empty where it is not known.
+    pub home: &'a Path,
+    /// The keys of the Git actions, `[keys.git]` applied.
+    pub keys: &'a GitKeys,
+    /// The keymap of the app: the status line shows the key that opens the menu.
+    pub keymap: &'a Keymap,
+    /// The way the Pull button takes, marked in the Pull menu.
+    pub pull_default: PullStrategy,
 }

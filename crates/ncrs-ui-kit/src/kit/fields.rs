@@ -77,6 +77,8 @@ pub fn mono_text_field<'a, M: Clone + 'a>(
 #[derive(Clone, Copy)]
 enum Look {
     Plain,
+    /// Plain, with room at the right end for a counter.
+    Counted,
     /// The monospace font, for paths and names.
     Mono,
     /// Dots, for a password.
@@ -121,7 +123,12 @@ fn field_in<'a, M: Clone + 'a>(
         .secure(matches!(look, Look::Secret));
     let fonted = match look {
         Look::Mono => plain.font(crate::APP_FONT),
-        Look::Plain | Look::Secret => plain,
+        Look::Plain | Look::Counted | Look::Secret => plain,
+    };
+    let right_room = if matches!(look, Look::Counted) {
+        COUNTER_ROOM
+    } else {
+        spacing::M
     };
     let field = match on_input {
         Some(typed) => fonted.on_input(typed).on_submit(on_submit),
@@ -130,7 +137,12 @@ fn field_in<'a, M: Clone + 'a>(
     field
         .size(font_size::BODY)
         .line_height(LineHeight::Absolute(Pixels(FIELD_LINE_HEIGHT)))
-        .padding([spacing::XS, spacing::M])
+        .padding(iced::Padding {
+            top: spacing::XS,
+            bottom: spacing::XS,
+            left: spacing::M,
+            right: right_room,
+        })
         .style(theme::field_input(palette))
         .width(Length::Fill)
         .into()
@@ -174,6 +186,31 @@ pub fn checkbox<'a, M: Clone + 'a>(
     boxed.into()
 }
 
+/// One choice of a group of which exactly one is on: a round button with its
+/// label; a click on either chooses it.
+pub fn radio_choice<'a, M: Clone + 'a>(
+    label: &str,
+    selected: bool,
+    on_choose: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    iced::widget::container(
+        iced::widget::radio(
+            label.to_owned(),
+            true,
+            selected.then_some(true),
+            move |_| on_choose.clone(),
+        )
+        .size(CHECKBOX_SIDE)
+        .text_size(font_size::BODY)
+        .spacing(spacing::M)
+        .style(theme::dialog_radio(palette)),
+    )
+    .height(theme::size::ROW_TALL)
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
 /// A checkbox with its label; a click on either toggles.
 pub fn labelled_checkbox<'a, M: Clone + 'a>(
     state: Check,
@@ -203,6 +240,52 @@ pub fn labelled_checkbox<'a, M: Clone + 'a>(
     }
 }
 
+/// Room at the right end of a counted field, so what is typed stops before the counter.
+const COUNTER_ROOM: f32 = 56.0;
+
+/// A single-line field with `counter` ("12/72") written at its right end, in
+/// the warning color while `over` is set. The counter only tells; it takes no
+/// input and blocks nothing.
+pub fn counted_text_field<'a, M: Clone + 'a>(
+    placeholder: &str,
+    value: &str,
+    (counter, over): (String, bool),
+    id: impl Into<iced::widget::Id>,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ink = if over {
+        palette.error
+    } else {
+        palette.dim_text
+    };
+    let field = field_in(
+        placeholder,
+        value,
+        id,
+        on_input,
+        on_submit,
+        Look::Counted,
+        palette,
+    );
+    iced::widget::stack![
+        field,
+        iced::widget::container(
+            iced::widget::text(counter)
+                .size(font_size::SMALL)
+                .color(ink)
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding([0.0, spacing::L])
+        .align_x(iced::alignment::Horizontal::Right)
+        .align_y(iced::alignment::Vertical::Center),
+    ]
+    .into()
+}
+
 /// A field for a longer text that wraps and takes lines, set in the monospace
 /// font, as a note is edited. It fills the room it is given.
 pub fn text_area<'a, M: Clone + 'a>(
@@ -211,9 +294,21 @@ pub fn text_area<'a, M: Clone + 'a>(
     on_action: impl Fn(text_editor::Action) -> M + 'a,
     palette: &Palette,
 ) -> Element<'a, M> {
+    text_area_hinted(content, id, "", on_action, palette)
+}
+
+/// [`text_area`] with a placeholder that shows while the field is empty.
+pub fn text_area_hinted<'a, M: Clone + 'a>(
+    content: &'a text_editor::Content,
+    id: &'static str,
+    placeholder: &str,
+    on_action: impl Fn(text_editor::Action) -> M + 'a,
+    palette: &Palette,
+) -> Element<'a, M> {
     let base = theme::field_input(palette);
     text_editor(content)
         .id(id)
+        .placeholder(placeholder.to_owned())
         .on_action(on_action)
         .font(crate::APP_FONT)
         .size(font_size::BODY)

@@ -6,19 +6,15 @@ use std::time::SystemTime;
 use ncrs_ai::Provider;
 use ncrs_index::{
     ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, Index, IndexError, KindLanguage,
-    Kinds, ReviewReason,
 };
 use ncrs_intake::{
-    detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
-    FIELDS_READ_VERSION,
+    detect_fields, OwnNames, StabilityTracker, TextChain, TextError, FIELDS_READ_VERSION,
 };
 use ncrs_intake::{
     finish_take_in, prepare_take_in, settle_gone_path, settle_location, IntakeError, Location,
     LocationMode, Outcome, PendingHash, Prepared,
 };
-use ncrs_intake::{
-    is_image_file, open_below, relative_to_location, text_is_readable, ChainReading,
-};
+use ncrs_intake::{open_below, text_is_readable, ChainReading};
 
 use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
@@ -36,10 +32,9 @@ pub struct OwnDetails {
     pub kind_language: KindLanguage,
 }
 
-/// The steps every file passes, in order. Steps that classify documents (text,
-/// OCR, rules, fields, filing) register before the review step. The AI step
-/// is there only when a provider is given; without one the steps are intake,
-/// text, rules, review.
+/// The steps every file passes, in order: intake, text, fields. The AI step
+/// comes last and only when a provider is given; it waits for all other work.
+/// No step decides where a document goes.
 pub fn intake_steps(
     index: Arc<dyn IndexAccess>,
     text: Arc<TextChain>,
@@ -56,23 +51,21 @@ pub fn intake_steps(
             index: Arc::clone(&index),
             chain: text,
         }),
-        Box::new(RulesStep {
+        Box::new(FieldsStep {
             index: Arc::clone(&index),
             own: own.clone(),
         }),
     ];
     if let Some(provider) = ai {
         steps.push(Box::new(AiStep::new(
-            Arc::clone(&index),
+            index,
             provider,
             own.names,
             own.kind_language,
         )));
     }
-    steps.push(Box::new(ReviewStep { index }));
     steps
 }
-
 enum Ready {
     Outcome(Outcome),
     Hashed(PendingHash, ContentHash),
@@ -94,10 +87,18 @@ impl IntakeStep {
         self.ai.as_ref().is_some_and(|ai| ai.can_answer(source))
     }
 
-    /// A new inbox document goes on. One whose question is open goes on only
-    /// to be read: its text was never stored, or the AI was never asked. Its
-    /// review stays open and it is never planned: the rules step leaves a
-    /// document that is not new alone.
+    fn ai_is_due(
+        &self,
+        index: &Index,
+        id: DocumentId,
+        location: &Location,
+    ) -> Result<bool, IndexError> {
+        Ok(self.can_ask_ai(&location.path) && index.ai_read_version(id)? < AI_READ_VERSION)
+    }
+
+    /// A new inbox document goes on while something is left to read: its
+    /// text or fields were never stored, or the AI was never asked. One in
+    /// review goes on only to be read; its fields are left alone.
     fn inbox_document_continues(
         &self,
         index: &mut Index,
@@ -109,30 +110,25 @@ impl IntakeStep {
         };
         match document.status {
             // A file whose text was stored empty could not be read: the same
-            // bytes are not parsed again on every scan, and it goes to the
-            // review list, where an app quit before the rules step left it
-            // unseen. Reading it again is asked for by force.
+            // bytes are not parsed again on every scan. Reading it again is
+            // asked for by force.
             DocumentStatus::New => {
-                let stored_empty = index
-                    .document_text(id)?
-                    .is_some_and(|text| text.trim().is_empty());
+                let stored = index.document_text(id)?;
+                let stored_empty = stored.as_deref().is_some_and(|text| text.trim().is_empty());
                 if stored_empty {
-                    match index.add_review(id, ReviewReason::NoMatchingRule) {
-                        Ok(_) => {}
-                        Err(IndexError::ReviewAlreadyOpen(_)) => {
-                            index.set_document_status(id, DocumentStatus::InReview)?;
-                        }
-                        Err(other) => return Err(other),
-                    }
+                    return Ok(false);
                 }
-                Ok(!stored_empty)
+                let continues = stored.is_none()
+                    || index.fields_read_version(id)? < FIELDS_READ_VERSION
+                    || self.ai_is_due(index, id, &item.location)?;
+                // Text stored for these bytes is not read (PDF, OCR) again.
+                item.stored_text_is_current = continues && stored.is_some();
+                Ok(continues)
             }
             DocumentStatus::InReview => {
                 let has_text = index.has_document_text_row(id)?;
                 let continues = text_is_readable(&item.path)
-                    && (!has_text
-                        || (self.can_ask_ai(&item.location.path)
-                            && index.ai_read_version(id)? < AI_READ_VERSION));
+                    && (!has_text || self.ai_is_due(index, id, &item.location)?);
                 item.stored_text_is_current = continues && has_text;
                 Ok(continues)
             }
@@ -168,22 +164,11 @@ impl Step for IntakeStep {
                     finish_take_in(index, &item.location, &item.path, pending, hash, now)?.outcome
                 }
             };
-            // An inbox document taken in but never reviewed (the app quit in
+            // An inbox document taken in but never read (the app quit in
             // between) goes on again, and so does an archive document whose
             // text was never read, for example for lack of the PDF library.
             let unreviewed = match outcome {
-                Outcome::Unchanged(id) if item.force => {
-                    // A filed document keeps its status even where it lies in
-                    // an inbox location: setting it back would plan it, and
-                    // so move it, a second time.
-                    let filed = index
-                        .document(id)?
-                        .is_some_and(|document| document.status == DocumentStatus::Filed);
-                    if item.location.mode == LocationMode::Inbox && !filed {
-                        index.set_document_status(id, DocumentStatus::New)?;
-                    }
-                    true
-                }
+                Outcome::Unchanged(_) if item.force => true,
                 Outcome::Unchanged(id) => match item.location.mode {
                     LocationMode::Inbox => self.inbox_document_continues(index, id, item)?,
                     LocationMode::Archive => {
@@ -191,8 +176,7 @@ impl Step for IntakeStep {
                         let continues = text_is_readable(&item.path)
                             && (!has_text
                                 || index.fields_read_version(id)? < FIELDS_READ_VERSION
-                                || (self.can_ask_ai(&item.location.path)
-                                    && index.ai_read_version(id)? < AI_READ_VERSION));
+                                || self.ai_is_due(index, id, &item.location)?);
                         item.stored_text_is_current = continues && has_text;
                         continues
                     }
@@ -283,12 +267,7 @@ impl Step for TextStep {
             .and_then(|file| self.chain.read_open(&item.path, &file));
         item.text = match reading {
             Ok(ChainReading::Text(text)) => Some(text),
-            Ok(ChainReading::NoText { recognition_ran }) => {
-                item.not_a_document = recognition_ran
-                    && item.location.mode == LocationMode::Inbox
-                    && is_image_file(&item.path);
-                None
-            }
+            Ok(ChainReading::NoText { .. }) => None,
             Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
             Err(err) => {
                 // Without a stored text the document would be read (and fail)
@@ -321,17 +300,18 @@ impl Step for TextStep {
 /// The fields the detection of the look of a letter reads.
 const DETECTED_FIELDS: [Field; 4] = [Field::Sender, Field::Recipient, Field::Kind, Field::Date];
 
-/// Lets the rules decide where a new inbox document would be filed, and stores
-/// the fields they could fill. Nothing is moved here: a plan only ends the
-/// pipeline for the document, executing it is a later step. A document the
-/// rules cannot place carries the reason on to the review step.
+/// Fills the empty fields of a document from its text, without a model, and
+/// reads again the ones that hold only a guess of an earlier detection. It
+/// notes which version of the detection read the document. Nothing is planned
+/// or filed, no review is opened and the status never changes; what happens
+/// to the document is decided later. Fields a person set stay.
 #[derive(Debug)]
-struct RulesStep {
+struct FieldsStep {
     index: Arc<dyn IndexAccess>,
     own: OwnDetails,
 }
 
-impl RulesStep {
+impl FieldsStep {
     fn own_names(&self) -> OwnNames<'_> {
         OwnNames {
             names: &self.own.names,
@@ -340,14 +320,20 @@ impl RulesStep {
         }
     }
 
-    /// Fills the empty fields of an archive document, reads again the ones
-    /// that hold only a guess of an earlier detection, and notes which version
-    /// of the detection read it. Never plans and never changes the status.
-    fn read_archive_fields(&self, id: DocumentId, text: &str) -> Result<StepOutcome, String> {
+    /// An inbox document that someone looks at or has filed keeps its fields.
+    fn read_fields(
+        &self,
+        id: DocumentId,
+        text: &str,
+        only_new: bool,
+    ) -> Result<StepOutcome, String> {
         with_index_value(self.index.as_ref(), |index| {
             let Some(document) = index.document(id)? else {
                 return Ok(());
             };
+            if only_new && document.status != DocumentStatus::New {
+                return Ok(());
+            }
             let origins = index.field_origins(id)?;
             let mut current = document.fields.clone();
             for field in DETECTED_FIELDS {
@@ -378,9 +364,9 @@ impl RulesStep {
     }
 }
 
-impl Step for RulesStep {
+impl Step for FieldsStep {
     fn name(&self) -> &'static str {
-        "rules"
+        "fields"
     }
 
     fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
@@ -388,150 +374,12 @@ impl Step for RulesStep {
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
         let text = item.text.as_deref().unwrap_or_default();
-        if item.location.mode == LocationMode::Archive {
-            return self.read_archive_fields(id, text);
+        match item.location.mode {
+            LocationMode::Archive => self.read_fields(id, text, false),
+            // Nothing to detect and nothing for the model to read.
+            LocationMode::Inbox if text.trim().is_empty() => Ok(StepOutcome::Finished),
+            LocationMode::Inbox => self.read_fields(id, text, true),
         }
-        // No inquiry to plan: the review step excludes it.
-        if item.not_a_document {
-            return Ok(StepOutcome::Continue);
-        }
-        let planning = with_index_value(self.index.as_ref(), |index| {
-            let Some(document) = index.document(id)? else {
-                return Ok(None);
-            };
-            // Fields of a document someone is already looking at or has filed
-            // are theirs; the rules do not overwrite them.
-            if document.status != DocumentStatus::New {
-                return Ok(None);
-            }
-            let rules = index.rules()?;
-            let aliases = index.confirmed_sender_aliases()?;
-            let detected = detect_fields(
-                text,
-                &document.fields,
-                &aliases,
-                &self.own_names(),
-                index.kinds(),
-            );
-            let known = detected.fill(&document.fields);
-            let manual_fields = index.field_origins(id)?.manual_fields();
-            let kinds = Kinds::new(Arc::clone(index.kinds()), self.own.kind_language);
-            let planning = plan(
-                &rules,
-                &PlanInput {
-                    text,
-                    fields: &known,
-                    path: Some(relative_to_location(
-                        &item.path,
-                        std::slice::from_ref(&item.location.path),
-                    )),
-                    location: Some(&item.location.path),
-                    sender_aliases: &aliases,
-                    manual_fields: &manual_fields,
-                    kinds: &kinds,
-                },
-            );
-            let (found, rule_origin) = match &planning {
-                Planning::Plan(filing) => (&filing.fields, FieldOrigin::Rule(Some(filing.rule))),
-                Planning::Review { fields, rule, .. } => (
-                    fields,
-                    rule.map_or(FieldOrigin::Unknown, |rule_id| {
-                        FieldOrigin::Rule(Some(rule_id))
-                    }),
-                ),
-            };
-            if *found != document.fields {
-                let sender_was_detected = detected.sender.is_some();
-                index.set_document_fields(id, found, |field| match field {
-                    Field::Sender if sender_was_detected => FieldOrigin::Detected,
-                    Field::Recipient if found.recipient == detected.recipient => {
-                        FieldOrigin::AddressBlock
-                    }
-                    Field::Kind if found.kind == detected.kind => FieldOrigin::Heading,
-                    Field::Date if found.date.is_some() && found.date == detected.date => {
-                        FieldOrigin::Detected
-                    }
-                    _ => rule_origin.clone(),
-                })?;
-            }
-            if matches!(planning, Planning::Plan(_)) {
-                index.place_document(id)?;
-            }
-            Ok::<_, IndexError>(Some(planning))
-        })
-        .ok_or_else(|| NO_INDEX.to_owned())?
-        .map_err(|err| err.to_string())?;
-        match planning {
-            Some(Planning::Plan(filing)) => {
-                item.plan = Some(Box::new(filing));
-                Ok(StepOutcome::Finished)
-            }
-            Some(Planning::Review { reason, .. }) => {
-                item.review = Some(reason);
-                Ok(StepOutcome::Continue)
-            }
-            None => Ok(StepOutcome::Continue),
-        }
-    }
-}
-
-/// Every inbox document the rules did not place lands in the review list, with
-/// the reason the rules gave. Archive documents never get a review entry.
-#[derive(Debug)]
-struct ReviewStep {
-    index: Arc<dyn IndexAccess>,
-}
-
-impl Step for ReviewStep {
-    fn name(&self) -> &'static str {
-        "review"
-    }
-
-    fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
-        if item.location.mode == LocationMode::Archive {
-            return Ok(StepOutcome::Finished);
-        }
-        let id = item
-            .document
-            .ok_or_else(|| "the file has no document".to_owned())?;
-        let reason = item.review.unwrap_or(ReviewReason::NoMatchingRule);
-        let added = with_index_value(self.index.as_ref(), |index| {
-            let status = index.document(id)?.map(|document| document.status);
-            let needs_review = status == Some(DocumentStatus::New);
-            // A location that files by itself takes what the rules leave
-            // open: the background filing decides, not the review list.
-            let left_to_background = needs_review
-                && item.location.continuous
-                && !item.not_a_document
-                && matches!(
-                    reason,
-                    ReviewReason::NoMatchingRule | ReviewReason::UnconfirmedRule
-                );
-            if needs_review && !left_to_background {
-                match index.add_review(id, reason) {
-                    // Processed again while its review was still open: the
-                    // intake had set it back to new, the open review is the
-                    // state it belongs in.
-                    Err(IndexError::ReviewAlreadyOpen(_)) => {
-                        index.set_document_status(id, DocumentStatus::InReview)?;
-                    }
-                    other => {
-                        other?;
-                    }
-                }
-            }
-            // The same as the user's "exclude from Hermes": no inquiry any more.
-            let still_an_inquiry =
-                matches!(status, Some(DocumentStatus::New | DocumentStatus::InReview));
-            if item.not_a_document && still_an_inquiry {
-                index.exclude_path_automatically(&item.path)?;
-            }
-            Ok::<_, IndexError>(left_to_background)
-        })
-        .ok_or_else(|| NO_INDEX.to_owned())?;
-        let left_to_background = added.map_err(|err| err.to_string())?;
-        item.continuous_candidate = left_to_background;
-        Ok(StepOutcome::Finished)
     }
 }
 

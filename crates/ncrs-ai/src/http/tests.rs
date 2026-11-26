@@ -594,8 +594,6 @@ fn a_turn() -> crate::chat::ChatTurn {
         message: "show my invoices".to_owned(),
         question: None,
         previous_search: None,
-        previous_request: None,
-        previous_message: None,
     }
 }
 
@@ -616,7 +614,7 @@ fn a_far_server_gets_each_kind_of_data_only_with_the_agreement_to_that_kind() {
     };
 
     // Archive only: no file names, so no rule questions, no name proposals,
-    // no folder choice, and no inbox document.
+    // and no inbox document.
     let archive = only(ConsentPurpose::Archive);
     assert!(is_refused_for_consent(archive.extract(&request())));
     assert!(is_refused_for_consent(archive.generate_rule(
@@ -627,11 +625,6 @@ fn a_far_server_gets_each_kind_of_data_only_with_the_agreement_to_that_kind() {
     assert!(is_refused_for_consent(
         archive.understand_file_names(&a_turn())
     ));
-    assert!(is_refused_for_consent(archive.choose_folders(
-        &[],
-        &[],
-        crate::chat::FolderChoiceLane::Waiting
-    )));
 
     // Folders only: no inbox document, no chat.
     let folders = only(ConsentPurpose::Folders);
@@ -642,11 +635,6 @@ fn a_far_server_gets_each_kind_of_data_only_with_the_agreement_to_that_kind() {
         &[],
         &kinds
     )));
-    // Agreed to file names, a server that cannot choose folders says so.
-    assert_eq!(
-        folders.choose_folders(&[], &[], crate::chat::FolderChoiceLane::Waiting),
-        Err(AiError::Unsupported)
-    );
 
     // Inbox only: nothing of the archive or the folders.
     let inbox = only(ConsentPurpose::Inbox);
@@ -654,11 +642,6 @@ fn a_far_server_gets_each_kind_of_data_only_with_the_agreement_to_that_kind() {
     assert!(is_refused_for_consent(
         inbox.understand_file_names(&a_turn())
     ));
-    assert!(is_refused_for_consent(inbox.choose_folders(
-        &[],
-        &[],
-        crate::chat::FolderChoiceLane::Waiting
-    )));
 }
 
 fn answer_json() -> String {
@@ -742,28 +725,6 @@ fn a_corrected_key_lifts_the_pause_of_a_refused_one() {
     *keys.0.lock().unwrap() = Some(Secret::new(KEY.to_owned()));
 
     assert!(own.can_answer(source));
-}
-
-#[test]
-fn an_own_server_is_never_asked_to_choose_folders() {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let own = local_provider(listener.local_addr().unwrap().port(), None);
-
-    let result = crate::chat::ChatModel::choose_folders(
-        &own,
-        &[("Invoices".to_owned(), vec!["a.pdf".to_owned()])],
-        &["b.pdf".to_owned()],
-        crate::chat::FolderChoiceLane::Waiting,
-    );
-
-    assert_eq!(result, Err(AiError::Unsupported));
-    let accepted = listener.accept();
-    assert_eq!(
-        accepted.unwrap_err().kind(),
-        std::io::ErrorKind::WouldBlock,
-        "nothing was sent"
-    );
 }
 
 #[test]

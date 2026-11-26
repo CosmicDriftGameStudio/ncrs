@@ -1,0 +1,30 @@
+[package]
+name = "ncrs-repos"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The Repos tab: every repository on the disk in one list, with fetch, pull and push over the marked ones"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+serde = { version = "1", features = ["derive"] }
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "serde", "display"] }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-git = { path = "../ncrs-git", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[dev-dependencies]
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
+iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3.27"
+
+[lints]
+workspace = true

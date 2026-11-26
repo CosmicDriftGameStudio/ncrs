@@ -566,16 +566,7 @@ impl<'a, M: 'a> HermesCell<'a, M> {
         )
         .padding([0.0, spacing::XS])
         .style(theme::outlined_in(color));
-        Some(match role {
-            FolderRole::Archive => hint(
-                tag.into(),
-                self.lang
-                    .text(Msg::HermesColumnRoleArchiveTooltip)
-                    .to_owned(),
-                &self.palette,
-            ),
-            FolderRole::Inbox | FolderRole::FilingLocation => tag.into(),
-        })
+        Some(tag.into())
     }
 
     /// The trailing cell, always [`HERMES_COLUMN_WIDTH`] wide and cut at its

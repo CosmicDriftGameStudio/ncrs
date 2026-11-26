@@ -1,14 +1,13 @@
-//! What the Index and Hermes pages show that only the app knows: the figures
-//! of the index, the order read per folder, the last run, and the folders
-//! that cannot be reached.
+//! What the Index page shows that only the app knows: the figures of the
+//! index and the folders that cannot be reached.
 
 use crate::app::*;
 use ncrs_config::SettingsFeature;
 pub(in crate::app) use ncrs_hermes_ui::documents_facts::ai_detail;
-use ncrs_hermes_ui::documents_facts::{read_documents_facts, undo_batch};
+use ncrs_hermes_ui::documents_facts::read_documents_facts;
 use ncrs_i18n::Msg;
 use ncrs_pipeline::RunnerState;
-use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts};
+use ncrs_settings::facts::{AiState, DocumentsFacts, LoadedFacts};
 use ncrs_settings::folders::AddAs;
 
 /// How often the Index page may read its facts again while filing runs.
@@ -40,13 +39,10 @@ impl App {
             paused,
             unreadable: status.errors_newest_first().count(),
             disconnected: loaded.disconnected,
-            areas: state.loaded.as_ref().map(|_| loaded.areas),
-            runs: loaded.runs,
             folder_files: loaded.folder_files,
             system_reads_scans: self.system_reads_scans,
             chat_keep_days: self.hermes_chat.chat_keep_days(),
             ai_detail: ai_detail(&overview.ai_status, self.lang),
-            rules: usize::try_from(counts.confirmed_rules).unwrap_or(usize::MAX),
             ai: match tile {
                 // Nothing is sent to a server that was not agreed to, whether or not
                 // the module runs.
@@ -76,19 +72,14 @@ impl App {
         }
     }
 
-    /// Reads what the open Index or Hermes page shows in the background, once
-    /// per change of the folder lists.
+    /// Reads what the open Index page shows in the background, once per change
+    /// of the folder list.
     pub(in crate::app) fn load_documents_facts(&mut self) -> Task<Message> {
         let availability = self.chat_availability();
         let Some(state) = self.settings.page.as_mut() else {
             return Task::none();
         };
-        if state.facts_requested
-            || !matches!(
-                state.feature,
-                SettingsFeature::Index | SettingsFeature::Hermes
-            )
-        {
+        if state.facts_requested || state.feature != SettingsFeature::Index {
             return Task::none();
         }
         let access = match availability {
@@ -103,16 +94,15 @@ impl App {
         };
         state.facts_requested = true;
         state.facts_in_flight = true;
-        let lang = self.lang;
         let now = self.wall_clock.now();
         self.facts_requested_at = Some(now);
-        let stopped = lang.text(Msg::SettingsBackgroundWorkStopped).to_owned();
+        let stopped = self
+            .lang
+            .text(Msg::SettingsBackgroundWorkStopped)
+            .to_owned();
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || {
-                    read_documents_facts(access, &locations, lang, now)
-                })
-                .await
+                tokio::task::spawn_blocking(move || read_documents_facts(access, &locations)).await
             },
             move |joined| {
                 let loaded = joined.unwrap_or_else(|_| LoadedFacts {
@@ -168,46 +158,5 @@ impl App {
                 result,
             })
         })
-    }
-
-    /// The chat opens in place of the settings, at the change of `area` when
-    /// one is named.
-    pub(in crate::app) fn open_chat_from_settings(
-        &mut self,
-        to_change: Option<AreaFacts>,
-    ) -> Task<Message> {
-        let left = self.leave_settings_page();
-        let opened = self.update_hermes_chat(HermesChatMessage::Open);
-        let changed = match to_change {
-            Some(named) => self.update_hermes_chat(HermesChatMessage::ChangeArea {
-                folder: named.read_folder,
-                area: named.name,
-            }),
-            None => Task::none(),
-        };
-        Task::batch([left, opened, changed])
-    }
-
-    /// Puts the run of `batch` back; the page reads its facts again afterwards.
-    pub(in crate::app) fn undo_run(&self, batch: i64) -> Task<Message> {
-        let ncrs_hermes_chat::Availability::Ready(access) = self.chat_availability() else {
-            return Task::none();
-        };
-        let unexpected = self
-            .lang
-            .text(Msg::SettingsHermesHistoryUndoUnexpected)
-            .to_owned();
-        let stopped = self
-            .lang
-            .text(Msg::SettingsBackgroundWorkStopped)
-            .to_owned();
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || undo_batch(&access, batch, unexpected))
-                    .await
-                    .unwrap_or(Err(stopped))
-            },
-            |result| Message::Settings(SettingsMessage::RunUndone(result)),
-        )
     }
 }

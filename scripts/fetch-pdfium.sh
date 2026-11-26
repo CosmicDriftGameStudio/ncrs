@@ -19,7 +19,7 @@ asset_for() {
   esac
 }
 
-if [ "$#" -ne 2 ]; then
+if [[ "$#" -ne 2 ]]; then
   echo "usage: $0 <rust-target-triple> <dest-dir>" >&2
   exit 2
 fi
@@ -42,12 +42,12 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-curl --fail --silent --show-error --location \
+curl --proto '=https' --fail --silent --show-error --location \
   --output "$work/$asset" \
   "https://github.com/bblanchon/pdfium-binaries/releases/download/${RELEASE}/${asset}"
 
 actual="$(sha256 "$work/$asset")"
-if [ "$actual" != "$expected" ]; then
+if [[ "$actual" != "$expected" ]]; then
   echo "checksum mismatch for $asset: expected $expected, got $actual" >&2
   exit 1
 fi

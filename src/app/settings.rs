@@ -11,10 +11,11 @@ impl App {
         &'a self,
         state: &'a settings_ui::SettingsState,
     ) -> settings_ui::SettingsView<'a> {
-        let overview = self.overview_facts(state.ocr_models_present);
+        let overview = self.overview_facts();
         settings_ui::SettingsView {
             facts: self.documents_facts(&overview, state),
             favourites: self.favourites_facts(),
+            repos_scan: self.repos_scan_facts(),
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
@@ -79,6 +80,10 @@ impl App {
                 .as_deref()
                 .and_then(std::path::Path::parent)
                 .map(ncrs_ai::usage_log_path),
+            git_shortcuts: ncrs_git_view::commands(self.lang, &self.git_keys)
+                .into_iter()
+                .map(|(label, keys)| ncrs_settings::GitShortcut { label, keys })
+                .collect(),
             services: ncrs_settings::Services {
                 fetch_extension: self.fetch_extension,
                 install_theme: self.install_theme,
@@ -160,12 +165,7 @@ impl App {
             Ask::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
             Ask::OpenServer(url) => self.update(Message::Remote(RemoteMessage::OpenServer(url))),
             Ask::Protection(position) => {
-                let facts = self.overview_facts(
-                    self.settings
-                        .page
-                        .as_ref()
-                        .is_some_and(|state| state.ocr_models_present),
-                );
+                let facts = self.overview_facts();
                 match hermes_overview_ui::protection_actions(&facts)
                     .into_iter()
                     .nth(position)
@@ -191,16 +191,15 @@ impl App {
                 Task::none()
             }
             Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
-            Ask::OpenChat { area } => self.open_chat_from_settings(area),
             Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
             Ask::NotesRecovery => self.update_notes(ncrs_notes::Message::RecoveryRequested),
+            Ask::ScanRepos => self.scan_repos(),
             Ask::NotesRestore(text) => self.update_notes(ncrs_notes::Message::Restore(text)),
             Ask::NotesSyncNow => self.update_notes(ncrs_notes::Message::SyncNow),
             Ask::Store(button) => self.press_store_button(button),
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
-            Ask::UndoRun(batch) => self.undo_run(batch),
             Ask::ReadTextlessAgain => self.read_textless_again(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
@@ -336,10 +335,6 @@ impl App {
         self.run_settings_actions(task, actions)
     }
 
-    pub(in crate::app) fn ocr_models_present(&self) -> bool {
-        ncrs_settings::ocr_models_present(self.settings_ctx().ocr_models_dir.as_deref())
-    }
-
     /// Writes the values typed on the page and closes it.
     pub(in crate::app) fn leave_settings_page(&mut self) -> Task<Message> {
         self.update_settings(SettingsMessage::Close)
@@ -369,7 +364,7 @@ impl App {
     }
 
     /// The main status bar is not shown over the settings, so a job error
-    /// (an answer of the reviews page that failed) is read in theirs.
+    /// is read in theirs.
     pub(in crate::app) fn settings_status_failure(&self) -> Option<&str> {
         self.settings
             .failure
@@ -446,6 +441,18 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::Repos(settings) => {
+                let searches_alike = self.repos_settings.searches_like(&settings);
+                self.repos_settings = settings;
+                if searches_alike {
+                    return Task::none();
+                }
+                self.update_repos(ncrs_repos::Message::Rescan)
+            }
+            SettingChange::Git(settings) => {
+                self.git_settings = settings;
+                Task::none()
+            }
             SettingChange::GitView(settings) => {
                 self.git_view_settings = settings;
                 Task::none()

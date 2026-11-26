@@ -1,7 +1,9 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use crate::action_error::{classify_sync_failure, ActionError};
 
@@ -149,6 +151,59 @@ impl Output {
     }
 }
 
+fn finish(mut child: Child, timeout: Option<Duration>) -> Result<Output, ActionError> {
+    let io_error = |cause: std::io::Error| ActionError::Io(cause.to_string());
+    let Some(limit) = timeout else {
+        let output = child.wait_with_output().map_err(io_error)?;
+        return Ok(Output {
+            success: output.status.success(),
+            stdout: output.stdout,
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        });
+    };
+    let stdout = reader_of(child.stdout.take());
+    let stderr = reader_of(child.stderr.take());
+    let deadline = Instant::now() + limit;
+    let mut timed_out = false;
+    let success = loop {
+        match child.try_wait().map_err(io_error)? {
+            Some(status) => break status.success(),
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                timed_out = true;
+                break false;
+            }
+            None => std::thread::sleep(POLL_INTERVAL),
+        }
+    };
+    let mut stderr_text =
+        String::from_utf8_lossy(&stderr.recv_timeout(PIPE_GRACE).unwrap_or_default()).to_string();
+    if timed_out {
+        stderr_text.push_str(&format!(
+            "\nOperation timed out after {} s",
+            limit.as_secs()
+        ));
+    }
+    Ok(Output {
+        success,
+        stdout: stdout.recv_timeout(PIPE_GRACE).unwrap_or_default(),
+        stderr: stderr_text,
+    })
+}
+
+fn reader_of(pipe: Option<impl std::io::Read + Send + 'static>) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut open) = pipe {
+            let _ = open.read_to_end(&mut bytes);
+        }
+        let _ = sender.send(bytes);
+    });
+    receiver
+}
+
 /// `https://user:pass@host` becomes `https://***@host`: git echoes remote URLs
 /// in its messages, and those end up on screen and in logs.
 fn redact_credentials(text: &str) -> String {
@@ -172,14 +227,55 @@ fn redact_credentials(text: &str) -> String {
     result
 }
 
+/// How a call that needs a login (or a host-key answer) gets it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Prompts {
+    /// Never asks: git fails with an authentication error.
+    Plain,
+    /// Asks through the askpass broker; the request carries this job number.
+    Ask { job: u64 },
+    /// Runs without a person: no prompt of any kind, ssh in batch mode, no
+    /// hooks. For fetching in the background and in bulk runs.
+    Unattended,
+}
+
+pub fn repository_runs_commands() -> ActionError {
+    ActionError::Other {
+        git_output: "the repository config runs commands".to_string(),
+    }
+}
+
+/// The only transports an unattended call may use: no `ext::` command transport.
+const UNATTENDED_PROTOCOLS: &str = "https:http:ssh:git:file";
+/// A push into a local folder runs the hooks found there, whatever this call sets.
+const UNATTENDED_PUSH_PROTOCOLS: &str = "https:http:ssh:git";
+/// `-c` settings of an unattended call: no command transport, no background
+/// maintenance that a fetch would start (it runs the repository's own gc hooks),
+/// and nothing in submodules: their config is not checked for commands.
+const UNATTENDED_SETTINGS: [&str; 6] = [
+    "protocol.ext.allow=never",
+    "maintenance.auto=false",
+    "gc.auto=0",
+    "submodule.recurse=false",
+    "fetch.recurseSubmodules=false",
+    "push.recurseSubmodules=no",
+];
+/// How long an unattended call may take before its git is killed.
+const UNATTENDED_TIMEOUT: Duration = Duration::from_secs(300);
+/// What a killed git's pipes may still deliver; a child of git (ssh) can hold them open.
+const PIPE_GRACE: Duration = Duration::from_secs(1);
+const POLL_INTERVAL: Duration = Duration::from_millis(20);
+
 /// One repository and the git that writes to it. Every call blocks.
 #[derive(Clone, Debug)]
 pub struct Git {
     exe: PathBuf,
     root: PathBuf,
     /// Filter drivers of the repository's own config to switch off; set only
-    /// for a `Git` that reads (see `open_reading`).
+    /// for a `Git` that reads (see `open_reading`) or runs unattended.
     reading_without: Option<Vec<String>>,
+    prompts: Prompts,
+    timeout: Option<Duration>,
 }
 
 #[cfg(windows)]
@@ -197,6 +293,8 @@ impl Git {
                 exe: exe.clone(),
                 root: root.to_path_buf(),
                 reading_without: None,
+                prompts: Prompts::Plain,
+                timeout: None,
             }),
             GitCli::NotFound => Err(ActionError::GitNotFound),
         }
@@ -207,12 +305,94 @@ impl Git {
     /// names, so showing a folder never runs what a downloaded `.git/config` says.
     pub fn open_reading(root: &Path) -> Result<Self, ActionError> {
         let mut git = Self::open(root)?;
-        git.reading_without = Some(crate::repo_access::repository_filter_names(root));
+        let filters = git.repository_filter_names()?;
+        // `-c` cuts a name at its first `=`, so such a filter would stay on.
+        let cannot_be_emptied =
+            |name: &String| name.is_empty() || name.contains(['=', char::REPLACEMENT_CHARACTER]);
+        if filters.iter().any(cannot_be_emptied) {
+            return Err(repository_runs_commands());
+        }
+        git.reading_without = Some(filters);
         Ok(git)
+    }
+
+    /// Like `open`, for a call that may ask the user for a login: the answers
+    /// come through `askpass`, requests carry `job`.
+    pub fn open_interactive(root: &Path, job: u64) -> Result<Self, ActionError> {
+        let mut git = Self::open(root)?;
+        git.prompts = Prompts::Ask { job };
+        Ok(git)
+    }
+
+    /// Like `open_reading` for calls that fetch without anyone looking: never
+    /// asks, never opens a window, runs no hook and kills a hanging git.
+    pub fn open_unattended(root: &Path) -> Result<Self, ActionError> {
+        let mut git = Self::open_reading(root)?;
+        git.prompts = Prompts::Unattended;
+        git.timeout = Some(UNATTENDED_TIMEOUT);
+        Ok(git)
+    }
+
+    /// Kills a call that runs longer than `limit`; it then fails like a network timeout.
+    #[must_use]
+    pub fn with_timeout(mut self, limit: Duration) -> Self {
+        self.timeout = Some(limit);
+        self
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The `-c` settings every call of this git gets besides the common ones.
+    fn extra_settings(&self) -> &'static [&'static str] {
+        match self.prompts {
+            Prompts::Unattended => &UNATTENDED_SETTINGS,
+            Prompts::Plain | Prompts::Ask { .. } => &[],
+        }
+    }
+
+    /// An unattended call does nothing but the one thing it was asked for.
+    pub(crate) fn is_unattended(&self) -> bool {
+        self.prompts == Prompts::Unattended
+    }
+
+    fn apply_prompts(&self, command: &mut Command) {
+        match self.prompts {
+            Prompts::Plain => {}
+            Prompts::Ask { job } => {
+                if let Some(setup) = crate::askpass::setup_for(job) {
+                    command
+                        .env("GIT_ASKPASS", &setup.askpass)
+                        .env("SSH_ASKPASS", &setup.askpass)
+                        .env("SSH_ASKPASS_REQUIRE", "force")
+                        .env(crate::askpass::ENDPOINT_VARIABLE, &setup.endpoint)
+                        .env(crate::askpass::TOKEN_VARIABLE, &setup.token);
+                    // Old OpenSSH only uses an askpass when it believes there is a display.
+                    if cfg!(all(unix, not(target_os = "macos")))
+                        && std::env::var_os("DISPLAY").is_none()
+                    {
+                        command.env("DISPLAY", "ncrs:0");
+                    }
+                }
+            }
+            Prompts::Unattended => {
+                command
+                    .env("GIT_ALLOW_PROTOCOL", UNATTENDED_PROTOCOLS)
+                    .env("GIT_ASKPASS", "")
+                    .env("SSH_ASKPASS_REQUIRE", "never")
+                    .env("GCM_INTERACTIVE", "never")
+                    .env(
+                        "GIT_SSH_COMMAND",
+                        "ssh -o BatchMode=yes -o ConnectTimeout=15",
+                    );
+            }
+        }
+    }
+
+    /// Only reads, or runs unattended: nothing the repository names may start.
+    pub(crate) fn is_guarded(&self) -> bool {
+        self.reading_without.is_some()
     }
 
     pub(crate) fn run(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<Output, ActionError> {
@@ -222,10 +402,22 @@ impl Git {
             .arg(&self.root)
             // A repository from a download must not make every call start a watcher it names.
             .args(["-c", "core.fsmonitor=false"]);
+        for setting in self.extra_settings() {
+            command.args(["-c", setting]);
+        }
+        self.apply_prompts(&mut command);
+        if self.is_unattended() && args.first() == Some(&"push") {
+            command.env("GIT_ALLOW_PROTOCOL", UNATTENDED_PUSH_PROTOCOLS);
+        }
         if let Some(filters) = &self.reading_without {
             command
                 .env("GIT_OPTIONAL_LOCKS", "0")
                 .args(["-c", &format!("core.hooksPath={NULL_DEVICE}")]);
+            // Reading must not go to the remote for objects of a partial clone; an
+            // unattended pull or checkout has to.
+            if !self.is_unattended() {
+                command.env("GIT_NO_LAZY_FETCH", "1");
+            }
             for name in filters {
                 for key in ["clean", "smudge", "process"] {
                     command.args(["-c", &format!("filter.{name}.{key}=")]);
@@ -257,14 +449,7 @@ impl Git {
             pipe.write_all(bytes)
                 .map_err(|cause| ActionError::Io(cause.to_string()))?;
         }
-        let output = child
-            .wait_with_output()
-            .map_err(|cause| ActionError::Io(cause.to_string()))?;
-        Ok(Output {
-            success: output.status.success(),
-            stdout: output.stdout,
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        })
+        finish(child, self.timeout)
     }
 
     /// Runs and turns a failure into `ActionError::Other`.
@@ -363,5 +548,82 @@ mod tests {
         assert!(may_run(Path::new("/opt/homebrew/bin/git"), true, ask));
         assert!(may_run(Path::new("/usr/bin/git"), false, ask));
         assert!(!asked.get());
+    }
+
+    fn settings_of(prompts: Prompts) -> std::collections::HashMap<String, Option<String>> {
+        let git = Git {
+            exe: PathBuf::from("git"),
+            root: PathBuf::from("."),
+            reading_without: None,
+            prompts,
+            timeout: None,
+        };
+        let mut command = Command::new("git");
+        git.apply_prompts(&mut command);
+        command
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().into_owned(),
+                    value.map(|found| found.to_string_lossy().into_owned()),
+                )
+            })
+            .collect()
+    }
+
+    fn value<'a>(
+        settings: &'a std::collections::HashMap<String, Option<String>>,
+        key: &str,
+    ) -> Option<&'a str> {
+        settings.get(key).and_then(Option::as_deref)
+    }
+
+    #[test]
+    fn an_interactive_call_points_git_and_ssh_at_the_broker() {
+        let settings = settings_of(Prompts::Ask { job: 9 });
+        assert!(value(&settings, "NCRS_ASKPASS").is_some_and(|found| found.contains(':')));
+        assert!(value(&settings, "NCRS_ASKPASS_TOKEN").is_some_and(|found| found.ends_with(":9")));
+        assert_eq!(value(&settings, "SSH_ASKPASS_REQUIRE"), Some("force"));
+        assert!(settings.contains_key("GIT_ASKPASS") && settings.contains_key("SSH_ASKPASS"));
+    }
+
+    #[test]
+    fn an_unattended_call_switches_every_prompt_off() {
+        let settings = settings_of(Prompts::Unattended);
+        assert_eq!(value(&settings, "GIT_ASKPASS"), Some(""));
+        assert_eq!(value(&settings, "SSH_ASKPASS_REQUIRE"), Some("never"));
+        assert!(value(&settings, "GIT_SSH_COMMAND")
+            .is_some_and(|found| found.contains("BatchMode=yes")));
+        assert!(!settings.contains_key("NCRS_ASKPASS"));
+    }
+
+    #[test]
+    fn an_unattended_call_allows_no_command_transport_and_no_maintenance() {
+        let settings = settings_of(Prompts::Unattended);
+        assert_eq!(
+            value(&settings, "GIT_ALLOW_PROTOCOL"),
+            Some("https:http:ssh:git:file")
+        );
+        let git = Git {
+            exe: PathBuf::from("git"),
+            root: PathBuf::from("."),
+            reading_without: None,
+            prompts: Prompts::Unattended,
+            timeout: None,
+        };
+        let given = git.extra_settings();
+        for wanted in [
+            "protocol.ext.allow=never",
+            "maintenance.auto=false",
+            "gc.auto=0",
+        ] {
+            assert!(given.contains(&wanted), "{wanted}");
+        }
+        assert!(!settings_of(Prompts::Plain).contains_key("GIT_ALLOW_PROTOCOL"));
+    }
+
+    #[test]
+    fn a_plain_call_leaves_the_process_settings_alone() {
+        assert!(settings_of(Prompts::Plain).is_empty());
     }
 }

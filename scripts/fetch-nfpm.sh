@@ -17,7 +17,7 @@ asset_for() {
   esac
 }
 
-if [ "$#" -ne 1 ]; then
+if [[ "$#" -ne 1 ]]; then
   echo "usage: $0 <dest-dir>" >&2
   exit 2
 fi
@@ -40,12 +40,12 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-curl --fail --silent --show-error --location \
+curl --proto '=https' --fail --silent --show-error --location \
   --output "$work/$asset" \
   "https://github.com/goreleaser/nfpm/releases/download/v${VERSION}/${asset}"
 
 actual="$(sha256 "$work/$asset")"
-if [ "$actual" != "$expected" ]; then
+if [[ "$actual" != "$expected" ]]; then
   echo "checksum mismatch for $asset: expected $expected, got $actual" >&2
   exit 1
 fi
@@ -53,4 +53,4 @@ fi
 rm -rf "$dest"
 mkdir -p "$dest"
 tar -xzf "$work/$asset" -C "$dest"
-test -x "$dest/nfpm" || { echo "error: no nfpm binary in $asset" >&2; exit 1; }
+[[ -x "$dest/nfpm" ]] || { echo "error: no nfpm binary in $asset" >&2; exit 1; }

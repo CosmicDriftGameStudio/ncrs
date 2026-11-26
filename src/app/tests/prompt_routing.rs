@@ -362,3 +362,52 @@ fn the_two_failures_read_differently() {
         "placeholder left in: {parent_text}"
     );
 }
+
+#[test]
+fn the_suggestions_take_the_arrows_space_enter_and_escape() {
+    let routed = |key| {
+        let state = PromptKeyState {
+            hermes_dialog: HermesDialogKeys::Suggest,
+            ..PromptKeyState::default()
+        };
+        route_key(&state, Key::Named(key), Modifiers::default())
+    };
+    use crate::messages::SuggestMessage;
+
+    assert!(matches!(
+        routed(Named::ArrowUp),
+        Some(Message::Suggest(SuggestMessage::CursorUp))
+    ));
+    assert!(matches!(
+        routed(Named::ArrowDown),
+        Some(Message::Suggest(SuggestMessage::CursorDown))
+    ));
+    assert!(matches!(
+        routed(Named::Space),
+        Some(Message::Suggest(SuggestMessage::ToggleCursor))
+    ));
+    assert!(matches!(
+        routed(Named::Enter),
+        Some(Message::Suggest(SuggestMessage::Adopt))
+    ));
+    assert!(matches!(
+        routed(Named::Escape),
+        Some(Message::Suggest(SuggestMessage::Close))
+    ));
+    assert!(routed(Named::F5).is_none());
+}
+
+#[test]
+fn tab_in_the_target_dialog_walks_its_fields() {
+    let state = PromptKeyState {
+        hermes_dialog: HermesDialogKeys::Target,
+        ..PromptKeyState::default()
+    };
+
+    let routed = route_key(&state, Key::Named(Named::Tab), Modifiers::default());
+
+    assert!(matches!(
+        routed,
+        Some(Message::TabInPage { backward: false })
+    ));
+}

@@ -4,12 +4,17 @@ use crate::changes::PorcelainEntry;
 use crate::cli::{Git, Output};
 use crate::conflict::{parse_blocks, resolve_blocks, ConflictBlock, ConflictChoice};
 use crate::refname::plain_ref;
+use crate::working_file::{
+    large_text_has_conflict_marker, read_whole_working_file, read_working_text,
+};
 use crate::ActionError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Integration {
     Merge,
     Rebase,
+    CherryPick,
+    Revert,
 }
 
 /// The two sides of a merge or rebase that stopped, as branch names. While
@@ -73,6 +78,8 @@ fn sides_with_file(kind: ConflictKind) -> (bool, bool) {
     }
 }
 
+const SHORT_SHA: usize = 7;
+
 fn io_error(cause: std::io::Error) -> ActionError {
     ActionError::Io(cause.to_string())
 }
@@ -99,6 +106,10 @@ impl Git {
             Some(Integration::Rebase)
         } else if git_dir.join("MERGE_HEAD").exists() {
             Some(Integration::Merge)
+        } else if git_dir.join("CHERRY_PICK_HEAD").exists() {
+            Some(Integration::CherryPick)
+        } else if git_dir.join("REVERT_HEAD").exists() {
+            Some(Integration::Revert)
         } else {
             None
         }
@@ -125,6 +136,19 @@ impl Git {
                     .or_else(|| self.name_of(&read("MERGE_HEAD")?))
                     .unwrap_or_default();
                 (self.current_branch().unwrap_or_default(), other)
+            }
+            Integration::CherryPick | Integration::Revert => {
+                let head_file = if kind == Integration::CherryPick {
+                    "CHERRY_PICK_HEAD"
+                } else {
+                    "REVERT_HEAD"
+                };
+                let picked: String = read(head_file)
+                    .unwrap_or_default()
+                    .chars()
+                    .take(SHORT_SHA)
+                    .collect();
+                (self.current_branch().unwrap_or_default(), picked)
             }
             Integration::Rebase => {
                 let folder = if git_dir.join("rebase-merge").exists() {
@@ -160,9 +184,7 @@ impl Git {
             .iter()
             .filter(|entry| entry.is_unmerged())
             .map(|entry| {
-                let blocks = fs::read(self.root().join(&entry.path))
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                let blocks = read_working_text(self.root(), &entry.path)
                     .map(|text| parse_blocks(&text))
                     .unwrap_or_default();
                 ConflictedFile {
@@ -203,6 +225,7 @@ impl Git {
         if !conflict.blocks.is_empty() {
             return self.rewrite_conflicts(path, None, choice);
         }
+        self.refuse_unread_markers(path)?;
         let (ours, theirs) = sides_with_file(conflict.kind);
         if matches!(
             choice,
@@ -239,6 +262,7 @@ impl Git {
         if remaining > 0 {
             return Err(ActionError::UnresolvedConflicts { count: remaining });
         }
+        self.refuse_unread_markers(path)?;
         self.ok(&["add", "--", path])?;
         Ok(())
     }
@@ -253,6 +277,8 @@ impl Git {
         match self.integration_in_progress() {
             Some(Integration::Rebase) => self.ok(&["rebase", "--abort"])?,
             Some(Integration::Merge) => self.ok(&["merge", "--abort"])?,
+            Some(Integration::CherryPick) => self.ok(&["cherry-pick", "--abort"])?,
+            Some(Integration::Revert) => self.ok(&["revert", "--abort"])?,
             None => return Err(nothing_in_progress()),
         };
         Ok(())
@@ -273,6 +299,14 @@ impl Git {
             Some(Integration::Merge) => {
                 self.ok(&["commit", "--no-edit"])?;
                 Ok(IntegrateOutcome::Completed)
+            }
+            Some(Integration::CherryPick) => {
+                let output = self.run(&["cherry-pick", "--continue"], None)?;
+                self.finished_integration(&output)
+            }
+            Some(Integration::Revert) => {
+                let output = self.run(&["revert", "--continue"], None)?;
+                self.finished_integration(&output)
             }
             None => Err(nothing_in_progress()),
         }
@@ -305,6 +339,17 @@ impl Git {
         })
     }
 
+    /// A file too large for its blocks to be read counts as one without blocks:
+    /// taking a whole side or marking it resolved would lose the merged rest.
+    fn refuse_unread_markers(&self, path: &str) -> Result<(), ActionError> {
+        if large_text_has_conflict_marker(self.root(), path) {
+            return Err(other(format!(
+                "{path} is too large for this: resolve it in the editor"
+            )));
+        }
+        Ok(())
+    }
+
     fn rewrite_conflicts(
         &self,
         path: &str,
@@ -313,7 +358,7 @@ impl Git {
     ) -> Result<(), ActionError> {
         crate::undo::refuse_symlinks(self.root(), path)?;
         let file = self.root().join(path);
-        let bytes = fs::read(&file).map_err(io_error)?;
+        let bytes = read_whole_working_file(self.root(), path)?;
         let text = String::from_utf8(bytes)
             .map_err(|cause| other(format!("{path} is not text: {cause}")))?;
         let resolved = resolve_blocks(&text, block, choice)

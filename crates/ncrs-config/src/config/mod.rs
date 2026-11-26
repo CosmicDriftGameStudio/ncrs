@@ -23,21 +23,24 @@ pub use ncrs_fs::{
     OpenPrograms, OpenRule, OpenWith, ProgramLine, ProgramLineProblem,
 };
 use ncrs_index::{iban_is_valid, CustomKind, KindCatalog, KindSkip};
-use ncrs_intake::{pattern_is_valid, LocationMode};
+use ncrs_intake::LocationMode;
+pub use ncrs_intake::LocationTransfer;
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
 
 use crate::file_list_tags::{FileListTags, TagGroup};
+use crate::git::{GitSection, GitSettings};
 use crate::git_view::GitViewSettings;
-use crate::keymap::{KeyAction, Keymap};
+use crate::keymap::{KeyAction, Keymap, TabKeys, TAB_KEY_TABLES};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
 };
 use crate::panel_columns::{
     columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
 };
+use crate::repos::{ReposSection, ReposSettings};
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
 use ncrs_ai::ConsentedOrigins;
@@ -140,6 +143,18 @@ pub struct Config {
     /// The keys in effect: the built-in ones with `keys` applied.
     #[serde(skip)]
     pub keymap: Arc<Keymap>,
+    /// The `[keys.git]` table, read for its keys; the Git tab says which names are actions.
+    #[serde(skip)]
+    pub git_keys: TabKeys,
+    /// The `[keys.repos]` table, read for its keys; the repos tab says which names are actions.
+    #[serde(skip)]
+    pub repos_keys: TabKeys,
+    /// The `[repos]` section as written; `load` checks it into `repos`.
+    #[serde(default, rename = "repos")]
+    pub repos_section: ReposSection,
+    /// Where the repo manager looks and how its bulk actions run.
+    #[serde(skip)]
+    pub repos: ReposSettings,
     /// The `[theme]` section as written; `load` turns it into `palette`.
     #[serde(default)]
     pub theme: ThemeSection,
@@ -183,6 +198,12 @@ pub struct Config {
     /// The columns the file panels show and how they write dates and sizes.
     #[serde(skip)]
     pub columns: PanelColumns,
+    /// The `[git]` section as written; `load` checks it into `git`.
+    #[serde(default, rename = "git")]
+    pub git_section: GitSection,
+    /// How the Git tab pulls and fetches.
+    #[serde(skip)]
+    pub git: GitSettings,
     /// The `[git_view]` section as written; `load` checks it into `git_view`.
     #[serde(default, rename = "git_view")]
     pub git_view_section: GitViewSection,
@@ -242,16 +263,21 @@ struct FilingError {
 }
 
 mod error;
+mod git_writes;
 pub mod instance_lock;
 mod loading;
 mod paths;
+mod repos_writes;
 mod resolving;
 mod sections;
 mod setting_writes;
+mod sorting;
+mod sorting_writes;
 mod write_support;
 mod writing;
 
 pub use self::error::ConfigError;
+pub use self::git_writes::{git_settings, write_git};
 #[cfg(any(test, feature = "test-support"))]
 pub use self::loading::from_text;
 use self::loading::*;
@@ -263,28 +289,38 @@ pub use self::paths::{
     default_state_path, default_view_copies_dir, portable_data_dir, portable_data_dir_of,
     use_data_dir,
 };
+pub use self::repos_writes::{repos_settings, write_repos};
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
     ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,
     HermesSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue,
-    LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection,
-    ThemeEntry, ThemeSection, VscodeWarning,
+    LocationEntry, LocationModeName, ModulesSection, ServerEntry, ServerSection, ThemeEntry,
+    ThemeSection, TransferName, VscodeWarning,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,
-    write_columns, write_default_pattern, write_favourites_bar, write_file_list_tags,
-    write_filing_load, write_git_view, write_hermes_chat_keep_days, write_hermes_enabled,
-    write_keys, write_language, write_notes_settings, write_open_rules, write_own_details,
-    write_program, write_system_settings, write_theme_preset, AiProviderChoice, KeyChange,
-    OwnDetail,
+    write_columns, write_favourites_bar, write_file_list_tags, write_filing_load, write_git_view,
+    write_hermes_chat_keep_days, write_hermes_enabled, write_keys, write_language,
+    write_notes_settings, write_open_rules, write_own_details, write_program,
+    write_system_settings, write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
+};
+use self::sorting::*;
+pub use self::sorting::{
+    resolve_sorting, same_folder, PauseReason, Sorting, SourceEntry, SourceSetting, TargetEntry,
+    TargetSetting, IMAGE_EXCLUDE,
+};
+pub use self::sorting_writes::{
+    add_sort_target, add_sort_target_with_home, remove_sort_source, remove_sort_source_with_home,
+    remove_sort_target, remove_sort_target_with_home, upsert_sort_source,
+    upsert_sort_source_with_home, upsert_sort_target, upsert_sort_target_with_home, BACKUP_SUFFIX,
 };
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{
-    check_filing_rules, check_vscode_theme_writable, write_filing_locations, write_read_folders,
-    write_servers, write_vscode_theme, FilingRuleViolation, FilingWriteError,
+    check_filing_rules, check_vscode_theme_writable, write_read_folders, write_servers,
+    write_vscode_theme, FilingRuleViolation, FilingWriteError,
 };
 
 impl Config {

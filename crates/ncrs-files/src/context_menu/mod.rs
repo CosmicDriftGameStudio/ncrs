@@ -28,6 +28,10 @@ pub enum ContextAction {
     CopyName,
     ComputeFolderSizes,
     CompareFolders,
+    /// Only for a file inside a Git repository: the commits that changed it.
+    GitHistory,
+    /// Only for a file inside a Git repository: the commit of each line.
+    GitBlame,
     /// Only inside a Git repository.
     GitView,
     /// Only for a folder that is not a favourite yet.
@@ -49,7 +53,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 24] = [
+    pub const ALL: [ContextAction; 26] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -65,6 +69,8 @@ impl ContextAction {
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
         ContextAction::GitView,
+        ContextAction::GitHistory,
+        ContextAction::GitBlame,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
         ContextAction::Trash,
@@ -104,6 +110,8 @@ impl ContextAction {
             | ContextAction::ExtractHere
             | ContextAction::Pack
             | ContextAction::GitView
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -135,6 +143,8 @@ impl ContextAction {
             | ContextAction::ExtractHere
             | ContextAction::Pack
             | ContextAction::GitView
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
             | ContextAction::DeletePermanently => false,
         }
     }
@@ -156,6 +166,8 @@ impl ContextAction {
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
             ContextAction::CompareFolders => Msg::ActionCompareFolders,
             ContextAction::GitView => Msg::ActionGitView,
+            ContextAction::GitHistory => Msg::ContextMenuGitHistory,
+            ContextAction::GitBlame => Msg::ContextMenuGitBlame,
             ContextAction::AddFavourite => Msg::ContextMenuAddFavourite,
             ContextAction::RemoveFavourite => Msg::ContextMenuRemoveFavourite,
             ContextAction::Trash => Msg::ContextMenuTrash,
@@ -194,6 +206,8 @@ pub const GROUPS: [&[ContextAction]; 6] = [
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
         ContextAction::GitView,
+        ContextAction::GitHistory,
+        ContextAction::GitBlame,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
     ],
@@ -224,7 +238,10 @@ const HIT_LIST_GROUPS: [&[ContextAction]; 5] = [
 fn is_left_out_unless_enabled(action: ContextAction) -> bool {
     matches!(
         action,
-        ContextAction::ShowPackageContents | ContextAction::ExtractHere
+        ContextAction::ShowPackageContents
+            | ContextAction::ExtractHere
+            | ContextAction::GitHistory
+            | ContextAction::GitBlame
     )
 }
 
@@ -251,16 +268,15 @@ impl MenuEntry {
 /// What an entry of the Hermes submenu does with the file under the cursor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesAction {
-    ShowSuggestion,
-    HandToInbox,
-    ProcessAgain,
-    /// Opens the filing tab for the folder under the cursor, once.
+    /// Opens the filing tab for the folder under the cursor.
     FileOnce,
-    /// The same, and the folder files its new files by itself after the run.
-    FileContinuously,
-    StopContinuous,
-    SetFilingLocation,
-    SetArchive,
+    /// Opens the dialog of a new source at the folder.
+    WatchSource,
+    /// The same dialog for a folder that is a source.
+    ChangeSource,
+    AddTarget,
+    ChangeTarget,
+    ProcessAgain,
     Exclude,
     Include,
     Inspect,
@@ -268,15 +284,13 @@ pub enum HermesAction {
 
 impl HermesAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [HermesAction; 11] = [
-        HermesAction::ShowSuggestion,
-        HermesAction::HandToInbox,
-        HermesAction::ProcessAgain,
+    pub const ALL: [HermesAction; 9] = [
         HermesAction::FileOnce,
-        HermesAction::FileContinuously,
-        HermesAction::StopContinuous,
-        HermesAction::SetFilingLocation,
-        HermesAction::SetArchive,
+        HermesAction::WatchSource,
+        HermesAction::ChangeSource,
+        HermesAction::AddTarget,
+        HermesAction::ChangeTarget,
+        HermesAction::ProcessAgain,
         HermesAction::Exclude,
         HermesAction::Include,
         HermesAction::Inspect,
@@ -286,14 +300,12 @@ impl HermesAction {
     /// path inside an archive is no place Hermes knows.
     pub fn allowed_in_archive(self) -> bool {
         match self {
-            HermesAction::ShowSuggestion
-            | HermesAction::HandToInbox
+            HermesAction::FileOnce
+            | HermesAction::WatchSource
+            | HermesAction::ChangeSource
+            | HermesAction::AddTarget
+            | HermesAction::ChangeTarget
             | HermesAction::ProcessAgain
-            | HermesAction::FileOnce
-            | HermesAction::FileContinuously
-            | HermesAction::StopContinuous
-            | HermesAction::SetFilingLocation
-            | HermesAction::SetArchive
             | HermesAction::Exclude
             | HermesAction::Include
             | HermesAction::Inspect => false,
@@ -303,14 +315,12 @@ impl HermesAction {
     /// Hermes knows no place on a server either.
     pub fn allowed_on_server(self) -> bool {
         match self {
-            HermesAction::ShowSuggestion
-            | HermesAction::HandToInbox
+            HermesAction::FileOnce
+            | HermesAction::WatchSource
+            | HermesAction::ChangeSource
+            | HermesAction::AddTarget
+            | HermesAction::ChangeTarget
             | HermesAction::ProcessAgain
-            | HermesAction::FileOnce
-            | HermesAction::FileContinuously
-            | HermesAction::StopContinuous
-            | HermesAction::SetFilingLocation
-            | HermesAction::SetArchive
             | HermesAction::Exclude
             | HermesAction::Include
             | HermesAction::Inspect => false,
@@ -319,34 +329,15 @@ impl HermesAction {
 
     pub fn label(self) -> Msg {
         match self {
-            HermesAction::ShowSuggestion => Msg::HermesMenuShowSuggestion,
-            HermesAction::HandToInbox => Msg::HermesMenuHandToInbox,
-            HermesAction::ProcessAgain => Msg::HermesMenuProcessAgain,
             HermesAction::FileOnce => Msg::HermesMenuFileOnce,
-            HermesAction::FileContinuously => Msg::HermesMenuFileContinuously,
-            HermesAction::StopContinuous => Msg::HermesMenuStopContinuous,
-            HermesAction::SetFilingLocation => Msg::HermesMenuSetFilingLocation,
-            HermesAction::SetArchive => Msg::HermesMenuSetArchive,
+            HermesAction::WatchSource => Msg::HermesMenuWatchSource,
+            HermesAction::ChangeSource => Msg::HermesMenuChangeSource,
+            HermesAction::AddTarget => Msg::HermesMenuAddTarget,
+            HermesAction::ChangeTarget => Msg::HermesMenuChangeTarget,
+            HermesAction::ProcessAgain => Msg::HermesMenuProcessAgain,
             HermesAction::Exclude => Msg::HermesMenuExclude,
             HermesAction::Include => Msg::HermesMenuInclude,
             HermesAction::Inspect => Msg::HermesMenuInspect,
-        }
-    }
-
-    /// The dimmed word after the label.
-    pub fn note(self) -> Option<Msg> {
-        match self {
-            HermesAction::HandToInbox => Some(Msg::HermesMenuNoteInbox),
-            HermesAction::SetArchive => Some(Msg::HermesMenuNoteReadOnly),
-            HermesAction::ShowSuggestion
-            | HermesAction::ProcessAgain
-            | HermesAction::FileOnce
-            | HermesAction::FileContinuously
-            | HermesAction::StopContinuous
-            | HermesAction::SetFilingLocation
-            | HermesAction::Exclude
-            | HermesAction::Include
-            | HermesAction::Inspect => None,
         }
     }
 }
@@ -367,6 +358,9 @@ impl SubEntry {
 pub struct HermesMenu<'a> {
     /// The file is excluded, so the menu offers to include it.
     pub excluded: bool,
+    /// The folder is a source or a target, so the menu offers to change it.
+    pub is_source: bool,
+    pub is_target: bool,
     pub is_enabled: &'a dyn Fn(HermesAction) -> bool,
 }
 
@@ -374,6 +368,8 @@ impl std::fmt::Debug for HermesMenu<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HermesMenu")
             .field("excluded", &self.excluded)
+            .field("is_source", &self.is_source)
+            .field("is_target", &self.is_target)
             .finish_non_exhaustive()
     }
 }
@@ -385,22 +381,35 @@ struct Submenu {
     open: bool,
 }
 
-fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 5] {
+fn sub_groups(hermes: &HermesMenu<'_>) -> [Vec<HermesAction>; 4] {
+    let either = |applies: bool, then: HermesAction, otherwise: HermesAction| {
+        if applies {
+            then
+        } else {
+            otherwise
+        }
+    };
     [
-        vec![HermesAction::ShowSuggestion],
-        vec![HermesAction::HandToInbox, HermesAction::ProcessAgain],
+        vec![HermesAction::FileOnce],
         vec![
-            HermesAction::FileOnce,
-            HermesAction::FileContinuously,
-            HermesAction::StopContinuous,
+            either(
+                hermes.is_source,
+                HermesAction::ChangeSource,
+                HermesAction::WatchSource,
+            ),
+            either(
+                hermes.is_target,
+                HermesAction::ChangeTarget,
+                HermesAction::AddTarget,
+            ),
         ],
-        vec![HermesAction::SetFilingLocation, HermesAction::SetArchive],
+        vec![HermesAction::ProcessAgain],
         vec![
-            if excluded {
-                HermesAction::Include
-            } else {
-                HermesAction::Exclude
-            },
+            either(
+                hermes.excluded,
+                HermesAction::Include,
+                HermesAction::Exclude,
+            ),
             HermesAction::Inspect,
         ],
     ]
@@ -748,7 +757,7 @@ impl ContextMenu {
 impl Submenu {
     fn new(menu: &HermesMenu<'_>) -> Self {
         let mut entries = Vec::new();
-        for (group_index, group) in sub_groups(menu.excluded).iter().enumerate() {
+        for (group_index, group) in sub_groups(menu).iter().enumerate() {
             if group_index > 0 {
                 entries.push(SubEntry::Separator);
             }

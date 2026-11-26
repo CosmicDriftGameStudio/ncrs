@@ -11,15 +11,6 @@ pub enum SenderAliasKind {
 }
 
 impl SenderAliasKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Name => "name",
-            Self::Domain => "domain",
-            Self::Iban => "iban",
-            Self::TaxId => "tax_id",
-        }
-    }
-
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "name" => Ok(Self::Name),
@@ -98,14 +89,6 @@ pub enum SenderAliasState {
 }
 
 impl SenderAliasState {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Offered => "offered",
-            Self::Confirmed => "confirmed",
-            Self::Discarded => "discarded",
-        }
-    }
-
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "offered" => Ok(Self::Offered),
@@ -118,7 +101,6 @@ impl SenderAliasState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SenderAlias {
-    pub id: SenderAliasId,
     pub sender: String,
     pub kind: SenderAliasKind,
     /// Normalised.

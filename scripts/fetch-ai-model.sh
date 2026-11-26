@@ -15,7 +15,7 @@ URL="https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a
 SIZE=2740937888
 SHA256="00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
 
-if [ "$#" -ne 1 ]; then
+if [[ "$#" -ne 1 ]]; then
   echo "usage: $0 <dest-dir>" >&2
   exit 2
 fi
@@ -29,8 +29,8 @@ fi
 size_of() { wc -c < "$1" | tr -d ' '; }
 
 # A cached copy (CI cache hit) is kept when it is the right file.
-if [ -f "$dest/$NAME" ] && [ "$(size_of "$dest/$NAME")" = "$SIZE" ] \
-  && [ "$(sha256 "$dest/$NAME")" = "$SHA256" ]; then
+if [[ -f "$dest/$NAME" ]] && [[ "$(size_of "$dest/$NAME")" = "$SIZE" ]] \
+  && [[ "$(sha256 "$dest/$NAME")" = "$SHA256" ]]; then
   echo "$NAME is already in $dest"
   exit 0
 fi
@@ -39,16 +39,16 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$dest"
-curl --fail --silent --show-error --location \
+curl --proto '=https' --fail --silent --show-error --location \
   --max-filesize "$SIZE" \
   --output "$work/$NAME" \
   "$URL"
-if [ "$(size_of "$work/$NAME")" != "$SIZE" ]; then
+if [[ "$(size_of "$work/$NAME")" != "$SIZE" ]]; then
   echo "size mismatch for $NAME: expected $SIZE, got $(size_of "$work/$NAME")" >&2
   exit 1
 fi
 actual="$(sha256 "$work/$NAME")"
-if [ "$actual" != "$SHA256" ]; then
+if [[ "$actual" != "$SHA256" ]]; then
   echo "checksum mismatch for $NAME: expected $SHA256, got $actual" >&2
   exit 1
 fi

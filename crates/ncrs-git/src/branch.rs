@@ -17,14 +17,30 @@ impl Git {
     }
 
     pub fn checkout(&self, branch: &str) -> Result<(), ActionError> {
-        self.ok(&["checkout", plain_ref(branch)?, "--"])?;
+        self.refuse_unsafe_checkout()?;
+        self.ok(&[self.checkout_args(), &[plain_ref(branch)?, "--"]].concat())?;
         Ok(())
     }
 
     /// `remote_branch` is `origin/feature`: makes a local `feature` that tracks it.
     pub fn checkout_remote_branch(&self, remote_branch: &str) -> Result<(), ActionError> {
-        self.ok(&["checkout", "--track", plain_ref(remote_branch)?])?;
+        self.refuse_unsafe_checkout()?;
+        self.ok(&[
+            self.checkout_args(),
+            &["--track", plain_ref(remote_branch)?],
+        ]
+        .concat())?;
         Ok(())
+    }
+
+    /// Without `--quiet` git looks into every submodule for changes, which
+    /// runs the filters of the submodule's own config.
+    fn checkout_args(&self) -> &'static [&'static str] {
+        if self.is_unattended() {
+            &["checkout", "--quiet"]
+        } else {
+            &["checkout"]
+        }
     }
 
     pub fn rename_branch(&self, old: &str, new: &str) -> Result<(), ActionError> {
@@ -61,5 +77,25 @@ impl Git {
                 sha,
             },
         })
+    }
+
+    /// Switches to the default branch (what `origin/HEAD` names, else main or master),
+    /// making a local branch that tracks origin first when there is none yet.
+    /// Returns its name.
+    pub fn switch_to_default(&self) -> Result<String, ActionError> {
+        let repository =
+            crate::repo_access::open(self.root()).map_err(|cause| ActionError::Other {
+                git_output: cause.to_string(),
+            })?;
+        let found =
+            crate::repo_access::default_branch(&repository).ok_or_else(|| ActionError::Other {
+                git_output: "there is no default branch here".to_string(),
+            })?;
+        if found.local_tip.is_some() {
+            self.checkout(&found.name)?;
+        } else {
+            self.checkout_remote_branch(&format!("origin/{}", found.name))?;
+        }
+        Ok(found.name)
     }
 }

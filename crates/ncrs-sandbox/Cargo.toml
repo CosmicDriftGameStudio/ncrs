@@ -10,7 +10,7 @@ publish = false
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Already in the lock through the credential store and the file watcher.
-nix = { version = "0.31", default-features = false, features = ["user"] }
+nix = { version = "0.32", default-features = false, features = ["user"] }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSError", "NSString", "NSURL"] }
 

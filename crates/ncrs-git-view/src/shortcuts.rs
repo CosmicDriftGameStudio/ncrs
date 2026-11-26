@@ -1,5 +1,6 @@
-//! The keys of the Git actions: one table says which chord does what, the
-//! key handler, the menus, the tooltips and the status bar read it.
+//! The Git actions with the keys they ship with; [`GitKeys`] says which key
+//! does what once `[keys.git]` is applied. The key handler, the menus, the
+//! tooltips and the status bar read that.
 
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
@@ -7,23 +8,33 @@ use iced::keyboard::{Key, Modifiers};
 use ncrs_i18n::{Language, Msg};
 
 use crate::actions::{ConflictAction, MenuAction, Side};
+use crate::commit_menu::CommitAction;
+use crate::git_keys::{Chord, GitKeys};
 use crate::message::Message;
-
-/// The key of a chord.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pressed {
-    Letter(&'static str),
-    Named(Named),
-}
+use crate::picker::PickerKind;
+use crate::sync_menu::{SyncAction, SyncKind};
+use ncrs_git::PullStrategy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
     Fetch,
     Pull,
     Push,
+    PullMenu,
+    PushMenu,
+    ForcePush,
+    PullFastForward,
+    PullMerge,
+    PullRebase,
     Stash,
     Undo,
     Commit,
+    CommitAndPush,
+    FocusCommitTitle,
+    Ignore,
+    ToggleStage,
+    PreviousFile,
+    NextFile,
     StageAll,
     UnstageAll,
     DiscardAll,
@@ -35,23 +46,45 @@ pub enum Shortcut {
     Rebase,
     StashApply,
     StashPop,
-    OpenMenu,
     TakeMine,
     TakeTheirs,
     TakeBoth,
     OpenEditor,
     MarkResolved,
     ResetConflict,
+    RepoPicker,
+    BranchPicker,
+    JumpHead,
+    JumpWip,
+    CopySha,
+    GoParent,
+    ToggleTree,
+    CherryPick,
+    CleanUp,
+    FileHistory,
+    Blame,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: &'static [Self] = &[
         Self::Fetch,
         Self::Pull,
         Self::Push,
+        Self::PullMenu,
+        Self::PushMenu,
+        Self::ForcePush,
+        Self::PullFastForward,
+        Self::PullMerge,
+        Self::PullRebase,
         Self::Stash,
         Self::Undo,
         Self::Commit,
+        Self::CommitAndPush,
+        Self::FocusCommitTitle,
+        Self::Ignore,
+        Self::ToggleStage,
+        Self::PreviousFile,
+        Self::NextFile,
         Self::StageAll,
         Self::UnstageAll,
         Self::DiscardAll,
@@ -63,55 +96,182 @@ impl Shortcut {
         Self::Rebase,
         Self::StashApply,
         Self::StashPop,
-        Self::OpenMenu,
         Self::TakeMine,
         Self::TakeTheirs,
         Self::TakeBoth,
         Self::OpenEditor,
         Self::MarkResolved,
         Self::ResetConflict,
+        Self::RepoPicker,
+        Self::BranchPicker,
+        Self::JumpHead,
+        Self::JumpWip,
+        Self::CopySha,
+        Self::GoParent,
+        Self::ToggleTree,
+        Self::CherryPick,
+        Self::CleanUp,
+        Self::FileHistory,
+        Self::Blame,
     ];
 
-    /// ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F, ⇧⌘B, ⇧⌘D,
-    /// ⇧⌘H, ⌘K, ⌘,) stay free.
-    fn chord(self) -> (Modifiers, Pressed) {
-        let shifted = Modifiers::COMMAND | Modifiers::SHIFT;
+    /// The name of the action in `[keys.git]`.
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::Fetch => (shifted, Pressed::Letter("e")),
-            Self::Pull => (shifted, Pressed::Letter("l")),
-            Self::Push => (shifted, Pressed::Letter("u")),
-            Self::Stash => (shifted, Pressed::Letter("s")),
-            Self::Undo => (shifted, Pressed::Letter("y")),
-            Self::Commit => (Modifiers::COMMAND, Pressed::Named(Named::Enter)),
-            Self::StageAll => (shifted, Pressed::Letter("i")),
-            Self::UnstageAll => (shifted, Pressed::Letter("r")),
-            Self::DiscardAll => (shifted, Pressed::Named(Named::Backspace)),
-            Self::NewBranch => (shifted, Pressed::Letter("t")),
-            Self::Checkout => (shifted, Pressed::Letter("o")),
-            Self::Rename => (Modifiers::SHIFT, Pressed::Named(Named::F6)),
-            Self::Delete => (Modifiers::COMMAND, Pressed::Named(Named::Backspace)),
-            Self::Merge => (shifted, Pressed::Letter("m")),
-            Self::Rebase => (shifted, Pressed::Letter("x")),
-            Self::StashApply => (shifted, Pressed::Named(Named::Enter)),
-            Self::StashPop => (shifted, Pressed::Letter("w")),
-            Self::OpenMenu => (Modifiers::SHIFT, Pressed::Named(Named::F10)),
-            Self::TakeMine => (shifted, Pressed::Named(Named::ArrowLeft)),
-            Self::TakeTheirs => (shifted, Pressed::Named(Named::ArrowRight)),
-            Self::TakeBoth => (shifted, Pressed::Named(Named::ArrowDown)),
-            Self::OpenEditor => (Modifiers::empty(), Pressed::Named(Named::F4)),
-            Self::MarkResolved => (shifted, Pressed::Letter("j")),
-            Self::ResetConflict => (shifted, Pressed::Letter("z")),
+            Self::Fetch => "fetch",
+            Self::Pull => "pull",
+            Self::Push => "push",
+            Self::PullMenu => "pull_menu",
+            Self::PushMenu => "push_menu",
+            Self::ForcePush => "force_push",
+            Self::PullFastForward => "pull_fast_forward",
+            Self::PullMerge => "pull_merge",
+            Self::PullRebase => "pull_rebase",
+            Self::Stash => "stash",
+            Self::Undo => "undo",
+            Self::Commit => "commit",
+            Self::CommitAndPush => "commit_and_push",
+            Self::FocusCommitTitle => "focus_commit_title",
+            Self::Ignore => "ignore",
+            Self::ToggleStage => "toggle_stage",
+            Self::PreviousFile => "previous_file",
+            Self::NextFile => "next_file",
+            Self::StageAll => "stage_all",
+            Self::UnstageAll => "unstage_all",
+            Self::DiscardAll => "discard_all",
+            Self::NewBranch => "new_branch",
+            Self::Checkout => "checkout",
+            Self::Rename => "rename",
+            Self::Delete => "delete",
+            Self::Merge => "merge",
+            Self::Rebase => "rebase",
+            Self::StashApply => "stash_apply",
+            Self::StashPop => "stash_pop",
+            Self::TakeMine => "take_mine",
+            Self::TakeTheirs => "take_theirs",
+            Self::TakeBoth => "take_both",
+            Self::OpenEditor => "open_editor",
+            Self::MarkResolved => "mark_resolved",
+            Self::ResetConflict => "reset_conflict",
+            Self::RepoPicker => "repo_picker",
+            Self::BranchPicker => "branch_picker",
+            Self::JumpHead => "jump_head",
+            Self::JumpWip => "jump_wip",
+            Self::CopySha => "copy_sha",
+            Self::GoParent => "parent",
+            Self::ToggleTree => "toggle_tree",
+            Self::CherryPick => "cherry_pick",
+            Self::CleanUp => "cleanup",
+            Self::FileHistory => "file_history",
+            Self::Blame => "blame",
         }
     }
 
-    /// The modifiers and key of the chord, as the app-wide keymap spells them.
-    pub fn binding(self) -> (Modifiers, Key) {
-        let (held, pressed) = self.chord();
-        let key = match pressed {
-            Pressed::Letter(letter) => Key::Character(letter.into()),
-            Pressed::Named(named) => Key::Named(named),
-        };
-        (held, key)
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|shortcut| shortcut.name() == name)
+    }
+
+    /// The place in [`Self::ALL`], which is where [`GitKeys`] keeps the keys.
+    pub fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|shortcut| *shortcut == self)
+            .unwrap_or_default()
+    }
+
+    /// The default key is one the whole app already gives the same meaning:
+    /// edit, menu, rename, history and blame of a file; Space, ⌘↑ and ⌘↓ are
+    /// the app's keys too, but the tab only reads them where its files are.
+    /// The check against the app keymap skips these.
+    pub const fn shares_an_app_key(self) -> bool {
+        matches!(
+            self,
+            Self::OpenEditor
+                | Self::Rename
+                | Self::CopySha
+                | Self::GoParent
+                | Self::ToggleStage
+                | Self::PreviousFile
+                | Self::NextFile
+                | Self::FileHistory
+                | Self::Blame
+        )
+    }
+
+    /// The key it ships with; `command` is what Cmd or Ctrl is on the
+    /// platform. ⇧⌘ plus a letter, the page keys of the app (⌘P, ⇧⌘P, ⇧⌘F,
+    /// ⇧⌘B, ⇧⌘D, ⇧⌘H, ⌘K, ⌘,) stay free.
+    pub fn default_chord(self, command: Modifiers) -> Option<Chord> {
+        let shifted = command | Modifiers::SHIFT;
+        let letter = |held: Modifiers, letter: &str| Some((held, Key::Character(letter.into())));
+        let named = |held: Modifiers, named: Named| Some((held, Key::Named(named)));
+        match self {
+            // Picked by the letters of the Pull menu and by F1 only.
+            Self::PullFastForward | Self::PullMerge | Self::PullRebase => None,
+            Self::Fetch => letter(shifted, "e"),
+            Self::Pull => letter(shifted, "l"),
+            Self::Push => letter(shifted, "u"),
+            Self::PullMenu => letter(shifted | Modifiers::ALT, "l"),
+            Self::PushMenu => letter(shifted | Modifiers::ALT, "u"),
+            Self::ForcePush => letter(shifted | Modifiers::ALT, "f"),
+            Self::Stash => letter(shifted, "s"),
+            Self::Undo => letter(shifted, "y"),
+            Self::Commit => named(command, Named::Enter),
+            Self::CommitAndPush => named(command | Modifiers::ALT, Named::Enter),
+            Self::FocusCommitTitle => letter(command, "l"),
+            Self::Ignore => letter(command | Modifiers::ALT, "i"),
+            Self::ToggleStage => named(Modifiers::empty(), Named::Space),
+            Self::PreviousFile => named(command, Named::ArrowUp),
+            Self::NextFile => named(command, Named::ArrowDown),
+            Self::StageAll => letter(shifted, "i"),
+            Self::UnstageAll => letter(shifted, "r"),
+            Self::DiscardAll => named(shifted, Named::Backspace),
+            Self::NewBranch => letter(shifted, "t"),
+            Self::Checkout => letter(shifted, "o"),
+            Self::Rename => named(Modifiers::SHIFT, Named::F6),
+            Self::Delete => named(command, Named::Backspace),
+            Self::Merge => letter(shifted, "m"),
+            Self::Rebase => letter(shifted, "x"),
+            Self::StashApply => named(shifted, Named::Enter),
+            Self::StashPop => letter(shifted, "w"),
+            Self::TakeMine => named(shifted, Named::ArrowLeft),
+            Self::TakeTheirs => named(shifted, Named::ArrowRight),
+            Self::TakeBoth => named(shifted, Named::ArrowDown),
+            Self::OpenEditor => named(Modifiers::empty(), Named::F4),
+            Self::MarkResolved => letter(shifted, "j"),
+            Self::ResetConflict => letter(shifted, "z"),
+            Self::RepoPicker => letter(command, "o"),
+            Self::BranchPicker => letter(command, "b"),
+            Self::JumpHead => letter(Modifiers::empty(), "h"),
+            Self::JumpWip => letter(Modifiers::empty(), "w"),
+            Self::CopySha => letter(command, "c"),
+            Self::GoParent => named(Modifiers::empty(), Named::Backspace),
+            Self::ToggleTree => letter(Modifiers::empty(), "t"),
+            Self::CherryPick => letter(command | Modifiers::ALT, "k"),
+            Self::CleanUp => letter(command | Modifiers::ALT, "a"),
+            Self::FileHistory => letter(command, "y"),
+            Self::Blame => letter(command, "i"),
+        }
+    }
+
+    /// The first key of the action, as the app-wide keymap spells it; none
+    /// when `[keys.git]` took it away.
+    pub fn binding(self, keys: &GitKeys) -> Option<Chord> {
+        keys.chords(self).first().cloned()
+    }
+
+    /// The shortcut a press stands for.
+    pub fn pressed(keys: &GitKeys, key: &Key, modifiers: Modifiers) -> Option<Self> {
+        keys.pressed(key, modifiers)
+    }
+
+    /// The first key as this platform spells it: `⇧⌘E` on a Mac,
+    /// `Ctrl+Shift+E` elsewhere; empty for an action without a key.
+    pub fn label(self, keys: &GitKeys) -> String {
+        keys.label(self)
     }
 
     /// The name in the command list; the menu key opens a menu and is no command.
@@ -120,9 +280,19 @@ impl Shortcut {
             Self::Fetch => Msg::GitViewToolbarFetch,
             Self::Pull => Msg::GitViewToolbarPull,
             Self::Push => Msg::GitViewToolbarPush,
+            Self::PullMenu => Msg::GitViewCommandPullMenu,
+            Self::PushMenu => Msg::GitViewCommandPushMenu,
+            Self::ForcePush => Msg::GitViewCommandForcePush,
+            Self::PullFastForward => Msg::GitViewCommandPullFastForward,
+            Self::PullMerge => Msg::GitViewCommandPullMerge,
+            Self::PullRebase => Msg::GitViewCommandPullRebase,
             Self::Stash => Msg::GitViewToolbarStash,
             Self::Undo => Msg::GitViewCommandUndo,
             Self::Commit => Msg::GitViewCommandCommit,
+            Self::CommitAndPush => Msg::GitViewCommandCommitPush,
+            Self::FocusCommitTitle => Msg::GitViewCommandFocusTitle,
+            Self::Ignore => Msg::GitViewCommandIgnore,
+            Self::ToggleStage | Self::PreviousFile | Self::NextFile => return None,
             Self::StageAll => Msg::GitViewStageAll,
             Self::UnstageAll => Msg::GitViewUnstageAll,
             Self::DiscardAll => Msg::GitViewDiscardAll,
@@ -134,13 +304,22 @@ impl Shortcut {
             Self::Rebase => Msg::GitViewCommandRebase,
             Self::StashApply => Msg::GitViewCommandStashApply,
             Self::StashPop => Msg::GitViewCommandStashPop,
-            Self::OpenMenu => return None,
             Self::TakeMine => Msg::GitViewConflictTakeMine,
             Self::TakeTheirs => Msg::GitViewConflictTakeTheirs,
             Self::TakeBoth => Msg::GitViewConflictTakeBoth,
             Self::OpenEditor => Msg::GitViewConflictOpenEditor,
             Self::MarkResolved => Msg::GitViewConflictMarkResolved,
             Self::ResetConflict => Msg::GitViewCommandConflictReset,
+            Self::RepoPicker => Msg::GitViewCommandRepoPicker,
+            Self::BranchPicker => Msg::GitViewCommandBranchPicker,
+            Self::JumpHead => Msg::GitViewCommandJumpHead,
+            Self::JumpWip => Msg::GitViewCommandJumpWip,
+            Self::CopySha => Msg::GitViewCommandCopySha,
+            Self::GoParent => Msg::GitViewCommandParent,
+            Self::ToggleTree => Msg::GitViewCommandToggleTree,
+            Self::CleanUp => Msg::GitViewCommandCleanup,
+            // The app lists the last two itself: they work over the panels too.
+            Self::CherryPick | Self::FileHistory | Self::Blame => return None,
         })
     }
 
@@ -149,9 +328,23 @@ impl Shortcut {
             Self::Fetch => Message::Fetch,
             Self::Pull => Message::Pull,
             Self::Push => Message::Push,
+            Self::PullMenu => Message::OpenSyncMenu(SyncKind::Pull),
+            Self::PushMenu => Message::OpenSyncMenu(SyncKind::Push),
+            Self::ForcePush => Message::ForcePush,
+            Self::PullFastForward => {
+                Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::FastForwardOnly))
+            }
+            Self::PullMerge => Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::Merge)),
+            Self::PullRebase => Message::SyncMenuPressed(SyncAction::Pull(PullStrategy::Rebase)),
             Self::Stash => Message::Stash,
             Self::Undo => Message::Undo,
             Self::Commit => Message::Commit,
+            Self::CommitAndPush => Message::CommitAndPush,
+            Self::FocusCommitTitle => Message::FocusCommitTitle,
+            Self::Ignore => Message::IgnoreSelected,
+            Self::ToggleStage => Message::ToggleStageSelected,
+            Self::PreviousFile => Message::PreviousFile,
+            Self::NextFile => Message::NextFile,
             Self::StageAll => Message::StageAll,
             Self::UnstageAll => Message::UnstageAll,
             Self::DiscardAll => Message::DiscardAll,
@@ -163,13 +356,23 @@ impl Shortcut {
             Self::Rebase => Message::MenuPressed(MenuAction::RebaseOnto),
             Self::StashApply => Message::MenuPressed(MenuAction::StashApply),
             Self::StashPop => Message::MenuPressed(MenuAction::StashApplyAndDrop),
-            Self::OpenMenu => Message::OpenMenuKey,
             Self::TakeMine => Message::ConflictShortcut(ConflictAction::Take(Side::Mine)),
             Self::TakeTheirs => Message::ConflictShortcut(ConflictAction::Take(Side::Theirs)),
             Self::TakeBoth => Message::ConflictShortcut(ConflictAction::Take(Side::Both)),
             Self::OpenEditor => Message::ConflictShortcut(ConflictAction::OpenEditor),
             Self::MarkResolved => Message::ConflictShortcut(ConflictAction::MarkResolved),
             Self::ResetConflict => Message::ConflictShortcut(ConflictAction::Reset),
+            Self::RepoPicker => Message::OpenPicker(PickerKind::Repository),
+            Self::BranchPicker => Message::OpenPicker(PickerKind::Branch),
+            Self::JumpHead => Message::JumpToHead,
+            Self::JumpWip => Message::JumpToWip,
+            Self::CopySha => Message::CopySha,
+            Self::GoParent => Message::GoToParent,
+            Self::ToggleTree => Message::ToggleTreeKey,
+            Self::CherryPick => Message::CommitAction(CommitAction::CherryPick),
+            Self::CleanUp => Message::Cleanup(crate::cleanup::CleanupMessage::Open),
+            Self::FileHistory => Message::HistoryKey,
+            Self::Blame => Message::BlameKey,
         }
     }
 
@@ -185,6 +388,7 @@ impl Shortcut {
             MenuAction::Push => Self::Push,
             MenuAction::StashApply => Self::StashApply,
             MenuAction::StashApplyAndDrop => Self::StashPop,
+            MenuAction::RemoveWorktree => Self::Delete,
         }
     }
 
@@ -198,66 +402,17 @@ impl Shortcut {
             ConflictAction::Reset => Self::ResetConflict,
         }
     }
-
-    /// The shortcut a press stands for.
-    pub fn pressed(key: &Key, modifiers: Modifiers) -> Option<Self> {
-        Self::ALL.into_iter().find(|shortcut| {
-            let (held, pressed) = shortcut.chord();
-            modifiers == held
-                && match (pressed, key.as_ref()) {
-                    (Pressed::Letter(letter), Key::Character(typed)) => {
-                        typed.eq_ignore_ascii_case(letter)
-                    }
-                    (Pressed::Named(wanted), Key::Named(typed)) => wanted == typed,
-                    _ => false,
-                }
-        })
-    }
-
-    /// The chord as this platform spells it: `⇧⌘E` on a Mac, `Ctrl+Shift+E`
-    /// elsewhere.
-    pub fn label(self) -> String {
-        let (held, pressed) = self.chord();
-        let key = match pressed {
-            Pressed::Letter(letter) => letter.to_uppercase(),
-            Pressed::Named(Named::Enter) => "\u{21b5}".to_owned(),
-            Pressed::Named(Named::Backspace) => "\u{232b}".to_owned(),
-            Pressed::Named(Named::ArrowLeft) => "\u{2190}".to_owned(),
-            Pressed::Named(Named::ArrowRight) => "\u{2192}".to_owned(),
-            Pressed::Named(Named::ArrowDown) => "\u{2193}".to_owned(),
-            Pressed::Named(named) => format!("{named:?}"),
-        };
-        let mut label = String::new();
-        if cfg!(target_os = "macos") {
-            if held.shift() {
-                label.push('\u{21e7}');
-            }
-            if held.command() {
-                label.push('\u{2318}');
-            }
-            label.push_str(&key);
-        } else {
-            if held.command() {
-                label.push_str("Ctrl+");
-            }
-            if held.shift() {
-                label.push_str("Shift+");
-            }
-            label.push_str(&key);
-        }
-        label
-    }
 }
 
 /// Every Git action the command list offers while a Git tab is shown, with
 /// its label and key. The place in the list is what the app sends back to
 /// [`message_of_command`].
-pub fn commands(lang: Language) -> Vec<(String, String)> {
+pub fn commands(lang: Language, keys: &GitKeys) -> Vec<(String, String)> {
     Shortcut::ALL
-        .into_iter()
+        .iter()
         .filter_map(|shortcut| {
             let label = lang.text(shortcut.command_label()?).to_owned();
-            Some((label, shortcut.label()))
+            Some((label, shortcut.label(keys)))
         })
         .collect()
 }
@@ -265,34 +420,8 @@ pub fn commands(lang: Language) -> Vec<(String, String)> {
 /// The message of the command at `place` in [`commands`].
 pub fn message_of_command(place: usize) -> Option<Message> {
     Shortcut::ALL
-        .into_iter()
+        .iter()
         .filter(|shortcut| shortcut.command_label().is_some())
         .nth(place)
-        .map(Shortcut::message)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_chord_is_its_own() {
-        for (index, left) in Shortcut::ALL.iter().enumerate() {
-            for right in &Shortcut::ALL[index + 1..] {
-                assert_ne!(left.chord(), right.chord(), "{left:?} and {right:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_chord_finds_its_shortcut() {
-        for shortcut in Shortcut::ALL {
-            let (held, pressed) = shortcut.chord();
-            let key = match pressed {
-                Pressed::Letter(letter) => Key::Character(letter.into()),
-                Pressed::Named(named) => Key::Named(named),
-            };
-            assert_eq!(Shortcut::pressed(&key, held), Some(shortcut));
-        }
-    }
+        .map(|shortcut| shortcut.message())
 }

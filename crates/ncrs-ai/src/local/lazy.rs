@@ -14,7 +14,7 @@ use ncrs_priority::ThreadPriority;
 
 use super::rule_session::RuleSession;
 use super::worker::{run, ChatJob, ExtractJob, Job, RuleJob, Shared, IDLE_UNLOAD};
-use crate::chat::{ChatIntent, ChatModel, ChatTurn, FolderChoiceLane};
+use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
@@ -29,7 +29,41 @@ use crate::status::LocalModelStatus;
 #[derive(Debug)]
 pub struct LazyLocalModel {
     shared: Arc<Shared>,
-    worker: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// A running worker thread. The process-wide list owns it, not the model, so
+/// `shutdown_all` still reaches a worker whose model has been dropped.
+#[derive(Debug)]
+struct Worker {
+    shared: Arc<Shared>,
+    thread: JoinHandle<()>,
+}
+
+fn workers() -> &'static Mutex<Vec<Worker>> {
+    static WORKERS: OnceLock<Mutex<Vec<Worker>>> = OnceLock::new();
+    WORKERS.get_or_init(Mutex::default)
+}
+
+/// `shutdown_all` closes every model in the process, also those of tests that
+/// run beside it: its test holds this for writing, every test that makes a
+/// model holds it for reading.
+#[cfg(test)]
+pub fn beside_shutdown_all() -> std::sync::RwLockReadGuard<'static, ()> {
+    SHUTDOWN_ALL_ALONE
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+static SHUTDOWN_ALL_ALONE: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+fn join_all(taken: Vec<Worker>) {
+    for worker in &taken {
+        worker.shared.close();
+    }
+    for worker in taken {
+        drop(worker.thread.join());
+    }
 }
 
 impl LazyLocalModel {
@@ -51,7 +85,6 @@ impl LazyLocalModel {
     ) -> Self {
         Self {
             shared: Arc::new(Shared::new(path, pin, threads, context_tokens, idle_unload)),
-            worker: Mutex::new(None),
         }
     }
 
@@ -76,20 +109,14 @@ impl LazyLocalModel {
         created
     }
 
-    /// Ends every model made by `shared` and waits for each worker to free it:
-    /// the app calls this on quit, because background threads that still hold
-    /// a model never drop it and the GPU backend aborts a process that ends
-    /// with a model loaded. A running job stops at its next batch or token.
+    /// Ends every model of this process and waits for each worker to free
+    /// it, also models that were dropped meanwhile or made by `new`: the app
+    /// calls this on quit, because background threads that still hold a model
+    /// never drop it and the GPU backend aborts a process that ends with a
+    /// model loaded. A running job stops at its next batch or token.
     pub fn shutdown_all() {
-        let live: Vec<Arc<Self>> = registry()
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .values()
-            .filter_map(Weak::upgrade)
-            .collect();
-        for model in live {
-            model.shutdown();
-        }
+        let taken = std::mem::take(&mut *workers().lock().unwrap_or_else(PoisonError::into_inner));
+        join_all(taken);
     }
 
     /// How the model reads documents from the next one on. The chat is not
@@ -106,22 +133,25 @@ impl LazyLocalModel {
     /// stop, which keeps the app from waiting for a running job.
     pub fn shutdown(self: Arc<Self>) {
         self.shared.close();
-        let worker = self
-            .worker
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        if let Some(thread) = worker {
-            drop(thread.join());
-        }
+        let mut list = workers().lock().unwrap_or_else(PoisonError::into_inner);
+        let (own, others): (Vec<Worker>, Vec<Worker>) = std::mem::take(&mut *list)
+            .into_iter()
+            .partition(|worker| Arc::ptr_eq(&worker.shared, &self.shared));
+        *list = others;
+        drop(list);
+        join_all(own);
     }
 
     fn ensure_worker(&self) -> Result<(), AiError> {
         if self.shared.is_closed() {
             return Err(AiError::Model("the model is closed"));
         }
-        let mut worker = self.worker.lock().unwrap_or_else(PoisonError::into_inner);
-        if worker.as_ref().is_some_and(|thread| !thread.is_finished()) {
+        let mut list = workers().lock().unwrap_or_else(PoisonError::into_inner);
+        list.retain(|worker| !worker.thread.is_finished());
+        if list
+            .iter()
+            .any(|worker| Arc::ptr_eq(&worker.shared, &self.shared))
+        {
             return Ok(());
         }
         let shared = Arc::clone(&self.shared);
@@ -129,7 +159,10 @@ impl LazyLocalModel {
             .name("ncrs-ai-model".to_owned())
             .spawn(move || run(&shared))
             .map_err(|_refused| AiError::Model("the model thread could not start"))?;
-        *worker = Some(thread);
+        list.push(Worker {
+            shared: Arc::clone(&self.shared),
+            thread,
+        });
         Ok(())
     }
 
@@ -284,31 +317,6 @@ impl ChatModel for LazyLocalModel {
             session.revise(&question)
         })
     }
-    fn choose_folders(
-        &self,
-        folders: &[(String, Vec<String>)],
-        documents: &[String],
-        lane: FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError> {
-        self.ensure_worker()?;
-        let (reply, answer) = channel();
-        let owned_folders = folders.to_vec();
-        let owned_documents = documents.to_vec();
-        let job = RuleJob {
-            task: Box::new(move |model| {
-                let outcome = model
-                    .and_then(|loaded| loaded.choose_folders(&owned_folders, &owned_documents));
-                drop(reply.send(outcome));
-            }),
-        };
-        self.shared.submit(match lane {
-            FolderChoiceLane::Waiting => Job::Rule(job),
-            FolderChoiceLane::Background => Job::Background(job),
-        });
-        answer
-            .recv()
-            .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
-    }
 
     /// Reads a snapshot only, never the disk and never the worker. While the
     /// model is being loaded, or asleep, it reports `NotLoadedYet`.
@@ -319,5 +327,61 @@ impl ChatModel for LazyLocalModel {
     /// Looks for the file again after a download.
     fn refresh(&self) {
         self.shared.refresh();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model_file::LOCAL_MODEL;
+
+    fn missing_model() -> Arc<LazyLocalModel> {
+        let dir = std::env::temp_dir().join("ncrs-lazy-worker-list");
+        Arc::new(LazyLocalModel::new(
+            dir.join("missing.gguf"),
+            LOCAL_MODEL,
+            NonZeroU32::MIN,
+            NonZeroU32::new(512).expect("nonzero"),
+        ))
+    }
+
+    fn workers_of(shared: &Arc<Shared>) -> usize {
+        workers()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|worker| Arc::ptr_eq(&worker.shared, shared))
+            .count()
+    }
+
+    #[test]
+    fn a_dropped_model_is_still_joined_on_shutdown_all() {
+        let _alone = SHUTDOWN_ALL_ALONE
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        let model = missing_model();
+        let shared = Arc::clone(&model.shared);
+        let turn = ChatTurn {
+            message: "hello".to_owned(),
+            question: None,
+            previous_search: None,
+        };
+        model.understand(&turn).unwrap_err();
+        assert_eq!(workers_of(&shared), 1);
+        drop(model);
+        LazyLocalModel::shutdown_all();
+        assert_eq!(workers_of(&shared), 0);
+    }
+
+    #[test]
+    fn ensure_worker_twice_keeps_one_worker_and_shutdown_removes_it() {
+        let _beside = beside_shutdown_all();
+        let model = missing_model();
+        let shared = Arc::clone(&model.shared);
+        model.ensure_worker().expect("first worker");
+        model.ensure_worker().expect("second call");
+        assert_eq!(workers_of(&shared), 1);
+        model.shutdown();
+        assert_eq!(workers_of(&shared), 0);
     }
 }

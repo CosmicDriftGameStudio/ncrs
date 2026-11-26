@@ -1,10 +1,10 @@
-//! What the model is asked in the rule flow, and what it answers.
+//! What the model is asked about the levels, and what it answers.
 
 use ncrs_ai::{
-    file_names_share_structure, folder_depth, pattern_mismatches, AiError, ChatModel,
-    ContextDocument, Levels, ModelProblem, Revision,
+    file_names_share_structure, folder_depth, pattern_mismatches, AiError, ChatModel, Levels,
+    ModelProblem, Revision,
 };
-use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+use ncrs_index::{DocumentFields, Kinds};
 
 /// What the model is asked.
 #[derive(Debug, Clone)]
@@ -23,11 +23,6 @@ pub enum RuleAsk {
         previous: Levels,
         sentence: String,
     },
-    Generate {
-        description: String,
-        documents: Vec<ContextDocument>,
-        kinds: Kinds,
-    },
 }
 
 /// What the model made of it.
@@ -36,7 +31,6 @@ pub enum RuleAnswer {
     Levels(Result<Levels, ModelProblem>),
     /// The levels after a sentence about them, and whether the user is done.
     Revised(Result<Revision, ModelProblem>),
-    Rule(Result<RuleSpec, ModelProblem>),
     /// The thread that asked the model broke.
     Failed(ModelProblem),
 }
@@ -56,15 +50,6 @@ impl RuleAsk {
             } => RuleAnswer::Revised(
                 model
                     .revise_levels(files, kinds, previous, sentence)
-                    .map_err(|error| ModelProblem::from(&error)),
-            ),
-            Self::Generate {
-                description,
-                documents,
-                kinds,
-            } => RuleAnswer::Rule(
-                model
-                    .generate_rule(description, documents, kinds)
                     .map_err(|error| ModelProblem::from(&error)),
             ),
         }

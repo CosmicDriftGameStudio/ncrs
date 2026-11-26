@@ -202,9 +202,9 @@ The same window in German, switched with F9.
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Search in file names and contents below a directory, in the panel, the way
   VS Code does it, with filters for the documents ncrs has read: see [Search](#search)
-- Hermes (beta): point it at a read folder with PDFs and scans, and ncrs reads them, recognises
-  sender, date and amount and files them where your rules say. With the built-in
-  model everything stays on this computer. See [Filing](#filing)
+- Hermes (beta): ncrs reads PDFs, scans and photos, recognises sender, date and
+  number and files them from your sources into your targets by your rules. With
+  the built-in model everything stays on this computer. See [Filing](#filing)
 - File lists show the tags of a document ncrs has read after its name (at most 3
   per file, then "+1"); the Tags page of the filing chooses which
 - Dropping files from the Finder, Explorer or another file manager onto the window copies them
@@ -304,7 +304,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
-| `F2`               | Open the Hermes chat (Beta): open a folder and Hermes shows how it is ordered, makes a rule from it and files only after you confirm; runs can be undone; `Esc` closes it |
+| `F2`               | Open the Hermes chat (Beta): open a folder and Hermes shows how it is ordered and suggests rules for it, saved only when you take them. The chat files nothing, but can put back the last run; `Esc` closes it |
 | `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor: `F3` in the internal viewer or an external program, per file type (Settings › Programs, see [Configuration](#configuration)); `F4` in an external program. In the viewer tab `Tab` switches rendered / source, `Esc` closes it |
 | `F5` / `F6`        | Copy / move to the other panel          |
@@ -325,8 +325,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Opens Settings on the Read errors page (Hermes on): the files that could not be read, each with Show file and Process again. `Esc` closes the settings. See [Filing](#filing) |
-| `Cmd`+`Shift`+`B` / `A` (`Ctrl`+`Shift` on Linux and Windows) | Opens Settings on the Rules and the Reports page. See [Filing](#filing) |
-| `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
+| `Cmd`+`Shift`+`B` / `A` (`Ctrl`+`Shift` on Linux and Windows) | Opens Settings on the Sorting and the Reports page. See [Filing](#filing) |
 | `Cmd`+`Shift`+`H` / `Ctrl`+`Shift`+`H` | Process again: runs the file under the cursor through the filing steps again |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
@@ -335,7 +334,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Cmd`+`K` / `Ctrl`+`K` | Keyboard shortcuts: every action with its keys. Type to search by name, or press a key to find what it does. `Enter` records a new key for the selected action, `←`/`→` pick one of its keys or the slot that adds one, `Del` (`⌫` on a Mac) removes the key, `Shift`+`Del` resets the action. A key another action holds is only taken after you confirm. Changes apply at once and are written to `[keys]` |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
-On macOS every command is also in the menu bar (File, Edit, View, Go, Search, Filing, Window,
+On macOS every command is also in the menu bar (File, Edit, View, Go, Search, Hermes, Window,
 Help), with the keys from the keymap. Only keys that cannot be typed into a text field are shown
 there: those with `Cmd` or `Ctrl`, and the function keys. While a dialog is open everything in the menu except Quit is off, so
 the keys reach the dialog. On Linux, and for now on Windows, the Lab (`F1`) is the menu.
@@ -609,11 +608,8 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `next_tab`, `previous_tab`,
 `settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
 `grant_folder_access`, `connect_server`, `disconnect_server`,
 `file_list_tags_toggle`, `file_list_tags_choose`, and for Hermes `rules`,
-`saved_queries`, `hermes_quick_fix`, `hermes_hand_to_inbox`,
-`hermes_process_again`, `hermes_file_once`, `hermes_file_continuously`,
-`hermes_stop_continuous`, `hermes_set_inbox`,
-`hermes_set_filing_location`, `hermes_set_archive`, `hermes_exclude`,
-`hermes_inspect`. Their default keys are in [Keyboard shortcuts](#keyboard-shortcuts)
+`saved_queries`, `hermes_process_again`, `hermes_file_once`, `watch_source`,
+`add_target`, `hermes_exclude`, `hermes_inspect`. Their default keys are in [Keyboard shortcuts](#keyboard-shortcuts)
 and, for the filing pages, in [Filing](#filing).
 
 ### Colors
@@ -756,53 +752,79 @@ the status bar marks a newer release. See [PRIVACY.md](PRIVACY.md).
 
 ### Filing
 
-`[hermes]` switches Hermes on or off as a whole (see below); `[modules.filing]`
-lists the folders the filing module works on:
+`[hermes]` switches Hermes on or off as a whole (see below). `[modules.filing]`
+holds the filing: files from **sources** go into **targets** by **rules**. A rule
+belongs to a target. If no rule matches, the file stays where it is.
 
 ```toml
 [modules.filing]
 # "gentle", "balanced", "full" or a number of workers.
 load = "balanced"
 
-[[modules.filing.locations]]
-path = "~/Inbox"
-mode = "inbox"
-images = false
+[[modules.filing.targets]]
+id = "main"
+name = "Documents"
+path = "~/Documents"
 
-[[modules.filing.locations]]
-path = "~/Documents/Archive"
-mode = "archive"
-images = true
-target = true
+[[modules.filing.targets]]
+id = "t2"
+path = "~/Company"
+
+[[modules.filing.sources]]
+path = "~/Downloads"
+include = "*.pdf;*.docx"
+exclude = "draft*"
+targets = ["main", "t2"]
+when = "watch"
+files = "move"
+no_text = "ask"
+several = "ask"
 ```
 
-- An `inbox` is emptied into the target. An `archive` is indexed where it is.
-  `images` also takes in images, not only PDFs.
-- Exactly one archive is the `target`, the archive filed documents go to. An
-  inbox cannot be the target, and no location may be the same folder as another
-  or lie inside it.
+| Key of a source | Values | Left out |
+| --- | --- | --- |
+| `path` | folder, absolute or `~/…` | required |
+| `include` | file name patterns, separated by `;` | every file |
+| `exclude` | file name patterns, separated by `;` | nothing |
+| `targets` | ids of targets | paused until it has one |
+| `when` | `"once"` or `"watch"` | `"once"` |
+| `files` | `"move"` or `"copy"` | `"move"` |
+| `no_text` | `"ask"` or `"skip"`: a file in which no text was found | `"ask"` |
+| `several` | `"ask"` or `"copy_to_all"`: several targets match | `"ask"` |
+
+- A target has an `id` (the first one is `main`, then `t2`, `t3` …), a `path` and,
+  if you like, a `name`; without one it goes by the name of its folder. ncrs
+  never uses the id of a removed target again and notes the next one in
+  `next_target`.
+- A pattern without `/` matches the file name at any depth.
+- `own_volume` in a source or a target is written by ncrs: whether the folder
+  was a drive of its own when it was saved. ncrs never creates the folder of a
+  target. While a drive or a folder is missing, the source waits.
+- A watched source must not be a target or lie inside one. A source that is
+  filed once may.
+- A mistake in one entry (an unusable path, an unknown target, the same folder
+  twice, a broken pattern) pauses this entry; the others keep working.
 - `load` has the names `gentle`, `balanced` and `full`; Settings › Index
   shows them as "Gentle", "Balanced" and "Full" (up to 2 workers, up to 4, one
   per processor core). The Futurama variants add "By the book", "Business as
   usual" and "Grade 36" beside them.
+- `[[modules.filing.locations]]` with `mode = "archive"` lists further folders
+  that are only read into the index.
+
+A config file from before 1.8.0 still loads. While it has neither sources nor
+targets, ncrs reads them from the old `locations` (`mode`, `target`, `images`,
+`continuous`, `transfer`); the first change to a source or a target writes them in
+the new form and keeps the old file as `config.toml.before-1.8.0`. ncrs 1.7
+and older cannot read the new keys. `default_pattern` is still accepted. A target taken
+over this way waits until ncrs knows a document in it or you press "Confirm".
 
 Filing is a beta. Every new version migrates the index and keeps its documents
 (the index has a schema version and the migrations are tested), but the
 behaviour, rules and screens of filing may still change before it leaves beta.
 1.0 does not wait for it.
 
-In the app the module is called Hermes (the config section is still `[modules.filing]`). It is set up and managed in Settings
-(Index, AI and Hermes), and it sorts in the chat (`F2`). The settings name the
-config terms like this:
-
-| Config | English | German |
-| --- | --- | --- |
-| `mode = "inbox"` | Read folder: Hermes sorts what arrives here | Lesen-Ordner |
-| `mode = "archive"` and `target = true` | Target folder: documents are filed here | Zielordner |
-| `mode = "archive"` without `target` | Read only: indexed, nothing is moved | Nur lesen |
-
-An older config file with `default_pattern`, `[[kinds]]` or `mode = "archive"`
-still loads.
+In the app the module is called Hermes (the config section is still `[modules.filing]`).
+Sources, targets and rules are set up in Settings › Sorting.
 
 The Futurama variants (`lang = "en-futurama"` and `"de-futurama"`) show the
 names from the show beside the plain ones:
@@ -810,7 +832,7 @@ names from the show beside the plain ones:
 | Plain name (English / German) | Futurama variants add (English / German) |
 | --- | --- |
 | Hermes / Hermes | Hermes / Hermes |
-| Status and errors / Status und Fehler | Inspection / Inspektion |
+| Activity / Aktivität | Inspection / Inspektion |
 | Rules / Regeln | Bureaucratic Regulations / Bürokratische Vorschriften |
 | Gentle / Schonend (`gentle`) | By the book / Dienst nach Vorschrift |
 | Balanced / Ausgewogen (`balanced`) | Business as usual / Normalbetrieb |
@@ -818,71 +840,85 @@ names from the show beside the plain ones:
 
 **Where things are.** Settings › Index holds what ncrs reads, text recognition,
 your own names, the protection of the index and its state. Settings › AI holds
-the Hermes switch and the one AI model. Settings › Hermes ("Sorting") holds
-the read folders, the order Hermes learned per area, and the runs it can undo. Hermes asks in the chat before it moves
-anything; documents it is unsure about wait there ("3 documents are waiting
-for you") and are gone through one question at a time. Waiting documents that
-were never read are read in the background without being moved. Pictures
-without any text and files that are no documents (code, chat exports,
-screenshots) do not become questions: Hermes excludes them, and "Exclude from
-Hermes" takes them back. Four more pages are in
-the same Settings list: Rules (`rules`), Tags (`file_list_tags_choose`),
-Reports (`saved_queries`) and Read errors (`Cmd`+`Shift`+`D`,
-`filing_status`; also behind "Show" on the unreadable files in Settings ›
-Index). Every command opens Settings on its page; `Esc` closes an open dialog
-first and the settings after that. Single values are saved at once, several
-fields sit in a small dialog with Save and Cancel.
+the Hermes switch, the one AI model and how long chats stay. Settings › Sorting
+(`rules`, `Cmd`+`Shift`+`B`) holds the sources, the targets with their rules and
+the history. Settings › Activity shows what Hermes does now and the last runs.
+Three more pages are in the same list: Tags (`file_list_tags_choose`), Reports
+(`saved_queries`, `Cmd`+`Shift`+`A`) and Read errors (`filing_status`,
+`Cmd`+`Shift`+`D`). Every command opens Settings on its page; `Esc` closes an
+open dialog first and the settings after that. Single values are saved at once,
+several fields sit in a small dialog with Save and Cancel.
 
-**Rules in the chat.** Open a folder of your archive in the chat (`F2`) and
-Hermes shows how it is ordered as levels: fixed folder names, the year, and how
-the files are named (`Work/Salary/{year}/{date}_{kind}`). Change a level in a
-sentence ("date first in the file name"); the card shows the changed levels
-next to what they were and which files that would rename. "Create rule" shows
-a proposal first: what the rule applies to and why, where it takes documents
-from, where it files them, how many documents it hits and a dry run. The
-saved rule files new documents from the read folders. Hermes then asks
-separately whether to move the files that already lie differently; that run
-renames them on disk, the index follows, and undo puts everything back. A
-folder that already has a rule from the chat changes that rule instead of
-adding a second one. "New chat" starts over.
+![Settings › Sorting](docs/screenshots/filing.png)
 
-**Filing a folder.** Tell the chat which read folder to file and where to; Hermes
-then plans it in the "Filing" tab: the read folder on the left, the write
-folder as a tree on the right, filled in live while the model reads (the tab
-title shows how far it is). Each file shows where it goes, with its new name
-and the old one beside it, or that it is already there, has no matching
-folder or is unreadable; files that stay get the tag "Hermes: no folder" or
-"Hermes: unreadable". `F2` renames a file, `F6` picks another folder inside the
-write folder, `F8` leaves it where it is. "Copy N" or "Move N" files them in one
-run, "Delete duplicates in the read folder" trashes the files that are already
-there, and the chat reports the run with its undo.
+In the context menu of a folder, "File…" (`hermes_file_once`) files it once,
+"Watch as source…" (`watch_source`) makes it a source and "Set up as target…"
+(`add_target`) a target. None of the three has a default key.
 
-![Settings › Hermes](docs/screenshots/filing.png)
+**Rules.** The rules of a target are checked from top to bottom and the first that
+matches applies. A rule has conditions (tag, word, address of the sender, IBAN,
+tax id, folder), a pattern for the place (`Invoices/{year}/{date}_{sender}`) and
+tags it sets. The dialog of a rule shows which files it would match. A pattern is filled
+completely or not at all: when a value it needs is missing, such as the date,
+the file stays. Values a model read never decide which rule
+matches. They are used only in the file name, never in a folder, and only when the
+model is sure. Removing a target deletes its rules; the files stay.
 
-**Chats.** Hermes keeps its chats on disk and lists them by Today, Yesterday and
-Earlier; an earlier chat opens and continues where it stopped, marked chats can be
-deleted, and Settings › Hermes can remove chats after 30 or 90 days. While Hermes
-prepares folder suggestions, the status bar names the folder and counts down the
-files still left. The window stays responsive while the built-in model works: the
-model waits while you type or move the mouse.
+**Filing a folder once.** "File…" asks for the targets and what to leave out;
+"Show plan" opens the tab "Sorting · *folder*" with the source on the
+left and the targets as a tree on the right. Nothing is moved or copied
+before you press "Copy N" or "Move N". What is known
+already is shown at once, the rest after it has been read. Each file shows the
+rule and the place, or why it stays: no rule matches, no text was found, a value
+is missing, the name is taken, or it is already there. `F2` renames a file, `F6`
+picks another folder inside a target of the source, `F8` leaves the file where it is.
+`Enter` files the way the source is set, `Shift`+`Enter` the other way.
+"Move duplicates in the source to the trash" takes the files that are already in
+a target. A file that goes to more than one target is copied, and the original
+stays.
 
-**Questions and activity.** Open questions are grouped by kind (target taken, date,
-amount, rule, sender, no rule, already filed) and answered per row or per group; "already
-filed" is an inbox scan whose content is already in a write folder, and the copy goes to the
-trash or is ignored. "Clarify in chat" and the quick fix menu open the chat about the
-document. The activity page shows what Hermes is doing now and the last runs, newest first.
-New files in a read folder can be filed on their own, when Hermes is sure; the rest becomes
-a question.
+**Watched sources.** A source set to "Watch" files new files on its own when one
+target matches. Files that are in the folder already when
+you switch it on stay; they appear only in the plan of "File…". A file that fits no rule
+stays where it is.
+
+**Questions.** A file of a watched source becomes a question in two cases: no text was
+found in it, or several targets match. Both can be turned off at the source (skip, or copy to
+all). The status bar counts the open questions and opens them; so does the
+button at the source. An answer files the file right away or leaves it where it is. "Assign file…"
+picks its folder by hand. In a plan, a file that matches several targets is asked about
+the same way.
+
+**Undo.** The history in Settings › Sorting lists the runs, each with its undo. A
+file that changed since or whose old place is taken is left where it is, and
+ncrs says how many. Files of a run that was undone are not filed again on their own.
+
+**Suggestions.** "Hermes: suggest a scheme" drafts the rules of a target that has
+none, "Hermes: suggest rules" adds some for the folders no rule covers,
+and "Hermes: suggest a rule" in the plan drafts one rule for that file.
+They come from the files that are in the target already. Nothing is saved before
+you take them, and a suggestion moves no file. Without a model
+they come from the folders and files alone.
+
+**Chat.** Open a folder in the chat (`F2`) and Hermes shows how it is ordered as
+levels: fixed folder names, the year, and how the files are named
+(`Work/Salary/{year}/{date}_{kind}`). Change a level in a sentence ("date first
+in the file name"). "Suggest rules…" opens the dialog of the suggestions. The chat
+files nothing; it can put back the last run. Hermes keeps
+its chats on disk and lists them by Today, Yesterday and Earlier; marked chats
+can be deleted, and Settings › AI can remove chats after 30 or 90 days. The window
+stays responsive while the built-in model works: the model waits while you type
+or move the mouse.
 
 **On/off.** One switch for all of Hermes: "Hermes" (On | Off) at the top of
-Settings › AI. A file without the key has it on. Off, no read folder is watched and no
-model is called (sorting, chat, name suggestions, learning rules). Files from
+Settings › AI. A file without the key has it on. Off, no source is watched and no
+model is called (reading documents, chat, name suggestions, suggesting rules). Files from
 before this key keep their old `[modules.filing] enabled`, which is read once
 when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`. An old `[modules.filing.ai] enabled = false` without a `[hermes]` key still means Hermes is off, even with `[modules.filing] enabled = true`; once the switch has been used, `[hermes] enabled` decides.
 
 **AI.** Documents the rules cannot read can be handed to a small language
-model. The switch above decides whether Hermes calls any model at all (sorting, the
-chat, name suggestions, learning rules); off, no model is called, whatever is
+model. The switch above decides whether Hermes calls any model at all (reading documents, the
+chat, name suggestions, suggesting rules); off, no model is called, whatever is
 set up below:
 
 ```toml

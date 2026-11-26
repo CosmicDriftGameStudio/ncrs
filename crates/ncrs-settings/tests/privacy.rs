@@ -39,10 +39,7 @@ fn the_page_that_switches_the_update_check_is_in_privacy() {
 fn every_line_of_the_consent_card_is_in_privacy() {
     let privacy = PRIVACY.to_lowercase();
     for site in MODEL_CALL_SITES {
-        let Some(item) = site.announced_as else {
-            continue;
-        };
-        let text = Language::English.text(item);
+        let text = Language::English.text(site.announced_as);
         let line = text.trim_end_matches('.').to_lowercase();
         assert!(
             privacy.contains(&line),

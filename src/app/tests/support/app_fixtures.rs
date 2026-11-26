@@ -26,6 +26,10 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
+            git_keys: Arc::default(),
+            repos_keys: Arc::default(),
+            repos: None,
+            repos_settings: ncrs_config::repos::ReposSettings::default(),
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
             protection_quit_warned: None,
@@ -82,8 +86,9 @@ impl App {
             kinds: Kinds::default(),
             columns: ncrs_config::panel_columns::PanelColumns::default(),
             git_view_settings: ncrs_config::git_view::GitViewSettings::default(),
+            git_settings: ncrs_config::git::GitSettings::default(),
             special_folders: Vec::new(),
-            special_folders_source: Vec::new(),
+            special_folders_source: (Vec::new(), Vec::new()),
             appearance: ncrs_config::panel_columns::Appearance::default(),
             ui_scale: 1.0,
             settings: Settings::default(),
@@ -277,7 +282,7 @@ impl App {
     /// every role on the left, files in every state on the right with the
     /// cursor on an inquiry.
     pub fn with_hermes_column_sample() -> Self {
-        use crate::hermes_column::{ColumnReading, ColumnStage, DirectoryStates, FileDetail};
+        use crate::hermes_column::{ColumnReading, ColumnStage, DirectoryStates};
         use ncrs_filing::column_reading::FolderReading;
         use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
 
@@ -298,6 +303,29 @@ impl App {
             location("Filed", ncrs_intake::LocationMode::Archive, true),
             location("Archive", ncrs_intake::LocationMode::Archive, false),
         ];
+        app.hermes.filing_config.sources = vec![config::SourceSetting {
+            source: ncrs_intake::SortSource {
+                path: home.join("Scans"),
+                include: String::new(),
+                exclude: String::new(),
+                targets: vec![ncrs_index::TargetId::main()],
+                watch: true,
+                transfer: Default::default(),
+                no_text: Default::default(),
+                several: Default::default(),
+                own_volume: None,
+            },
+            paused: None,
+        }];
+        app.hermes.filing_config.targets = vec![config::TargetSetting {
+            target: ncrs_intake::SortTarget {
+                id: ncrs_index::TargetId::main(),
+                name: "Filed".to_owned(),
+                path: home.join("Filed"),
+                own_volume: None,
+            },
+            paused: None,
+        }];
         app.panels.active = PanelSide::Right;
         app.panels.left.path = home.clone();
         app.panels.right.path = files_dir.clone();
@@ -436,54 +464,6 @@ impl App {
         for reading in readings {
             app.hermes.hermes_column.apply(reading);
         }
-        app.hermes.hermes_column.apply_detail(
-            files_dir.join("2025-03 receipt market.pdf"),
-            FileDetail {
-                text_state: crate::review_work::TextState::Read,
-                suggestion: Some(PathBuf::from("Receipts/2025/Market/2025-03 receipt.pdf")),
-            },
-        );
-        app
-    }
-
-    /// The Hermes column sample with the quick-fix menu open on its inquiry:
-    /// one file whose sender was not read and whose suggestion is known.
-    pub fn with_hermes_quick_fix_sample() -> Result<Self, Box<dyn std::error::Error>> {
-        let mut app = Self::with_hermes_column_sample();
-        let path = app.panels.right.path.join("2025-03 receipt market.pdf");
-        let mut item = waiting_document()?;
-        item.path = path;
-        item.fields.sender = None;
-        item.fields.kind = Some("receipt".to_owned());
-        item.fields.date = chrono::NaiveDate::from_ymd_opt(2025, 3, 14);
-        item.proposed_pattern = Some("Receipts/2025/Market/2025-03 {kind}.pdf".to_owned());
-        let anchor = layout::cursor_row_anchor(
-            true,
-            app.panels
-                .right
-                .selected
-                .saturating_sub(app.panels.right.scroll_offset),
-            layout::ROW_HEIGHT,
-            app.window_size,
-            0.0,
-        );
-        let mut menu = QuickFix::new(anchor, app.window_size);
-        menu.loaded(vec![item]);
-        app.hermes.quick_fix = Some(menu);
-        Ok(app)
-    }
-
-    /// A document waiting for the user, to put into a quick-fix menu.
-    pub fn waiting_document_for_test() -> Result<ReviewItem, Box<dyn std::error::Error>> {
-        waiting_document()
-    }
-
-    /// Fixed panels with the quick-fix menu open on `item` alone.
-    pub fn with_quick_fix_menu(item: ReviewItem) -> Self {
-        let mut app = Self::with_fixed_panels();
-        let mut menu = QuickFix::new(iced::Point::ORIGIN, app.window_size);
-        menu.loaded(vec![item]);
-        app.hermes.quick_fix = Some(menu);
         app
     }
 
@@ -744,41 +724,6 @@ impl App {
         app.settings.ai_model = Some(card);
         app
     }
-}
-
-/// A document waiting for the user, as a rule would file it; its ids come from a real index, since
-/// only the index hands them out.
-fn waiting_document() -> Result<ReviewItem, Box<dyn std::error::Error>> {
-    use chrono::{TimeZone as _, Utc};
-    use ncrs_index::{ContentHash, DocumentSource, Index, NewDocument, ReviewReason};
-
-    let dir = tempfile::TempDir::new()?;
-    let mut index = Index::create_plain(&dir.path().join("index.db"))?;
-    let document_id = index.insert_document(&NewDocument {
-        hash: ContentHash([1; 32]),
-        path: dir.path().join("scan-1.pdf"),
-        source: DocumentSource::Inbox,
-        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
-        stamp: None,
-    })?;
-    let entry = index.add_review(document_id, ReviewReason::NoMatchingRule)?;
-    Ok(ReviewItem {
-        entry,
-        document_id,
-        path: PathBuf::from("inbox/scan-1.pdf"),
-        reason: ReviewReason::UnconfirmedRule,
-        text_state: crate::review_work::TextState::Read,
-        fields: ncrs_index::DocumentFields {
-            sender: Some("Company A".to_owned()),
-            kind: Some("invoice".to_owned()),
-            date: chrono::NaiveDate::from_ymd_opt(2024, 3, 9),
-            ..ncrs_index::DocumentFields::default()
-        },
-        proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
-        origins: ncrs_index::FieldOrigins::default(),
-        passages: Vec::new(),
-        placement: None,
-    })
 }
 
 /// Stands in for the system trash in the fixed-panel app: a test that deletes

@@ -1,13 +1,16 @@
 //! Colors, spacing and reusable widget styles (dark, in the classic dual-panel style).
 
 use iced::widget::overlay::menu;
-use iced::widget::{button, checkbox, container, pick_list, text_input, Space};
+use iced::widget::{button, checkbox, container, pick_list, radio, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
 use crate::hermes_state::{FolderRole, HermesFileState};
 use crate::palette::{contrast_ratio, Palette};
 
+pub mod git;
+mod links;
 mod settings;
+pub use links::{link_button, named_link_button};
 pub use settings::{feature_item, focused_setting, marked_setting};
 
 /// Behind a modal dialog: darkens the panels without hiding them. Not part of
@@ -378,6 +381,55 @@ pub fn danger_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> bu
     }
 }
 
+/// The button of a destructive action that is not the one the dialog is for:
+/// outlined and inked in the error color.
+pub fn danger_outline_button(
+    palette: &Palette,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let disabled = matches!(status, button::Status::Disabled);
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then(|| Background::Color(colors.error.scale_alpha(HOVER_ALPHA))),
+            text_color: if disabled {
+                colors.dim_text
+            } else {
+                colors.error
+            },
+            border: Border {
+                color: if disabled {
+                    colors.border_inactive
+                } else {
+                    colors.error
+                },
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A button on a row filled in the accent: outlined in the ink of the row, lit while the pointer is over it.
+pub fn on_accent_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered
+                .then(|| Background::Color(colors.cursor_text.scale_alpha(HOVER_ALPHA))),
+            text_color: colors.cursor_text,
+            border: Border {
+                color: colors.cursor_text,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
 /// The close cross of a dialog: flat and dimmed, lit while the pointer is over
 /// it.
 pub fn close_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
@@ -486,29 +538,27 @@ pub fn segment_button(
 
 /// The one grey outline around a group of segments.
 pub fn segment_group(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    segment_group_focusable(palette, false)
+}
+
+/// [`segment_group`] that takes the focus outline while the keyboard is on it.
+pub fn segment_group_focusable(
+    palette: &Palette,
+    focused: bool,
+) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     let outline = control_outline(&colors, colors.panel);
     move |_theme| container::Style {
-        border: Border {
-            color: outline,
-            width: spacing::BORDER_WIDTH,
-            radius: radius::CORNER.into(),
+        border: if focused {
+            focus_border(&colors)
+        } else {
+            Border {
+                color: outline,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            }
         },
         ..container::Style::default()
-    }
-}
-
-/// A flat button in the text color, for an action inside the content.
-pub fn link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: hovered.then(|| hover_fill(&colors)),
-            text_color: colors.text,
-            border: Border::default(),
-            ..button::Style::default()
-        }
     }
 }
 
@@ -592,9 +642,8 @@ pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
 /// The color of a folder's role tag.
 pub fn hermes_role_color(palette: &Palette, role: FolderRole) -> Color {
     match role {
-        FolderRole::Inbox => palette.primary_button().0,
-        FolderRole::FilingLocation => palette.success,
-        FolderRole::Archive => palette.dim_text,
+        FolderRole::Source => palette.primary_button().0,
+        FolderRole::Target => palette.success,
     }
 }
 
@@ -655,6 +704,23 @@ pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -
     }
 }
 
+/// The round button of one choice among several that exclude each other.
+pub fn dialog_radio(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
+    let colors = *palette;
+    let (on, _) = colors.primary_button();
+    move |_theme, status| {
+        let (radio::Status::Active { is_selected } | radio::Status::Hovered { is_selected }) =
+            status;
+        radio::Style {
+            background: Background::Color(colors.panel),
+            dot_color: on,
+            border_width: spacing::BORDER_WIDTH,
+            border_color: if is_selected { on } else { colors.dim_text },
+            text_color: Some(colors.text),
+        }
+    }
+}
+
 /// The box of the context menu.
 pub fn menu(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
@@ -693,6 +759,24 @@ pub fn menu_item(
             border: Border::default(),
             ..button::Style::default()
         }
+    }
+}
+
+/// A list row that is in the accent while `chosen` and rests in grey while only
+/// `marked`: what it stands for is shown elsewhere, and the keys are not on it.
+pub fn marked_menu_item(
+    palette: &Palette,
+    chosen: bool,
+    marked: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    let plain = menu_item(palette, chosen);
+    move |theme, status| {
+        let mut style = plain(theme, status);
+        if marked && !chosen {
+            style.background = Some(Background::Color(colors.border_inactive));
+        }
+        style
     }
 }
 
@@ -889,18 +973,3 @@ pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> contai
 
 #[cfg(test)]
 mod tests;
-
-/// A flat button in the accent, for a name that opens what it names: it reads
-/// as a link and not as plain text.
-pub fn named_link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: hovered.then(|| hover_fill(&colors)),
-            text_color: colors.accent,
-            border: Border::default(),
-            ..button::Style::default()
-        }
-    }
-}

@@ -181,6 +181,28 @@ impl App {
         self.run_panel_actions(actions)
     }
 
+    /// "Open terminal here" for `folder`, whatever the panels show.
+    pub(in crate::app) fn open_terminal_in(&mut self, folder: &Path) -> Task<Message> {
+        let actions = ncrs_files::open_flow::open_terminal_in(folder, &self.open_ctx());
+        self.run_panel_actions(actions)
+    }
+
+    /// Puts `path` on the clipboard the way "Copy path" does in the panels.
+    pub(in crate::app) fn copy_path_of(&mut self, path: &Path) -> Task<Message> {
+        let Some(copied) =
+            ncrs_ops::clipboard_text_of_files(&[path.to_path_buf()], ClipboardKind::Path)
+        else {
+            return Task::none();
+        };
+        self.job_error = None;
+        let shown = self.show_notice(ncrs_ops::copied_notice(
+            self.lang,
+            ClipboardKind::Path,
+            copied.count,
+        ));
+        Task::batch([iced::clipboard::write(copied.text), shown])
+    }
+
     /// Hands `path` to the system's own opener, never to a configured program.
     pub(in crate::app) fn open_with_system(&mut self, path: &Path) {
         let actions = ncrs_files::open_flow::open_with_system(path, &self.open_ctx());
@@ -442,10 +464,26 @@ impl App {
             lang: self.lang,
             saved_servers: &saved_servers,
         };
+        let roots_before = self.panels_git_roots();
         let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
         let mapped = task.map(Message::Panel);
         let acted = self.run_panel_actions(actions);
-        Task::batch([mapped, acted])
+        let learned: Vec<Task<Message>> = self
+            .panels_git_roots()
+            .into_iter()
+            .zip(roots_before)
+            .filter(|(now, before)| now != before)
+            .map(|(now, _)| self.learn_repo_of_panel(now))
+            .collect();
+        Task::batch([mapped, acted, Task::batch(learned)])
+    }
+
+    /// The repository each panel shows, left then right.
+    fn panels_git_roots(&self) -> [Option<PathBuf>; 2] {
+        [
+            self.panels.left.git.root.clone(),
+            self.panels.right.git.root.clone(),
+        ]
     }
 
     pub(in crate::app) fn run_panel_actions(

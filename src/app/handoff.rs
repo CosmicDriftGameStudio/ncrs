@@ -2,10 +2,11 @@
 //! manager D-Bus service and, on macOS, the Finder's "Open With".
 
 use crate::app::*;
+use futures::{SinkExt as _, Stream};
 use ncrs_handoff::{Request, Target};
 
 /// How often the inbox is looked at.
-pub(in crate::app) const POLL_EVERY: std::time::Duration = std::time::Duration::from_millis(500);
+const POLL_EVERY: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// What was handed over since the last look: the inbox of this data folder and,
 /// on macOS, the files the system opened ncrs with.
@@ -24,6 +25,33 @@ fn collect(data_dir: Option<&Path>) -> Vec<Request> {
     requests
 }
 
+/// Whether the system asked to quit through the Dock menu or an Apple event,
+/// which skips the window's close button and the menu: the app ends through
+/// `Message::Quit` so the model is freed first.
+fn quit_asked() -> bool {
+    #[cfg(target_os = "macos")]
+    return winit::platform::macos::take_quit_request();
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
+pub(in crate::app) fn found_in(data_dir: Option<PathBuf>) -> impl Stream<Item = Message> {
+    iced::stream::channel(1, async move |mut output| loop {
+        tokio::time::sleep(POLL_EVERY).await;
+        let looked_in = data_dir.clone();
+        let (found, quit) =
+            tokio::task::spawn_blocking(move || (collect(looked_in.as_deref()), quit_asked()))
+                .await
+                .unwrap_or_default();
+        let handed_over = (!found.is_empty()).then_some(Message::HandedOver(found));
+        for message in handed_over.into_iter().chain(quit.then_some(Message::Quit)) {
+            if output.send(message).await.is_err() {
+                return;
+            }
+        }
+    })
+}
+
 impl App {
     /// The inbox folder: next to the session state, so only the first ncrs of
     /// a data folder has one (a second one has no state path).
@@ -34,9 +62,15 @@ impl App {
             .map(Path::to_path_buf)
     }
 
-    /// Whether the poll runs at all.
-    pub(in crate::app) fn takes_handoffs(&self) -> bool {
-        self.state_path.is_some() && !self.quitting
+    /// Looked at for as long as there is an inbox, or a system that may hand
+    /// something over. Only a find is a message: one on every look would
+    /// rebuild the window twice a second.
+    pub(in crate::app) fn watch_handoffs(&self) -> Subscription<Message> {
+        let dir = self.handoff_dir();
+        if self.quitting || (dir.is_none() && !cfg!(target_os = "macos")) {
+            return Subscription::none();
+        }
+        Subscription::run_with(dir, |inbox| found_in(inbox.clone()))
     }
 
     /// Looks at the inbox off the UI thread; what was found comes back as

@@ -104,12 +104,15 @@ impl App {
         self.hermes.rules.as_ref()
     }
 
-    /// Fixed panels with the rules page up, in the state of `view`.
+    /// Fixed panels with the filing page up, its one target holding the rules
+    /// in the state of `view`.
     pub fn with_rules(view: crate::rules_page::RulesPage) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
+        app.hermes.filing_config.targets = vec![main_target_for_test()];
+        app.hermes.sorting = Some(Default::default());
         app.hermes.rules = Some(view);
-        app.showing_setting(crate::messages::SettingsFeature::Rules)
+        app.showing_setting(crate::messages::SettingsFeature::Hermes)
     }
 
     /// A ready, idle Hermes module, so the status line of the filing pages
@@ -122,9 +125,13 @@ impl App {
             .set_snapshot(idle, self.wall_clock.now());
     }
 
-    /// The counts of Hermes as the index last gave them.
-    pub fn with_hermes_counts(mut self, counts: ncrs_index::HermesCounts) -> Self {
-        self.hermes.filing_status.counts_arrived(Ok(counts));
+    /// `count` files of one source wait for an answer.
+    pub fn with_questions(mut self, count: usize) -> Self {
+        let asked = ncrs_hermes_ui::filing_status::SourceQuestions {
+            source: PathBuf::from("/home/test/Scans"),
+            count,
+        };
+        self.hermes.filing_status.questions_arrived(Ok(vec![asked]));
         self
     }
 
@@ -646,12 +653,6 @@ impl App {
         self.filing_view.session.as_ref()
     }
 
-    /// The same, writable: the protocol run clears the readings to measure a
-    /// cold read again.
-    pub fn hermes_chat_mut_for_test(&mut self) -> &mut ncrs_hermes_chat::State {
-        &mut self.hermes_chat
-    }
-
     /// Starts the filing module of an app that is already running (the
     /// protocol run needs the tokio context of its session for it).
     pub fn start_filing_for_test(
@@ -676,9 +677,9 @@ impl App {
         self.panel(side)
     }
 
-    /// The read and write folders as the saved config has them.
-    pub fn filing_locations_for_test(&self) -> &[crate::config::FilingLocation] {
-        &self.hermes.filing_config.locations
+    /// The sources as the saved config has them.
+    pub fn sources_for_test(&self) -> &[ncrs_config::config::SourceSetting] {
+        &self.hermes.filing_config.sources
     }
 
     /// The pipeline is up and has nothing to do.
@@ -688,11 +689,12 @@ impl App {
             .is_some_and(|runner| runner.state() == ncrs_pipeline::RunnerState::Idle)
     }
 
-    /// Runner state, waiting files per step and waiting continuous
-    /// candidates, as text for the protocol's progress line.
-    pub fn pipeline_status_for_test(&self) -> (String, String, usize) {
+    /// Runner state and waiting files per step, as text for the protocol's
+    /// progress line, and whether the watched sources are filing right now.
+    pub fn pipeline_status_for_test(&self) -> (String, String, bool) {
+        let filing_now = self.hermes.watching.is_running();
         let Some(runner) = self.hermes.live_pipeline() else {
-            return ("none".to_owned(), String::new(), 0);
+            return ("none".to_owned(), String::new(), filing_now);
         };
         let snapshot = runner.snapshot();
         let queues = snapshot
@@ -701,22 +703,15 @@ impl App {
             .map(|step| format!("{} {}", step.name, step.waiting))
             .collect::<Vec<_>>()
             .join(", ");
-        (
-            format!("{:?}", snapshot.state),
-            queues,
-            runner.continuous_candidates_waiting(),
-        )
+        (format!("{:?}", snapshot.state), queues, filing_now)
     }
 
-    /// Whether the background filing has its model, and whether an "Ablegen"
-    /// tab that still works holds a folder back.
+    /// Whether the app allows the background filing, and whether the
+    /// filing tab holds a folder back.
     pub fn continuous_gates_for_test(&self) -> (bool, bool) {
         (
-            self.continuous_tools().is_some(),
-            self.filing_view
-                .session
-                .as_ref()
-                .is_some_and(|session| session.is_working()),
+            self.changes_allowed(),
+            ncrs_filing_view::busy_source(&self.filing_view).is_some(),
         )
     }
 
@@ -975,5 +970,18 @@ impl App {
     /// Gives the notes a whole vault, to script what the system asks.
     pub fn use_notes_vault_for_test(&mut self, vault: ncrs_notes::vault::Vault) {
         self.notes.vault = vault;
+    }
+}
+
+/// The target every rule without one belongs to.
+fn main_target_for_test() -> ncrs_config::config::TargetSetting {
+    ncrs_config::config::TargetSetting {
+        target: ncrs_intake::SortTarget {
+            id: ncrs_index::TargetId::main(),
+            name: "Documents".to_owned(),
+            path: PathBuf::from("/home/test/Documents"),
+            own_volume: None,
+        },
+        paused: None,
     }
 }

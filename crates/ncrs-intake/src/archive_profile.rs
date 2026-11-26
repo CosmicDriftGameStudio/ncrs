@@ -1,13 +1,13 @@
 //! Learns how an archive location is organised from the relative paths of its
-//! documents, so a new document gets a target that fits. Pure: nothing here
-//! touches a file or the index, and no AI is involved.
+//! documents. Pure: nothing here touches a file or the index, and no AI is
+//! involved.
 //!
 //! A learned pattern uses the placeholder syntax of the filing rules:
 //! `{year}`, `{month}`, `{date}` (or `{day}.{month}.{year}`, `{year}{month}{day}`
 //! for the other date formats), `{number}`, plus `{name}` for the free part of
 //! a file name. Every folder besides years and months is a constant, so each
 //! concrete folder is a subtree of its own. File extensions are not part of a
-//! pattern; the proposal adds one.
+//! pattern.
 
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -15,11 +15,10 @@ use std::path::{Component, PathBuf};
 use std::sync::OnceLock;
 
 use chrono::{Datelike as _, NaiveDate};
-use ncrs_index::{DocumentFields, Kinds, SubtreePattern};
+use ncrs_index::SubtreePattern;
 use regex::Regex;
 
 use crate::extract::parse_date;
-use crate::filing_plan::render_complete_pattern;
 use crate::sanitise::is_plain_literal;
 
 /// A word of a file name must occur this often before it counts as a
@@ -142,16 +141,6 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
         .collect()
 }
 
-/// The subtree each document belongs to, in the order of `documents`; `None`
-/// for a path that cannot be a document of the location. The same assignment
-/// `learn_archive` counts with.
-pub fn subtree_per_document(documents: &[ArchiveDocument]) -> Vec<Option<String>> {
-    documents
-        .iter()
-        .map(|document| parse_document(document).map(|parsed| subtree_of(&parsed.tokens)))
-        .collect()
-}
-
 /// The pattern one document follows on its own, and the subtree it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentPattern {
@@ -207,27 +196,6 @@ struct SubtreeTally {
     total: usize,
     unsafe_folders: bool,
     patterns: BTreeMap<String, (usize, bool)>,
-}
-
-/// The path a learned subtree gives a document with these fields, below the
-/// root of the location. Values are sanitised like in a filing rule. `None`
-/// when the subtree has no pattern, a field the pattern needs is missing, or
-/// `extension` is not plain letters and digits.
-pub fn propose_target(
-    subtree: &SubtreePattern,
-    fields: &DocumentFields,
-    kinds: &Kinds,
-    extension: &str,
-) -> Option<PathBuf> {
-    let pattern = subtree.pattern.as_deref()?;
-    let plain_extension = !extension.is_empty()
-        && extension
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric());
-    if !plain_extension {
-        return None;
-    }
-    render_complete_pattern(pattern, fields, kinds, extension)
 }
 
 fn parse_document(document: &ArchiveDocument) -> Option<Parsed> {
@@ -532,8 +500,6 @@ fn pattern_text(folders: &[FolderToken], pieces: &[Piece]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sanitise::stays_below;
-    use ncrs_index::KindLanguage;
 
     fn document(path: &str) -> ArchiveDocument {
         ArchiveDocument {
@@ -875,115 +841,5 @@ mod tests {
         );
         assert_eq!(only(&learned, "Scans").pattern, None);
         assert_eq!(only(&learned, "Downloads alt").pattern, None);
-    }
-
-    fn insurance_pattern() -> SubtreePattern {
-        only(&learn_archive(&year_category_tree()), "Insurance/Company A")
-    }
-
-    fn english() -> Kinds {
-        Kinds::built_in(KindLanguage::English)
-    }
-
-    fn fields(sender: &str, kind: &str) -> DocumentFields {
-        DocumentFields {
-            sender: Some(sender.to_owned()),
-            kind: Some(kind.to_owned()),
-            date: NaiveDate::from_ymd_opt(2025, 6, 9),
-            ..DocumentFields::default()
-        }
-    }
-
-    #[test]
-    fn the_target_for_a_new_document_follows_the_pattern() {
-        let target = propose_target(
-            &insurance_pattern(),
-            &fields("Agency D", "premium"),
-            &english(),
-            "pdf",
-        );
-
-        assert_eq!(
-            target,
-            Some(PathBuf::from(
-                "2025/Insurance/Company A/2025-06-09_premium.pdf"
-            ))
-        );
-    }
-
-    #[test]
-    fn no_target_without_a_pattern_a_needed_field_or_a_plain_extension() {
-        let pattern = insurance_pattern();
-        let no_pattern = SubtreePattern {
-            pattern: None,
-            ..pattern.clone()
-        };
-        let no_date = DocumentFields {
-            date: None,
-            ..fields("Agency D", "premium")
-        };
-
-        assert_eq!(
-            propose_target(
-                &no_pattern,
-                &fields("Agency D", "premium"),
-                &english(),
-                "pdf"
-            ),
-            None
-        );
-        assert_eq!(propose_target(&pattern, &no_date, &english(), "pdf"), None);
-        assert_eq!(
-            propose_target(
-                &pattern,
-                &fields("Agency D", "premium"),
-                &english(),
-                "pdf/../x"
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn a_value_with_separators_or_parent_references_cannot_leave_the_location() {
-        let pattern = SubtreePattern {
-            pattern: Some("{year}/Insurance/{sender}/{date}_{name}".to_owned()),
-            ..insurance_pattern()
-        };
-        for hostile in ["../../etc", "a/../../b", "..\\..\\c", "/", "..", "x/y"] {
-            let target = propose_target(&pattern, &fields(hostile, hostile), &english(), "pdf");
-            if let Some(path) = target {
-                assert!(stays_below(&path), "{hostile}: {path:?}");
-                assert!(path.starts_with("2025/Insurance"), "{hostile}: {path:?}");
-                assert_eq!(path.components().count(), 4, "{hostile}: {path:?}");
-            }
-        }
-        assert_eq!(
-            propose_target(&pattern, &fields("..", "/"), &english(), "pdf"),
-            None,
-            "values of only dots or separators count as missing"
-        );
-    }
-
-    #[test]
-    fn a_name_needs_all_its_pieces_and_keeps_its_extension() {
-        let pattern = SubtreePattern {
-            pattern: Some("Bills/{name}_{number}".to_owned()),
-            ..insurance_pattern()
-        };
-        let without_number = fields("Agency D", "premium");
-        let with_number = DocumentFields {
-            number: Some("4711".to_owned()),
-            ..without_number.clone()
-        };
-
-        assert_eq!(
-            propose_target(&pattern, &without_number, &english(), "pdf"),
-            None
-        );
-        assert_eq!(
-            propose_target(&pattern, &with_number, &english(), "pdf"),
-            Some(PathBuf::from("Bills/premium_4711.pdf"))
-        );
     }
 }

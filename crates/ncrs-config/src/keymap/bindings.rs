@@ -9,13 +9,20 @@ pub struct KeymapError {
 
 /// Action names earlier versions accepted under `[keys]`. A config that still
 /// lists one must keep loading, so they are skipped instead of rejected.
-const RETIRED_ACTION_NAMES: [&str; 6] = [
+const RETIRED_ACTION_NAMES: [&str; 13] = [
     "filing_setup",
     "rule_suggestions",
     "review_list",
     "hermes_reprocess_folder",
     "reorganisation_plan",
     "undo_reorganisation",
+    "hermes_quick_fix",
+    "hermes_hand_to_inbox",
+    "hermes_file_continuously",
+    "hermes_stop_continuous",
+    "hermes_set_inbox",
+    "hermes_set_filing_location",
+    "hermes_set_archive",
 ];
 
 /// Which keys do what: the built-in table, or that table with the `[keys]`

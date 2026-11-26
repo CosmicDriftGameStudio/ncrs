@@ -1,6 +1,5 @@
 //! What the actions show of the repository, read in one go off the UI thread.
 
-use std::fs;
 use std::path::Path;
 
 use ncrs_git::{
@@ -8,7 +7,7 @@ use ncrs_git::{
     IntegrationDetail, PreviewLine, StashEntry,
 };
 
-use crate::actions::{ChangeSide, ConflictLine, LocalChanges};
+use crate::actions::{ChangeSide, ConflictLine, LocalChanges, WipFocus};
 use crate::state::State;
 
 /// What the user has chosen, so a new read shows the same things.
@@ -16,6 +15,7 @@ use crate::state::State;
 pub struct Want {
     pub change: Option<(ChangeSide, String)>,
     pub conflict: Option<String>,
+    pub ignore_whitespace: bool,
 }
 
 impl Want {
@@ -34,7 +34,16 @@ impl Want {
                 .get(merge.selected)
                 .map(|conflict| conflict.path.clone())
         });
-        Self { change, conflict }
+        let ignore_whitespace = state
+            .actions
+            .local
+            .as_ref()
+            .is_some_and(|local| local.ignore_whitespace);
+        Self {
+            change,
+            conflict,
+            ignore_whitespace,
+        }
     }
 }
 
@@ -96,10 +105,6 @@ fn hunk_side(side: ChangeSide) -> HunkSide {
     }
 }
 
-fn read_text(root: &Path, path: &str) -> Option<String> {
-    String::from_utf8(fs::read(root.join(path)).ok()?).ok()
-}
-
 fn integration_of(
     git: &Git,
     detail: IntegrationDetail,
@@ -116,7 +121,7 @@ fn integration_of(
                     file.kind,
                     ConflictKind::BothModified | ConflictKind::BothAdded
                 )
-                && read_text(git.root(), &file.path).is_some(),
+                && ncrs_git::is_text_without_markers(git.root(), &file.path),
         })
         .collect();
     let shown = want
@@ -125,7 +130,7 @@ fn integration_of(
         .and_then(|path| conflicts.iter().find(|conflict| &conflict.path == path))
         .or_else(|| conflicts.first());
     let preview = shown.map(|conflict| {
-        let text = read_text(git.root(), &conflict.path).unwrap_or_default();
+        let text = ncrs_git::read_working_text(git.root(), &conflict.path).unwrap_or_default();
         (conflict.path.clone(), ncrs_git::preview_lines(&text))
     });
     Ok(IntegrationSnapshot {
@@ -146,7 +151,12 @@ pub fn read(root: &Path, want: &Want) -> Result<Snapshot, ActionError> {
             ChangeSide::Unstaged => &changes.unstaged,
             ChangeSide::Staged => &changes.staged,
         };
-        git.hunks(&files.get(index)?.path, hunk_side(side)).ok()
+        git.hunks_shown(
+            &files.get(index)?.path,
+            hunk_side(side),
+            want.ignore_whitespace,
+        )
+        .ok()
     });
     let stashes = git.stashes()?;
     let integration = git
@@ -228,9 +238,20 @@ pub fn stash_row(entry: &StashEntry) -> crate::actions::StashEntry {
 impl LocalChanges {
     /// Takes the lists of a new read; the message the user is typing stays.
     pub fn take(&mut self, snapshot: &Snapshot) {
+        if self.selected != snapshot.selected {
+            self.hunk = 0;
+        }
         self.unstaged.clone_from(&snapshot.changes.unstaged);
         self.staged.clone_from(&snapshot.changes.staged);
         self.selected = snapshot.selected;
+        if let Some((side, _)) = self.selected {
+            if matches!(self.focus, WipFocus::Unstaged | WipFocus::Staged) {
+                self.focus = crate::wip::focus_of(side);
+            }
+        }
+        if self.selected.is_none() {
+            self.diff_open = false;
+        }
         self.diff.clone_from(&snapshot.diff);
     }
 }

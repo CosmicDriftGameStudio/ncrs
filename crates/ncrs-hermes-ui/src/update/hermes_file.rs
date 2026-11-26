@@ -4,18 +4,16 @@
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::{Filing, FilingLocation, FilingWriteError, LocationTransfer};
+use ncrs_config::config::{same_folder, Filing, FilingWriteError};
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_index::IncludeOutcome;
-use ncrs_intake::LocationMode;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::filing_setup::{self, SetupProblem};
-use crate::hermes_column::FolderRole;
-use crate::message::{HermesFileMessage, HermesPage, Message};
+use crate::message::{HermesColumnMessage, HermesFileMessage, HermesPage, Message, TargetsMessage};
+use crate::source_dialog::SourceDialogKind;
 use crate::state::Hermes;
 use crate::ui::filing_setup as filing_setup_ui;
 
@@ -91,16 +89,15 @@ pub fn process_again(
     )
 }
 
-/// More files than this in the inboxes are asked about first: Hermes
+/// More files than this in the watched sources are asked about first: Hermes
 /// may move them out.
 const FILES_WITHOUT_QUESTION: usize = 1;
 
-fn lies_in_an_inbox(hermes: &Hermes, path: &Path) -> bool {
-    hermes
-        .filing_config
-        .locations
+fn lies_in_a_watched_source(filing: &Filing, path: &Path) -> bool {
+    filing
+        .sources
         .iter()
-        .any(|location| location.mode == LocationMode::Inbox && path.starts_with(&location.path))
+        .any(|setting| setting.source.watch && path.starts_with(&setting.source.path))
 }
 
 pub fn process_found_again(
@@ -119,11 +116,11 @@ pub fn process_found_again(
             return;
         }
     };
-    let in_inboxes = found
+    let in_watched_sources = found
         .iter()
-        .filter(|path| lies_in_an_inbox(hermes, path))
+        .filter(|path| lies_in_a_watched_source(&hermes.filing_config, path))
         .count();
-    if in_inboxes > FILES_WITHOUT_QUESTION {
+    if in_watched_sources > FILES_WITHOUT_QUESTION {
         hermes.confirm_again = Some(found);
         return;
     }
@@ -167,103 +164,6 @@ fn queue_again(hermes: &mut Hermes, found: Vec<PathBuf>, ctx: &Ctx<'_>, actions:
     actions.push(Action::ShowNotice(text));
 }
 
-pub fn set_folder_role(
-    hermes: &Hermes,
-    folder: &Path,
-    role: FolderRole,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    let Some(config_path) = ctx.config_path.map(Path::to_path_buf) else {
-        actions.push(Action::ShowNotice(
-            ctx.lang.text(Msg::FilingSetupNoConfigPath).to_owned(),
-        ));
-        return Task::none();
-    };
-    match locations_with_role_or_say(hermes, folder, role, ctx, actions) {
-        Some(chosen) => save_locations(config_path, chosen),
-        None => Task::none(),
-    }
-}
-
-fn locations_with_role_or_say(
-    hermes: &Hermes,
-    folder: &Path,
-    role: FolderRole,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Option<Vec<FilingLocation>> {
-    match filing_setup::locations_with_role(&hermes.filing_config.locations, folder, role) {
-        Ok(chosen) => Some(chosen),
-        Err(refused) => {
-            let text = match refused.problem {
-                SetupProblem::NoDocumentFolder => ctx
-                    .lang
-                    .text(Msg::StatusHermesRoleNeedsFilingLocation)
-                    .to_owned(),
-                problem => {
-                    filing_setup_ui::problem_sentence(problem, &refused.chosen, ctx.lang, ctx.home)
-                }
-            };
-            actions.push(Action::ShowError(text));
-            None
-        }
-    }
-}
-
-/// `folder` files its new files by itself with `transfer`, or, with `None`,
-/// no longer. Switching on makes a folder that is no read folder one, in the
-/// same write.
-pub fn set_continuous_filing(
-    hermes: &Hermes,
-    folder: &Path,
-    transfer: Option<LocationTransfer>,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    let Some(config_path) = ctx.config_path.map(Path::to_path_buf) else {
-        actions.push(Action::ShowNotice(
-            ctx.lang.text(Msg::FilingSetupNoConfigPath).to_owned(),
-        ));
-        return Task::none();
-    };
-    let configured = &hermes.filing_config.locations;
-    let is_read_folder = configured
-        .iter()
-        .any(|location| location.path == folder && location.mode == LocationMode::Inbox);
-    let base = if transfer.is_none() || is_read_folder {
-        configured.clone()
-    } else {
-        let Some(with_role) =
-            locations_with_role_or_say(hermes, folder, FolderRole::Inbox, ctx, actions)
-        else {
-            return Task::none();
-        };
-        with_role
-    };
-    match filing_setup::locations_with_continuous(&base, folder, transfer) {
-        Some(chosen) => save_locations(config_path, chosen),
-        None => Task::none(),
-    }
-}
-
-fn save_locations(config_path: PathBuf, chosen: Vec<FilingLocation>) -> Task<Message> {
-    let written_path = config_path.clone();
-    Task::perform(
-        tokio::task::spawn_blocking(move || filing_setup::write_locations(&written_path, &chosen)),
-        move |joined| {
-            Message::HermesFile(HermesFileMessage::RoleSaved(Box::new(
-                joined.unwrap_or_else(|join| {
-                    Err(FilingWriteError::Io {
-                        path: config_path,
-                        reason: join.to_string(),
-                    })
-                }),
-            )))
-        },
-    )
-}
-
 pub fn role_save_failed(
     hermes: &Hermes,
     error: &FilingWriteError,
@@ -283,6 +183,29 @@ pub fn role_save_failed(
     actions.push(Action::ShowError(text));
 }
 
+/// Tells the index that Hermes leaves `paths` alone from now on; the column
+/// shows them as excluded once the index has answered.
+pub fn exclude_from_hermes(
+    hermes: &Hermes,
+    paths: Vec<PathBuf>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::path_access) else {
+        actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+        return Task::none();
+    };
+    let excluded = paths.clone();
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.exclude(&paths)),
+        move |joined| {
+            Message::HermesColumn(HermesColumnMessage::Excluded {
+                paths: excluded.clone(),
+                result: joined.unwrap_or_else(|err| Err(err.to_string())),
+            })
+        },
+    )
+}
+
 /// `excluded` is whether the file or folder under the cursor is excluded now:
 /// it is included again, otherwise excluded.
 pub fn toggle_hermes_exclusion(
@@ -292,9 +215,9 @@ pub fn toggle_hermes_exclusion(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     if !excluded {
-        return super::quick_fix::exclude_from_hermes(hermes, vec![path], actions);
+        return exclude_from_hermes(hermes, vec![path], actions);
     }
-    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::path_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -340,34 +263,40 @@ pub fn hermes_included(
     actions.push(Action::ShowNotice(text));
 }
 
-/// The file with the new role is written: the module follows it, and the
-/// column asks again.
-pub fn role_saved(
-    hermes: &mut Hermes,
-    result: Result<Filing, FilingWriteError>,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    match result {
-        Ok(filing) => {
-            let (applies, task) = super::lifecycle::apply_saved_filing(hermes, filing, ctx);
-            hermes.hermes_column.invalidate_all();
-            hermes.hermes_failed_reads.clear();
-            actions.push(Action::ShowNotice(super::lifecycle::saved_filing_notice(
-                applies, ctx,
-            )));
-            task
-        }
-        Err(error) => {
-            role_save_failed(hermes, &error, ctx, actions);
-            Task::none()
-        }
-    }
-}
-
 /// Opens the settings on the Read errors page.
 pub fn show_in_inspection(actions: &mut Vec<Action>) {
     actions.push(Action::ShowPage(HermesPage::Inspection));
+}
+
+/// What the dialog of the targets is told to show the target at `folder`:
+/// the one there is, or a new one.
+fn target_dialog_steps(filing: &Filing, folder: &Path) -> Vec<TargetsMessage> {
+    let known = filing
+        .targets
+        .iter()
+        .position(|setting| same_folder(&setting.target.path, folder));
+    match known {
+        Some(index) => vec![TargetsMessage::Change(index)],
+        None => vec![
+            TargetsMessage::Add,
+            TargetsMessage::Folder(folder.to_string_lossy().into_owned()),
+        ],
+    }
+}
+
+/// Opens the dialog of the target at `folder`, a new one when there is none.
+fn open_target_dialog(
+    hermes: &mut Hermes,
+    folder: &Path,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let steps = target_dialog_steps(&hermes.filing_config, folder);
+    Task::batch(
+        steps
+            .into_iter()
+            .map(|step| super::targets::update(hermes, step, ctx, actions)),
+    )
 }
 
 /// A Hermes file command for the cursor row, or what came back of one.
@@ -378,7 +307,6 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        HermesFileMessage::RoleSaved(result) => return role_saved(hermes, *result, ctx, actions),
         HermesFileMessage::ProcessAgainFound(result) => {
             process_found_again(hermes, result, ctx, actions);
             return Task::none();
@@ -405,16 +333,19 @@ pub fn update(
             hermes_included(hermes, &path, result, ctx, actions);
             return Task::none();
         }
-        HermesFileMessage::HandToInbox
-        | HermesFileMessage::ProcessAgain
-        | HermesFileMessage::SetRole(_)
+        HermesFileMessage::ProcessAgain
         | HermesFileMessage::FileOnce
-        | HermesFileMessage::FileContinuously
-        | HermesFileMessage::StopContinuous
+        | HermesFileMessage::WatchSource
+        | HermesFileMessage::AddTarget
         | HermesFileMessage::ToggleExclusion
         | HermesFileMessage::ShowInInspection => {}
     }
-    let available = if matches!(message, HermesFileMessage::SetRole(_)) {
+    // The first source and the first target are set up before there is any.
+    let sets_up_sorting = matches!(
+        message,
+        HermesFileMessage::WatchSource | HermesFileMessage::AddTarget
+    );
+    let available = if sets_up_sorting {
         hermes.is_ready()
     } else {
         hermes.is_active()
@@ -426,24 +357,13 @@ pub fn update(
         return Task::none();
     };
     match message {
-        HermesFileMessage::HandToInbox => {
-            match hermes.inbox_location() {
-                Some(inbox) => actions.push(Action::MoveToInbox(inbox.to_path_buf())),
-                None => actions.push(Action::ShowNotice(
-                    ctx.lang.text(Msg::StatusHermesNoInbox).to_owned(),
-                )),
-            }
-            Task::none()
-        }
         HermesFileMessage::ProcessAgain => {
             process_again(hermes, ctx.action_sources.clone(), ctx, actions)
         }
-        HermesFileMessage::SetRole(role) if is_dir => {
-            set_folder_role(hermes, path, role, ctx, actions)
+        HermesFileMessage::WatchSource if is_dir => {
+            super::sorting::open_dialog(hermes, Some(path.to_path_buf()), SourceDialogKind::Watched)
         }
-        HermesFileMessage::StopContinuous if is_dir && hermes.cursor_roles(path).is_continuous => {
-            set_continuous_filing(hermes, path, None, ctx, actions)
-        }
+        HermesFileMessage::AddTarget if is_dir => open_target_dialog(hermes, path, ctx, actions),
         HermesFileMessage::ToggleExclusion => {
             let excluded = hermes.cursor_is_excluded(path, is_dir);
             toggle_hermes_exclusion(hermes, path.to_path_buf(), excluded, actions)
@@ -453,15 +373,89 @@ pub fn update(
             Task::none()
         }
         // Opening the filing tab is the app's: it owns the tab.
-        HermesFileMessage::SetRole(_)
-        | HermesFileMessage::StopContinuous
-        | HermesFileMessage::FileOnce
-        | HermesFileMessage::FileContinuously
-        | HermesFileMessage::RoleSaved(_)
+        HermesFileMessage::FileOnce
+        | HermesFileMessage::WatchSource
+        | HermesFileMessage::AddTarget
         | HermesFileMessage::ProcessAgainFound(_)
         | HermesFileMessage::TextlessFound(_)
         | HermesFileMessage::ConfirmProcessAgain
         | HermesFileMessage::CancelProcessAgain
         | HermesFileMessage::Included { .. } => Task::none(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use ncrs_config::config::{SourceSetting, TargetSetting};
+    use ncrs_index::TargetId;
+    use ncrs_intake::{LocationTransfer, OnNoText, OnSeveralTargets, SortSource, SortTarget};
+
+    fn filing() -> Filing {
+        let source = |path: &str, watch| SourceSetting {
+            source: SortSource {
+                path: PathBuf::from(path),
+                include: String::new(),
+                exclude: String::new(),
+                targets: vec![TargetId::main()],
+                watch,
+                transfer: LocationTransfer::default(),
+                no_text: OnNoText::default(),
+                several: OnSeveralTargets::default(),
+                own_volume: None,
+            },
+            paused: None,
+        };
+        Filing {
+            sources: vec![source("/in", true), source("/once", false)],
+            targets: vec![TargetSetting {
+                target: SortTarget {
+                    id: TargetId::main(),
+                    name: "Docs".to_owned(),
+                    path: PathBuf::from("/docs"),
+                    own_volume: None,
+                },
+                paused: None,
+            }],
+            ..Filing::default()
+        }
+    }
+
+    #[test]
+    fn the_target_dialog_shows_the_target_at_the_folder_or_a_new_one() {
+        assert_eq!(
+            target_dialog_steps(&filing(), Path::new("/docs")),
+            [TargetsMessage::Change(0)]
+        );
+        assert_eq!(
+            target_dialog_steps(&filing(), Path::new("/docs/2024")),
+            [
+                TargetsMessage::Add,
+                TargetsMessage::Folder("/docs/2024".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn only_files_below_a_watched_source_may_be_filed_when_read_again() {
+        let filing = filing();
+        assert!(lies_in_a_watched_source(&filing, Path::new("/in/a.pdf")));
+        assert!(!lies_in_a_watched_source(&filing, Path::new("/once/a.pdf")));
+        assert!(!lies_in_a_watched_source(&filing, Path::new("/docs/a.pdf")));
+    }
+
+    #[test]
+    fn the_roles_of_a_folder_follow_the_sources_and_targets() {
+        let hermes = Hermes {
+            filing_config: filing(),
+            ..Hermes::default()
+        };
+        let source = hermes.cursor_roles(Path::new("/in"));
+        assert!(source.is_source && !source.is_target);
+        let target = hermes.cursor_roles(Path::new("/docs"));
+        assert!(target.is_target && !target.is_source);
+        let below = hermes.cursor_roles(Path::new("/in/sub"));
+        assert!(!below.is_source && !below.is_target);
     }
 }

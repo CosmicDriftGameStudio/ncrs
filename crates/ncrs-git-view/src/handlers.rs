@@ -6,6 +6,8 @@
     reason = "this module takes a group of messages out of the big match in `update`; the rest never arrives here"
 )]
 
+use std::path::PathBuf;
+
 use iced::widget::{operation, text_editor};
 use iced::Task;
 use ncrs_git::{ActionError, ChangedFile, CommitMessage, ConflictChoice, DiffHunk, UndoSummary};
@@ -13,17 +15,21 @@ use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
 use crate::actions::{
-    Actions, ChangeSide, Conflict, ConflictAction, Dialog, LocalChanges, MenuAction, MenuTarget,
-    MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar, Unavailable,
+    Actions, ChangeSide, Conflict, ConflictAction, Dialog, ForceBlock, LocalChanges, MenuAction,
+    MenuTarget, MergeInProgress, NewBranch, Notice, Question, RenameBranch, Side, SyncBar,
+    Unavailable, WipFocus,
 };
+use crate::cleanup;
 use crate::ctx::Ctx;
 use crate::job::{Done, Finished, Job};
 use crate::load;
 use crate::message::Message;
 use crate::snapshot::{self, IntegrationSnapshot, Snapshot};
-use crate::state::State;
+use crate::state::{Area, State};
+use crate::sync_handlers;
 use crate::update::{ensure_detail, failed, menu_target_of, quiet, Outcome};
 use crate::view::{NAME_ID, RENAME_ID};
+use crate::wip;
 
 pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
     match message {
@@ -70,23 +76,56 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             if let Some(local) = state.actions.local.as_mut() {
                 local.title = title;
             }
+            wip::typed_in(state, WipFocus::Title);
             quiet(Task::none())
         }
         Message::CommitBodyEdited(edit) => {
             if let Some(local) = state.actions.local.as_mut() {
                 local.body.perform(edit);
             }
+            wip::typed_in(state, WipFocus::Body);
             quiet(Task::none())
         }
-        Message::ToggleAmend => {
+        Message::ToggleWipSection(side) => {
             if let Some(local) = state.actions.local.as_mut() {
-                local.amend = !local.amend;
+                if !local.folded.remove(&side) {
+                    local.folded.insert(side);
+                }
             }
             quiet(Task::none())
         }
-        Message::Commit => commit(state),
+        Message::ToggleAmend => {
+            wip::toggle_amend(state);
+            quiet(Task::none())
+        }
+        Message::TogglePushAfter => {
+            wip::toggle_push_after(state);
+            quiet(Task::none())
+        }
+        Message::ToggleStageSelected => wip::toggle_stage_selected(state),
+        Message::FocusCommitTitle => quiet(wip::focus_title(state)),
+        Message::WipFocused(focus) => quiet(wip::focused(state, focus)),
+        Message::WipFieldPressed(focus) => {
+            state.area = Area::Detail;
+            wip::typed_in(state, focus);
+            quiet(Task::none())
+        }
+        Message::IgnoreFile(path) => wip::ignore_file(state, &path),
+        Message::IgnoreSelected => wip::ignore_selected(state),
+        Message::IgnoreChoiceChanged(choice) => {
+            wip::choose_ignore(state, choice);
+            quiet(Task::none())
+        }
+        Message::OpenSelectedInEditor => wip::open_selected_in_editor(state),
+        Message::ConflictShortcut(ConflictAction::OpenEditor)
+            if state.actions.merge.is_none() || state.list_is_covered() =>
+        {
+            wip::open_selected_in_editor(state)
+        }
+        Message::Commit => commit(state, false),
+        Message::CommitAndPush => commit(state, true),
         Message::Fetch => start(state, Job::Fetch),
-        Message::Pull | Message::PullFirst => start(state, Job::Pull(None)),
+        Message::Pull | Message::PullFirst => start(state, Job::Pull(Some(ctx.pull_default))),
         Message::PullWith(strategy) => start(state, Job::Pull(Some(strategy))),
         Message::Push => start(state, Job::Push),
         Message::Stash => {
@@ -122,10 +161,12 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             quiet(Task::none())
         }
         Message::CreateBranch => create_branch(state),
+        Message::CloseDialog if sync_handlers::cancel_credential(state) => quiet(Task::none()),
         Message::CloseDialog => {
             state.actions.new_branch = None;
             state.actions.dialog = None;
             state.actions.menu = None;
+            sync_handlers::show_next_credential(state);
             quiet(Task::none())
         }
         Message::RenameNameChanged(name) => {
@@ -162,10 +203,23 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
                 _ => quiet(Task::none()),
             }
         }
-        Message::ConflictPressed(index, action) => {
+        Message::ConflictPressed(path, action) => {
             state.actions.menu = None;
+            let place = state.actions.merge.as_ref().and_then(|merge| {
+                merge
+                    .conflicts
+                    .iter()
+                    .position(|conflict| conflict.path == path)
+            });
+            let Some(index) = place else {
+                return quiet(Task::none());
+            };
             select_conflict(state, index);
             conflict_action(state, action)
+        }
+        // A diff or a history over a merge hides the file the key would act on.
+        Message::ConflictShortcut(_) if state.diff.is_some() || state.history.is_some() => {
+            quiet(Task::none())
         }
         Message::ConflictShortcut(action) => conflict_action(state, action),
         Message::DeleteBranchAnyway => match &state.actions.notice {
@@ -203,16 +257,22 @@ pub fn act(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
 }
 
 /// Starts `job` unless another one runs or there are no actions.
-fn start(state: &mut State, job: Job) -> Outcome {
+pub fn start(state: &mut State, job: Job) -> Outcome {
+    state.actions.sync_menu = None;
     if state.actions.busy.is_some() || state.actions.unavailable.is_some() {
         return quiet(Task::none());
     }
     let Some(root) = state.root.clone() else {
         return quiet(Task::none());
     };
+    if state.actions.background_fetch {
+        state.actions.queued = Some(job);
+        return quiet(Task::none());
+    }
     state.actions.busy = Some(job.operation());
     state.actions.notice = None;
-    quiet(load::job(root, job))
+    state.actions.deliberate_sync |= job.talks_to_remote();
+    quiet(load::job(root, state.job_token, job))
 }
 
 fn files_of(local: &LocalChanges, side: ChangeSide) -> &[ChangedFile] {
@@ -251,7 +311,8 @@ fn start_any(state: &mut State, job: Option<Job>) -> Outcome {
 fn hunk_of(state: &State, side: ChangeSide, hunk: usize) -> Option<(String, DiffHunk)> {
     let local = state.actions.local.as_ref()?;
     let (chosen, index) = local.selected?;
-    if chosen != side {
+    // The hunks of a diff that ignores whitespace are not the ones git applies.
+    if chosen != side || local.ignore_whitespace {
         return None;
     }
     let path = files_of(local, side).get(index)?.path.clone();
@@ -282,7 +343,8 @@ fn select_change(state: &mut State, side: ChangeSide, index: usize) -> Outcome {
     quiet(load::actions(state))
 }
 
-fn commit(state: &mut State) -> Outcome {
+/// Commits the staged files; `push` or the box "push afterwards" pushes next.
+pub fn commit(state: &mut State, push: bool) -> Outcome {
     let Some(local) = state.actions.local.as_ref() else {
         return quiet(Task::none());
     };
@@ -290,17 +352,20 @@ fn commit(state: &mut State) -> Outcome {
         state.actions.notice = Some(Notice::CommitTitleMissing);
         return quiet(Task::none());
     }
-    let job = Job::Commit {
-        message: CommitMessage {
-            title: local.title.clone(),
-            body: local.body.text(),
-        },
-        amend: local.amend,
+    let message = CommitMessage {
+        title: local.title.clone(),
+        body: local.body.text(),
+    };
+    let amend = local.amend;
+    let job = if push || local.push_after {
+        Job::CommitAndPush { message, amend }
+    } else {
+        Job::Commit { message, amend }
     };
     start(state, job)
 }
 
-fn current_branch(state: &State) -> String {
+pub fn current_branch(state: &State) -> String {
     state
         .overview
         .as_ref()
@@ -311,55 +376,85 @@ fn current_branch(state: &State) -> String {
 
 /// The row a menu action is about: the open menu's, else the one under the cursor.
 fn menu_subject(state: &State) -> Option<MenuTarget> {
-    state.actions.menu.map(|open| open.target).or_else(|| {
-        state
-            .sidebar_items()
-            .get(state.sidebar_cursor)
-            .and_then(|item| menu_target_of(*item))
-    })
+    state
+        .actions
+        .menu
+        .clone()
+        .map(|open| open.target)
+        .or_else(|| {
+            state
+                .sidebar_items()
+                .get(state.sidebar_cursor)
+                .and_then(|item| menu_target_of(state, *item))
+        })
 }
 
-fn branch_of(state: &State, target: MenuTarget) -> Option<String> {
+fn branch_of(state: &State, target: &MenuTarget) -> Option<String> {
     let overview = state.overview.as_ref()?;
     match target {
         MenuTarget::LocalBranch(index) => {
-            overview.local.get(index).map(|branch| branch.name.clone())
+            overview.local.get(*index).map(|branch| branch.name.clone())
         }
-        MenuTarget::RemoteBranch(index) => overview.remote.get(index).cloned(),
-        MenuTarget::Stash(_) | MenuTarget::Conflict(_) => None,
+        MenuTarget::RemoteBranch(index) => overview.remote.get(*index).cloned(),
+        MenuTarget::Stash(_)
+        | MenuTarget::Worktree(_)
+        | MenuTarget::Conflict(_)
+        | MenuTarget::File { .. }
+        | MenuTarget::Commit(_) => None,
     }
 }
 
+/// Asks for the name of a new branch that starts at `from`.
+pub fn begin_new_branch(state: &mut State, from: String) -> Outcome {
+    if state.actions.unavailable.is_some() {
+        return quiet(Task::none());
+    }
+    state.actions.new_branch = Some(NewBranch {
+        name: String::new(),
+        from,
+        checkout: true,
+        problem: None,
+    });
+    quiet(operation::focus(NAME_ID))
+}
+
 fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
+    if let Some(on_commit) = crate::commit_menu::of_shortcut(state, action) {
+        return crate::commit_menu::act(state, on_commit);
+    }
     let target = menu_subject(state);
     state.actions.menu = None;
     if action == MenuAction::NewBranchFrom {
         let from = target
-            .and_then(|found| branch_of(state, found))
+            .and_then(|found| branch_of(state, &found))
             .unwrap_or_else(|| current_branch(state));
-        state.actions.new_branch = Some(NewBranch {
-            name: String::new(),
-            from,
-            checkout: true,
-            problem: None,
-        });
-        return quiet(operation::focus(NAME_ID));
+        return begin_new_branch(state, from);
     }
     let Some(chosen) = target else {
         return quiet(Task::none());
     };
-    let branch = branch_of(state, chosen);
-    let stash = match chosen {
-        MenuTarget::Stash(index) => state.actions.stash_ids.get(index).cloned(),
+    let branch = branch_of(state, &chosen);
+    let stash = match &chosen {
+        MenuTarget::Stash(id) => state.actions.stash_ids.contains(id).then(|| id.clone()),
         _ => None,
     };
     // The one key for "delete" means what the row it is pressed on can lose.
-    let target_action = match (action, chosen) {
+    let target_action = match (action, &chosen) {
         (MenuAction::Delete, MenuTarget::RemoteBranch(_)) => MenuAction::DeleteOnRemote,
         (MenuAction::Delete, MenuTarget::Stash(_)) => MenuAction::StashDrop,
+        (MenuAction::Delete, MenuTarget::Worktree(_)) => MenuAction::RemoveWorktree,
         (other, _) => other,
     };
-    let question = match (target_action, chosen) {
+    let question = match (target_action, &chosen) {
+        (MenuAction::RemoveWorktree, MenuTarget::Worktree(index)) => state
+            .overview
+            .as_ref()
+            .and_then(|overview| overview.worktrees.get(*index))
+            .filter(|found| !found.is_main && !found.is_current)
+            .map(|found| Question::RemoveWorktree {
+                path: found.path.clone(),
+                ignored_files: found.ignored_files.clone(),
+            }),
         (MenuAction::Delete, MenuTarget::LocalBranch(_)) => {
             branch.clone().map(|name| Question::DeleteBranch { name })
         }
@@ -369,16 +464,22 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
                 Some(Question::DeleteOnRemote {
                     remote: remote_name.to_owned(),
                     branch: branch_name.to_owned(),
+                    tip: state
+                        .overview
+                        .as_ref()
+                        .and_then(|overview| overview.remote_tips.get(full).cloned()),
                 })
             })
         }
-        (MenuAction::StashDrop, MenuTarget::Stash(index)) => {
+        (MenuAction::StashDrop, MenuTarget::Stash(id)) => {
             stash.clone().map(|sha| Question::DropStash {
                 sha,
                 message: state
                     .actions
-                    .stashes
-                    .get(index)
+                    .stash_ids
+                    .iter()
+                    .position(|known| known == id)
+                    .and_then(|index| state.actions.stashes.get(index))
                     .map(|entry| entry.message.clone())
                     .unwrap_or_default(),
             })
@@ -389,7 +490,10 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         return ask(state, question);
     }
     if target_action == MenuAction::Rename {
-        if let (MenuTarget::LocalBranch(_), Some(from)) = (chosen, branch.clone()) {
+        if state.actions.unavailable.is_some() {
+            return quiet(Task::none());
+        }
+        if let (MenuTarget::LocalBranch(_), Some(from)) = (&chosen, branch.clone()) {
             state.actions.dialog = Some(Dialog::Rename(RenameBranch {
                 name: from.clone(),
                 from,
@@ -398,7 +502,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
         }
         return quiet(Task::none());
     }
-    let job = match (target_action, chosen) {
+    let job = match (target_action, &chosen) {
         (MenuAction::Checkout, MenuTarget::LocalBranch(_)) => branch.map(Job::Checkout),
         (MenuAction::CheckoutAsLocal, MenuTarget::RemoteBranch(_)) => {
             branch.map(Job::CheckoutRemote)
@@ -418,7 +522,7 @@ fn menu_pressed(state: &mut State, action: MenuAction) -> Outcome {
 }
 
 /// Opens the question unless another call to git runs or there are no actions.
-fn ask(state: &mut State, question: Option<Question>) -> Outcome {
+pub fn ask(state: &mut State, question: Option<Question>) -> Outcome {
     if state.actions.busy.is_none() && state.actions.unavailable.is_none() {
         if let Some(asked) = question {
             state.actions.dialog = Some(Dialog::Ask(asked));
@@ -429,6 +533,13 @@ fn ask(state: &mut State, question: Option<Question>) -> Outcome {
 
 /// The answer of a dialog: a question runs its job, a new name renames.
 fn confirm_dialog(state: &mut State) -> Outcome {
+    // The job that asked is the busy one: the answer must get through.
+    if matches!(state.actions.dialog, Some(Dialog::Credential(_))) {
+        return sync_handlers::credential_enter(state);
+    }
+    if matches!(state.actions.dialog, Some(Dialog::Cleanup(_))) {
+        return cleanup::update(state, cleanup::CleanupMessage::Confirm);
+    }
     if state.actions.busy.is_some() {
         return quiet(Task::none());
     }
@@ -444,7 +555,9 @@ fn confirm_dialog(state: &mut State) -> Outcome {
                 to,
             }
         }
-        None => return quiet(Task::none()),
+        Some(Dialog::Tag(_) | Dialog::Credential(_) | Dialog::Cleanup(_)) | None => {
+            return quiet(Task::none())
+        }
     };
     start(state, job)
 }
@@ -543,8 +656,7 @@ fn switch_off(state: &mut State, reason: Unavailable) {
     actions.notice = None;
     actions.new_branch = None;
     actions.dialog = None;
-    actions.menu = None;
-    actions.changes_open = false;
+    state.close_menu_if_stale();
 }
 
 fn apply(state: &mut State, ctx: &Ctx, snapshot: Snapshot) {
@@ -566,6 +678,7 @@ fn apply(state: &mut State, ctx: &Ctx, snapshot: Snapshot) {
     state.sidebar_cursor = state
         .sidebar_cursor
         .min(state.sidebar_items().len().saturating_sub(1));
+    state.close_menu_if_stale();
 }
 
 fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) {
@@ -613,6 +726,7 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
         .unwrap_or_default();
     actions.rebasing = rebasing;
     actions.merge = Some(MergeInProgress {
+        kind: integration.detail.kind,
         from: integration.detail.other,
         into: integration.detail.current,
         conflicts,
@@ -623,11 +737,31 @@ fn apply_integration(actions: &mut Actions, found: Option<IntegrationSnapshot>) 
 
 /// Puts ahead, behind and the undo into the toolbar, once there is one.
 pub fn refresh_sync(state: &mut State, ctx: &Ctx) {
-    let (ahead, behind) = state
+    let current = state
         .overview
         .as_ref()
-        .and_then(|overview| overview.local.iter().find(|branch| branch.is_current))
+        .map(|overview| overview.local.iter().find(|branch| branch.is_current));
+    let (ahead, behind) = current
+        .flatten()
         .map_or((0, 0), |branch| (branch.ahead, branch.behind));
+    let force_blocked = match current {
+        Some(None) => Some(ForceBlock::Detached),
+        Some(Some(branch)) if !branch.has_upstream => Some(ForceBlock::NoUpstream),
+        _ => None,
+    };
+    state.actions.cleanable = state.overview.as_ref().map_or_else(Vec::new, |overview| {
+        let list = ncrs_git::cleanup_list(
+            overview,
+            &std::collections::BTreeMap::new(),
+            &ncrs_git::RemoteState::default(),
+        );
+        let worktree_branches = list.worktrees.iter().map(|found| &found.branch);
+        list.branches
+            .iter()
+            .chain(worktree_branches)
+            .map(|found| found.name.clone())
+            .collect()
+    });
     let undo = state
         .actions
         .undo
@@ -638,6 +772,7 @@ pub fn refresh_sync(state: &mut State, ctx: &Ctx) {
             ahead,
             behind,
             undo,
+            force_blocked,
         };
     }
 }
@@ -663,31 +798,95 @@ fn undo_text(lang: Language, summary: &UndoSummary) -> String {
             lang.text(Msg::GitViewUndoDeletedBranch),
             &[("{name}", name)],
         ),
+        UndoSummary::Ignore { pattern } => fill_template(
+            lang.text(Msg::GitViewUndoIgnored),
+            &[("{pattern}", pattern)],
+        ),
+        UndoSummary::CreateTag { name } => {
+            fill_template(lang.text(Msg::GitViewUndoCreatedTag), &[("{name}", name)])
+        }
+        UndoSummary::CherryPick { title } => fill_template(
+            lang.text(Msg::GitViewUndoCherryPicked),
+            &[("{title}", title.trim())],
+        ),
+        UndoSummary::Revert { title } => fill_template(
+            lang.text(Msg::GitViewUndoReverted),
+            &[("{title}", title.trim())],
+        ),
+        UndoSummary::Reset { branch, sha } => fill_template(
+            lang.text(Msg::GitViewUndoReset),
+            &[("{branch}", branch), ("{sha}", sha)],
+        ),
+        UndoSummary::CleanUp { branches } => fill_template(
+            lang.text(Msg::GitViewUndoCleanedUp),
+            &[("{count}", &branches.to_string())],
+        ),
     }
 }
 
 fn finished_job(state: &mut State, ctx: &Ctx, finished: Finished) -> Outcome {
+    if finished.job == Job::BackgroundFetch {
+        return sync_handlers::background_done(state, finished.result.is_ok());
+    }
     state.actions.busy = None;
+    sync_handlers::end_of_job(state);
     let Finished { job, result } = finished;
-    match result {
+    let mut removed_folders: Vec<PathBuf> = Vec::new();
+    let outcome = match result {
+        Ok(Done::ForcePlan(plan)) => return sync_handlers::ask_force_push(state, plan),
+        Ok(Done::CleanupScan { list, fetch_error }) => {
+            cleanup::scanned(state, list, fetch_error);
+            Ok(Done::Plain)
+        }
+        Ok(Done::Cleaned(report)) => {
+            removed_folders = cleanup::cleaned(state, report);
+            Ok(Done::Plain)
+        }
+        Ok(Done::WorktreeRemoved(folder)) => {
+            removed_folders.push(folder);
+            Ok(Done::Plain)
+        }
+        other => other,
+    };
+    match outcome {
+        Ok(Done::CommittedButNotPushed { undo, error }) => {
+            if undo.is_some() {
+                state.actions.undo = undo;
+            }
+            after_success(state, &job);
+            report(state, ctx, Job::Push, error);
+        }
         Ok(done) => {
             match done {
                 Done::Undoable(Some(record)) => state.actions.undo = Some(record),
                 Done::Undone => state.actions.undo = None,
-                Done::Undoable(None) | Done::Plain => {}
+                Done::Undoable(None)
+                | Done::Plain
+                | Done::ForcePlan(_)
+                | Done::CleanupScan { .. }
+                | Done::Cleaned(_)
+                | Done::WorktreeRemoved(_)
+                | Done::CommittedButNotPushed { .. } => {}
             }
             state.actions.retry = None;
             after_success(state, &job);
         }
-        Err(error) => report(state, ctx, job, error),
+        Err(error) => {
+            if cleanup::is_cleanup_job(&job) {
+                state.actions.dialog = None;
+            }
+            report(state, ctx, job, error);
+        }
     }
     refresh_sync(state, ctx);
-    quiet(load::everything(state))
+    let folders =
+        (!removed_folders.is_empty()).then_some(Action::WorktreesRemoved(removed_folders));
+    (load::everything(state), folders)
 }
 
 fn after_success(state: &mut State, job: &Job) {
     match job {
-        Job::Commit { .. } => {
+        Job::Commit { .. } | Job::CommitAndPush { .. } => {
             if let Some(local) = state.actions.local.as_mut() {
                 local.title.clear();
                 local.body = text_editor::Content::new();
@@ -695,11 +894,12 @@ fn after_success(state: &mut State, job: &Job) {
             }
         }
         Job::CreateBranch { .. } => state.actions.new_branch = None,
+        Job::CreateTag { .. } => state.actions.dialog = None,
         _ => {}
     }
 }
 
-fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
+pub fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
     match &error {
         ActionError::GitNotFound => return switch_off(state, Unavailable::GitMissing),
         ActionError::DisabledInSandbox => return switch_off(state, Unavailable::Sandbox),
@@ -716,6 +916,9 @@ fn report(state: &mut State, ctx: &Ctx, job: Job, error: ActionError) {
     }
     if matches!(job, Job::CreateBranch { .. }) {
         state.actions.new_branch = None;
+    }
+    if matches!(job, Job::CreateTag { .. }) {
+        state.actions.dialog = None;
     }
     if matches!(
         error,
@@ -743,7 +946,10 @@ fn notice_of(state: &State, error: ActionError) -> Notice {
         },
         ActionError::BranchNotMerged { branch } => Notice::BranchNotMerged { branch },
         ActionError::NothingToCommit => Notice::NothingToCommit,
-        ActionError::NeedsPullStrategy { .. } => Notice::NeedsPullStrategy,
+        ActionError::NeedsPullStrategy { .. } | ActionError::NotFastForward { .. } => {
+            Notice::NeedsPullStrategy
+        }
+        ActionError::LeaseRejected => Notice::LeaseRejected,
         ActionError::UnresolvedConflicts { count } => Notice::UnresolvedConflicts { count },
         ActionError::UndoNotSafe(_) => Notice::UndoNotSafe,
         ActionError::InvalidName { name } => Notice::InvalidName { name },

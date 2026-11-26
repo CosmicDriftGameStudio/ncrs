@@ -7,7 +7,8 @@ use gix::bstr::BString;
 use gix::dir::entry::Status as DirStatus;
 use gix::dir::walk::EmissionMode;
 use gix::status::index_worktree::{self, iter::Summary};
-use gix::status::{Item, UntrackedFiles};
+use gix::status::{Item, Submodule, UntrackedFiles};
+use gix::submodule::config::Ignore;
 
 use crate::repo_access::{open, short_hash};
 use crate::{FileState, GitError};
@@ -138,6 +139,28 @@ pub fn count_commits(
     Ok(count)
 }
 
+/// Like `count_commits`, but a history that cannot be walked to the end
+/// (a shallow clone) is `None`: "unknown" must not read as "nothing missing".
+pub fn count_commits_strict(
+    repository: &gix::Repository,
+    tip: gix::ObjectId,
+    hidden: gix::ObjectId,
+    stop: &AtomicBool,
+) -> Result<Option<u32>, GitError> {
+    let Ok(walk) = repository.rev_walk([tip]).with_hidden([hidden]).all() else {
+        return Ok(None);
+    };
+    let mut count: u32 = 0;
+    for commit in walk {
+        check_stop(stop)?;
+        if commit.is_err() {
+            return Ok(None);
+        }
+        count = count.saturating_add(1);
+    }
+    Ok(Some(count))
+}
+
 fn file_states(
     repository: &gix::Repository,
     stop: &Arc<AtomicBool>,
@@ -146,6 +169,11 @@ fn file_states(
         .status(gix::progress::Discard)
         .map_err(GitError::read)?
         .untracked_files(UntrackedFiles::Collapsed)
+        // Looking into a submodule would run the filters of its own config.
+        .index_worktree_submodules(Submodule::Given {
+            ignore: Ignore::Dirty,
+            check_dirty: false,
+        })
         .dirwalk_options(|options| options.emit_ignored(Some(EmissionMode::CollapseDirectory)))
         .should_interrupt_owned(Arc::clone(stop))
         .into_iter(std::iter::empty::<BString>())

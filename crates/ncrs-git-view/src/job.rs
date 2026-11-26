@@ -1,12 +1,14 @@
 //! What the actions ask of git: one blocking call each, run on the blocking pool.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ncrs_git::{
-    ActionError, CommitMessage, ConflictChoice, DiffHunk, Git, PullStrategy, UndoRecord,
+    ActionError, CleanupList, CleanupPlan, CleanupReport, CommitMessage, ConflictChoice, DiffHunk,
+    ForcePushPlan, Git, PullStrategy, ResetMode, UndoRecord,
 };
 
 use crate::actions::Operation;
+use crate::credentials::JobToken;
 
 /// One call to git, with everything it needs, so it can run off the UI thread
 /// and be repeated.
@@ -34,6 +36,14 @@ pub enum Job {
         message: CommitMessage,
         amend: bool,
     },
+    /// Commits, then pushes; a push that fails leaves the commit.
+    CommitAndPush {
+        message: CommitMessage,
+        amend: bool,
+    },
+    Ignore {
+        pattern: String,
+    },
     Fetch,
     Pull(Option<PullStrategy>),
     Push,
@@ -51,6 +61,12 @@ pub enum Job {
     },
     Checkout(String),
     CheckoutRemote(String),
+    /// Puts the local changes on the stash, then switches to `branch`; `remote` for a remote branch.
+    StashAndCheckout {
+        message: String,
+        branch: String,
+        remote: bool,
+    },
     DeleteBranch {
         name: String,
         force: bool,
@@ -62,6 +78,8 @@ pub enum Job {
     DeleteOnRemote {
         remote: String,
         branch: String,
+        /// The tip the branch was shown with; the delete fails once it moved.
+        tip: Option<String>,
     },
     StashDrop(String),
     Merge(String),
@@ -79,6 +97,26 @@ pub enum Job {
     ResetFile(String),
     AbortIntegration,
     ContinueIntegration,
+    CheckoutDetached(String),
+    CreateTag {
+        name: String,
+        sha: String,
+    },
+    CherryPick(String),
+    Revert(String),
+    Reset {
+        mode: ResetMode,
+        sha: String,
+    },
+    /// Reads what a force push would replace; sends nothing.
+    PrepareForcePush,
+    ForcePushWithLease(ForcePushPlan),
+    /// Fetches without anyone asking: never prompts, never opens a window.
+    BackgroundFetch,
+    /// Reads the remote tips, fetches without asking for a login, and sorts what can be cleaned up.
+    FetchForCleanup,
+    CleanUp(CleanupPlan),
+    RemoveWorktree(PathBuf),
 }
 
 /// What a job that worked leaves for the state.
@@ -88,6 +126,19 @@ pub enum Done {
     /// The way back, if the action has one.
     Undoable(Option<UndoRecord>),
     Undone,
+    CleanupScan {
+        list: CleanupList,
+        fetch_error: Option<String>,
+    },
+    Cleaned(CleanupReport),
+    WorktreeRemoved(PathBuf),
+    /// What a force push would replace, for the question.
+    ForcePlan(ForcePushPlan),
+    /// Commit and push: the commit is made (and undoable), the push failed.
+    CommittedButNotPushed {
+        undo: Option<UndoRecord>,
+        error: ActionError,
+    },
 }
 
 /// A job and what came of it.
@@ -122,10 +173,14 @@ impl Job {
             Self::DiscardHunk { .. } | Self::DiscardFile(_) | Self::DiscardAll => {
                 Operation::Discard
             }
-            Self::Commit { .. } => Operation::Commit,
-            Self::Fetch => Operation::Fetch,
+            Self::Commit { .. } | Self::CommitAndPush { .. } => Operation::Commit,
+            Self::Ignore { .. } => Operation::Stage,
+            Self::Fetch | Self::BackgroundFetch | Self::FetchForCleanup => Operation::Fetch,
             Self::Pull(_) => Operation::Pull,
-            Self::Push | Self::PushBranch(_) => Operation::Push,
+            Self::Push
+            | Self::PushBranch(_)
+            | Self::PrepareForcePush
+            | Self::ForcePushWithLease(_) => Operation::Push,
             Self::StashPush { .. }
             | Self::StashApply(_)
             | Self::StashPop(_)
@@ -134,11 +189,19 @@ impl Job {
             Self::CreateBranch { .. }
             | Self::Checkout(_)
             | Self::CheckoutRemote(_)
+            | Self::StashAndCheckout { .. }
             | Self::DeleteBranch { .. }
             | Self::RenameBranch { .. }
-            | Self::DeleteOnRemote { .. } => Operation::Branch,
+            | Self::DeleteOnRemote { .. }
+            | Self::CleanUp(_)
+            | Self::RemoveWorktree(_)
+            | Self::CheckoutDetached(_)
+            | Self::CreateTag { .. }
+            | Self::Reset { .. } => Operation::Branch,
             Self::Merge(_)
             | Self::Rebase(_)
+            | Self::CherryPick(_)
+            | Self::Revert(_)
             | Self::AbortIntegration
             | Self::ContinueIntegration => Operation::Integrate,
             Self::ResolveBlock { .. }
@@ -174,7 +237,35 @@ impl Job {
                 message,
                 amend: false,
             } => git.commit(message).map(Done::Undoable),
+            Self::CommitAndPush { message, amend } => {
+                let committed = Self::Commit {
+                    message: message.clone(),
+                    amend: *amend,
+                }
+                .run(git)?;
+                match git.push() {
+                    Ok(()) => Ok(committed),
+                    Err(error) => Ok(Done::CommittedButNotPushed {
+                        undo: match committed {
+                            Done::Undoable(record) => record,
+                            _ => None,
+                        },
+                        error,
+                    }),
+                }
+            }
+            Self::Ignore { pattern } => git.ignore_pattern(pattern).map(Done::Undoable),
             Self::Fetch => git.fetch(None).map(|()| Done::Plain),
+            // A repository whose own config names programs is only fetched
+            // when the user asks: the unattended fetch fails, and nobody shows that error.
+            Self::BackgroundFetch => git.fetch(None).map(|()| Done::Plain),
+            Self::FetchForCleanup => crate::cleanup::scan(git),
+            Self::CleanUp(plan) => git.clean_up(plan).map(Done::Cleaned),
+            Self::RemoveWorktree(path) => git
+                .remove_worktree(path)
+                .map(|()| Done::WorktreeRemoved(path.clone())),
+            Self::PrepareForcePush => git.prepare_force_push().map(Done::ForcePlan),
+            Self::ForcePushWithLease(plan) => git.force_push_with_lease(plan).map(|()| Done::Plain),
             Self::Pull(strategy) => git.pull(*strategy).map(|_| Done::Plain),
             Self::Push => git.push().map(|()| Done::Plain),
             Self::PushBranch(name) => git.push_branch(name, None).map(|()| Done::Plain),
@@ -191,12 +282,29 @@ impl Job {
                 .map(|()| Done::Plain),
             Self::Checkout(name) => git.checkout(name).map(|()| Done::Plain),
             Self::CheckoutRemote(name) => git.checkout_remote_branch(name).map(|()| Done::Plain),
+            Self::StashAndCheckout {
+                message,
+                branch,
+                remote,
+            } => {
+                git.stash_push(message, true)?;
+                if *remote {
+                    git.checkout_remote_branch(branch)
+                } else {
+                    git.checkout(branch)
+                }
+                .map(|()| Done::Plain)
+            }
             Self::DeleteBranch { name, force } => git
                 .delete_branch(name, *force)
                 .map(|record| Done::Undoable(Some(record))),
             Self::RenameBranch { from, to } => git.rename_branch(from, to).map(|()| Done::Plain),
-            Self::DeleteOnRemote { remote, branch } => git
-                .delete_remote_branch(remote, branch)
+            Self::DeleteOnRemote {
+                remote,
+                branch,
+                tip,
+            } => git
+                .delete_remote_branch(remote, branch, tip.as_deref())
                 .map(|()| Done::Plain),
             Self::StashDrop(sha) => git.stash_drop(sha).map(|()| Done::Plain),
             Self::Merge(name) => git.merge(name).map(|_| Done::Plain),
@@ -217,12 +325,48 @@ impl Job {
             Self::ResetFile(path) => git.reset_file(path).map(|()| Done::Plain),
             Self::AbortIntegration => git.abort_integration().map(|()| Done::Plain),
             Self::ContinueIntegration => git.continue_integration().map(|_| Done::Plain),
+            Self::CheckoutDetached(sha) => git.checkout_detached(sha).map(|()| Done::Plain),
+            Self::CreateTag { name, sha } => git
+                .create_tag(name, sha)
+                .map(|record| Done::Undoable(Some(record))),
+            // A pick that stops on conflicts has no undo; the next read shows the banner.
+            Self::CherryPick(sha) => git
+                .cherry_pick(sha)
+                .map(|picked| Done::Undoable(picked.undo)),
+            Self::Revert(sha) => git.revert(sha).map(|picked| Done::Undoable(picked.undo)),
+            Self::Reset { mode, sha } => git
+                .reset(*mode, sha)
+                .map(|record| Done::Undoable(Some(record))),
         }
     }
 
-    /// Opens the repository at `root` and runs the job there.
-    pub fn run_in(self, root: &Path) -> Finished {
-        let result = Git::open(root).and_then(|git| self.run(&git));
+    /// The job talks to a remote, which may ask for a login.
+    pub const fn talks_to_remote(&self) -> bool {
+        self.may_ask()
+    }
+
+    const fn may_ask(&self) -> bool {
+        matches!(
+            self,
+            Self::Fetch
+                | Self::Pull(_)
+                | Self::Push
+                | Self::PushBranch(_)
+                | Self::CommitAndPush { .. }
+                | Self::DeleteOnRemote { .. }
+                | Self::ForcePushWithLease(_)
+        )
+    }
+
+    /// Opens the repository at `root` and runs the job there. A job that may
+    /// need a login asks through `token`; a background fetch never asks.
+    pub fn run_in(self, root: &Path, token: JobToken) -> Finished {
+        let opened = match &self {
+            Self::BackgroundFetch | Self::FetchForCleanup => Git::open_unattended(root),
+            job if job.may_ask() => Git::open_interactive(root, token.0),
+            _ => Git::open(root),
+        };
+        let result = opened.and_then(|git| self.run(&git));
         Finished { job: self, result }
     }
 }

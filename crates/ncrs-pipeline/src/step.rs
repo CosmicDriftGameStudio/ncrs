@@ -2,8 +2,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use ncrs_index::{DocumentId, Index, ReviewReason};
-use ncrs_intake::{FilingPlan, Location};
+use ncrs_index::{DocumentId, Index};
+use ncrs_intake::Location;
 
 /// One file on its way through the steps.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,25 +12,29 @@ pub struct Item {
     pub path: PathBuf,
     /// Set by the step that takes the file into the index.
     pub document: Option<DocumentId>,
-    /// Set by the text step when the file has text; read by later steps.
+    /// Set by the text step when the file has text; read by later steps. Not
+    /// kept for an item that waits for a step that `waits_for_the_rest`: that
+    /// step loads it from the index.
     pub text: Option<String>,
-    /// Set by the rules step when a person has to look at the document.
-    pub review: Option<ReviewReason>,
-    /// Set by the rules step when a rule says where the document goes.
-    /// Boxed: a plan holds all fields and would make every queued job large.
-    pub plan: Option<Box<FilingPlan>>,
     /// A person asked to run the file again: a known file does not stop at
     /// the intake step as unchanged.
     pub force: bool,
     /// Set by the intake step when the stored text of an unchanged document
     /// can be used as it is.
     pub stored_text_is_current: bool,
-    /// Set when the file is judged to be no document (a picture without text,
-    /// program code, a chat export): it is no inquiry, Hermes leaves it alone.
-    pub not_a_document: bool,
-    /// Set by the review step: the rules left the file open in a location that
-    /// files such files by itself, so it got no review entry and waits for that.
-    pub continuous_candidate: bool,
+}
+
+impl Item {
+    pub(crate) fn at_first_step(location: &Location, path: &Path, force: bool) -> Self {
+        Self {
+            location: location.clone(),
+            path: path.to_path_buf(),
+            document: None,
+            text: None,
+            force,
+            stored_text_is_current: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +55,14 @@ pub trait Step: Send + Sync + fmt::Debug {
     fn name(&self) -> &'static str;
 
     fn run(&self, item: &mut Item, now: SystemTime) -> Result<StepOutcome, String>;
+
+    /// True for a step that only enriches what the earlier steps stored (a
+    /// model call): items waiting for it queue behind all other work and
+    /// arrive without `Item::text`. As the last step, its `Continue` means it
+    /// changed something and its `Unchanged` means it did not.
+    fn waits_for_the_rest(&self) -> bool {
+        false
+    }
 
     /// Called once the files found by a scan of the location have all passed
     /// the first step. Returns the paths it could not settle.

@@ -15,7 +15,8 @@ pub const BRANCH_ICON_SIZE: f32 = 12.0;
 
 /// The orange of a changed file and of the unsaved changes of a worktree.
 pub const MODIFIED_ORANGE: Color = Color::from_rgb8(0xff, 0xb8, 0x6c);
-const UNTRACKED_CYAN: Color = Color::from_rgb8(0x8b, 0xe9, 0xfd);
+/// The cyan of an untracked file and of the work in progress.
+pub const UNTRACKED_CYAN: Color = Color::from_rgb8(0x8b, 0xe9, 0xfd);
 /// How much of its ink an ignored file keeps.
 const IGNORED_OPACITY: f32 = 0.5;
 

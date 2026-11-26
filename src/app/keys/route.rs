@@ -43,8 +43,8 @@ fn modal_key(
         // panel behind it; any other key does nothing until it is closed.
         Modal::HeaderMenu => ncrs_files::keys::header_menu_key(&key).map(Message::Panel),
         Modal::VolumeMenu => ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message),
-        Modal::QuickFix => ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from),
         Modal::ConfirmAgain => ncrs_hermes_ui::keys::confirm_again_key(&key).map(Message::from),
+        Modal::HermesDialog => hermes_dialog_key(prompt.hermes_dialog, &key, key_modifiers),
         Modal::FavouriteMenu => {
             ncrs_files::favourites_bar::menu_key(&key).map(Message::FavouritesBar)
         }
@@ -151,7 +151,8 @@ fn keys_without_modal(
     // (`TabInPage`). The System page's own filter, a dialog or a menu keep the key.
     let page_tab_stop = (prompt.monitor
         && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
-        || prompt.settings;
+        || prompt.settings
+        || (prompt.repos && !prompt.repos_text && !prompt.repos_menu);
     if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
         if let Some(message) = page_tab_message(key_modifiers) {
             return Some(message);
@@ -417,7 +418,27 @@ pub fn route_press(
         Some(Message::Panel(PanelMessage::TypeAhead(_))) => type_ahead_message(&key, modifiers),
         other => other,
     };
-    routed.filter(|message| !repeat || repeats(message))
+    routed.filter(|message| !repeat || is_held_movement(&key, modifiers) || repeats(message))
+}
+
+/// Arrows, Page Up/Down, Home and End move a cursor in every page, so holding
+/// one repeats without each page listing its messages. With ⌘, ⌃ or ⌥ they
+/// are actions that must happen once.
+fn is_held_movement(key: &Key, modifiers: Modifiers) -> bool {
+    let is_movement = matches!(
+        key.as_ref(),
+        Key::Named(
+            Named::ArrowUp
+                | Named::ArrowDown
+                | Named::ArrowLeft
+                | Named::ArrowRight
+                | Named::PageUp
+                | Named::PageDown
+                | Named::Home
+                | Named::End
+        )
+    );
+    is_movement && !(modifiers.command() || modifiers.control() || modifiers.alt())
 }
 
 pub(in crate::app) fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
@@ -464,7 +485,6 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::Files(MenuMessage::ContextMenuMove(_))
             | Message::Files(MenuMessage::ContextMenuFirst)
             | Message::Files(MenuMessage::ContextMenuLast)
-            | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
@@ -538,7 +558,7 @@ fn volume_menu_message(pressed: VolumeMenuKey) -> Message {
     }
 }
 
-fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
+pub(in crate::app) fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
     if key_modifiers == Modifiers::SHIFT {
         Some(Message::TabInPage { backward: true })
     } else if key_modifiers.is_empty() {

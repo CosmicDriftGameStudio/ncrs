@@ -83,6 +83,8 @@ pub struct BatchInfo {
     pub source_root: Option<SourceRoot>,
     /// `None` for a run that did not record one.
     pub target_root: Option<SourceRoot>,
+    /// The first batch of the run this one is a part of; `None` is a run of its own.
+    pub run: Option<BatchId>,
 }
 
 /// The folder a run took its files from, or put them in.
@@ -234,7 +236,8 @@ impl Index {
             .connection()
             .query_row(
                 "SELECT kind, name, transfer, started_at, finished_at, undone_at,
-                        source_root, source_resolved, target_root, target_resolved
+                        source_root, source_resolved, target_root, target_resolved,
+                        run_id
                  FROM execution_batch WHERE id = ?1",
                 [batch.get()],
                 |row| {
@@ -249,6 +252,7 @@ impl Index {
                         row.get::<_, Option<String>>(7)?,
                         row.get::<_, Option<String>>(8)?,
                         row.get::<_, Option<String>>(9)?,
+                        row.get::<_, Option<i64>>(10)?,
                     ))
                 },
             )
@@ -266,6 +270,7 @@ impl Index {
                     source_resolved,
                     target_root,
                     target_resolved,
+                    run,
                 )| {
                     let root_of = |written: Option<String>, canonical: Option<String>| {
                         written.zip(canonical).map(|(given, resolved)| SourceRoot {
@@ -282,6 +287,7 @@ impl Index {
                         undone_at,
                         source_root: root_of(source_root, source_resolved),
                         target_root: root_of(target_root, target_resolved),
+                        run: run.map(BatchId::new),
                     })
                 },
             )
@@ -312,6 +318,28 @@ impl Index {
             params![batch.get(), utf8(&target.given)?, utf8(&target.resolved)?],
         )?;
         Ok(())
+    }
+
+    /// Makes `batch` a part of the run that starts with the batch `run`, which
+    /// itself may be `batch`.
+    pub fn join_run(&self, batch: BatchId, run: BatchId) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE execution_batch SET run_id = ?2 WHERE id = ?1",
+            [batch.get(), run.get()],
+        )?;
+        Ok(())
+    }
+
+    /// The batches of a run in the order they were begun. A batch that is a run
+    /// of its own has none here.
+    pub fn batches_of_run(&self, run: BatchId) -> Result<Vec<BatchId>, IndexError> {
+        let mut statement = self
+            .connection()
+            .prepare("SELECT id FROM execution_batch WHERE run_id = ?1 ORDER BY id")?;
+        let ids = statement
+            .query_map([run.get()], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids.into_iter().map(BatchId::new).collect())
     }
 
     pub fn batch_transfer(&self, batch: BatchId) -> Result<Option<Transfer>, IndexError> {
@@ -442,7 +470,8 @@ impl Index {
             "SELECT id FROM execution_batch b
              WHERE kind = ?1 AND undone_at IS NULL
                  AND EXISTS (SELECT 1 FROM execution_item i
-                             WHERE i.batch_id = b.id AND i.state = 'moved')
+                             WHERE i.batch_id = b.id
+                                 AND i.state IN ('moved', 'undo_skipped'))
              ORDER BY id DESC LIMIT ?2",
         )?;
         let found = statement
@@ -694,6 +723,26 @@ mod tests {
             index.last_undoable_batch(BatchKind::Hermes).unwrap(),
             Some(named)
         );
+    }
+
+    #[test]
+    fn the_batches_of_a_run_are_found_from_its_first() {
+        let (_dir, index) = encrypted_index();
+        let batches: Vec<_> =
+            std::iter::repeat_with(|| index.begin_batch(BatchKind::Hermes).unwrap())
+                .take(3)
+                .collect();
+        index.join_run(batches[0], batches[0]).unwrap();
+        index.join_run(batches[2], batches[0]).unwrap();
+
+        assert_eq!(
+            index.batches_of_run(batches[0]).unwrap(),
+            [batches[0], batches[2]]
+        );
+        assert!(index.batches_of_run(batches[1]).unwrap().is_empty());
+        let run = |batch| index.batch_info(batch).unwrap().unwrap().run;
+        assert_eq!(run(batches[2]), Some(batches[0]));
+        assert_eq!(run(batches[1]), None);
     }
 
     #[test]

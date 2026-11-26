@@ -11,19 +11,19 @@ resolver = "2"
 # lines. No default features: no OpenMP runtime to ship. llama-cpp-sys-2 still
 # builds the `common` library of llama.cpp, because llama-cpp-2 depends on it
 # with its default features. llama-cpp-sys-2 is listed to hold the native build
-# at the version llama-cpp-2 is pinned to (its own requirement is `^0.1.160`).
-llama-cpp-2 = { version = "=0.1.160", default-features = false }
+# at the version llama-cpp-2 is pinned to (its own requirement is `^0.1.161`).
+llama-cpp-2 = { version = "=0.1.161", default-features = false }
 llama-cpp-sys-2 = { version = "=0.1.161", default-features = false }
 # SFTP. ring as crypto backend (the default aws-lc-rs would
 # add a second C library), no `rsa` feature: the rsa crate behind it has an open
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate
 # that must match.
-russh = { version = "=0.65.2", default-features = false, features = ["ring"] }
-russh-sftp = "=3.0.1"
+russh = { version = "=0.65.4", default-features = false, features = ["ring"] }
+russh-sftp = "=4.0.0"
 # Used by several crates; the pins live here once so that an update moves all of them.
 ureq = { version = "=3.5.2", default-features = false, features = ["rustls"] }
-zip = { version = "=9.6.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "=9.8.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonc-parser = { version = "=0.34.0", default-features = false }
 zeroize = "1"
 
@@ -108,6 +108,8 @@ ncrs-notes = { path = "crates/ncrs-notes", version = "0.0.0" }
 # The Git tab, and the Git layer it reads the repository through.
 ncrs-git-view = { path = "crates/ncrs-git-view", version = "0.0.0" }
 ncrs-git = { path = "crates/ncrs-git", version = "0.0.0" }
+# The Repos tab: every repository of the machine in one list.
+ncrs-repos = { path = "crates/ncrs-repos", version = "0.0.0" }
 # The filing tab: a source folder planned live into the write folder.
 ncrs-filing-view = { path = "crates/ncrs-filing-view", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.

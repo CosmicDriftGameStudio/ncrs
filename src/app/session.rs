@@ -143,11 +143,7 @@ pub(in crate::app) fn cannot_change_session_state(message: &Message) -> bool {
         | Message::ModifiersChanged(_)
         | Message::Monitor(ncrs_monitor::MonitorMessage::Tick)
         | Message::FilingStatus(FilingStatusMessage::Tick)
-        | Message::HermesChat(
-            HermesChatMessage::WorkTick
-            | HermesChatMessage::ReadingSettled(_)
-            | HermesChatMessage::PicksRemembered,
-        ) => true,
+        | Message::HermesChat(HermesChatMessage::WorkTick) => true,
         Message::Panel(panel) => matches!(
             panel,
             PanelMessage::PanelDragMoved(_)

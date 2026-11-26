@@ -5,7 +5,6 @@ use ncrs_config::config::Config;
 use ncrs_config::keymap::Keymap;
 use ncrs_fs::OpenKind;
 
-use crate::facts::AreaFacts;
 use crate::folders::AddAs;
 use crate::message::{FavouritesEdit, SettingChange, StoreButton};
 
@@ -34,6 +33,8 @@ pub enum Action {
     Protection(usize),
     /// The system folder dialog for a read folder.
     PickFolder(AddAs),
+    /// The Repos tab scans its folders now.
+    ScanRepos,
     /// A picked folder joins the favourites, at the end.
     AddFavourite(PathBuf),
     /// A move or removal on the Favourites page.
@@ -43,13 +44,7 @@ pub enum Action {
         kind: AddAs,
         path: PathBuf,
     },
-    /// Opens the chat (F2), at the change of this area when one is named.
-    OpenChat {
-        area: Option<AreaFacts>,
-    },
     TogglePause,
-    /// Puts the run of this journal batch back.
-    UndoRun(i64),
     /// The file now says this about `change`.
     Apply {
         change: SettingChange,

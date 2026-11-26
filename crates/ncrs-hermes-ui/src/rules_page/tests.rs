@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 #[test]
 fn the_rule_to_select_on_load_is_the_selected_one() {
     let mut page = RulesPage::new();
-    page.select_on_load(rule_id(3));
+    page.saved(rule_id(3));
 
     page.loaded(RulesLoad {
         rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
@@ -18,7 +18,7 @@ fn the_rule_to_select_on_load_is_the_selected_one() {
 #[test]
 fn a_rule_to_select_that_is_not_listed_keeps_the_cursor() {
     let mut page = RulesPage::new();
-    page.select_on_load(rule_id(9));
+    page.saved(rule_id(9));
 
     page.loaded(RulesLoad {
         rules: vec![listed(1, 0), listed(2, 2)],
@@ -88,7 +88,7 @@ fn moving_down_targets_the_place_of_the_next_listed_rule_among_all() {
         change,
         Some(RuleChange::Move {
             id: rule_id(1),
-            to_index: 2
+            to_index: 1
         })
     );
 }
@@ -167,9 +167,48 @@ fn cancelling_the_question_deletes_nothing() {
 }
 
 #[test]
+fn the_delete_question_of_the_dialog_leads_back_to_the_form() {
+    let mut page = page();
+    page.begin_edit(1);
+    assert_eq!(page.edited_index(), Some(1));
+
+    page.ask_delete(1);
+    assert!(page.is_confirming_delete());
+    assert!(page.cancel_delete());
+
+    assert!(page.form().is_some());
+    assert!(page.dialog_is_open());
+}
+
+#[test]
+fn deleting_from_the_dialog_closes_the_form() {
+    let mut page = page();
+    page.begin_edit(1);
+    page.ask_delete(1);
+
+    assert_eq!(
+        page.begin_delete(),
+        Some(RuleChange::Delete { id: rule_id(2) })
+    );
+
+    assert!(page.form().is_none());
+    assert!(!page.dialog_is_open());
+}
+
+#[test]
+fn a_new_rule_has_no_place_in_the_list() {
+    let mut page = page();
+    assert_eq!(page.edited_index(), None);
+
+    page.begin_new_in(TargetId::main());
+
+    assert_eq!(page.edited_index(), None);
+}
+
+#[test]
 fn cancelling_a_form_closes_the_dialog_and_drops_what_was_typed() {
     let mut page = page();
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     assert!(page.dialog_is_open());
     page.form_mut()
         .unwrap()
@@ -202,7 +241,7 @@ fn while_a_change_runs_the_list_takes_no_change() {
     assert!(page.begin_toggle(0).is_some());
 
     page.ask_delete(2);
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     page.begin_edit(1);
 
     assert!(!page.is_confirming_delete());
@@ -214,18 +253,17 @@ fn while_a_change_runs_the_list_takes_no_change() {
 #[test]
 fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
     use crate::condition_editor::ConditionEdit;
-    use crate::filing_pieces::TargetEdit;
     use crate::message::RuleFormMessage;
     use ncrs_filing::rules_work::RulesAccess;
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::TempDir::new().unwrap();
     let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-    let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))), Vec::new());
+    let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))));
     let mut page = RulesPage::new();
     page.loaded(access.load().unwrap());
 
-    page.begin_new();
+    page.begin_new_in(TargetId::main());
     assert_eq!(page.begin_save(), None);
     page.form_mut()
         .unwrap()
@@ -233,6 +271,9 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
             0,
             "telekom".to_owned(),
         )));
+    page.form_mut()
+        .unwrap()
+        .update(RuleFormMessage::Pattern("{year}/{sender}/".to_owned()));
     let created = access.save(page.begin_save().unwrap()).unwrap();
     page.saved(created);
     page.loaded(access.load().unwrap());
@@ -243,12 +284,15 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
         Language::English,
         &KindCatalog::built_in(),
     );
-    assert_eq!(sentence, "If telekom → Year / Sender");
+    assert_eq!(
+        sentence,
+        "If the text contains the word “telekom” → Year / Sender"
+    );
 
     page.begin_edit(0);
     page.form_mut()
         .unwrap()
-        .update(RuleFormMessage::Target(TargetEdit::Remove(1)));
+        .update(RuleFormMessage::Pattern("{year}/".to_owned()));
     let changed = access.save(page.begin_save().unwrap()).unwrap();
     page.saved(changed);
     page.loaded(access.load().unwrap());
@@ -387,4 +431,89 @@ fn escape_keeps_a_form_with_typed_changes_and_closes_an_untouched_one() {
 
 fn rules_of(hermes: &mut crate::state::Hermes) -> &mut RulesPage {
     hermes.rules.as_mut().unwrap()
+}
+
+fn listed_in(id: i64, global_index: usize, target: &str) -> ListedRule {
+    let mut row = listed(id, global_index);
+    row.rule.target = ncrs_index::TargetId::new(target).unwrap();
+    row
+}
+
+#[test]
+fn the_rules_of_a_target_keep_their_order_and_move_only_among_themselves() {
+    let mut page = RulesPage::new();
+    page.loaded(RulesLoad {
+        rules: vec![
+            listed_in(1, 0, "t1"),
+            listed_in(2, 1, "t2"),
+            listed_in(3, 2, "t1"),
+            listed_in(4, 3, "t2"),
+        ],
+    });
+    let t2 = ncrs_index::TargetId::new("t2").unwrap();
+
+    let places: Vec<usize> = page.rows_of(&t2).map(|(at, _)| at).collect();
+    assert_eq!(places, vec![1, 3]);
+    assert_eq!(
+        page.begin_move(1, 1),
+        Some(RuleChange::Move {
+            id: rule_id(2),
+            to_index: 1
+        })
+    );
+}
+
+#[test]
+fn the_last_rule_of_a_target_cannot_move_down_into_the_next_target() {
+    let mut page = RulesPage::new();
+    page.loaded(RulesLoad {
+        rules: vec![listed_in(1, 0, "t1"), listed_in(2, 1, "t2")],
+    });
+
+    assert_eq!(page.begin_move(0, 1), None);
+}
+
+#[test]
+fn targets_start_unfolded_and_folding_one_leaves_the_others() {
+    let mut page = RulesPage::new();
+    let t1 = ncrs_index::TargetId::new("t1").unwrap();
+    let t2 = ncrs_index::TargetId::new("t2").unwrap();
+    assert!(page.is_unfolded(&t1));
+
+    page.toggle_fold(t1.clone());
+
+    assert!(!page.is_unfolded(&t1));
+    assert!(page.is_unfolded(&t2));
+}
+
+#[test]
+fn the_conditions_in_a_list_name_kind_and_value() {
+    let mut excluded = Condition::new(ConditionKind::Word, "draft");
+    excluded.negated = true;
+    let spec = spec(RuleConditions::any_of(vec![
+        Condition::new(ConditionKind::Sender, "Company A"),
+        Condition::new(ConditionKind::Sender, "Company B"),
+        excluded,
+    ]));
+
+    assert_eq!(
+        conditions_short(&spec, Language::English, &KindCatalog::built_in()),
+        "Sender: Company A or Company B or Word in the text has not draft"
+    );
+}
+
+#[test]
+fn a_rule_without_a_name_is_called_by_what_it_looks_for() {
+    let mut excluded = Condition::new(ConditionKind::Word, "draft");
+    excluded.negated = true;
+    let mut spec = spec(RuleConditions::all_of(vec![
+        Condition::new(ConditionKind::Sender, "Company A"),
+        excluded,
+        Condition::new(ConditionKind::Word, "invoice"),
+    ]));
+    let title = |titled: &RuleSpec| rule_title(titled, Language::English, &KindCatalog::built_in());
+    spec.name = None;
+    assert_eq!(title(&spec), "Company A, invoice");
+    spec.name = Some("Bills".to_owned());
+    assert_eq!(title(&spec), "Bills");
 }

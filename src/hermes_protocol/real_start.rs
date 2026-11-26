@@ -10,8 +10,8 @@ use iced_test::futures::futures::StreamExt as _;
 use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 use ncrs_index::{InMemoryKeyStore, KeyStore, KeyStoreError};
 
-use super::scratch::{link_folder, pdfs_below};
-use super::thread::{busy, chat, chip_labels, entry_text, is_ready, whole_thread};
+use super::scratch::link_folder;
+use super::thread::{busy, chat, chip_labels, entry_text, is_ready};
 use super::{picker, TICK_EVERY, WINDOW};
 use crate::app::{App, Environment};
 use crate::e2e_tests::{Outcome, Session};
@@ -23,8 +23,6 @@ pub type Store = Arc<dyn KeyStore + Send + Sync>;
 const FILING_ONLY: &str = "version = 1\n[modules.filing]\nenabled = true\n";
 const FILING_AI: &str = "version = 1\n[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = true\nprovider = \"local\"\n";
 const SWITCHED_OFF: &str = "version = 1\n[modules.filing]\nenabled = false\n";
-const READ_STEP: Duration = Duration::from_secs(900);
-const DOCUMENTS: usize = 24;
 
 /// A keychain that says no, as one does when its dialog is refused.
 struct RefusingStore;
@@ -284,27 +282,11 @@ fn fresh(root: &Path, name: &str, config: Option<&str>, model: Option<&PathBuf>)
     data
 }
 
-fn locations(inbox: &Path, archive: &Path) -> String {
+fn inbox_and_archive(inbox: &Path, archive: &Path) -> String {
     format!(
-        "{FILING_AI}[[modules.filing.locations]]\npath = {:?}\nmode = \"inbox\"\n\
-         [[modules.filing.locations]]\npath = {:?}\nmode = \"archive\"\ntarget = true\n",
-        inbox, archive
+        "{FILING_AI}[[modules.filing.targets]]\nid = \"main\"\npath = {archive:?}\n\
+         [[modules.filing.sources]]\npath = {inbox:?}\ntargets = [\"main\"]\n"
     )
-}
-
-/// An answer the walk may give: nothing that opens a picker or leaves the data
-/// folder, which is the only place it may tidy up.
-fn safe_to_press(reply: &ChipReply, data: &Path) -> bool {
-    match reply {
-        ChipReply::Folder(folder) | ChipReply::NamedFolder(folder) => folder.starts_with(data),
-        ChipReply::PickFolder
-        | ChipReply::NewTarget
-        | ChipReply::TrialOtherTarget
-        | ChipReply::IntentSearch
-        | ChipReply::Cancel
-        | ChipReply::Later => false,
-        _ => true,
-    }
 }
 
 #[test]
@@ -346,243 +328,10 @@ fn hermes_real_start() {
     let data = fresh(&root, "archive-gone", None, models.as_ref());
     let inbox = data.join("inbox");
     std::fs::create_dir_all(&inbox).unwrap();
-    let gone = locations(&inbox, Path::new("/Volumes/ncrs-not-mounted/archive"));
+    let gone = inbox_and_archive(&inbox, Path::new("/Volumes/ncrs-not-mounted/archive"));
     std::fs::write(data.join("config.toml"), gone).unwrap();
     talk_ready(&data, empty_store(), "first start");
     println!("\nshots below {}", root.display());
-}
-
-/// The way a user takes from one answer on: the highlighted or else the first
-/// answer, until Hermes asks nothing more.
-fn press_through<P>(session: &mut Session<P>, data: &Path, prefix: &str, first: (&str, ChipReply))
-where
-    P: iced::Program<State = App, Message = Message> + 'static,
-{
-    let out = data.join("shots").to_string_lossy().into_owned();
-    std::fs::create_dir_all(&out).unwrap();
-    let mut label = first.0.to_owned();
-    let mut reply = Some(first.1);
-    for step in 0..16 {
-        let Some(answer) = reply.take() else {
-            break;
-        };
-        println!("    pressing: {label}");
-        session.send(Message::HermesChat(ChatMessage::ChipPressed {
-            label: label.clone(),
-            reply: answer,
-        }));
-        pump_for(session, Duration::from_secs(1), |_| false);
-        pump_for(session, READ_STEP, |app| !busy(app));
-        report(&session.app, &format!("{prefix} {step}"));
-        shot(&session.app, &out, &format!("{prefix}-{step:02}"));
-        let chips = chat(&session.app).chips();
-        if chips.iter().any(|chip| chip.reply == ChipReply::PickFolder) {
-            break;
-        }
-        let usable = || chips.iter().filter(|chip| safe_to_press(&chip.reply, data));
-        if let Some(chip) = usable()
-            .find(|chip| chip.primary)
-            .or_else(|| usable().next())
-        {
-            label.clone_from(&chip.label);
-            reply = Some(chip.reply.clone());
-        }
-    }
-}
-
-/// Until the AI has been through the documents of these folders.
-fn wait_for_ai<P>(session: &mut Session<P>, data: &Path, store: &Store, folders: &[&Path])
-where
-    P: iced::Program<State = App, Message = Message> + 'static,
-{
-    let index = ncrs_index::Index::open(&data.join("index.db"), store.as_ref()).unwrap();
-    let started_waiting = Instant::now();
-    while started_waiting.elapsed() < READ_STEP {
-        pump_for(session, Duration::from_secs(20), |_| false);
-        let coverage: Vec<(usize, usize)> = folders
-            .iter()
-            .map(|folder| index.ai_coverage_beneath(folder).unwrap_or_default())
-            .collect();
-        let shown: Vec<String> = coverage
-            .iter()
-            .map(|(with_text, understood)| format!("{understood} of {with_text}"))
-            .collect();
-        println!(
-            "    {:.0} s, understood: {}",
-            started_waiting.elapsed().as_secs_f32(),
-            shown.join(", ")
-        );
-        if coverage
-            .iter()
-            .all(|(with_text, understood)| *with_text > 0 && understood >= with_text)
-        {
-            return;
-        }
-    }
-}
-
-fn pdf_count(folder: &Path) -> usize {
-    let mut found = Vec::new();
-    pdfs_below(folder, &mut found, usize::MAX);
-    found.len()
-}
-
-/// A data folder with an archive and an inbox, every third document going to
-/// the inbox. The archive keeps the order of the source or lies flat.
-fn documents_for(
-    root: &Path,
-    name: &str,
-    source: &Path,
-    models: Option<&PathBuf>,
-    archive_in_order: bool,
-) -> PathBuf {
-    let data = fresh(root, name, None, models);
-    std::fs::create_dir_all(data.join("inbox")).unwrap();
-    let mut pdfs = Vec::new();
-    pdfs_below(source, &mut pdfs, DOCUMENTS);
-    for (number, pdf) in pdfs.iter().enumerate() {
-        let copy = if number % 3 == 0 {
-            data.join("inbox").join(pdf.file_name().unwrap())
-        } else if archive_in_order {
-            data.join("archive").join(pdf.strip_prefix(source).unwrap())
-        } else {
-            data.join("archive").join(pdf.file_name().unwrap())
-        };
-        std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
-        std::fs::copy(pdf, copy).unwrap();
-    }
-    data
-}
-
-fn open_chat<P>(session: &mut Session<P>)
-where
-    P: iced::Program<State = App, Message = Message> + 'static,
-{
-    pump_for(session, Duration::from_secs(10), started);
-    session.send(Message::HermesChat(ChatMessage::Open));
-    pump_for(session, Duration::from_secs(20), started);
-    type_key_back(session);
-    report(&session.app, "greeting");
-}
-
-fn result_of<P>(session: &Session<P>, data: &Path)
-where
-    P: iced::Program<State = App, Message = Message> + 'static,
-{
-    println!("    whole thread:\n{}", whole_thread(&session.app));
-    println!(
-        "    pdfs: inbox {}, archive {}",
-        pdf_count(&data.join("inbox")),
-        pdf_count(&data.join("archive"))
-    );
-}
-
-#[test]
-#[ignore = "tidies copied documents with the real model, inside a data folder of its own"]
-fn hermes_real_tidy() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("protocol")
-        .join("real-start");
-    let models = super::env_path("NCRS_AI_MODELS_DIR");
-    let source = super::env_path("NCRS_PROTOCOL_ARCHIVE").unwrap();
-    read_folders_at_once_and_after_reading(&root, &source, models.as_ref());
-    an_archive_without_order(&root, &source, models.as_ref());
-    a_folder_the_user_names(&root, &source, models.as_ref());
-}
-
-/// Both are read folders; the user does not wait for the AI, then does.
-fn read_folders_at_once_and_after_reading(root: &Path, source: &Path, models: Option<&PathBuf>) {
-    let data = documents_for(root, "tidy-read-folders", source, models, true);
-    let (inbox, archive) = (data.join("inbox"), data.join("archive"));
-    std::fs::write(data.join("config.toml"), locations(&inbox, &archive)).unwrap();
-    let store = empty_store();
-    let mut session = boot(&data, Arc::clone(&store));
-    open_chat(&mut session);
-    press_through(
-        &mut session,
-        &data,
-        "at-once",
-        ("inbox", ChipReply::Folder(inbox.clone())),
-    );
-    wait_for_ai(&mut session, &data, &store, &[&inbox, &archive]);
-    press_through(
-        &mut session,
-        &data,
-        "after-reading",
-        ("inbox", ChipReply::Folder(inbox.clone())),
-    );
-    result_of(&session, &data);
-}
-
-/// An archive without any order of its own; the user cancels the folder dialog
-/// and tries again once the AI has read everything.
-fn an_archive_without_order(root: &Path, source: &Path, models: Option<&PathBuf>) {
-    let data = documents_for(root, "tidy-flat-archive", source, models, false);
-    let (inbox, archive) = (data.join("inbox"), data.join("archive"));
-    std::fs::write(data.join("config.toml"), locations(&inbox, &archive)).unwrap();
-    let store = empty_store();
-    let mut session = boot(&data, Arc::clone(&store));
-    open_chat(&mut session);
-    press_through(
-        &mut session,
-        &data,
-        "flat-at-once",
-        ("inbox", ChipReply::Folder(inbox.clone())),
-    );
-    let offers_other_folder = chat(&session.app)
-        .chips()
-        .iter()
-        .any(|chip| chip.reply == ChipReply::TrialOtherTarget);
-    println!("    other folder on offer: {offers_other_folder}");
-    if offers_other_folder {
-        session.send(Message::HermesChat(ChatMessage::ChipPressed {
-            label: "Other folder …".to_owned(),
-            reply: ChipReply::TrialOtherTarget,
-        }));
-        pump_for(&mut session, Duration::from_secs(1), |_| false);
-        report(&session.app, "folder dialog cancelled");
-    } else {
-        session.send(Message::HermesChat(ChatMessage::ChipPressed {
-            label: "Cancel".to_owned(),
-            reply: ChipReply::Cancel,
-        }));
-    }
-    wait_for_ai(&mut session, &data, &store, &[&inbox, &archive]);
-    press_through(
-        &mut session,
-        &data,
-        "flat-tidy-again",
-        ("Tidy up a folder", ChipReply::IntentTidy),
-    );
-    press_through(
-        &mut session,
-        &data,
-        "flat-after-reading",
-        ("inbox", ChipReply::Folder(inbox.clone())),
-    );
-    result_of(&session, &data);
-}
-
-/// The folder to tidy is one the user names, no read folder: the usual case.
-fn a_folder_the_user_names(root: &Path, source: &Path, models: Option<&PathBuf>) {
-    let data = documents_for(root, "tidy-named-folder", source, models, true);
-    let (inbox, archive) = (data.join("inbox"), data.join("archive"));
-    let config = format!(
-        "{FILING_AI}[[modules.filing.locations]]\npath = {archive:?}\nmode = \"archive\"\ntarget = true\n"
-    );
-    std::fs::write(data.join("config.toml"), config).unwrap();
-    let store = empty_store();
-    let mut session = boot(&data, Arc::clone(&store));
-    open_chat(&mut session);
-    wait_for_ai(&mut session, &data, &store, &[&archive]);
-    press_through(
-        &mut session,
-        &data,
-        "named",
-        ("inbox", ChipReply::Folder(inbox.clone())),
-    );
-    result_of(&session, &data);
 }
 
 /// Named so CI's GPU-only run skips them with the other sessions: a session

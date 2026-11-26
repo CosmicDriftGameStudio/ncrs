@@ -43,6 +43,46 @@ fn holder(keymap: &Keymap, binding: &Binding) -> Option<KeyAction> {
         .find(|action| keymap.bindings_of(*action).any(|held| held == binding))
 }
 
+fn git_shortcut(label: &str, keys: &str) -> GitShortcut {
+    GitShortcut {
+        label: label.to_owned(),
+        keys: keys.to_owned(),
+    }
+}
+
+#[test]
+fn the_git_actions_follow_the_search_by_name_and_by_key() {
+    let keymap = Keymap::built_in();
+    let mut dialog = KeyBindings::new(Language::English, &keymap).with_git_shortcuts(vec![
+        git_shortcut("Stash changes", "Ctrl+S"),
+        git_shortcut("Pull", "Ctrl+L"),
+    ]);
+    assert_eq!(dialog.git_shortcuts_shown().len(), 2);
+    dialog.set_query("stash".to_owned(), &keymap);
+    let shown = dialog.git_shortcuts_shown();
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].label, "Stash changes");
+    dialog.set_query("ctrl+l".to_owned(), &keymap);
+    assert_eq!(dialog.git_shortcuts_shown()[0].label, "Pull");
+    dialog.set_query("nothing like this".to_owned(), &keymap);
+    assert!(dialog.git_shortcuts_shown().is_empty());
+}
+
+#[test]
+fn the_git_actions_end_the_one_list_and_are_read_only() {
+    let keymap = Keymap::built_in();
+    let mut dialog = KeyBindings::new(Language::English, &keymap)
+        .with_git_shortcuts(vec![git_shortcut("Pull", "Ctrl+L")]);
+    let actions = dialog.rows().len();
+    assert_eq!(dialog.listed_len(), actions + 1);
+    dialog.move_cursor(isize::MAX);
+    assert_eq!(dialog.cursor(), actions);
+    assert_eq!(dialog.offset(), actions + 1 - VISIBLE_ROWS);
+    assert!(dialog.selected().is_none());
+    dialog.record();
+    assert!(!dialog.is_recording());
+}
+
 #[test]
 fn the_grant_action_is_not_listed_outside_the_sandbox() {
     let keymap = Keymap::built_in();

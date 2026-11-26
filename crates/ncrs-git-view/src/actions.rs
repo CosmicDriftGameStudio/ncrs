@@ -3,11 +3,15 @@
 //! phase: the state is filled by the caller, nothing here reads a repository.
 
 use iced::widget::text_editor;
-use ncrs_git::{ChangedFile, FileDiff, UndoRecord};
+use ncrs_git::askpass::AskRequest;
+use ncrs_git::{ChangedFile, FileDiff, ForcePushPlan, UndoRecord};
 
+use crate::cleanup::CleanupDialog;
+use crate::credentials::CredentialAsk;
 use crate::job::Job;
+use crate::sync_menu::SyncMenu;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChangeSide {
     Unstaged,
     Staged,
@@ -23,6 +27,78 @@ pub struct LocalChanges {
     pub title: String,
     pub body: text_editor::Content,
     pub amend: bool,
+    /// "Push afterwards": the commit button commits and pushes.
+    pub push_after: bool,
+    pub focus: WipFocus,
+    /// Enter was pressed on the file: the middle shows its diff instead of the graph.
+    pub diff_open: bool,
+    /// The diff in one column instead of old and new next to each other.
+    pub unified: bool,
+    /// The change (hunk) of the open diff that has the keys.
+    pub hunk: usize,
+    /// The diff does not count a change of white space. Its hunks are for
+    /// looking only: the buttons of a hunk are locked while it is on.
+    pub ignore_whitespace: bool,
+    /// The lists of files that are folded shut.
+    pub folded: std::collections::HashSet<ChangeSide>,
+}
+
+/// The stops of Tab inside the pane of the local changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WipFocus {
+    #[default]
+    Unstaged,
+    Staged,
+    Title,
+    Body,
+    Amend,
+    PushAfter,
+    Commit,
+}
+
+impl WipFocus {
+    const RING: [Self; 7] = [
+        Self::Unstaged,
+        Self::Staged,
+        Self::Title,
+        Self::Body,
+        Self::Amend,
+        Self::PushAfter,
+        Self::Commit,
+    ];
+
+    fn place(self) -> usize {
+        Self::RING
+            .iter()
+            .position(|stop| *stop == self)
+            .unwrap_or_default()
+    }
+
+    pub fn next(self) -> Self {
+        Self::RING
+            .get((self.place() + 1) % Self::RING.len())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn previous(self) -> Self {
+        Self::RING
+            .get((self.place() + Self::RING.len() - 1) % Self::RING.len())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn is_field(self) -> bool {
+        matches!(self, Self::Title | Self::Body)
+    }
+}
+
+/// What the user can put into `.gitignore` for one file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IgnoreChoice {
+    File,
+    Folder,
+    Extension,
 }
 
 impl Actions {
@@ -39,17 +115,37 @@ pub struct SyncBar {
     pub behind: u32,
     /// What "undo" would take back, ready to show; `None`: nothing to undo.
     pub undo: Option<String>,
+    /// Why a force push is not offered; `None`: it is (or the branches are not read yet).
+    pub force_blocked: Option<ForceBlock>,
+}
+
+/// Why the checked-out branch cannot be force-pushed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForceBlock {
+    /// HEAD is not on a branch.
+    Detached,
+    NoUpstream,
 }
 
 /// What a menu is opened on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuTarget {
     LocalBranch(usize),
     /// The index into the remote branches of the overview.
     RemoteBranch(usize),
-    Stash(usize),
-    /// The index into the conflicts of the merge.
-    Conflict(usize),
+    /// The id of the stash: its place in the list moves when stashes come and go.
+    Stash(String),
+    /// The path of the file in conflict.
+    Conflict(String),
+    /// A file of the pane at the right, with the commit it is shown in (`None`: the working copy).
+    File {
+        path: String,
+        at: Option<String>,
+    },
+    /// The full SHA of the commit: its row moves when the list reloads.
+    Commit(String),
+    /// A linked worktree of the sidebar, by its place in the overview.
+    Worktree(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,12 +162,27 @@ pub enum MenuAction {
     StashApply,
     StashApplyAndDrop,
     StashDrop,
+    RemoveWorktree,
 }
 
 /// The menu that is open: it hangs at the row of its target in the left list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenMenu {
     pub target: MenuTarget,
+    /// The entry of a commit or file menu the keys are on.
+    pub cursor: usize,
+    /// The entry of the open reset submenu the keys are on.
+    pub submenu: Option<usize>,
+}
+
+impl OpenMenu {
+    pub const fn new(target: MenuTarget) -> Self {
+        Self {
+            target,
+            cursor: 0,
+            submenu: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,35 +198,110 @@ pub struct NewBranch {
 /// What the user is asked to confirm; the job of [`Question::job`] runs when they do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Question {
-    DiscardFile { path: String },
-    DiscardAll { count: usize },
-    DeleteBranch { name: String },
-    DeleteOnRemote { remote: String, branch: String },
-    DropStash { sha: String, message: String },
+    DiscardFile {
+        path: String,
+    },
+    DiscardAll {
+        count: usize,
+    },
+    DeleteBranch {
+        name: String,
+    },
+    DeleteOnRemote {
+        remote: String,
+        branch: String,
+        /// The tip it is shown with.
+        tip: Option<String>,
+    },
+    RemoveWorktree {
+        path: std::path::PathBuf,
+        /// Ignored files in it: git deletes them without a word.
+        ignored_files: Vec<String>,
+    },
+    DropStash {
+        sha: String,
+        message: String,
+    },
+    /// Which pattern goes into `.gitignore`; only the offered choices are set.
+    Ignore {
+        path: String,
+        folder: Option<String>,
+        extension: Option<String>,
+        chosen: IgnoreChoice,
+    },
+    /// A hard reset: what it would lose was read before the question.
+    ResetHard {
+        /// The branch, or the word for a detached HEAD, ready to show.
+        branch: String,
+        sha: String,
+        commits: u32,
+        changed_files: u32,
+    },
+    /// A force push with lease: what it would replace was read before the question.
+    ForcePush {
+        plan: ForcePushPlan,
+    },
 }
 
 impl Question {
     /// Whether "undo" brings back what the action takes away.
     pub fn can_be_undone(&self) -> bool {
         match self {
-            Self::DiscardFile { .. } | Self::DiscardAll { .. } | Self::DeleteBranch { .. } => true,
-            Self::DeleteOnRemote { .. } | Self::DropStash { .. } => false,
+            Self::DiscardFile { .. }
+            | Self::DiscardAll { .. }
+            | Self::DeleteBranch { .. }
+            | Self::Ignore { .. }
+            | Self::ResetHard { .. } => true,
+            Self::DeleteOnRemote { .. }
+            | Self::DropStash { .. }
+            | Self::ForcePush { .. }
+            | Self::RemoveWorktree { .. } => false,
         }
+    }
+
+    /// Enter presses the cancel button, not the one that does the harm.
+    pub fn enter_is_safe(&self) -> bool {
+        matches!(self, Self::ResetHard { .. } | Self::ForcePush { .. })
     }
 
     pub fn job(&self) -> Job {
         match self {
+            Self::ResetHard { sha, .. } => Job::Reset {
+                mode: ncrs_git::ResetMode::Hard,
+                sha: sha.clone(),
+            },
             Self::DiscardFile { path } => Job::DiscardFile(path.clone()),
             Self::DiscardAll { .. } => Job::DiscardAll,
             Self::DeleteBranch { name } => Job::DeleteBranch {
                 name: name.clone(),
                 force: false,
             },
-            Self::DeleteOnRemote { remote, branch } => Job::DeleteOnRemote {
+            Self::DeleteOnRemote {
+                remote,
+                branch,
+                tip,
+            } => Job::DeleteOnRemote {
                 remote: remote.clone(),
                 branch: branch.clone(),
+                tip: tip.clone(),
             },
             Self::DropStash { sha, .. } => Job::StashDrop(sha.clone()),
+            Self::RemoveWorktree { path, .. } => Job::RemoveWorktree(path.clone()),
+            Self::ForcePush { plan } => Job::ForcePushWithLease(plan.clone()),
+            Self::Ignore {
+                path,
+                folder,
+                extension,
+                chosen,
+            } => Job::Ignore {
+                pattern: match (chosen, folder, extension) {
+                    (IgnoreChoice::Folder, Some(directory), _) => {
+                        format!("{}/", ncrs_git::literal_pattern(directory))
+                    }
+                    (IgnoreChoice::Extension, _, Some(ending)) => format!("*.{ending}"),
+                    _ => ncrs_git::literal_pattern(path),
+                },
+            },
         }
     }
 }
@@ -127,11 +313,25 @@ pub struct RenameBranch {
     pub name: String,
 }
 
+/// The dialog for the name of a tag on a commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagDraft {
+    pub name: String,
+    pub sha: String,
+    /// Why the name does not work, ready to show.
+    pub problem: Option<String>,
+}
+
 /// A dialog over the tab, besides the one for a new branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dialog {
     Ask(Question),
     Rename(RenameBranch),
+    Tag(TagDraft),
+    /// Git asked for a user name, a password or a yes or no.
+    Credential(CredentialAsk),
+    /// Merged branches and worktrees to delete.
+    Cleanup(Box<CleanupDialog>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,6 +371,7 @@ pub enum ConflictLine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeInProgress {
+    pub kind: ncrs_git::Integration,
     pub from: String,
     pub into: String,
     pub conflicts: Vec<Conflict>,
@@ -211,6 +412,8 @@ pub enum Notice {
     },
     /// A pull on diverged branches: merge or rebase, the user decides.
     NeedsPullStrategy,
+    /// A force push with lease stopped: the remote branch moved after the last look.
+    LeaseRejected,
     NothingToCommit,
     CommitTitleMissing,
     UnresolvedConflicts {
@@ -268,9 +471,6 @@ pub struct Actions {
     pub merge: Option<MergeInProgress>,
     pub notice: Option<Notice>,
     pub stashes: Vec<StashEntry>,
-    /// "Local changes" is chosen in the left list: the middle shows the diff of
-    /// the chosen file and the right side the files and the commit message.
-    pub changes_open: bool,
     /// The operation running off-thread; presses wait for it.
     pub busy: Option<Operation>,
     /// Set when git is missing or the build runs no git actions.
@@ -285,4 +485,17 @@ pub struct Actions {
     pub retry: Option<Job>,
     /// Every file that was in conflict during this merge, resolved ones too.
     pub seen_conflicts: Vec<String>,
+    /// The menu behind Pull or Push that is open.
+    pub sync_menu: Option<SyncMenu>,
+    /// A fetch nobody asked for is running: it sets no `busy` and shows nothing.
+    pub background_fetch: bool,
+    /// The user started a fetch, pull or push in this repository during this run:
+    /// only then does the quiet fetch touch it.
+    pub deliberate_sync: bool,
+    /// Branches a clean-up would offer from what is known without a fetch; the sidebar marks them.
+    pub cleanable: Vec<String>,
+    /// The job the user started while the background fetch ran; it starts after it.
+    pub queued: Option<Job>,
+    /// Questions of git that came while another one is on the screen.
+    pub waiting_credentials: Vec<AskRequest>,
 }

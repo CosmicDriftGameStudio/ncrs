@@ -281,8 +281,6 @@ async fn the_reported_bug_download_then_a_server_on_127_0_0_1_gets_the_chat_call
         message: "hello".to_owned(),
         question: None,
         previous_search: None,
-        previous_request: None,
-        previous_message: None,
     };
     drop(model.understand(&turn));
     assert!(

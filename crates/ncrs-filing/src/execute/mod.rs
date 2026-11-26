@@ -16,20 +16,19 @@ use std::path::{Path, PathBuf};
 
 use ncrs_index::{
     BatchId, BatchKind, ContentHash, DocumentId, DocumentStatus, FileStamp, Index, IndexError,
-    JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
+    JournalItem, JournalState, NewJournalItem, ReviewReason, SourceRoot, Transfer,
 };
 use ncrs_intake::{has_symlink_ancestor_under, hash_path, stays_below, IntakeError};
 
-use ncrs_fs::transfer::{
-    sweep_partials, transfer_to, Copy, Counting, Move, OnConflict, Progress, Source,
-};
+use ncrs_fs::transfer::{sweep_partials, transfer_to, Counting, Move, OnConflict, Source};
 
 mod respell;
+mod run_steps;
 mod trash;
-use respell::{is_respelling, is_same_entry, respell, respell_back, restore_respelled};
-pub use trash::{
-    trash_can_restore, trash_replaced, trash_run, ReplacedItem, TrashItem, TrashReport,
-};
+pub use respell::is_respelling;
+use respell::{is_same_entry, respell, respell_back, restore_respelled};
+pub use run_steps::{open_run_batch, run_one};
+pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
 
 /// One move. Paths are absolute.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,36 +79,6 @@ pub enum ItemOutcome {
     Skipped(SkipReason),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ItemReport {
-    pub from: PathBuf,
-    pub to: PathBuf,
-    pub outcome: ItemOutcome,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExecutionReport {
-    pub batch: BatchId,
-    /// In the order of the input.
-    pub items: Vec<ItemReport>,
-}
-
-impl ItemReport {
-    pub fn was_moved(&self) -> bool {
-        self.outcome == ItemOutcome::Moved
-    }
-}
-
-impl ExecutionReport {
-    pub fn moved(&self) -> usize {
-        self.items.iter().filter(|item| item.was_moved()).count()
-    }
-
-    pub fn skipped(&self) -> usize {
-        self.items.len() - self.moved()
-    }
-}
-
 #[derive(Debug)]
 pub enum ExecuteError {
     Index(IndexError),
@@ -140,61 +109,7 @@ fn io_error(path: &Path) -> impl FnOnce(io::Error) -> ExecuteError + '_ {
     }
 }
 
-/// Moves the items one after the other, inside `root`. Every item gets a
-/// journal entry: `pending` before it moves, then `moved`, or `skipped` with
-/// the reason when it is not moved. `progress` is told after each item and
-/// can stop the run between two items (the rest is journaled as cancelled).
-pub fn execute<P: Progress>(
-    index: &Index,
-    kind: BatchKind,
-    root: &Path,
-    items: &[ExecutionItem],
-    progress: &mut P,
-) -> Result<ExecutionReport, ExecuteError> {
-    execute_with(index, kind, root, items, progress, &Move)
-}
-
-/// A named run of the chat: moves or copies the items from below
-/// `places.source` to below `places.target`. Trash runs go through `trash_run`.
-pub fn execute_run<P: Progress>(
-    index: &Index,
-    kind: BatchKind,
-    name: &str,
-    transfer: Transfer,
-    places: RunPlaces<'_>,
-    items: &[ExecutionItem],
-    progress: &mut P,
-) -> Result<ExecutionReport, ExecuteError> {
-    let effect_for = |wanted| match wanted {
-        Transfer::Copy => Ok(false),
-        Transfer::Move => Ok(true),
-        Transfer::Trash => Err(ExecuteError::Io {
-            path: places.target.to_path_buf(),
-            source: io::Error::other("a trash run goes through trash_run"),
-        }),
-    };
-    let moves = effect_for(transfer)?;
-    let source = remember_source_root(places.source)?;
-    let batch = index.begin_named_batch(kind, name, transfer)?;
-    index.set_batch_source_root(batch, &source)?;
-    // A target not made yet has nothing to resolve; the undo then falls back
-    // on the places in the journal.
-    if let Ok(target) = remember_source_root(places.target) {
-        index.set_batch_target_root(batch, &target)?;
-    }
-    let checked = Places {
-        target: places.target,
-        source: Some(places.source),
-        inside_target: places.inside_target,
-    };
-    if moves {
-        run_batch(index, batch, transfer, checked, items, progress, &Move)
-    } else {
-        run_batch(index, batch, transfer, checked, items, progress, &Copy)
-    }
-}
-
-/// The folders a chat run works between.
+/// The folders a run works between.
 #[derive(Debug, Clone, Copy)]
 pub struct RunPlaces<'a> {
     pub source: &'a Path,
@@ -204,176 +119,10 @@ pub struct RunPlaces<'a> {
     pub inside_target: bool,
 }
 
-/// Where a run works. The files of a run without a `source` come from
-/// anywhere, as in a filing run out of an inbox.
-#[derive(Clone, Copy)]
-struct Places<'a> {
-    target: &'a Path,
-    source: Option<&'a Path>,
-    /// Items may also come from below `target`.
-    inside_target: bool,
-}
-
 pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRoot, ExecuteError> {
     Ok(SourceRoot {
         given: source.to_path_buf(),
         resolved: ncrs_intake::canonical_path(source).map_err(io_error(source))?,
-    })
-}
-
-/// The batches of one filing pass: what moves goes into one, what is copied
-/// into another, however many calls bring the files. One undo then takes the
-/// whole pass back.
-#[derive(Debug, Default)]
-pub struct FilingBatches {
-    moved: Option<BatchId>,
-    copied: Option<BatchId>,
-}
-
-/// `execute` with the effect of the move given, so a test can stand in for a
-/// volume boundary or a failing delete.
-pub fn execute_with<P: Progress, S: Source>(
-    index: &Index,
-    kind: BatchKind,
-    root: &Path,
-    items: &[ExecutionItem],
-    progress: &mut P,
-    effect: &S,
-) -> Result<ExecutionReport, ExecuteError> {
-    execute_into(
-        index,
-        &mut FilingBatches::default(),
-        kind,
-        root,
-        items,
-        progress,
-        effect,
-    )
-}
-
-/// [`execute_with`] into the move batch of `batches`, which it opens when
-/// this is the first call.
-pub fn execute_into<P: Progress, S: Source>(
-    index: &Index,
-    batches: &mut FilingBatches,
-    kind: BatchKind,
-    root: &Path,
-    items: &[ExecutionItem],
-    progress: &mut P,
-    effect: &S,
-) -> Result<ExecutionReport, ExecuteError> {
-    let batch = match batches.moved {
-        Some(open) => open,
-        None => {
-            let opened = open_filing_batch(index, kind, root, Transfer::Move)?;
-            batches.moved = Some(opened);
-            opened
-        }
-    };
-    let places = Places {
-        target: root,
-        source: None,
-        inside_target: false,
-    };
-    run_batch(
-        index,
-        batch,
-        Transfer::Move,
-        places,
-        items,
-        progress,
-        effect,
-    )
-}
-
-/// `execute` for a filing run that copies: the sources stay where they are.
-pub fn execute_copying<P: Progress>(
-    index: &Index,
-    kind: BatchKind,
-    root: &Path,
-    items: &[ExecutionItem],
-    progress: &mut P,
-) -> Result<ExecutionReport, ExecuteError> {
-    execute_copying_into(
-        index,
-        &mut FilingBatches::default(),
-        kind,
-        root,
-        items,
-        progress,
-    )
-}
-
-/// [`execute_copying`] into the copy batch of `batches`.
-pub fn execute_copying_into<P: Progress>(
-    index: &Index,
-    batches: &mut FilingBatches,
-    kind: BatchKind,
-    root: &Path,
-    items: &[ExecutionItem],
-    progress: &mut P,
-) -> Result<ExecutionReport, ExecuteError> {
-    let batch = match batches.copied {
-        Some(open) => open,
-        None => {
-            let opened = open_filing_batch(index, kind, root, Transfer::Copy)?;
-            batches.copied = Some(opened);
-            opened
-        }
-    };
-    let places = Places {
-        target: root,
-        source: None,
-        inside_target: false,
-    };
-    run_batch(index, batch, Transfer::Copy, places, items, progress, &Copy)
-}
-
-/// A batch named after the folder it files into, which it records so that an
-/// undo knows where the run worked. A folder that is not there yet has
-/// nothing to resolve; the undo then falls back on the places in the journal.
-fn open_filing_batch(
-    index: &Index,
-    kind: BatchKind,
-    root: &Path,
-    transfer: Transfer,
-) -> Result<BatchId, ExecuteError> {
-    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), transfer)?;
-    if let Ok(target) = remember_source_root(root) {
-        index.set_batch_target_root(batch, &target)?;
-    }
-    Ok(batch)
-}
-
-fn run_batch<P: Progress, S: Source>(
-    index: &Index,
-    batch: BatchId,
-    transfer: Transfer,
-    places: Places<'_>,
-    items: &[ExecutionItem],
-    progress: &mut P,
-    effect: &S,
-) -> Result<ExecutionReport, ExecuteError> {
-    let mut reports = Vec::with_capacity(items.len());
-    let mut stopped = false;
-    for (position, item) in items.iter().enumerate() {
-        let outcome = if stopped {
-            skip(index, batch, item, SkipReason::Cancelled)?
-        } else {
-            let outcome = run_item(index, batch, transfer, places, item, effect)?;
-            stopped = progress.advanced(position + 1, items.len()).is_err();
-            outcome
-        };
-        reports.push(ItemReport {
-            from: item.from.clone(),
-            to: item.to.clone(),
-            outcome,
-        });
-    }
-    index.finish_batch(batch)?;
-    Ok(ExecutionReport {
-        batch,
-        items: reports,
     })
 }
 
@@ -418,7 +167,7 @@ fn run_item<S: Source>(
     index: &Index,
     batch: BatchId,
     transfer: Transfer,
-    places: Places<'_>,
+    places: &RunPlaces<'_>,
     item: &ExecutionItem,
     effect: &S,
 ) -> Result<ItemOutcome, ExecuteError> {
@@ -431,20 +180,18 @@ fn run_item<S: Source>(
         Ok(true) => return skip(index, batch, item, SkipReason::LeavesLocation),
         Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
     }
-    if let Some(source) = places.source {
-        let from_root = if places.inside_target && is_below(root, &item.from) {
-            root
-        } else {
-            source
-        };
-        if !is_below(from_root, &item.from) {
-            return skip(index, batch, item, SkipReason::OutsideLocation);
-        }
-        match has_symlink_ancestor_under(from_root, &item.from) {
-            Ok(false) => {}
-            Ok(true) => return skip(index, batch, item, SkipReason::LeavesLocation),
-            Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
-        }
+    let from_root = if places.inside_target && is_below(root, &item.from) {
+        root
+    } else {
+        places.source
+    };
+    if !is_below(from_root, &item.from) {
+        return skip(index, batch, item, SkipReason::OutsideLocation);
+    }
+    match has_symlink_ancestor_under(from_root, &item.from) {
+        Ok(false) => {}
+        Ok(true) => return skip(index, batch, item, SkipReason::LeavesLocation),
+        Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
     }
     match hash_path(&item.from) {
         Ok(hash) if hash == item.expected_hash => {}
@@ -582,13 +329,16 @@ fn settle_moved(
     {
         // Only what ends up in the folder the run files into counts as
         // filed; a move inside a side archive does not.
-        let lands_in_target = index
-            .batch_info(batch)?
-            .and_then(|info| info.target_root)
+        let info = index.batch_info(batch)?;
+        let lands_in_target = info
+            .as_ref()
+            .and_then(|found| found.target_root.as_ref())
             .is_none_or(|root| {
                 item.to.starts_with(&root.given) || item.to.starts_with(&root.resolved)
             });
-        if lands_in_target {
+        if lands_in_target && run_steps::is_sorting(info.as_ref()) {
+            index.mark_document_filed(id)?;
+        } else if lands_in_target {
             index.set_document_status(id, DocumentStatus::Filed)?;
         }
     }
@@ -602,6 +352,9 @@ fn settle_copied(
     batch: BatchId,
     item: &JournalItem,
 ) -> Result<ItemOutcome, ExecuteError> {
+    if run_steps::is_sorting(index.batch_info(batch)?.as_ref()) {
+        run_steps::note_copy(index, item)?;
+    }
     index.set_journal_state(batch, item.seq, JournalState::Moved, None)?;
     Ok(ItemOutcome::Moved)
 }
@@ -742,7 +495,8 @@ pub struct UndoReport {
 /// Moves the batch back, last item first. `roots` are the locations the batch
 /// may have worked in. An item goes back only when the
 /// file at its target still has the planned content and its old place is free;
-/// the rest is left and journaled as `undo_skipped`. Then the folders the run
+/// the rest is left and journaled as `undo_skipped`; a later undo tries those
+/// again, and the batch counts as undone only when none is left. Then the folders the run
 /// created are removed if they are empty, deepest first.
 pub fn undo(index: &Index, batch: BatchId, roots: &[PathBuf]) -> Result<UndoReport, ExecuteError> {
     undo_with_trash(index, batch, roots, None)
@@ -760,6 +514,7 @@ pub fn undo_with_trash(
     let transfer = recorded
         .as_ref()
         .map_or(Transfer::Move, |found| found.transfer);
+    let sorting = run_steps::is_sorting(recorded.as_ref());
     let mut all_roots = roots.to_vec();
     if let Some(found) = recorded {
         for recorded_root in [found.source_root, found.target_root].into_iter().flatten() {
@@ -772,15 +527,18 @@ pub fn undo_with_trash(
     for item in items
         .iter()
         .rev()
-        .filter(|item| item.state == JournalState::Moved)
+        .filter(|item| matches!(item.state, JournalState::Moved | JournalState::UndoSkipped))
     {
         let undone = match transfer {
             Transfer::Move => undo_item(index, item, &all_roots)?,
-            Transfer::Copy => undo_copy_item(item, &all_roots),
+            Transfer::Copy => undo_copy_item(index, item, &all_roots)?,
             Transfer::Trash => trash::undo_trash_item(item, trash, &all_roots),
         };
         match undone {
             None => {
+                if sorting && transfer == Transfer::Copy {
+                    run_steps::forget_copy(index, item)?;
+                }
                 index.set_journal_state(batch, item.seq, JournalState::Undone, None)?;
                 report.undone += 1;
             }
@@ -801,30 +559,59 @@ pub fn undo_with_trash(
         // Fails when the folder is not empty, which is what keeps it.
         let _best_effort = fs::remove_dir(&folder);
     }
-    index.mark_batch_undone(batch)?;
+    if report.left == 0 {
+        index.mark_batch_undone(batch)?;
+    }
     Ok(report)
 }
 
 /// A copy comes out only while it is still the planned content and the file it
 /// was copied from is still there with that content too.
-fn undo_copy_item(item: &JournalItem, roots: &[PathBuf]) -> Option<SkipReason> {
+fn undo_copy_item(
+    index: &Index,
+    item: &JournalItem,
+    roots: &[PathBuf],
+) -> Result<Option<SkipReason>, ExecuteError> {
     if let Some(reason) = leaves_its_location(roots, item) {
-        return Some(reason);
+        return Ok(Some(reason));
     }
     match hash_path(&item.to) {
         Ok(hash) if hash == item.hash => {}
-        Ok(_) => return Some(SkipReason::SourceChanged),
-        Err(err) if is_not_found(&err) => return Some(SkipReason::SourceMissing),
-        Err(err) => return Some(SkipReason::Failed(err.to_string())),
+        Ok(_) => return Ok(Some(SkipReason::SourceChanged)),
+        Err(err) if is_not_found(&err) => return Ok(Some(SkipReason::SourceMissing)),
+        Err(err) => return Ok(Some(SkipReason::Failed(err.to_string()))),
     }
     if !has_hash(&item.from, item.hash) {
-        return Some(SkipReason::Failed(
+        return Ok(Some(SkipReason::Failed(
             "the original is gone or changed".to_owned(),
-        ));
+        )));
     }
-    fs::remove_file(&item.to)
-        .err()
-        .map(|err| SkipReason::Failed(err.to_string()))
+    if let Err(err) = fs::remove_file(&item.to) {
+        return Ok(Some(SkipReason::Failed(err.to_string())));
+    }
+    ask_again_about_filed_document(index, item)?;
+    Ok(None)
+}
+
+/// A document whose file is put back is no longer filed. The file stays where
+/// it is until someone decides: an open review entry keeps the pipeline from
+/// filing it again by itself.
+fn ask_again_about_filed_document(index: &Index, item: &JournalItem) -> Result<(), ExecuteError> {
+    let (Some(id), false) = (item.document_id, item.duplicate) else {
+        return Ok(());
+    };
+    let filed = index
+        .document(id)?
+        .is_some_and(|document| document.status == DocumentStatus::Filed);
+    if !filed {
+        return Ok(());
+    }
+    // Any other open question would be decided again by itself.
+    if let Some(open) = index.open_review_of(id)? {
+        index.resolve_review(open.id)?;
+    }
+    index.add_review_shared(id, ReviewReason::Undone)?;
+    Ok(())
 }
 
 /// A link between a location and one of the item's two places could lead out
@@ -883,6 +670,7 @@ fn undo_item(
             &item.to,
             &item.from,
         )?;
+        ask_again_about_filed_document(index, item)?;
         return Ok(None);
     }
     if let Some(parent) = item.from.parent() {
@@ -900,6 +688,7 @@ fn undo_item(
         &item.to,
         &item.from,
     )?;
+    ask_again_about_filed_document(index, item)?;
     Ok(None)
 }
 
@@ -927,5 +716,7 @@ fn within_recorded_roots(index: &Index, batch: BatchId, item: &JournalItem) -> b
 
 #[cfg(test)]
 mod run_safety_tests;
+#[cfg(test)]
+pub mod test_runs;
 #[cfg(test)]
 mod tests;

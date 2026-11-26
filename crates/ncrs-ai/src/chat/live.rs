@@ -37,7 +37,9 @@ fn model_path() -> std::path::PathBuf {
     path
 }
 
-/// A model of the test itself: dropped with the test, before the process ends.
+/// The model of this process for the file. Dropping it only asks the worker
+/// to stop; a test that ends the process with the model loaded ends with
+/// `shutdown` or `LazyLocalModel::shutdown_all`.
 fn lazy() -> Arc<LazyLocalModel> {
     LazyLocalModel::shared(
         model_path(),
@@ -124,19 +126,17 @@ fn with_model_chat_eval_meets_the_measured_rates() {
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
 fn with_model_the_model_unloads_after_idle_and_wakes_again() {
-    let model = LazyLocalModel::with_idle_unload(
+    let model = Arc::new(LazyLocalModel::with_idle_unload(
         model_path(),
         LOCAL_MODEL,
         nonzero(THREADS),
         nonzero(CONTEXT_TOKENS),
         Duration::from_secs(2),
-    );
+    ));
     let turn = ChatTurn {
         message: "mach das rückgängig".to_owned(),
         question: None,
         previous_search: None,
-        previous_request: None,
-        previous_message: None,
     };
     let is_loaded = || matches!(model.status(), LocalModelStatus::Loaded { .. });
     let wait_for = |wanted: bool| {
@@ -159,6 +159,7 @@ fn with_model_the_model_unloads_after_idle_and_wakes_again() {
 
     assert_eq!(model.understand(&turn), Ok(ChatIntent::Undo));
     assert!(is_loaded());
+    model.shutdown();
 }
 
 #[test]
@@ -184,8 +185,6 @@ fn with_model_the_protocol_sentences_print_their_intent() {
             message: sentence.to_owned(),
             question: None,
             previous_search: None,
-            previous_request: None,
-            previous_message: None,
         };
         let intent = model.understand(&turn);
         println!("intent {sentence:?} => {intent:?}");
@@ -215,8 +214,6 @@ fn folder_sentences_print_their_intent_with_the_model() {
             message: sentence.to_owned(),
             question: None,
             previous_search: None,
-            previous_request: None,
-            previous_message: None,
         };
         println!("intent {sentence:?} => {:?}", model.understand(&turn));
     }

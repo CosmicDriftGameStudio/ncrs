@@ -1,8 +1,7 @@
 //! The real app flow with the real local model: a folder opened by a typed
-//! sentence, its levels, a described rule with its trial, the click that
-//! stores it, and the rule on the Rules page. Needs the model:
-//! `NCRS_AI_MODELS_DIR` names the folder with it. Screenshots go to
-//! `target/acceptance/`.
+//! sentence, its levels, and the click that hands them to the rule
+//! suggestions. Needs the model: `NCRS_AI_MODELS_DIR` names the folder with
+//! it. Screenshots go to `target/acceptance/`.
 
 #![cfg(feature = "local-ai")]
 
@@ -12,16 +11,13 @@ use std::sync::Mutex;
 use iced_test::Simulator;
 use ncrs_ai::{ChatModel, LazyLocalModel, LOCAL_MODEL};
 use ncrs_filing::chat_work::ChatAccess;
-use ncrs_filing::rules_work::RulesAccess;
-use ncrs_hermes_chat::{Availability, ChipReply, Ctx, Entry, Part};
-use ncrs_index::DocumentSource::{Archive, Inbox};
-use ncrs_index::{DocumentFields, Index, KindLanguage};
+use ncrs_hermes_chat::{Action as ChatAction, Availability, ChipReply, Ctx, Entry, Part};
+use ncrs_index::{DocumentFields, DocumentSource, Index, KindLanguage};
 use ncrs_intake::{Extracted, TextChain, TextError, TextSource};
 use sha2::Digest as _;
 
 use crate::app::*;
 use crate::i18n::Language;
-use crate::rules_page::RulesPage;
 
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
 const AREA: &str = "Bank/Sparkasse Chemnitz/Kontoauszüge";
@@ -164,70 +160,7 @@ pub(in crate::app::tests) fn levels_card_shown(app: &App) -> bool {
 
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
-    scenario(false);
-}
-
-#[test]
-#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_the_app_files_what_lies_in_the_wrong_place_and_undoes_it() {
-    scenario(true);
-}
-
-/// A year folder that exists, other than the one the statement belongs in.
-fn wrong_year_of(year: &std::ffi::OsStr) -> &'static str {
-    if year == "2018" {
-        "2019"
-    } else {
-        "2018"
-    }
-}
-
-fn thread_text(app: &App) -> String {
-    let mut text = String::new();
-    for entry in app.hermes_chat.thread() {
-        if let Entry::Hermes { parts, .. } = entry {
-            for part in parts {
-                if let Part::Text(line) = part {
-                    text.push_str(line);
-                    text.push('\n');
-                }
-            }
-        }
-    }
-    text
-}
-
-fn last_hermes_text(app: &App) -> String {
-    match app.hermes_chat.thread().last() {
-        Some(Entry::Hermes { parts, .. }) => parts
-            .iter()
-            .flat_map(|part| match part {
-                Part::Text(line) => vec![line.clone()],
-                Part::Proposal(card) => {
-                    let mut lines: Vec<String> = card
-                        .facts
-                        .iter()
-                        .map(|fact| format!("{}: {}", fact.label, fact.value))
-                        .collect();
-                    if let Some(block) = &card.moves {
-                        for row in &block.rows {
-                            lines.push(format!("{} | {}", row.to, row.before));
-                        }
-                        lines.extend(block.more.clone());
-                    }
-                    lines.extend(card.counts.clone());
-                    lines
-                }
-                _ => Vec::new(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        other => panic!("last entry is {other:?}"),
-    }
-}
-
-fn scenario(misplace: bool) {
+fn with_model_the_app_suggests_rules_for_a_folder_opened_by_a_sentence() {
     let models = PathBuf::from(std::env::var_os(MODELS_DIR_VARIABLE).expect(MODELS_DIR_VARIABLE));
     let model_file = models.join(LOCAL_MODEL.name);
     assert!(model_file.is_file(), "{} is missing", model_file.display());
@@ -241,10 +174,6 @@ fn scenario(misplace: bool) {
     let dir = tempfile::tempdir().unwrap();
     let archive = ncrs_intake::test_archive::test_archive();
     archive.write_to(dir.path()).unwrap();
-    let (mut waiting, mut misfiled): (Waiting, Misfiled) = (Vec::new(), Vec::new());
-    if misplace {
-        std::fs::remove_dir_all(dir.path().join("inbox")).unwrap();
-    }
     let root = std::fs::canonicalize(dir.path()).unwrap();
     let slot = Arc::new(Mutex::new(Some(
         Index::create_plain(&dir.path().join("index.db")).unwrap(),
@@ -268,33 +197,14 @@ fn scenario(misplace: bool) {
             continue;
         }
         indexed += 1;
-        let name = path.file_name().unwrap().to_owned();
-        let (placed, source) = match (misplace && sparkasse, kept_statements) {
-            (true, 1..=3) => {
-                let year_folder = path.parent().unwrap();
-                let wrong = wrong_year_of(year_folder.file_name().unwrap());
-                (year_folder.with_file_name(wrong).join(&name), Archive)
-            }
-            (true, 4..=9) => (root.join("inbox").join(&name), Inbox),
-            _ => (path.clone(), Archive),
-        };
-        if placed != path {
-            std::fs::create_dir_all(placed.parent().unwrap()).unwrap();
-            std::fs::rename(&path, &placed).unwrap();
-        }
-        match (misplace && sparkasse, kept_statements) {
-            (true, 1..=3) => misfiled.push((placed.clone(), path.clone())),
-            (true, 4..=9) => waiting.push((name.to_string_lossy().into_owned(), path.clone())),
-            _ => {}
-        }
         let mut guard = slot.lock().unwrap();
         let index = guard.as_mut().unwrap();
-        let hash: [u8; 32] = sha2::Sha256::digest(std::fs::read(&placed).unwrap()).into();
+        let hash: [u8; 32] = sha2::Sha256::digest(std::fs::read(&path).unwrap()).into();
         let id = index
             .insert_document(&ncrs_index::NewDocument {
                 hash: ncrs_index::ContentHash(hash),
-                path: placed,
-                source,
+                path,
+                source: DocumentSource::Archive,
                 received_at: chrono::Utc::now(),
                 stamp: None,
             })
@@ -320,27 +230,12 @@ fn scenario(misplace: bool) {
     std::fs::create_dir_all(&bin).unwrap();
     let trash =
         ncrs_fs::JournaledTrash::new(dir.path().join("trash.toml"), ncrs_fs::FolderBackend(bin));
-    let location = ncrs_intake::Location::new(
-        &root.join("archive"),
-        ncrs_intake::LocationMode::Archive,
-        false,
-    )
-    .unwrap();
-    std::fs::create_dir_all(root.join("inbox")).unwrap();
-    let inbox_location =
-        ncrs_intake::Location::new(&root.join("inbox"), ncrs_intake::LocationMode::Inbox, false)
-            .unwrap();
-    let target = location.path.clone();
-    let rules = RulesAccess::new(Arc::clone(&slot), vec![location, inbox_location])
-        .with_target(Some(target))
-        .with_kind_language(KindLanguage::German);
     let access = ChatAccess::new(
         Arc::clone(&slot),
         Arc::new(TextChain::new().with_source(Utf8Text)),
         Arc::new(trash),
     )
-    .with_kind_language(KindLanguage::German)
-    .with_rules(Some(rules.clone()));
+    .with_kind_language(KindLanguage::German);
     let ctx = Ctx {
         availability: Availability::Ready(Box::new(access.clone())),
         targets: vec![root.join("archive")],
@@ -375,79 +270,53 @@ fn scenario(misplace: bool) {
         "{:?}",
         app.hermes_chat.thread.last()
     );
-    let levels = if misplace {
-        PathBuf::new()
-    } else {
-        shoot(&app, "hermes_rule_1_levels")
-    };
+    let levels = shoot(&app, "hermes_rule_1_levels");
 
-    if misplace {
-        assert!(
-            has_chip(&app, &ChipReply::LevelsKeep),
-            "the recognized levels do not fit the archive: {:?}",
-            app.hermes_chat.thread().last()
+    if !has_chip(&app, &ChipReply::LevelsKeep) {
+        press(
+            &mut app,
+            &ctx,
+            &access,
+            answering,
+            &ChipReply::LevelsDefault,
         );
     }
     let keep = if has_chip(&app, &ChipReply::LevelsKeep) {
         ChipReply::LevelsKeep
     } else {
-        ChipReply::LevelsDefault
+        ChipReply::LevelsApply
     };
     press(&mut app, &ctx, &access, answering, &keep);
-    type_sentence(
-        &mut app,
-        &ctx,
-        &access,
-        answering,
-        "Alle Kontoauszüge der Sparkasse Chemnitz",
-    );
-    assert!(has_chip(&app, &ChipReply::RuleCreate), "no proposal");
-    let proposal = shoot(
-        &app,
-        if misplace {
-            "hermes_rule_4_move"
-        } else {
-            "hermes_rule_2_proposal"
+    let confirmed = shoot(&app, "hermes_rule_2_confirmed");
+    let label = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .find(|chip| chip.reply == ChipReply::SuggestRules)
+        .expect("a button for the rule suggestions")
+        .label
+        .clone();
+    let (_, action) = ncrs_hermes_chat::update(
+        &mut app.hermes_chat,
+        HermesChatMessage::ChipPressed {
+            label,
+            reply: ChipReply::SuggestRules,
         },
+        &ctx,
     );
-    if misplace {
-        file_and_undo(
-            &mut app,
-            &ctx,
-            &access,
-            answering,
-            &slot,
-            &root,
-            (&waiting, &misfiled),
-        );
-        model.shutdown();
-        return;
-    }
-
-    press(&mut app, &ctx, &access, answering, &ChipReply::RuleCreate);
+    let Some(ChatAction::SuggestRules { folder, pattern }) = action else {
+        panic!("no rule suggestions: {action:?}");
+    };
+    assert!(folder.ends_with(AREA), "{}", folder.display());
+    let confirmed_pattern = pattern.expect("the confirmed order");
+    assert!(!confirmed_pattern.contains("//"), "{confirmed_pattern}");
     let stored = slot.lock().unwrap().as_ref().unwrap().rules().unwrap();
-    assert_eq!(stored.len(), 1, "{stored:?}");
-    let rule = stored.first().unwrap();
-    assert!(!rule.spec.conditions.list.is_empty(), "{rule:?}");
-    assert!(
-        rule.spec
-            .filing_pattern
-            .starts_with("Bank/Sparkasse Chemnitz/Kontoauszüge/"),
-        "{rule:?}"
-    );
-    assert!(!rule.spec.filing_pattern.contains("//"), "{rule:?}");
-
-    let mut page = RulesPage::new();
-    page.loaded(rules.load().unwrap());
-    assert_eq!(page.selected().map(|row| row.rule.id), Some(rule.id));
-    let settings = App::with_rules(page).in_language(Language::German);
-    let page_shot = shoot(&settings, "hermes_rule_3_rules_page");
+    assert!(stored.is_empty(), "the chat saves no rule: {stored:?}");
 
     println!(
-        "screenshots:\n{}\n{}\n{}",
+        "screenshots:\n{}\n{}",
         levels.display(),
-        proposal.display(),
-        page_shot.display()
+        confirmed.display()
     );
     let _ = app.quit();
     assert!(
@@ -461,112 +330,4 @@ fn scenario(misplace: bool) {
         "the model still answers after quit"
     );
     model.shutdown();
-}
-
-type Waiting = Vec<(String, PathBuf)>;
-type Misfiled = Vec<(PathBuf, PathBuf)>;
-
-/// The wrong-year files lie at the rule's path after filing and back at the
-/// wrong one after Undo; the index follows either way.
-fn assert_wrong_year_placed(
-    slot: &Arc<Mutex<Option<Index>>>,
-    misfiled: &[(PathBuf, PathBuf)],
-    undone: bool,
-) {
-    for (wrong, right) in misfiled {
-        let (here, gone) = if undone {
-            (wrong, right)
-        } else {
-            (right, wrong)
-        };
-        assert!(here.is_file(), "{} missing", here.display());
-        assert!(!gone.exists(), "{} remains", gone.display());
-        assert!(index_has(slot, here), "index lacks {}", here.display());
-        assert!(!index_has(slot, gone), "index keeps {}", gone.display());
-    }
-}
-
-fn index_has(slot: &Arc<Mutex<Option<Index>>>, path: &Path) -> bool {
-    let guard = slot.lock().unwrap();
-    guard
-        .as_ref()
-        .unwrap()
-        .document_by_path(path)
-        .unwrap()
-        .is_some()
-}
-
-/// Statements in a source folder and in a wrong year folder; the rule is made,
-/// "File now" files the source ones and puts the wrong-year ones where the
-/// rule says, Undo puts all back.
-fn file_and_undo(
-    app: &mut App,
-    ctx: &Ctx,
-    access: &ChatAccess,
-    model: &dyn ChatModel,
-    slot: &Arc<Mutex<Option<Index>>>,
-    root: &Path,
-    (waiting, misfiled): (&Waiting, &Misfiled),
-) {
-    let proposal = last_hermes_text(app);
-    println!("PROPOSAL:\n{proposal}");
-    let moves = waiting.len();
-    let renamed = misfiled.len();
-    let lying_right = 24 - renamed;
-    let all = moves + renamed;
-    assert!(
-        proposal.contains(&format!(
-            "Schon richtig abgelegt: {lying_right} · Wird umbenannt oder verschoben: {all} (davon {moves} aus dem Eingang)"
-        )),
-        "{proposal}"
-    );
-    assert_eq!(proposal.matches(" | vorher: ").count(), 3, "{proposal}");
-    assert!(
-        proposal.contains(&format!("… und {} weitere", all - 3)),
-        "{proposal}"
-    );
-
-    press(app, ctx, access, model, &ChipReply::RuleCreate);
-    assert!(has_chip(app, &ChipReply::RuleNow), "no [Jetzt ablegen]");
-    press(app, ctx, access, model, &ChipReply::RuleNow);
-    let filed_text = last_hermes_text(app);
-    println!("FILED: {filed_text}");
-    assert!(
-        filed_text.contains(&format!("{moves} Dateien")),
-        "{filed_text}"
-    );
-    shoot(app, "hermes_rule_5_filed");
-    for (name, target) in waiting {
-        let old = root.join("inbox").join(name);
-        assert!(target.is_file(), "{} missing", target.display());
-        let neighbours = std::fs::read_dir(target.parent().unwrap()).unwrap().count();
-        assert!(
-            neighbours > 1,
-            "{} lies alone in a new folder",
-            target.display()
-        );
-        assert!(!old.exists(), "{} is still there", old.display());
-        assert!(index_has(slot, target), "index lacks {}", target.display());
-        assert!(!index_has(slot, &old), "index keeps {}", old.display());
-    }
-    assert!(
-        filed_text.contains(&format!(
-            "{renamed} Dateien, die schon im Archiv lagen, wurden umbenannt oder verschoben"
-        )),
-        "{filed_text}"
-    );
-    assert_wrong_year_placed(slot, misfiled, false);
-
-    press(app, ctx, access, model, &ChipReply::Undo);
-    press(app, ctx, access, model, &ChipReply::PutBack);
-    println!("UNDONE: {}", last_hermes_text(app));
-    for (name, target) in waiting {
-        let old = root.join("inbox").join(name);
-        assert!(old.is_file(), "{} not back", old.display());
-        assert!(!target.exists(), "{} remains", target.display());
-        assert!(index_has(slot, &old), "index lacks {}", old.display());
-        assert!(!index_has(slot, target), "index keeps {}", target.display());
-    }
-    assert_wrong_year_placed(slot, misfiled, true);
-    let _ = thread_text(app);
 }

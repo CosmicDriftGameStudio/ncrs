@@ -3,35 +3,88 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
+use ncrs_ui_kit::splitter::{Direction, Step};
+
+use crate::git_keys::GitKeys;
 use crate::message::Message;
+use crate::panes::Split;
 use crate::shortcuts::Shortcut;
+use crate::state::Area;
+
+/// What the tab is doing, as far as the keys care.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct KeyContext {
+    pub filter_focused: bool,
+    pub in_diff: bool,
+    /// A diff, a history or a blame lies over the commit list.
+    pub list_covered: bool,
+    pub dialog_open: bool,
+    /// The clean-up dialog is open: it has its own keys.
+    pub cleanup_open: bool,
+    pub picker_open: bool,
+    /// The menu behind Pull or Push is open: it takes the arrows, Enter and its letters.
+    pub sync_menu_open: bool,
+    pub area: Area,
+}
+
+impl KeyContext {
+    /// Whether the menu key, or a tap of Option, opens the menu of the row:
+    /// nothing that takes its own keys is open.
+    pub const fn takes_menu_key(&self) -> bool {
+        !(self.cleanup_open
+            || self.dialog_open
+            || self.picker_open
+            || self.sync_menu_open
+            || self.filter_focused)
+    }
+}
 
 /// The message of a press. Escape is not here: the app sends
 /// [`Message::Escape`] whatever field took the key. While the filter has the
 /// keyboard only the arrows that leave it count.
 pub fn git_view_key(
+    keys: &GitKeys,
     key: &Key,
     modifiers: Modifiers,
-    filter_focused: bool,
-    in_diff: bool,
-    dialog_open: bool,
+    context: KeyContext,
+    menu_pressed: bool,
 ) -> Option<Message> {
-    if dialog_open {
+    if context.cleanup_open {
+        return cleanup_key(key, modifiers);
+    }
+    if context.dialog_open {
         return (modifiers.is_empty() && key.as_ref() == Key::Named(Named::Enter))
             .then_some(Message::Enter);
     }
-    if modifiers == Modifiers::COMMAND && in_diff {
-        return match key.as_ref() {
-            Key::Named(Named::ArrowUp) => Some(Message::PreviousFile),
-            Key::Named(Named::ArrowDown) => Some(Message::NextFile),
-            _ => None,
-        };
+    if context.picker_open {
+        return picker_key(keys, key, modifiers);
     }
-    if filter_focused {
+    if context.sync_menu_open {
+        if let Some(message) = sync_menu_key(key, modifiers) {
+            return Some(message);
+        }
+    }
+    if context.filter_focused {
         return None;
     }
-    if let Some(shortcut) = Shortcut::pressed(key, modifiers) {
-        return Some(shortcut.message());
+    if menu_pressed {
+        return Some(Message::OpenMenuKey);
+    }
+    if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
+        let in_commit_list =
+            context.area == Area::Commits && !context.in_diff && !context.list_covered;
+        if shortcut == Shortcut::ToggleStage && in_commit_list {
+            return Some(Message::MarkCommit);
+        }
+        let applies = match shortcut {
+            Shortcut::PreviousFile | Shortcut::NextFile => {
+                context.in_diff || context.area == Area::Detail
+            }
+            Shortcut::ToggleStage => context.area == Area::Detail,
+            Shortcut::CherryPick => context.area == Area::Commits && !context.list_covered,
+            _ => true,
+        };
+        return applies.then(|| shortcut.message());
     }
     // "/" is a shifted key on some layouts.
     let slash_modifiers = modifiers.is_empty() || modifiers == Modifiers::SHIFT;
@@ -40,6 +93,9 @@ pub fn git_view_key(
     }
     if modifiers == Modifiers::SHIFT && key.as_ref() == Key::Named(Named::Tab) {
         return Some(Message::PreviousArea);
+    }
+    if let Some(split) = context.area.split() {
+        return splitter_key(split, key, modifiers);
     }
     if !modifiers.is_empty() {
         return None;
@@ -51,9 +107,115 @@ pub fn git_view_key(
         Key::Named(Named::ArrowRight) => Some(Message::Right),
         Key::Named(Named::Enter) => Some(Message::Enter),
         Key::Named(Named::Tab) => Some(Message::NextArea),
-        Key::Named(Named::F3) if in_diff => Some(Message::ViewFile),
-        Key::Character("n") if in_diff => Some(Message::NextHunk),
-        Key::Character("p") if in_diff => Some(Message::PreviousHunk),
+        Key::Named(Named::F3) if context.in_diff => Some(Message::ViewFile),
+        Key::Character("n") if context.in_diff => Some(Message::NextHunk),
+        Key::Character("p") if context.in_diff => Some(Message::PreviousHunk),
+        _ => None,
+    }
+}
+
+/// The clean-up dialog: arrows, Space, Tab and Enter. Esc is the app's.
+fn cleanup_key(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    use crate::cleanup::CleanupMessage as Clean;
+    let message = match (key.as_ref(), modifiers) {
+        (Key::Named(Named::Tab), m) if m == Modifiers::SHIFT => Clean::Tab(true),
+        (_, m) if !m.is_empty() => return None,
+        (Key::Named(Named::ArrowUp), _) => Clean::Up,
+        (Key::Named(Named::ArrowDown), _) => Clean::Down,
+        (Key::Named(Named::ArrowLeft), _) => Clean::Fold(false),
+        (Key::Named(Named::ArrowRight), _) => Clean::Fold(true),
+        (Key::Named(Named::Space), _) => Clean::Space,
+        (Key::Named(Named::Tab), _) => Clean::Tab(false),
+        (Key::Named(Named::Enter), _) => Clean::Confirm,
+        _ => return None,
+    };
+    Some(Message::Cleanup(message))
+}
+
+/// The open Pull or Push menu: arrows, Enter and the letter of an entry. Other
+/// keys, the chords of the menus themselves among them, go on to the shortcuts.
+fn sync_menu_key(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    if !modifiers.is_empty() {
+        return None;
+    }
+    match key.as_ref() {
+        Key::Named(Named::ArrowUp) => Some(Message::Up),
+        Key::Named(Named::ArrowDown) => Some(Message::Down),
+        Key::Named(Named::Enter) => Some(Message::Enter),
+        Key::Character(typed) => {
+            let mut letters = typed.chars();
+            match (letters.next(), letters.next()) {
+                (Some(letter), None) => Some(Message::SyncMenuLetter(letter)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// An open picker keeps the arrows, Enter and its own two keys; the search
+/// field gets the rest.
+fn picker_key(keys: &GitKeys, key: &Key, modifiers: Modifiers) -> Option<Message> {
+    if modifiers == Modifiers::COMMAND && key.as_ref() == Key::Named(Named::Enter) {
+        return Some(Message::PickerEnterWithStash);
+    }
+    if Shortcut::pressed(keys, key, modifiers) == Some(Shortcut::NewBranch) {
+        return Some(Message::PickerNewBranch);
+    }
+    if !modifiers.is_empty() {
+        return None;
+    }
+    match key.as_ref() {
+        Key::Named(Named::ArrowUp) => Some(Message::Up),
+        Key::Named(Named::ArrowDown) => Some(Message::Down),
+        Key::Named(Named::Enter) => Some(Message::PickerSubmit),
+        _ => None,
+    }
+}
+
+/// The arrows on a focused splitter move the bar: 16 px, with ⇧ 64 px; Home resets.
+fn splitter_key(split: Split, key: &Key, modifiers: Modifiers) -> Option<Message> {
+    let step = if modifiers == Modifiers::SHIFT {
+        Step::Coarse
+    } else if modifiers.is_empty() {
+        Step::Fine
+    } else {
+        return None;
+    };
+    let pane_direction = |rightwards: bool| {
+        if rightwards == split.grows_rightwards() {
+            Direction::Wider
+        } else {
+            Direction::Narrower
+        }
+    };
+    match key.as_ref() {
+        Key::Named(Named::ArrowRight) => {
+            Some(Message::SplitNudge(split, step, pane_direction(true)))
+        }
+        Key::Named(Named::ArrowLeft) => {
+            Some(Message::SplitNudge(split, step, pane_direction(false)))
+        }
+        Key::Named(Named::Home) if modifiers.is_empty() => Some(Message::SplitReset(split)),
+        Key::Named(Named::Tab) if modifiers.is_empty() => Some(Message::NextArea),
+        _ => None,
+    }
+}
+
+/// What a press means while a field of the commit box has the keyboard: the
+/// commit keys and the jump to the title, and Tab, which would type a tab.
+pub fn commit_field_key(keys: &GitKeys, key: &Key, modifiers: Modifiers) -> Option<Message> {
+    if key.as_ref() == Key::Named(Named::Tab) {
+        return match modifiers {
+            m if m.is_empty() => Some(Message::NextArea),
+            m if m == Modifiers::SHIFT => Some(Message::PreviousArea),
+            _ => None,
+        };
+    }
+    match Shortcut::pressed(keys, key, modifiers)? {
+        shortcut @ (Shortcut::Commit | Shortcut::CommitAndPush | Shortcut::FocusCommitTitle) => {
+            Some(shortcut.message())
+        }
         _ => None,
     }
 }

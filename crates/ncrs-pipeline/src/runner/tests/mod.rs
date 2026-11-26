@@ -349,6 +349,10 @@ fn a_failed_file_that_changes_is_tried_again() {
     runner.wait_for("all three handled", |snapshot| {
         is_idle(snapshot) && snapshot.steps[0].done + snapshot.steps[0].failed == 3
     });
+    // The report below is the only one: the real watcher may report the move
+    // a second time (it does on Windows), so it is swapped for one that sees nothing.
+    let (deaf, _) = ncrs_intake::LocationWatcher::start_forwarding(&[], |_| {});
+    runner.shared.update(|state| state.watcher = Some(deaf));
 
     // Moved in whole, so no report can see the file half written.
     let staging = TempDir::new().unwrap();
@@ -673,7 +677,7 @@ fn a_file_processed_again_is_listed_even_when_nothing_changed() {
 }
 
 #[test]
-fn a_file_processed_again_without_a_matching_rule_ends_in_review_and_is_announced() {
+fn a_file_processed_again_is_read_again_and_announced_without_a_review() {
     let inbox_dir = TempDir::new().unwrap();
     let inbox = location(&inbox_dir, LocationMode::Inbox);
     let path = put(&inbox, "invoice.pdf", INVOICE);
@@ -685,16 +689,13 @@ fn a_file_processed_again_without_a_matching_rule_ends_in_review_and_is_announce
     assert!(runner.process_again(&path));
 
     let report = runner.wait_for("the file passed again", |snapshot| {
-        is_idle(snapshot) && snapshot.steps[3].done == 2
+        is_idle(snapshot) && snapshot.steps[2].done == 2
     });
     assert!(nothing_busy(&report));
-    assert_eq!(
-        first_document_status(&fixture, &inbox),
-        DocumentStatus::InReview
-    );
+    assert_eq!(first_document_status(&fixture, &inbox), DocumentStatus::New);
     assert_eq!(
         fixture.index.lock().unwrap().open_reviews().unwrap().len(),
-        1
+        0
     );
     let last = report.changed_paths.last().unwrap();
     assert_eq!(last.path, path);
@@ -751,10 +752,10 @@ fn dropping_a_runner_right_after_the_start_does_not_hang() {
 mod archive_fields;
 
 mod gone_tests;
-mod review_tests;
-use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
-mod inquiry_tests;
-mod rule_tests;
+mod reading_tests;
+use reading_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
+mod ai_late_tests;
+mod fields_tests;
 
 fn handled_everything(runner: &Runner, count: usize) -> Snapshot {
     runner.wait_for("every file handled", |snapshot| {
@@ -802,13 +803,14 @@ fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, Strin
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
         // Replaced in one rename: fs::write truncates first, and on Windows the runner can
         // fingerprint that empty in-between state.
-        // Beside the target, so the rename never crosses a volume.
+        // Beside the target, so the rename never crosses a volume. Closed before the
+        // rename: Windows can set the write time when a handle closes, and a file
+        // renamed while open would change once more after the move.
         let folder = path.parent().ok_or("the file has no folder")?;
-        let mut grown =
-            tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
-        std::io::Write::write_all(&mut grown, b"a body that grew while the step was not ready")
+        let grown = folder.join(".grown");
+        fs::write(&grown, b"a body that grew while the step was not ready")
             .map_err(|error| error.to_string())?;
-        grown.persist(path).map_err(|error| error.to_string())?;
+        fs::rename(&grown, path).map_err(|error| error.to_string())?;
         return Ok(StepOutcome::NotReady);
     }
     Ok(StepOutcome::Continue)
@@ -870,8 +872,12 @@ fn a_watch_report_before_the_watcher_is_stored_is_left_to_the_scan() {
     runner.shared.on_watch_event(WatchEvent::File(path.clone()));
 
     assert!(runner.shared.update(|state| state.first_step.is_empty()));
-    runner.shared.update(|state| state.watcher = watcher);
-    runner.shared.update(|state| state.queue_scan(&location));
+    // One step, as at start: the real watcher may still report the file, and
+    // between two steps that report would be taken before the scan forgets it.
+    runner.shared.update(|state| {
+        state.watcher = watcher;
+        state.queue_scan(&location);
+    });
     runner.shared.work_ready.notify_all();
     let report = runner.wait_for("the scan took the file once", |snapshot| {
         is_idle(snapshot) && snapshot.steps[0].done == 3

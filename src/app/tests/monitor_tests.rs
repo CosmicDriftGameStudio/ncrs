@@ -92,7 +92,7 @@ async fn the_filing_status_the_rules_and_the_saved_queries_open_from_the_page() 
     let chord = Modifiers::COMMAND | Modifiers::SHIFT;
     for (letter, action, page) in [
         ("d", KeyAction::FilingStatus, HermesPage::Activity),
-        ("b", KeyAction::Rules, HermesPage::Rules),
+        ("b", KeyAction::Rules, HermesPage::Sorting),
         ("a", KeyAction::SavedQueries, HermesPage::SavedQueries),
     ] {
         let mut app = App::with_fixed_filing(Phase::Ready);

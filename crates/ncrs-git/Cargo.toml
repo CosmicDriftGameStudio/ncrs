@@ -14,10 +14,20 @@ publish = false
 # the walk behind ahead/behind, `parallel` makes the status interruptible (the
 # serial fallback computes everything before the first item), `sha1` is the
 # object hash that default-features = false would otherwise leave out.
-gix = { version = "0.90", default-features = false, features = ["sha1", "status", "revision", "parallel"] }
+gix = { version = "0.90", default-features = false, features = ["sha1", "status", "revision", "parallel", "blame"] }
+# The secret that keeps other local processes off the askpass socket.
+getrandom = "0.4"
 
 [dev-dependencies]
 tempfile = "3.27"
+
+# The helper git starts to ask for a login, for tests/askpass.rs: the app does the
+# same in its own main, this one only exists so the test has an executable.
+[[bin]]
+name = "askpass-probe"
+path = "tests/support/askpass_probe.rs"
+test = false
+doc = false
 
 [features]
 # The App Store build runs no write actions (`WRITE_ACTIONS_ENABLED` is false).

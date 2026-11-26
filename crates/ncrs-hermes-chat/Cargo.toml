@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 # Same as the root package: one place decides the compiler.
 rust-version = "1.98"
-description = "The Hermes chat of ncrs: the conversation that reads folders, tidies them and undoes its runs, as a state machine that asks a local model what typed sentences mean"
+description = "The Hermes chat of ncrs: the conversation that recognises the order of folders and undoes the last run, as a state machine that asks a local model what typed sentences mean"
 license = "MIT"
 publish = false
 

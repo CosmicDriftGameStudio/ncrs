@@ -107,13 +107,24 @@ pub struct InputState {
     pub notes: bool,
     /// The filing tab is up and a name is typed in it: Escape leaves the field.
     pub filing_renaming: bool,
+    /// A question is open in the filing tab: Escape leaves it alone.
+    pub filing_question: bool,
     /// The filing tab is up with nothing over it: an Option tap opens no menu.
     pub filing: bool,
-    /// The Git tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
+    /// The Git tab is up with nothing over it: Escape is its own.
     pub git: Option<GitTabId>,
+    /// The Repos tab is up with nothing over it: Escape is its own.
+    pub repos: bool,
+    /// The Repos tab is up and neither a field nor its menu has the keys: an
+    /// Option tap opens the menu of the row, as in the panels.
+    pub repos_menu_key: bool,
+    /// The same for the Git tab.
+    pub git_menu_key: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
+    /// Another app's window has the keyboard. Until the first event it is ours.
+    pub window_unfocused: bool,
 }
 
 impl InputState {
@@ -170,6 +181,7 @@ impl InputState {
                 Message::Settings(SettingsMessage::FocusKey(FocusKey::Escape)),
             ),
             (self.notes, Message::Notes(ncrs_notes::Message::Escape)),
+            (self.repos, Message::Repos(ncrs_repos::Message::Escape)),
             (
                 self.git.is_some(),
                 Message::GitView(self.git.unwrap_or_default(), ncrs_git_view::Message::Escape),
@@ -177,6 +189,10 @@ impl InputState {
             (
                 self.filing_renaming,
                 Message::FilingView(ncrs_filing_view::Message::RenameCancel),
+            ),
+            (
+                self.filing_question,
+                Message::FilingView(ncrs_filing_view::Message::QuestionLeave),
             ),
             // The plan stays; Escape only goes back to the panels.
             (self.filing, Message::ShowTab(ShownTab::Panels)),
@@ -244,7 +260,15 @@ impl InputState {
                     && !self.permissions_dialog
                     && !self.batch_rename_dialog
                     && !self.settings;
-                if self.viewer || self.notes || self.filing || self.git.is_some() {
+                if self.repos {
+                    return (nothing_else_up && self.repos_menu_key)
+                        .then_some(Message::Repos(ncrs_repos::Message::OpenMenuKey));
+                }
+                if let Some(git) = self.git {
+                    return (nothing_else_up && self.git_menu_key)
+                        .then_some(Message::GitView(git, ncrs_git_view::Message::OpenMenuKey));
+                }
+                if self.viewer || self.notes || self.filing {
                     return None;
                 }
                 if self.monitor {
@@ -253,7 +277,12 @@ impl InputState {
                 }
                 (nothing_else_up).then_some(Message::Files(MenuMessage::ContextMenuKey))
             }
+            event::Event::Window(window::Event::Focused) => {
+                self.window_unfocused = false;
+                None
+            }
             event::Event::Window(window::Event::Unfocused) => {
+                self.window_unfocused = true;
                 self.alt_tap.cancel();
                 self.panel_drag_armed
                     .then_some(Message::Panel(PanelMessage::PanelDragCancelled))
@@ -518,7 +547,7 @@ mod tests {
     #[test]
     fn every_overlay_escape_closes_also_blocks_the_tap() {
         type OpenOverlay = fn(&mut InputState);
-        let overlays: [(&str, OpenOverlay); 13] = [
+        let overlays: [(&str, OpenOverlay); 15] = [
             ("monitor_filter", |input| {
                 input.monitor = true;
                 input.monitor_filter = true;
@@ -538,9 +567,14 @@ mod tests {
             }),
             ("settings", |input| input.settings = true),
             ("notes", |input| input.notes = true),
+            ("repos", |input| input.repos = true),
             ("filing_renaming", |input| {
                 input.filing = true;
                 input.filing_renaming = true;
+            }),
+            ("filing_question", |input| {
+                input.filing = true;
+                input.filing_question = true;
             }),
         ];
         for (name, open) in overlays {

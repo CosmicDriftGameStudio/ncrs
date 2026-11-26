@@ -7,6 +7,7 @@ mod condition_kind;
 pub mod kinds;
 mod names;
 mod status_counts;
+mod target;
 
 pub use amount::{amount_digits, amount_text, Amount, Currency, MINOR_UNITS_PER_UNIT};
 pub use condition_kind::ConditionKind;
@@ -15,3 +16,4 @@ pub use kinds::{
 };
 pub use names::{name_key, tag_name};
 pub use status_counts::StatusCounts;
+pub use target::{InvalidTargetId, TargetId};

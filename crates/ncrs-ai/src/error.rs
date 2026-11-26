@@ -37,8 +37,6 @@ pub enum AiError {
     BadReply(&'static str),
     /// The built-in model could not be loaded or run.
     Model(&'static str),
-    /// This model cannot answer this kind of question at all.
-    Unsupported,
     /// What was to be sent does not fit into one request.
     TooLong,
 }
@@ -59,7 +57,6 @@ pub enum FailureScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelProblem {
     TooLong,
-    Unsupported,
     BadReply,
     /// The server did not answer, or did not accept the request.
     Unreachable,
@@ -74,7 +71,6 @@ impl From<&AiError> for ModelProblem {
     fn from(error: &AiError) -> Self {
         match error {
             AiError::TooLong => Self::TooLong,
-            AiError::Unsupported => Self::Unsupported,
             AiError::BadReply(_) => Self::BadReply,
             AiError::ConsentRequired(_) => Self::ConsentMissing,
             AiError::BadEndpoint(_) | AiError::Transport(_) | AiError::Status(_) => {
@@ -92,10 +88,9 @@ impl AiError {
     /// alike. `Provider::failure_scope` accounts for that.
     pub fn scope(&self) -> FailureScope {
         match self {
-            Self::ConsentRequired(_)
-            | Self::BadEndpoint(_)
-            | Self::Unsupported
-            | Self::Model(_) => FailureScope::Provider,
+            Self::ConsentRequired(_) | Self::BadEndpoint(_) | Self::Model(_) => {
+                FailureScope::Provider
+            }
             Self::Transport(_) => FailureScope::Transient,
             Self::Status(401 | 403 | 404) => FailureScope::Provider,
             Self::Status(408 | 429 | 500..=599) => FailureScope::Transient,
@@ -117,7 +112,6 @@ impl fmt::Display for AiError {
             Self::Status(status) => write!(f, "the AI provider answered with status {status}"),
             Self::BadReply(what) => write!(f, "the AI provider's reply is not usable: {what}"),
             Self::Model(what) => write!(f, "the local model could not be used: {what}"),
-            Self::Unsupported => f.write_str("this model cannot answer that question"),
             Self::TooLong => f.write_str("the text is too long to be sent in one request"),
         }
     }
@@ -132,7 +126,6 @@ mod tests {
     #[test]
     fn the_scope_follows_what_can_change_the_outcome() {
         assert_eq!(AiError::Status(401).scope(), FailureScope::Provider);
-        assert_eq!(AiError::Unsupported.scope(), FailureScope::Provider);
         assert_eq!(AiError::Status(429).scope(), FailureScope::Transient);
         assert_eq!(
             AiError::Transport("no connection").scope(),

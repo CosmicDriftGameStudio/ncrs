@@ -1,39 +1,22 @@
-//! Levels of a folder of named files, changed in words, and the ways the chat
-//! asks for a folder instead of a rule that has none; starting a new chat.
+//! Levels of a folder of named files, changed in words, up to the rule
+//! suggestions; starting a new chat.
 
 mod common;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use crate::common::{count, say, Talk};
     use ncrs_ai::{AiError, Levels, Revision};
     use ncrs_hermes_chat::{ChipReply, Entry, LevelsCard, Message, Part, Step};
     use ncrs_i18n::Msg;
-    use ncrs_index::{Condition, ConditionKind, DocumentFields, RuleConditions, RuleSpec};
+    use ncrs_index::DocumentFields;
 
-    const CHANGE_STRUCTURE: &str =
-        r#"{"intent":"change_structure","area":"Telefon","order":"by_month"}"#;
+    const CHANGE_EVERYTHING: &str =
+        r#"{"intent":"change_structure","area":"*","order":"by_month"}"#;
     const DATE_FIRST: &str = "kannst du bei 3 das datum vorne hin machen?";
 
     fn levels(pattern: &str) -> Levels {
         Levels::from_pattern(pattern).unwrap()
-    }
-
-    fn spec(word: &str, pattern: &str) -> RuleSpec {
-        RuleSpec {
-            name: None,
-            conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, word)]),
-            extract_number: None,
-            extract_date: None,
-            extract_amount: None,
-            kind: None,
-            tags: BTreeSet::new(),
-            filing_pattern: pattern.to_owned(),
-            confirmed: false,
-            enabled: false,
-        }
     }
 
     /// `Gehalt` holds pay slips by year, named `Gehaltsabrechnung_{date}`.
@@ -59,15 +42,12 @@ mod tests {
             );
         }
         std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
-        talk.with_rules()
+        talk
     }
 
     fn open_area(talk: &mut Talk, area: &str) {
-        let folder = talk.path("archive");
-        talk.send(Message::ChangeArea {
-            folder,
-            area: area.to_owned(),
-        });
+        let folder = talk.path("archive").join(area);
+        talk.send(Message::FolderPicked(Some(folder)));
     }
 
     fn has_chip(talk: &Talk, reply: &ChipReply) -> bool {
@@ -173,10 +153,16 @@ mod tests {
             .collect()
     }
 
-    fn the_only_rule_pattern(talk: &Talk) -> String {
-        let rules = talk.rules();
-        assert_eq!(rules.len(), 1, "{rules:?}");
-        rules[0].spec.filing_pattern.clone()
+    /// The order of `Gehalt` the chat hands on, once, after the one button.
+    fn suggested_pattern(talk: &mut Talk) -> String {
+        assert_eq!(replies(talk), vec![ChipReply::SuggestRules]);
+        assert!(talk.suggestions().is_empty(), "nothing before the button");
+        talk.press(&ChipReply::SuggestRules);
+        let suggestions = talk.suggestions();
+        assert_eq!(suggestions.len(), 1, "{suggestions:?}");
+        assert_eq!(suggestions[0].0, talk.path("archive/Gehalt"));
+        talk.assert_saves_no_rule();
+        suggestions[0].1.clone().expect("a pattern")
     }
 
     #[test]
@@ -218,7 +204,6 @@ mod tests {
         talk.type_text(DATE_FIRST);
 
         assert_eq!(talk.model.revised(), vec![(named, DATE_FIRST.to_owned())]);
-        assert!(talk.model.described().is_empty(), "no rule was asked for");
         let shown = card(&talk);
         assert!(
             shown.rows[1]
@@ -246,7 +231,6 @@ mod tests {
             ]
         );
         assert_eq!(talk.state.step, Step::RuleLevels);
-        assert_eq!(talk.rule_count(), 0);
     }
 
     #[test]
@@ -264,15 +248,12 @@ mod tests {
             say(Msg::HermesChatLevelsRenames, &[("count", &count(4))])
         );
         assert_eq!(moves.rows.len(), 3, "three examples: {:?}", moves.rows);
-        assert_eq!(
-            moves.rows[0].to,
-            "Gehalt/2023/2023-05-25_Gehaltsabrechnung.pdf"
-        );
+        assert_eq!(moves.rows[0].to, "2023/2023-05-25_Gehaltsabrechnung.pdf");
         assert_eq!(
             moves.rows[0].before,
             say(
                 Msg::HermesChatLevelBefore,
-                &[("value", "Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf")]
+                &[("value", "2023/Gehaltsabrechnung_2023-05-25.pdf")]
             )
         );
         assert_eq!(
@@ -298,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_makes_the_levels_the_pattern_and_goes_to_the_trial() {
+    fn apply_makes_the_levels_the_pattern_of_the_suggestions() {
         let mut talk = changing("{year}/Gehaltsabrechnung_{date}");
         talk.model
             .push_revision(Ok(revision("{year}/{date}_Gehaltsabrechnung", false)));
@@ -306,20 +287,14 @@ mod tests {
 
         talk.press(&ChipReply::LevelsApply);
 
-        assert!(
-            has_chip(&talk, &ChipReply::RuleCreate),
-            "{:?}",
-            talk.labels()
-        );
-        talk.press(&ChipReply::RuleCreate);
         assert_eq!(
-            the_only_rule_pattern(&talk),
-            "Gehalt/{year}/{date}_Gehaltsabrechnung"
+            suggested_pattern(&mut talk),
+            "{year}/{date}_Gehaltsabrechnung"
         );
     }
 
     #[test]
-    fn done_after_a_change_goes_to_the_trial_like_apply() {
+    fn done_after_a_change_hands_it_on_like_apply() {
         let mut talk = changing("{year}/Gehaltsabrechnung_{date}");
         talk.model
             .push_revision(Ok(revision("{year}/{date}_Gehaltsabrechnung", false)));
@@ -327,11 +302,9 @@ mod tests {
 
         talk.press(&ChipReply::LevelsDone);
 
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-        talk.press(&ChipReply::RuleCreate);
         assert_eq!(
-            the_only_rule_pattern(&talk),
-            "Gehalt/{year}/{date}_Gehaltsabrechnung"
+            suggested_pattern(&mut talk),
+            "{year}/{date}_Gehaltsabrechnung"
         );
     }
 
@@ -341,16 +314,14 @@ mod tests {
 
         talk.press(&ChipReply::LevelsDone);
 
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-        talk.press(&ChipReply::RuleCreate);
         assert_eq!(
-            the_only_rule_pattern(&talk),
-            "Gehalt/{year}/Gehaltsabrechnung_{date}"
+            suggested_pattern(&mut talk),
+            "{year}/Gehaltsabrechnung_{date}"
         );
     }
 
     #[test]
-    fn looks_right_goes_straight_to_the_trial() {
+    fn looks_right_says_one_sentence_and_waits_for_the_button() {
         let mut talk = pay_slips();
         talk.model
             .push_levels(Ok(levels("{year}/Gehaltsabrechnung_{date}")));
@@ -358,8 +329,33 @@ mod tests {
 
         talk.press(&ChipReply::LevelsKeep);
 
-        assert!(has_chip(&talk, &ChipReply::RuleCreate));
-        assert_eq!(talk.state.step, Step::RuleWhat);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatLevelsConfirmed, &[("folder", "Gehalt")])]
+        );
+        assert_eq!(talk.state.step, Step::Idle);
+        assert_eq!(
+            suggested_pattern(&mut talk),
+            "{year}/Gehaltsabrechnung_{date}"
+        );
+    }
+
+    /// The order is handed on by a typed yes as well, through the model.
+    #[test]
+    fn a_typed_answer_hands_the_order_on() {
+        let mut talk = pay_slips();
+        talk.model
+            .push_levels(Ok(levels("{year}/Gehaltsabrechnung_{date}")));
+        open_area(&mut talk, "Gehalt");
+        talk.press(&ChipReply::LevelsKeep);
+        let button = say(Msg::HermesChatSuggestRules, &[]);
+
+        talk.type_text_understood(
+            "ja mach",
+            &format!(r#"{{"intent":"answer","choice":"{button}"}}"#),
+        );
+
+        assert_eq!(talk.suggestions().len(), 1, "{:?}", talk.actions);
     }
 
     #[test]
@@ -370,15 +366,9 @@ mod tests {
 
         talk.type_text("den Rest so lassen");
 
-        assert!(
-            has_chip(&talk, &ChipReply::RuleCreate),
-            "{:?}",
-            talk.labels()
-        );
-        talk.press(&ChipReply::RuleCreate);
         assert_eq!(
-            the_only_rule_pattern(&talk),
-            "Gehalt/{year}/Gehaltsabrechnung_{date}"
+            suggested_pattern(&mut talk),
+            "{year}/Gehaltsabrechnung_{date}"
         );
     }
 
@@ -464,15 +454,11 @@ mod tests {
     }
 
     #[test]
-    fn after_cancel_a_sentence_without_a_folder_asks_which_folder() {
+    fn an_order_for_every_area_asks_which_folder() {
         let mut talk = pay_slips();
-        open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
-        talk.press(&ChipReply::Cancel);
-        assert!(talk.state.session.rule.is_none());
-        talk.model.push_rule(Ok(spec("Zahnarzt", "{year}/{month}")));
+        talk.send(Message::Open);
 
-        talk.type_text_understood(DATE_FIRST, CHANGE_STRUCTURE);
+        talk.type_text_understood(DATE_FIRST, CHANGE_EVERYTHING);
 
         assert_eq!(
             talk.last_texts(),
@@ -480,21 +466,28 @@ mod tests {
         );
         assert!(has_chip(&talk, &ChipReply::Folder(talk.path("archive"))));
         assert!(talk.state.session.rule.is_none());
-        let said_nothing_empty = talk.state.thread().iter().all(|shown| match shown {
-            Entry::Hermes { parts, .. } => parts.iter().all(|part| {
-                !matches!(part, Part::Text(line) if *line == say(Msg::HermesChatRuleWhat, &[("folder", "")]))
-            }),
-            _ => true,
-        });
-        assert!(said_nothing_empty);
     }
 
     #[test]
-    fn a_text_with_a_slash_inside_the_rule_flow_is_no_folder_bubble() {
+    fn an_order_for_a_named_area_looks_at_that_folder() {
+        let mut talk = pay_slips();
+        talk.model
+            .push_levels(Ok(levels("{year}/Gehaltsabrechnung_{date}")));
+        talk.send(Message::Open);
+
+        talk.type_text_understood(
+            "Gehalt soll nach Jahren liegen",
+            r#"{"intent":"change_structure","area":"Gehalt","order":"by_year"}"#,
+        );
+
+        assert_eq!(talk.model.recognized().len(), 1, "the folder was read");
+        assert!(has_chip(&talk, &ChipReply::LevelsKeep));
+    }
+
+    #[test]
+    fn a_text_with_a_slash_among_the_levels_is_no_folder_bubble() {
         let mut talk = pay_slips();
         open_area(&mut talk, "Telefon");
-        talk.press(&ChipReply::LevelsKeep);
-        talk.model.push_rule(Ok(spec("Zahnarzt", "Telefon/{year}")));
 
         talk.type_text("/new");
 
@@ -503,11 +496,13 @@ mod tests {
             .thread()
             .iter()
             .any(|shown| matches!(shown, Entry::User(line) if line == "/new")));
-        assert!(!talk
+        let folders = talk
             .state
             .thread()
             .iter()
-            .any(|shown| matches!(shown, Entry::UserFolder(_))));
+            .filter(|shown| matches!(shown, Entry::UserFolder(_)))
+            .count();
+        assert_eq!(folders, 1, "only the folder that was picked");
     }
 
     #[test]
@@ -525,17 +520,12 @@ mod tests {
     }
 
     #[test]
-    fn a_new_chat_starts_with_the_greeting_and_keeps_the_rules() {
+    fn a_new_chat_starts_with_the_greeting() {
         let mut talk = pay_slips();
         talk.send(Message::Open);
         let greeting = talk.last_texts();
         open_area(&mut talk, "Telefon");
         talk.press(&ChipReply::LevelsKeep);
-        talk.model
-            .push_rule(Ok(spec("Gehaltsabrechnung", "Telefon/{year}")));
-        talk.type_text("Gehaltsabrechnungen kommen hierhin");
-        talk.press(&ChipReply::RuleCreate);
-        assert_eq!(talk.rule_count(), 1);
         assert!(talk.state.thread().len() > 3);
 
         talk.send(Message::NewChat);
@@ -544,7 +534,6 @@ mod tests {
         assert_eq!(talk.last_texts(), greeting);
         assert!(talk.state.session.rule.is_none());
         assert_eq!(talk.state.step, Step::Greeting);
-        assert_eq!(talk.rule_count(), 1, "the stored rule stays");
         assert!(talk.state.open);
     }
 }

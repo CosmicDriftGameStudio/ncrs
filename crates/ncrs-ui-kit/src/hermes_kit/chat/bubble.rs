@@ -18,8 +18,6 @@ const CHAT_TEXT: f32 = 14.0;
 const CHAT_LINE: f32 = 20.0;
 const CHIP_PAD_Y: f32 = spacing::M;
 const CHIP_PAD_X: f32 = spacing::XL;
-const SMALL_CHIP_PAD_Y: f32 = spacing::XS;
-const SMALL_CHIP_PAD_X: f32 = spacing::L;
 /// Puts the avatar level with the first line of a bubble.
 const AVATAR_TOP_NUDGE: f32 = BUBBLE_PAD_Y + (CHAT_LINE - AVATAR_SIZE) / 2.0;
 const BOLD_MARK: &str = "**";
@@ -240,24 +238,6 @@ pub fn chat_chip<'a, M: Clone + 'a>(
     .padding([CHIP_PAD_Y, CHIP_PAD_X])
     .on_press(on_press)
     .style(chip_style(palette, primary))
-    .into()
-}
-
-/// [`chat_chip`] for a choice inside a card; `selected` is the one chosen.
-pub fn chat_chip_small<'a, M: Clone + 'a>(
-    label: &str,
-    selected: bool,
-    on_press: M,
-    palette: &Palette,
-) -> Element<'a, M> {
-    button(
-        text(label.to_owned())
-            .size(theme::font_size::SMALL)
-            .wrapping(Wrapping::None),
-    )
-    .padding([SMALL_CHIP_PAD_Y, SMALL_CHIP_PAD_X])
-    .on_press(on_press)
-    .style(chip_style(palette, selected))
     .into()
 }
 

@@ -36,6 +36,30 @@ pub(in crate::app) fn receiver_stream(
     })
 }
 
+/// The login questions of git jobs. A blocking thread waits on the broker's
+/// receiver, because it is not async; it ends with the process.
+fn git_requests() -> impl futures::Stream<Item = ncrs_git::askpass::AskRequest> {
+    use futures::{channel::mpsc, SinkExt as _, StreamExt as _};
+    iced::stream::channel(8, async |mut output| {
+        let Some(receiver) = ncrs_git::askpass::take_requests() else {
+            return;
+        };
+        let (sender, mut received) = mpsc::unbounded();
+        std::thread::spawn(move || {
+            while let Ok(request) = receiver.recv() {
+                if sender.unbounded_send(request).is_err() {
+                    break;
+                }
+            }
+        });
+        while let Some(request) = received.next().await {
+            if output.send(request).await.is_err() {
+                break;
+            }
+        }
+    })
+}
+
 impl App {
     pub fn subscription(&self) -> Subscription<Message> {
         // `listen` yields the event stream, so the mapping can decide
@@ -106,6 +130,15 @@ impl App {
                     }
                 }),
             self.store_subscription(),
+            Subscription::run(git_requests).map(Message::GitAsked),
+            match self.git_settings.fetch.period() {
+                Some(every)
+                    if ncrs_git::WRITE_ACTIONS_ENABLED && !self.git_tabs.ids().is_empty() =>
+                {
+                    iced::time::every(every).map(|_| Message::GitFetchDue)
+                }
+                _ => Subscription::none(),
+            },
             // The clock of the notes: auto-lock and the timed sync.
             iced::time::every(NOTES_TICK_EVERY)
                 .map(|now| Message::Notes(ncrs_notes::Message::Tick(now))),
@@ -113,6 +146,12 @@ impl App {
             if self.hermes.pipeline.is_some() || self.hermes.filing_status.page_open() {
                 iced::time::every(self.hermes.filing_status.tick_every())
                     .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))
+            } else {
+                Subscription::none()
+            },
+            if self.repos_shown() {
+                iced::time::every(ncrs_repos::REFRESH_EVERY)
+                    .map(|_| Message::Repos(ncrs_repos::Message::Tick))
             } else {
                 Subscription::none()
             },
@@ -130,11 +169,7 @@ impl App {
             } else {
                 Subscription::none()
             },
-            if self.takes_handoffs() {
-                iced::time::every(super::handoff::POLL_EVERY).map(|_| Message::HandoffPoll)
-            } else {
-                Subscription::none()
-            },
+            self.watch_handoffs(),
             if ncrs_filing_view::is_running(&self.filing_view) {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)
                     .map(|_| Message::FilingView(ncrs_filing_view::Message::Tick))
@@ -143,14 +178,6 @@ impl App {
             },
             if self.hermes_chat_is_working() {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)
-                    .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))
-            } else {
-                Subscription::none()
-            },
-            // The status bar names the folder and the files left of the picks
-            // job, which only the clock redraws.
-            if ncrs_hermes_chat::picks_running(&self.hermes_chat) {
-                iced::time::every(std::time::Duration::from_secs(1))
                     .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))
             } else {
                 Subscription::none()

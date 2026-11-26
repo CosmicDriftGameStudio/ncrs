@@ -1,9 +1,8 @@
-use std::fs;
-
 use crate::changes::discard_record;
 use crate::cli::Git;
 use crate::diff::{diff_bytes, DiffHunk, FileDiff, RowKind};
 use crate::undo::{UndoRecord, UndoSummary};
+use crate::working_file::{read_working_file, refuse_cut};
 use crate::ActionError;
 
 /// Which two versions of a file a hunk list compares.
@@ -21,8 +20,19 @@ impl Git {
     /// The hunks of one file for the given side. Hunk actions take a hunk from
     /// exactly this list; one that no longer fits the file is refused by git.
     pub fn hunks(&self, path: &str, side: HunkSide) -> Result<FileDiff, ActionError> {
+        self.hunks_shown(path, side, false)
+    }
+
+    /// The hunks as they are shown. With `ignore_whitespace` they are for
+    /// looking only: a hunk of it must not be given to a hunk action.
+    pub fn hunks_shown(
+        &self,
+        path: &str,
+        side: HunkSide,
+        ignore_whitespace: bool,
+    ) -> Result<FileDiff, ActionError> {
         let (old, new) = self.sides(path, side)?;
-        Ok(diff_bytes(path, &old, &new, false))
+        Ok(diff_bytes(path, &old, &new, ignore_whitespace))
     }
 
     pub fn stage_hunk(
@@ -34,7 +44,7 @@ impl Git {
             UndoSummary::Stage { files: 1 },
             format!("Stage a change in {path}"),
             || {
-                let (old, new) = self.sides(path, HunkSide::Unstaged)?;
+                let (old, new) = self.whole_sides(path, HunkSide::Unstaged)?;
                 let patch = patch_of(path, hunk, &old, &new)?;
                 self.ok_with_input(
                     &["apply", "--cached", "--whitespace=nowarn", "-"],
@@ -54,7 +64,7 @@ impl Git {
             UndoSummary::Unstage { files: 1 },
             format!("Unstage a change in {path}"),
             || {
-                let (old, new) = self.sides(path, HunkSide::Staged)?;
+                let (old, new) = self.whole_sides(path, HunkSide::Staged)?;
                 let patch = patch_of(path, hunk, &old, &new)?;
                 self.ok_with_input(
                     &["apply", "--cached", "-R", "--whitespace=nowarn", "-"],
@@ -67,7 +77,7 @@ impl Git {
 
     /// Throws the hunk away in the working copy; the whole file is saved first.
     pub fn discard_hunk(&self, path: &str, hunk: &DiffHunk) -> Result<UndoRecord, ActionError> {
-        let (old, new) = self.sides(path, HunkSide::Unstaged)?;
+        let (old, new) = self.whole_sides(path, HunkSide::Unstaged)?;
         let patch = patch_of(path, hunk, &old, &new)?;
         let mut saved = self.save_files(&[path.to_string()])?;
         self.ok_with_input(&["apply", "-R", "--whitespace=nowarn", "-"], Some(&patch))?;
@@ -77,10 +87,19 @@ impl Git {
         Ok(record)
     }
 
+    /// The sides for an action on a hunk: a side that was read only in part
+    /// must not become a patch.
+    fn whole_sides(&self, path: &str, side: HunkSide) -> Result<(Vec<u8>, Vec<u8>), ActionError> {
+        let (old, new) = self.sides(path, side)?;
+        refuse_cut(path, &old)?;
+        refuse_cut(path, &new)?;
+        Ok((old, new))
+    }
+
     fn sides(&self, path: &str, side: HunkSide) -> Result<(Vec<u8>, Vec<u8>), ActionError> {
         let in_index = self.blob(&format!(":{path}"));
         let (old, new) = match side {
-            HunkSide::Unstaged => (in_index, fs::read(self.root().join(path)).ok()),
+            HunkSide::Unstaged => (in_index, read_working_file(self.root(), path)),
             HunkSide::Staged => (self.blob(&format!("HEAD:{path}")), in_index),
         };
         match (old, new) {

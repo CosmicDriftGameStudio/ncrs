@@ -3,14 +3,12 @@ use std::sync::Mutex;
 
 use chrono::TimeZone as _;
 use iced_test::Simulator;
-use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
+use ncrs_ai::{Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RunSummary};
-use ncrs_hermes_chat::{
-    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, ProposalCard, Step,
-};
+use ncrs_hermes_chat::{Availability, Chip, ChipReply, Ctx, Entry, LevelsCard, Part};
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::TextChain;
-use ncrs_ui_kit::hermes_kit::{FactRow, LevelRow, MoveRow, MovesBlock};
+use ncrs_ui_kit::hermes_kit::{LevelRow, MoveRow, MovesBlock};
 
 use crate::app::*;
 use crate::i18n::Language;
@@ -53,7 +51,6 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
         ai_on: true,
-        ocr_models_present: true,
         changes_allowed: true,
         model: None,
         favourites: Vec::new(),
@@ -89,10 +86,6 @@ fn pick<'a>(lang: Language, german: &'a str, english: &'a str) -> &'a str {
     }
 }
 
-fn segments(names: &[&str]) -> Vec<String> {
-    names.iter().map(|name| (*name).to_owned()).collect()
-}
-
 pub(in crate::app::tests) fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
     Chip {
         label: label.to_owned(),
@@ -111,41 +104,6 @@ pub(in crate::app::tests) fn user_says(app: &mut App, text: &str) {
 
 fn areas_scene(lang: Language) -> App {
     super::hermes_chat_areas_ui_tests::real_flow_areas_app(lang)
-}
-
-fn change_scene(lang: Language) -> App {
-    let (mut app, _) = opened(lang);
-    user_says(&mut app, pick(lang, "Steuern nach Monat", "Taxes by month"));
-    hermes_says(
-        &mut app,
-        vec![
-            Part::Text(
-                pick(
-                    lang,
-                    "So würde ein Beispiel unter **Steuern** liegen:",
-                    "This is where an example would sit under **Taxes**:",
-                )
-                .to_owned(),
-            ),
-            Part::File(FileCard {
-                segments: segments(&["Archiv", "Steuern", "2025", "11", "Bescheid.pdf"]),
-                highlighted: Some(3),
-            }),
-        ],
-        vec![
-            chip(
-                pick(lang, "So machen", "Do it this way"),
-                ChipReply::Always,
-                true,
-            ),
-            chip(
-                pick(lang, "Lieber nicht", "Better not"),
-                ChipReply::Later,
-                false,
-            ),
-        ],
-    );
-    app
 }
 
 fn undo_scene() -> App {
@@ -183,108 +141,6 @@ fn with_model(status: LocalModelStatus) -> (App, Ctx) {
     let (app, mut ctx) = opened(Language::German);
     ctx.model = Some(Arc::new(ScriptedChatModel::new(status, [])));
     (app, ctx)
-}
-
-fn tidy_confirmation_scene() -> App {
-    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
-        memory_bytes: 2_700_000_000,
-        compute: Compute::Cpu,
-    });
-    type_and_submit(&mut app, &ctx, "räum Downloads auf");
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
-            source: "Downloads".to_owned(),
-            target: None,
-            schedule: None,
-            transfer: None,
-        })),
-    );
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::NamedFoldersResolved {
-            source: vec![PathBuf::from("/home/test/Downloads")],
-            target: None,
-        },
-    );
-    app
-}
-
-fn meant_folder_scene() -> App {
-    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
-        memory_bytes: 2_700_000_000,
-        compute: Compute::Cpu,
-    });
-    type_and_submit(&mut app, &ctx, "verschieb Downloads ins Archiv");
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
-            source: "Downloads".to_owned(),
-            target: Some("Archive".to_owned()),
-            schedule: None,
-            transfer: Some(ncrs_ai::Transfer::Move),
-        })),
-    );
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::NamedFoldersResolved {
-            source: vec![PathBuf::from("/home/test/Downloads")],
-            target: Some(vec![PathBuf::from("/home/test/Documents/Archive")]),
-        },
-    );
-    app
-}
-
-fn which_folder_scene() -> App {
-    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
-        memory_bytes: 2_700_000_000,
-        compute: Compute::Cpu,
-    });
-    type_and_submit(&mut app, &ctx, "räum Belege auf");
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
-            source: "Belege".to_owned(),
-            target: None,
-            schedule: None,
-            transfer: None,
-        })),
-    );
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::NamedFoldersResolved {
-            source: vec![
-                PathBuf::from("/home/test/Documents/Belege"),
-                PathBuf::from("/home/test/Downloads/Belege"),
-            ],
-            target: None,
-        },
-    );
-    app
-}
-
-fn typed_folder_confirmation_scene() -> App {
-    let (mut app, ctx) = opened(Language::German);
-    type_and_submit(&mut app, &ctx, "~/Documents/../Documents/Rechnungen");
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::TypedFolderResolved {
-            typed: PathBuf::from("/home/test/Documents/../Documents/Rechnungen"),
-            step: Step::ReadFolder,
-            result: Ok(PathBuf::from("/home/test/Documents/Rechnungen")),
-        },
-    );
-    app
 }
 
 fn thinking_scene() -> App {
@@ -333,136 +189,48 @@ fn levels_scene(lang: Language) -> App {
         role: role.to_owned(),
         before: None,
     };
-    user_says(
-        &mut app,
-        if german {
-            "Kontoauszüge der Sparkasse kommen nach Bank"
-        } else {
-            "Statements from the Sparkasse go to Bank"
-        },
-    );
+    user_says(&mut app, if german { "Öffne Bank" } else { "Open Bank" });
     hermes_says(
         &mut app,
-        vec![
-            Part::Proposal(ProposalCard {
-                title: if german { "Vorschlag" } else { "Proposal" }.to_owned(),
-                facts: vec![
-                    FactRow {
-                        label: if german { "Gilt für" } else { "Applies to" }.to_owned(),
-                        value: if german {
-                            "Absender: Sparkasse"
-                        } else {
-                            "Sender: Sparkasse"
-                        }
-                        .to_owned(),
-                    },
-                    FactRow {
-                        label: if german { "Ablage" } else { "Filing" }.to_owned(),
-                        value: if german { "Bank / Jahr" } else { "Bank / Year" }.to_owned(),
-                    },
-                    FactRow {
-                        label: if german { "Dateiname" } else { "File name" }.to_owned(),
-                        value: if german {
-                            "Datum, Absender"
-                        } else {
-                            "Date, Sender"
-                        }
-                        .to_owned(),
-                    },
-                    FactRow {
-                        label: if german { "Trifft" } else { "Matches" }.to_owned(),
-                        value: if german { "12 Dokumente" } else { "12 documents" }.to_owned(),
-                    },
-                ],
-                moves: Some(MovesBlock {
-                    header: if german { "Beispiele" } else { "Examples" }.to_owned(),
-                    rows: vec![
-                        MoveRow {
-                            to: "Bank/2025/2025-11-03_Sparkasse.pdf".to_owned(),
-                            before: if german {
-                                "vorher: Auszug.pdf"
-                            } else {
-                                "before: Auszug.pdf"
-                            }
-                            .to_owned(),
-                        },
-                        MoveRow {
-                            to: "Bank/2025/2025-10-05_Sparkasse.pdf".to_owned(),
-                            before: if german {
-                                "vorher: Bank/Auszug-Oktober.pdf"
-                            } else {
-                                "before: Bank/Auszug-Oktober.pdf"
-                            }
-                            .to_owned(),
-                        },
-                    ],
-                    more: Some(
-                        if german {
-                            "… und 10 weitere"
-                        } else {
-                            "… and 10 more"
-                        }
-                        .to_owned(),
-                    ),
-                }),
-                counts: Some(
+        vec![Part::Levels(LevelsCard {
+            moves: None,
+            title: if german {
+                "3 Ebenen gefunden"
+            } else {
+                "3 levels found"
+            }
+            .to_owned(),
+            rows: vec![
+                row(1, "Bank", if german { "fest" } else { "fixed" }),
+                row(2, "2025", if german { "Jahr" } else { "year" }),
+                row(
+                    3,
+                    "2025-11-03_Sparkasse.pdf",
                     if german {
-                        "Schon richtig abgelegt: 0 · Wird umbenannt oder verschoben: 12 (davon 12 aus dem Eingang)"
+                        "Dateiname: Datum, Absender"
                     } else {
-                        "Already filed correctly: 0 · Will be renamed or moved: 12 (12 of them from the inbox)"
-                    }
-                    .to_owned(),
+                        "file name: date, sender"
+                    },
                 ),
-            }),
-            Part::Levels(LevelsCard {
-                moves: None,
-                title: if german {
-                    "3 Ebenen gefunden"
+            ],
+            footer: Some(
+                if german {
+                    "passt bei 11 von 12 Dateien"
                 } else {
-                    "3 levels found"
+                    "fits 11 of 12 files"
                 }
                 .to_owned(),
-                rows: vec![
-                    row(1, "Bank", if german { "fest" } else { "fixed" }),
-                    row(2, "2025", if german { "Jahr" } else { "year" }),
-                    row(
-                        3,
-                        "2025-11-03_Sparkasse.pdf",
-                        if german {
-                            "Dateiname: Datum, Absender"
-                        } else {
-                            "file name: date, sender"
-                        },
-                    ),
-                ],
-                footer: Some(
-                    if german {
-                        "passt bei 11 von 12 Dateien"
-                    } else {
-                        "fits 11 of 12 files"
-                    }
-                    .to_owned(),
-                ),
-            }),
-        ],
+            ),
+        })],
         vec![
             chip(
-                if german {
-                    "Regel anlegen"
-                } else {
-                    "Create rule"
-                },
-                ChipReply::RuleCreate,
+                if german { "Passt so" } else { "Looks right" },
+                ChipReply::LevelsKeep,
                 true,
             ),
             chip(
                 if german { "Ändern" } else { "Change" },
                 ChipReply::LevelsChange,
-                false,
-            ),
-            chip(
-                if german { "Abbrechen" } else { "Cancel" },
-                ChipReply::Cancel,
                 false,
             ),
         ],
@@ -489,29 +257,8 @@ fn the_greeting_matches_its_snapshots() {
 }
 
 #[test]
-fn the_waiting_documents_opener_matches_its_snapshots() {
-    for (lang, name) in [
-        (Language::German, "hermes_chat_waiting_de"),
-        (Language::English, "hermes_chat_waiting_en"),
-    ] {
-        let (mut app, ctx) = opened(lang);
-        send(
-            &mut app,
-            &ctx,
-            HermesChatMessage::Done(Box::new(ChatResult::WaitingCount(Ok(3)))),
-        );
-        matches_snapshot(&app, name);
-    }
-}
-
-#[test]
 fn the_areas_matches_its_snapshot() {
     matches_snapshot(&areas_scene(Language::German), "hermes_chat_areas_de");
-}
-
-#[test]
-fn the_change_preview_matches_its_snapshot() {
-    matches_snapshot(&change_scene(Language::German), "hermes_chat_change_de");
 }
 
 #[test]
@@ -527,29 +274,6 @@ fn the_fallback_matches_its_snapshot() {
 #[test]
 fn the_off_hint_matches_its_snapshot() {
     matches_snapshot(&off_scene(), "hermes_chat_off_de");
-}
-
-#[test]
-fn the_tidy_confirmation_matches_its_snapshot() {
-    matches_snapshot(&tidy_confirmation_scene(), "hermes_chat_confirm_tidy_de");
-}
-
-#[test]
-fn the_typed_folder_confirmation_matches_its_snapshot() {
-    matches_snapshot(
-        &typed_folder_confirmation_scene(),
-        "hermes_chat_confirm_typed_folder_de",
-    );
-}
-
-#[test]
-fn the_meant_folder_question_matches_its_snapshot() {
-    matches_snapshot(&meant_folder_scene(), "hermes_chat_confirm_meant_folder_de");
-}
-
-#[test]
-fn the_which_folder_question_matches_its_snapshot() {
-    matches_snapshot(&which_folder_scene(), "hermes_chat_which_folder_de");
 }
 
 #[test]
@@ -580,7 +304,7 @@ fn the_ai_off_offer_matches_its_snapshot() {
 }
 
 #[test]
-fn the_levels_of_a_rule_match_their_snapshots() {
+fn the_levels_of_a_folder_match_their_snapshots() {
     for (lang, name) in [
         (Language::German, "hermes_chat_levels_de"),
         (Language::English, "hermes_chat_levels_en"),
@@ -826,28 +550,12 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
         &ctx,
         HermesChatMessage::FolderPicked(Some(downloads)),
     );
-    let label = app
-        .hermes_chat
-        .chips()
-        .iter()
-        .find(|chip| chip.reply == ChipReply::RoleTarget)
-        .unwrap()
-        .label
-        .clone();
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::ChipPressed {
-            label,
-            reply: ChipReply::RoleTarget,
-        },
-    );
+    model.set_status(LocalModelStatus::NotDownloaded);
     send(
         &mut app,
         &ctx,
         HermesChatMessage::Done(Box::new(ChatResult::Read(Ok(read_downloads())))),
     );
-    model.set_status(LocalModelStatus::NotDownloaded);
     type_and_submit(&mut app, &ctx, "test");
 
     let shown = visible_texts(&app).join("\n");

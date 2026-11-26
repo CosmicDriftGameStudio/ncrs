@@ -10,7 +10,7 @@
 
 // The CI runs `ui_tests` only on macOS, where the reference images were made.
 mod ui_tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use iced::Size;
     use iced_test::Simulator;
@@ -18,7 +18,7 @@ mod ui_tests {
         BranchInfo, ChangeKind, ChangedFile, CommitDetail, GraphRow, Log, LogCommit, RefKind,
         RefLabel, RefsOverview, WorktreeInfo,
     };
-    use ncrs_git_view::{update, view, Ctx, Message, State, ViewCtx};
+    use ncrs_git_view::{update, view, Ctx, Message, PaneWidths, State, ViewCtx};
     use ncrs_i18n::Language;
     use ncrs_ui_kit::format::DateFormat;
     use ncrs_ui_kit::git_rows::CommitColumns;
@@ -74,6 +74,7 @@ mod ui_tests {
             ahead: 0,
             behind: 0,
             merged: false,
+            ..BranchInfo::default()
         }
     }
 
@@ -130,6 +131,7 @@ mod ui_tests {
                 merged: false,
                 is_main: true,
                 is_current: true,
+                ..WorktreeInfo::default()
             }],
             ..RefsOverview::default()
         };
@@ -144,8 +146,11 @@ mod ui_tests {
             id: first.id,
             short: first.short,
             parents: Vec::new(),
-            author: first.author,
+            author: first.author.clone(),
             time: first.time,
+            author_time: first.time,
+            committer: first.author,
+            committer_time: first.time,
             message: message.to_owned(),
             files: vec![ChangedFile {
                 path: "src/engine.rs".to_owned(),
@@ -154,6 +159,7 @@ mod ui_tests {
                 added: 2,
                 removed: 2,
                 binary: false,
+                untracked: false,
             }],
         };
         drop(update(
@@ -201,6 +207,11 @@ mod ui_tests {
             date_format: DateFormat::Iso,
             window: size,
             columns: CommitColumns::STANDARD,
+            panes: PaneWidths::STANDARD,
+            home: Path::new("/Users/marc"),
+            keys: &ncrs_git_view::GitKeys::default(),
+            keymap: &ncrs_config::keymap::Keymap::default(),
+            pull_default: ncrs_git::PullStrategy::FastForwardOnly,
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {

@@ -2,19 +2,23 @@
 //! file with its line counts, and the lines of a diff.
 
 use iced::mouse::Interaction;
+use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke};
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, mouse_area, row, text, Row, Space};
-use iced::{alignment, Border, Color, Element, Length, Padding};
+use iced::widget::{button, container, mouse_area, responsive, row, text, Row, Space};
+use iced::{alignment, mouse, Color, Element, Length, Padding, Point, Rectangle, Renderer, Theme};
 
-use crate::format::{estimated_width, fit_end};
-use crate::git_mark::MODIFIED_ORANGE;
+use crate::format::{estimated_text_width, estimated_width, fit_end};
 use crate::palette::Palette;
-use crate::theme::{self, font_size, size, spacing};
-use crate::tree_list::{LABEL_LEAD, TREE_INDENT};
+use crate::theme::{self, font_size, git, size, spacing};
+use crate::tree_list::TREE_INDENT;
 
 const NUMBER_WIDTH: f32 = 44.0;
-const COUNT_WIDTH: f32 = 90.0;
+pub const COUNT_WIDTH: f32 = 90.0;
+const SIGN_WIDTH: f32 = 16.0;
 const WASH_ALPHA: f32 = 0.18;
+/// The hatching of the side that has no line: thin diagonals, one every 6 px.
+const HATCH_ALPHA: f32 = 0.22;
+const HATCH_STEP: f32 = 6.0;
 const DIMMED_ALPHA: f32 = 0.55;
 /// Room the scroll bar of the list takes from the message.
 const SCROLL_BAR_ROOM: f32 = 12.0;
@@ -116,29 +120,63 @@ pub fn drag_capture<'a, M: Clone + 'a>(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefChipKind {
+    /// The checked-out branch: filled, bold, with a tick.
+    Head,
+    /// A local branch.
     Branch,
     Remote,
     Tag,
 }
 
-fn chip_color(kind: RefChipKind, palette: &Palette) -> Color {
+fn ref_look(kind: RefChipKind) -> git::RefLook {
     match kind {
-        RefChipKind::Branch => palette.accent,
-        RefChipKind::Remote => palette.dim_text,
-        RefChipKind::Tag => palette.success,
+        RefChipKind::Head => git::RefLook::Head,
+        RefChipKind::Branch => git::RefLook::Local,
+        RefChipKind::Remote => git::RefLook::Remote,
+        RefChipKind::Tag => git::RefLook::Tag,
+    }
+}
+
+/// What a chip shows: the head carries a tick.
+fn chip_text(label: &str, kind: RefChipKind) -> String {
+    match kind {
+        RefChipKind::Head => format!("\u{2713} {label}"),
+        RefChipKind::Branch | RefChipKind::Remote | RefChipKind::Tag => label.to_owned(),
     }
 }
 
 /// A branch, remote branch or tag name on a commit.
 pub fn ref_chip<'a, M: 'a>(label: String, kind: RefChipKind, palette: &Palette) -> Element<'a, M> {
+    chip(label, kind, false, palette)
+}
+
+/// A chip on the chosen row: the row is filled in the accent, so the chip is outlined in its ink.
+fn chip<'a, M: 'a>(
+    label: String,
+    kind: RefChipKind,
+    on_chosen: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let font = if kind == RefChipKind::Head {
+        crate::APP_FONT_BOLD
+    } else {
+        crate::APP_FONT
+    };
     container(
-        text(label)
+        text(chip_text(&label, kind))
             .size(font_size::SMALL)
-            .color(chip_color(kind, palette))
+            .font(font)
             .wrapping(Wrapping::None),
     )
     .padding([0.0, spacing::XS])
-    .style(theme::chip(palette, false))
+    .style(git::ref_label(
+        palette,
+        if on_chosen {
+            git::RefLook::OnChosen
+        } else {
+            ref_look(kind)
+        },
+    ))
     .into()
 }
 
@@ -158,6 +196,8 @@ pub struct CommitRow<'a, M> {
     pub chosen: bool,
     /// A merge commit is drawn in the dim ink.
     pub dimmed: bool,
+    /// The checked-out commit: tinted in purple and bold.
+    pub is_head: bool,
     pub on_press: M,
 }
 
@@ -172,13 +212,13 @@ impl<M> std::fmt::Debug for CommitRow<'_, M> {
 /// pressed and dragged to change that column's width.
 pub fn commit_header<'a, M: Clone + 'a>(
     graph_width: f32,
-    labels: [&str; 4],
+    labels: [&str; 5],
     columns: CommitColumns,
     show_sha: bool,
     on_resize: Option<Box<dyn Fn(CommitColumn) -> M + 'a>>,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let [message, author, date, sha] = labels;
+    let [graph, message, author, date, sha] = labels;
     let label = |label: &str| {
         container(
             text(label.to_owned())
@@ -210,7 +250,13 @@ pub fn commit_header<'a, M: Clone + 'a>(
     };
     container(
         row![
-            container("").width(graph_width + size::COLUMN_GAP),
+            container(
+                text(graph.to_owned())
+                    .size(font_size::COLUMN_HEADER)
+                    .color(palette.dim_text)
+                    .wrapping(Wrapping::None)
+            )
+            .width(graph_width + size::COLUMN_GAP),
             label(message),
             cell(author, CommitColumn::Author),
             cell(date, CommitColumn::Date),
@@ -229,32 +275,45 @@ fn message_cell<'a, M: 'a>(
     message: &str,
     width: f32,
     ink: Color,
+    bold: bool,
+    on_chosen: bool,
     palette: &Palette,
 ) -> Element<'a, M> {
     let chips_width: f32 = chips
         .iter()
-        .map(|(label, _)| {
-            estimated_width(label, font_size::SMALL) + 2.0 * spacing::XS + spacing::XS
+        .map(|(label, kind)| {
+            estimated_width(&chip_text(label, *kind), font_size::SMALL)
+                + 2.0 * spacing::XS
+                + spacing::XS
         })
         .sum();
     let fitted = fit_end(message, width - chips_width, font_size::BODY);
-    let chip_row = Row::with_children(
-        chips
-            .into_iter()
-            .map(|(label, kind)| ref_chip(label, kind, palette)),
-    )
-    .spacing(spacing::XS);
-    row![
-        chip_row,
-        text(fitted)
-            .size(font_size::BODY)
-            .color(ink)
-            .wrapping(Wrapping::None)
-    ]
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center)
-    .width(Length::Fill)
-    .into()
+    // No empty row before the text: its gap would push the message right.
+    let chip_row = (!chips.is_empty()).then(|| {
+        Row::with_children(
+            chips
+                .into_iter()
+                .map(|(label, kind)| chip(label, kind, on_chosen, palette)),
+        )
+        .spacing(spacing::XS)
+    });
+    Row::new()
+        .extend(chip_row.map(Element::from))
+        .push(
+            text(fitted)
+                .size(font_size::BODY)
+                .font(if bold {
+                    crate::APP_FONT_BOLD
+                } else {
+                    crate::APP_FONT
+                })
+                .color(ink)
+                .wrapping(Wrapping::None),
+        )
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 pub fn commit_row<'a, M: Clone + 'a>(
@@ -291,6 +350,8 @@ pub fn commit_row<'a, M: Clone + 'a>(
         &commit.message,
         commit.message_width,
         ink,
+        commit.is_head,
+        commit.chosen,
         palette,
     );
     let line = row![
@@ -315,7 +376,7 @@ pub fn commit_row<'a, M: Clone + 'a>(
     .width(Length::Fill)
     .height(size::ROW)
     .padding(0.0)
-    .style(theme::menu_item(palette, commit.chosen))
+    .style(git::graph_row(palette, commit.chosen, commit.is_head))
     .into()
 }
 
@@ -415,11 +476,11 @@ fn wash(tone: DiffTone, palette: &Palette) -> Option<Color> {
     })
 }
 
-fn number_text<'a, M: 'a>(number: Option<u32>, palette: &Palette) -> Element<'a, M> {
+pub fn number_text<'a, M: 'a>(number: Option<u32>, ink: Color) -> Element<'a, M> {
     container(
         text(number.map(|count| count.to_string()).unwrap_or_default())
             .size(font_size::SMALL)
-            .color(palette.dim_text),
+            .color(ink),
     )
     .width(NUMBER_WIDTH)
     .padding([0.0, spacing::XS])
@@ -446,13 +507,98 @@ fn washed<'a, M: 'a>(
         .into()
 }
 
-fn code_text<'a, M: 'a>(content: String, palette: &Palette) -> Element<'a, M> {
-    text(content)
-        .font(crate::APP_FONT)
-        .size(font_size::FILE)
-        .color(palette.text)
-        .wrapping(Wrapping::None)
-        .into()
+/// `content` cut at the end with `…` to fit `width_px` of the monospace font.
+fn fit_code(content: &str, width_px: f32) -> String {
+    let room = estimated_text_width(1, font_size::FILE);
+    let fits = (width_px / room).floor().max(0.0) as usize;
+    if content.chars().count() <= fits {
+        return content.to_owned();
+    }
+    let mut cut: String = content.chars().take(fits.saturating_sub(1)).collect();
+    if fits > 0 {
+        cut.push('…');
+    }
+    cut
+}
+
+/// The line of a diff: it takes the room that is left and ends in `…` where it is cut.
+pub fn code_text<'a, M: 'a>(content: String, ink: Color) -> Element<'a, M> {
+    responsive(move |bounds| {
+        text(fit_code(&content, bounds.width))
+            .font(crate::APP_FONT)
+            .size(font_size::FILE)
+            .color(ink)
+            .height(Length::Fill)
+            .align_y(alignment::Vertical::Center)
+            .wrapping(Wrapping::None)
+            .into()
+    })
+    .width(Length::Fill)
+    .height(size::ROW)
+    .into()
+}
+
+/// The column of the sign: `+` for a line that is new, `−` for one that is gone.
+fn sign_text<'a, M: 'a>(tone: DiffTone, palette: &Palette) -> Element<'a, M> {
+    let (sign, ink) = match tone {
+        DiffTone::Added => ("+", palette.success),
+        DiffTone::Removed => ("\u{2212}", palette.error),
+        _ => ("", palette.dim_text),
+    };
+    container(
+        text(sign)
+            .font(crate::APP_FONT_BOLD)
+            .size(font_size::FILE)
+            .color(ink),
+    )
+    .width(SIGN_WIDTH)
+    .align_x(alignment::Horizontal::Center)
+    .into()
+}
+
+#[derive(Debug)]
+struct Hatch {
+    color: Color,
+}
+
+impl<M> canvas::Program<M> for Hatch {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let mut left = -bounds.height;
+        while left < bounds.width {
+            frame.stroke(
+                &Path::line(
+                    Point::new(left, bounds.height),
+                    Point::new(left + bounds.height, 0.0),
+                ),
+                Stroke::default().with_color(self.color).with_width(1.0),
+            );
+            left += HATCH_STEP;
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
+/// The side of a diff row that has no line: hatched, so it reads as "nothing here".
+fn hatched<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
+    Canvas::new(Hatch {
+        color: Color {
+            a: HATCH_ALPHA,
+            ..palette.dim_text
+        },
+    })
+    .width(Length::FillPortion(1))
+    .height(size::ROW)
+    .into()
 }
 
 /// One side of a side by side diff: a line number and the line.
@@ -462,11 +608,18 @@ pub fn diff_cell<'a, M: 'a>(
     tone: DiffTone,
     palette: &Palette,
 ) -> Element<'a, M> {
+    if tone == DiffTone::Empty {
+        return hatched(palette);
+    }
     washed(
-        row![number_text(number, palette), code_text(content, palette)]
-            .spacing(spacing::XS)
-            .align_y(alignment::Vertical::Center)
-            .into(),
+        row![
+            number_text(number, palette.dim_text),
+            sign_text(tone, palette),
+            code_text(content, palette.text)
+        ]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .into(),
         tone,
         Length::FillPortion(1),
         palette,
@@ -483,9 +636,10 @@ pub fn diff_unified_line<'a, M: 'a>(
 ) -> Element<'a, M> {
     washed(
         row![
-            number_text(old, palette),
-            number_text(new, palette),
-            code_text(content, palette)
+            number_text(old, palette.dim_text),
+            number_text(new, palette.dim_text),
+            sign_text(tone, palette),
+            code_text(content, palette.text)
         ]
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center)
@@ -511,104 +665,21 @@ pub fn diff_hunk_header<'a, M: 'a>(content: String, palette: &Palette) -> Elemen
     .into()
 }
 
-/// Room of a worktree row: the name and, under it, the branch.
-pub const WORKTREE_ROW_HEIGHT: f32 = 44.0;
-
-/// A worktree in the sidebar of the Git view.
-#[derive(Debug)]
-pub struct WorktreeRow<M> {
-    pub depth: usize,
-    pub name: String,
-    /// "WIP 7": set while the worktree has unsaved changes.
-    pub wip: Option<String>,
-    /// Commits ahead of and behind the main branch; `None` for the main
-    /// worktree itself.
-    pub distance: Option<(u32, u32)>,
-    /// The branch and what is to say about it, in the dim ink.
-    pub detail: String,
-    pub chosen: bool,
-    pub on_press: M,
-}
-
-/// The name, a chip with the unsaved changes and the distance to main on one
-/// line, the branch and its state dimmed under it.
-pub fn worktree_row<'a, M: Clone + 'a>(
-    worktree: WorktreeRow<M>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let (ink, dim) = if worktree.chosen {
-        (palette.cursor_text, palette.cursor_text)
-    } else {
-        (palette.text, palette.dim_text)
-    };
-    let behind_ink = |behind: u32| {
-        if worktree.chosen {
-            palette.cursor_text
-        } else if behind == 0 {
-            palette.dim_text
-        } else {
-            MODIFIED_ORANGE
-        }
-    };
-    let chip_ink = if worktree.chosen {
-        palette.cursor_text
-    } else {
-        MODIFIED_ORANGE
-    };
-    let small = |content: String, color: Color| {
-        text(content)
-            .size(font_size::SMALL)
-            .color(color)
-            .wrapping(Wrapping::None)
-    };
-    let first = row![text(worktree.name)
-        .size(font_size::BODY)
-        .color(ink)
-        .wrapping(Wrapping::None),]
-    .extend(worktree.wip.map(|wip| {
-        container(small(wip, chip_ink))
-            .padding([0.0, spacing::XS])
-            .style(move |_theme| container::Style {
-                border: Border {
-                    color: chip_ink,
-                    width: spacing::BORDER_WIDTH,
-                    radius: theme::radius::CORNER.into(),
-                },
-                ..container::Style::default()
-            })
-            .into()
-    }))
-    .push(container("").width(Length::Fill))
-    .extend(worktree.distance.map(|(ahead, behind)| {
+/// A dim line under a diff column, such as "End of file", set where the code
+/// of the lines above starts. `Fill` portion 1, so two sit side by side.
+pub fn diff_note<'a, M: 'a>(content: String, palette: &Palette) -> Element<'a, M> {
+    container(
         row![
-            small(
-                format!("\u{2191}{ahead}"),
-                if worktree.chosen {
-                    palette.cursor_text
-                } else {
-                    palette.success
-                }
-            ),
-            small(format!("\u{2193}{behind}"), behind_ink(behind)),
+            Space::new().width(NUMBER_WIDTH + SIGN_WIDTH + 2.0 * spacing::XS),
+            text(content)
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
+                .wrapping(Wrapping::None),
         ]
-        .spacing(spacing::XS)
-        .into()
-    }))
-    .spacing(spacing::XS)
-    .align_y(alignment::Vertical::Center);
-    let content = container(column![first, small(worktree.detail, dim)].spacing(2.0))
-        .padding(Padding {
-            left: spacing::CELL_PADDING_X + LABEL_LEAD + TREE_INDENT * worktree.depth as f32,
-            right: spacing::CELL_PADDING_X,
-            ..Padding::ZERO
-        })
-        .clip(true)
-        .center_y(Length::Fill);
-    button(content)
-        .on_press(worktree.on_press)
-        .width(Length::Fill)
-        .height(WORKTREE_ROW_HEIGHT)
-        .padding(0.0)
-        .style(theme::menu_item(palette, worktree.chosen))
-        .into()
+        .align_y(alignment::Vertical::Center),
+    )
+    .height(size::ROW)
+    .center_y(size::ROW)
+    .width(Length::FillPortion(1))
+    .into()
 }

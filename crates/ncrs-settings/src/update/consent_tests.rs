@@ -72,6 +72,7 @@ impl World {
             file_list_tags: &self.tags,
             hermes_on: true,
             usage_log: None,
+            git_shortcuts: Vec::new(),
             services: services(),
         };
         let (task, actions) = update(&mut self.settings, Message::Settings(message), &ctx);

@@ -122,6 +122,9 @@ confidence-threshold = 0.93
 exceptions = [
     { allow = ["BSL-1.0"], crate = "clipboard-win" },
     { allow = ["BSL-1.0"], crate = "error-code" },
+    # Hashing inside notify 9 (file watching), on every platform. BSL-1.0
+    # only asks that the license text travels with the source.
+    { allow = ["BSL-1.0"], crate = "xxhash-rust" },
     # The Mozilla root certificates the theme download trusts. The license
     # covers data, not code, and asks only that its text travels with it.
     { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },

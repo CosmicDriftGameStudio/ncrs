@@ -6,7 +6,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, mouse_area, row, text, Row as WidgetRow};
 use iced::{alignment, Element, Length, Size};
 
-use crate::key_bindings::{KeyBindings, Mode, Notice, Row, VISIBLE_ROWS};
+use crate::key_bindings::{GitShortcut, KeyBindings, Mode, Notice, Row, VISIBLE_ROWS};
 use crate::message::KeyBindingsMessage;
 use ncrs_config::keymap::{binding_label, Binding, KeyRefusal, MAX_KEYS_PER_ACTION};
 use ncrs_i18n::fill_template;
@@ -63,19 +63,28 @@ pub fn view<'a>(
         palette,
     );
     let offset = dialog.offset();
-    let rows: Vec<Element<'a, Message>> = dialog
+    let git_shown = dialog.git_shortcuts_shown();
+    let actions = dialog
         .rows()
         .iter()
         .enumerate()
         .skip(offset)
-        .take(VISIBLE_ROWS)
-        .map(|(index, entry)| action_row(dialog, index, entry, action_width(window), lang, palette))
-        .collect();
+        .map(|(index, entry)| {
+            action_row(dialog, index, entry, action_width(window), lang, palette)
+        });
+    let first_git = dialog.rows().len();
+    let git = git_shown
+        .iter()
+        .enumerate()
+        .map(|(place, shortcut)| (first_git + place, *shortcut))
+        .skip_while(|(index, _)| *index < offset)
+        .map(|(index, shortcut)| git_row(dialog, index, shortcut, lang, palette));
+    let rows: Vec<Element<'a, Message>> = actions.chain(git).take(VISIBLE_ROWS).collect();
     let list = kit::scroll_list(
         header(lang, palette),
         rows,
         ListView {
-            len: dialog.rows().len(),
+            len: dialog.listed_len(),
             visible: VISIBLE_ROWS,
             offset,
         },
@@ -83,6 +92,9 @@ pub fn view<'a>(
         palette,
     );
     let mut content = column![field, list].spacing(spacing::M);
+    if !git_shown.is_empty() {
+        content = content.push(kit::dim(lang.text(Msg::KeyBindingsGitNote), palette));
+    }
     if let Some(line) = status(dialog, lang, palette) {
         content = content.push(line);
     }
@@ -104,6 +116,55 @@ pub fn view<'a>(
         Mode::Clash(_) | Mode::ResetAllQuestion => frame,
     }
     .into_element()
+}
+
+/// A Git action, read only.
+fn git_row<'a>(
+    dialog: &KeyBindings,
+    index: usize,
+    shortcut: &GitShortcut,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let selected = index == dialog.cursor();
+    let (color, dim_color) = if selected {
+        (palette.cursor_text, palette.cursor_text)
+    } else {
+        (palette.text, palette.dim_text)
+    };
+    let cell = |content: String, ink, portion: u16| {
+        container(
+            text(content)
+                .size(font_size::ROW)
+                .color(ink)
+                .wrapping(Wrapping::None),
+        )
+        .width(Length::FillPortion(portion))
+        .clip(true)
+    };
+    let content = row![
+        cell(shortcut.label.clone(), color, ACTION_PORTION),
+        cell(
+            lang.text(Msg::KeyBindingsGitHeading).to_owned(),
+            dim_color,
+            GROUP_PORTION
+        ),
+        container(kit::key_cap_in_row(&shortcut.keys, selected, palette))
+            .width(Length::FillPortion(KEYS_PORTION))
+            .clip(true),
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center);
+    kit::list_row(
+        content.into(),
+        KeyBindingsMessage::Select {
+            row: index,
+            key: None,
+        },
+        selected,
+        true,
+        palette,
+    )
 }
 
 fn header<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {

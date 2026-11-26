@@ -1,25 +1,30 @@
-//! The "filing" scene of the trailer: the real Filing tab, fed step by step the way
-//! the planning thread feeds it (a plan published on the run, then a tick), with a
-//! scripted plan instead of the model. Every name here is made up.
+//! The "filing" scene of the trailer: the real Filing tab, fed the way the planning
+//! feeds it (what the index knows, the reading of the rest, then the whole plan), with
+//! scripted rows instead of the rules. Every name here is made up.
 
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, PoisonError};
+use std::sync::Arc;
 
-use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveRun, LiveState};
-use ncrs_index::ContentHash;
+use ncrs_filing::sorting::RowState;
+use ncrs_filing_view::decide::Decided;
+use ncrs_filing_view::Row;
+use ncrs_index::RuleId;
 
 use super::{Focus, Recorder};
 use crate::messages::Message;
+use crate::screenshot_scenes::{
+    filing_already_there, filing_is_reading, filing_place, filing_row, filing_session,
+};
 use crate::trailer_data::dense_showcase_app;
 
 const SOURCE: &str = "/Users/alex/Scans";
 const TARGET: &str = "/Users/alex/Documents";
 
-/// One new picture per file that is looked at.
+/// One new picture per file that is read.
 const SECONDS_PER_FILE: f32 = 0.24;
-/// The files being looked at at the same moment.
-const LOOKING_AT_ONCE: usize = 2;
+/// The index knows these files already, the others are read.
+const KNOWN: usize = 18;
 const STRIDE: usize = 37;
 
 /// Both halves of the tab and the bar.
@@ -103,7 +108,7 @@ static FOLDERS: [Folder; 6] = [
 ];
 
 const DUPLICATES: usize = 7;
-const WITHOUT_FOLDER: usize = 5;
+const WITHOUT_RULE: usize = 5;
 const UNREADABLE: usize = 2;
 
 /// What the planning decides for a file, before the files are put in the order
@@ -117,7 +122,7 @@ enum Fate {
     Duplicate {
         folder: &'static Folder,
     },
-    NoFolder,
+    NoRule,
     Unreadable,
 }
 fn fates() -> Vec<Fate> {
@@ -137,7 +142,7 @@ fn fates() -> Vec<Fate> {
             .take(DUPLICATES)
             .map(|folder| Fate::Duplicate { folder }),
     );
-    fates.extend(std::iter::repeat_n(Fate::NoFolder, WITHOUT_FOLDER));
+    fates.extend(std::iter::repeat_n(Fate::NoRule, WITHOUT_RULE));
     fates.extend(std::iter::repeat_n(Fate::Unreadable, UNREADABLE));
     fates
 }
@@ -154,7 +159,7 @@ fn source_name(index: usize) -> String {
 }
 
 /// The files in the order of the source: a fixed shuffle of the fates.
-fn plan_files() -> Vec<(PathBuf, LiveState)> {
+fn plan_rows(rules: &[RuleId]) -> Vec<Row> {
     let fates = fates();
     let total = fates.len();
     let mut shuffled: Vec<(usize, Fate)> = fates
@@ -170,94 +175,64 @@ fn plan_files() -> Vec<(PathBuf, LiveState)> {
             let from = source_name(index);
             let extension = if from.ends_with(".jpg") { "jpg" } else { "pdf" };
             let state = match fate {
-                Fate::Filed { folder, name } => LiveState::Filed {
-                    folder: PathBuf::from(folder.path),
-                    name: format!("{name}.{extension}"),
-                    unsure: false,
-                },
-                Fate::Duplicate { folder } => LiveState::AlreadyThere {
-                    at: PathBuf::from(folder.path).join(folder.already),
-                },
-                Fate::NoFolder => LiveState::NoFolder,
-                Fate::Unreadable => LiveState::Unreadable,
+                Fate::Filed { folder, name } => {
+                    let rule = FOLDERS
+                        .iter()
+                        .zip(rules)
+                        .find(|(other, _)| other.path == folder.path)
+                        .map(|(_, rule)| *rule)
+                        .expect("every folder has its rule");
+                    filing_place(
+                        rule,
+                        PathBuf::from(folder.path).join(format!("{name}.{extension}")),
+                    )
+                }
+                Fate::Duplicate { folder } => filing_already_there(
+                    PathBuf::from(TARGET).join(folder.path).join(folder.already),
+                ),
+                Fate::NoRule => RowState::NoRule,
+                Fate::Unreadable => RowState::NoText,
             };
-            (PathBuf::from(from), state)
+            filing_row(&PathBuf::from(SOURCE), index, PathBuf::from(from), state)
         })
         .collect()
 }
 
-fn plan_at(
-    script: &[(PathBuf, LiveState)],
-    resolved: usize,
-    finished: bool,
-    source: &std::path::Path,
-    target: &std::path::Path,
-) -> LivePlan {
-    let files = script
-        .iter()
-        .enumerate()
-        .map(|(index, (from, fate))| LiveFile {
-            from: from.clone(),
-            hash: Some(ContentHash([1; 32])),
-            state: if index < resolved {
-                fate.clone()
-            } else if index < resolved + LOOKING_AT_ONCE {
-                LiveState::Looking
-            } else {
-                LiveState::Waiting
-            },
-            by_user: false,
-            placed_by: None,
-        })
-        .collect();
-    LivePlan {
-        source_root: source.to_path_buf(),
-        target_root: target.to_path_buf(),
-        files,
-        done: finished,
-        folder_choice_unsupported: false,
-    }
-}
-
-/// Puts the plan on the run, as the planning thread does.
-fn publish(run: &LiveRun, plan: LivePlan) {
-    *run.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some(plan);
-    run.version.fetch_add(1, Ordering::Release);
-}
-
 pub(in crate::trailer) fn filing(recorder: &mut Recorder) {
     recorder.begin_scene("filing", "Hermes tidies up", "Scans in, folders out");
-    let script = plan_files();
-    let run = Arc::new(LiveRun::default());
-    let session = ncrs_filing_view::Session::new(
-        PathBuf::from(SOURCE),
-        PathBuf::from(TARGET),
-        Arc::clone(&run),
-    );
-    let (id, source, target) = (session.id, session.source.clone(), session.target.clone());
+    let (mut session, rules) =
+        filing_session(SOURCE, TARGET, FOLDERS.iter().map(|folder| folder.path));
+    let rows = plan_rows(&rules);
+    session.rows = rows.clone();
+    session.planned = true;
+    filing_is_reading(&mut session, KNOWN);
+    let (id, progress) = (session.id, Arc::clone(&session.progress));
+    let decided = Decided {
+        rows,
+        waiting: Vec::new(),
+        targets: session.targets.clone(),
+        rule_names: session.rule_names.clone(),
+        trash_can_restore: session.trash_can_restore,
+    };
     recorder.show_app(
         dense_showcase_app().showing_filing_for_test(ncrs_filing_view::State {
             session: Some(session),
         }),
     );
-    let tick = || Message::FilingView(ncrs_filing_view::Message::Tick);
 
     recorder.aim(FILING_TAB);
-    recorder.frame(0.7);
+    recorder.frame(1.4);
 
-    publish(&run, plan_at(&script, 0, false, &source, &target));
-    recorder.send(tick());
-    recorder.frame(0.7);
-
-    for resolved in 1..=script.len() {
-        publish(&run, plan_at(&script, resolved, false, &source, &target));
-        recorder.send(tick());
+    for read in 1..=progress.total() {
+        progress.done.store(read, Ordering::Relaxed);
+        recorder.send(Message::FilingView(ncrs_filing_view::Message::Tick));
         recorder.frame(SECONDS_PER_FILE);
     }
 
-    publish(&run, plan_at(&script, script.len(), true, &source, &target));
-    recorder.send(Message::FilingView(
-        ncrs_filing_view::Message::PlanFinished(id, Ok(())),
-    ));
+    recorder.send(Message::FilingView(ncrs_filing_view::Message::Planned {
+        session: id,
+        read: true,
+        result: Ok(Box::new(decided)),
+    }));
     recorder.frame(2.6);
 }

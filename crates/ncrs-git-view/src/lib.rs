@@ -3,23 +3,38 @@
 
 pub mod action;
 pub mod actions;
+pub mod cleanup;
+pub mod commit_menu;
+pub mod credentials;
 pub mod ctx;
 mod diff_layout;
+pub mod file_views;
+pub mod git_keys;
 mod handlers;
 pub mod job;
 pub mod keys;
 mod load;
 pub mod message;
+mod navigate;
+pub mod panes;
+pub mod picker;
 pub mod shortcuts;
 pub mod snapshot;
 pub mod state;
+mod sync_handlers;
+pub mod sync_menu;
 pub mod update;
 pub mod view;
+mod wip;
 
 pub use action::Action;
+pub use cleanup::CleanupMessage;
 pub use ctx::{Ctx, ViewCtx};
-pub use keys::git_view_key;
+pub use git_keys::{GitKeys, GitKeysError, KeyOverride};
+pub use keys::{commit_field_key, git_view_key, KeyContext};
 pub use message::Message;
+pub use panes::{PaneWidths, Split};
+pub use picker::{PickerKind, RepoEntry};
 pub use shortcuts::{commands, message_of_command};
 pub use state::State;
 pub use update::{open, update};
@@ -32,3 +47,5 @@ pub fn actions_available(state: &State) -> bool {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wip_tests;

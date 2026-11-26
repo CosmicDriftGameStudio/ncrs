@@ -1,5 +1,5 @@
-//! Sentences typed freely: an order for every area, file names from parts of
-//! the document, and a follow-up that only refines the sentence before.
+//! Sentences typed freely: small talk, sentences nobody understands, and paths
+//! that are none.
 
 mod common;
 
@@ -58,25 +58,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unusable_sentence_is_asked_about_once_and_the_next_gets_the_fallback() {
-        let mut talk = archive_talk();
-        talk.open();
-        let other = r#"{"intent":"other"}"#;
-
-        talk.type_text_understood("hmmm", other);
-        talk.type_text_understood("noch mal hmmm", other);
-
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatNotUnderstoodFollowUp, &[])]
-        );
-        assert!(has_chip(&talk, &ChipReply::Cancel));
-
-        talk.type_text_understood("und wieder hmmm", other);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
-    }
-
-    #[test]
     fn small_talk_after_an_unusable_sentence_is_answered_as_small_talk() {
         let mut talk = archive_talk();
         talk.open();
@@ -92,8 +73,8 @@ mod tests {
         let mut talk = archive_talk();
         talk.open();
         talk.type_text_understood(
-            "Räum Nirgendwo auf",
-            r#"{"intent":"tidy_folder","source":"Nirgendwo"}"#,
+            "öffne Nirgendwo",
+            r#"{"intent":"open_folder","folder":"Nirgendwo"}"#,
         );
         assert!(has_chip(&talk, &ChipReply::PickFolder));
 
@@ -109,14 +90,16 @@ mod tests {
         talk.open();
         talk.model
             .push_levels(Ok(Levels::from_pattern("{year}/").unwrap()));
-        talk.send(Message::ChangeArea {
-            folder: talk.path("archive"),
-            area: "Alfa".to_owned(),
-        });
+        talk.send(Message::FolderPicked(Some(talk.path("archive/Alfa"))));
 
         talk.type_text("/ hallo, was geht");
 
-        assert!(talk.state.pending_resolve().is_none());
-        assert!(!talk.last_texts()[0].contains("finde ich nicht"));
+        let sentences: Vec<String> = talk
+            .model
+            .revised()
+            .into_iter()
+            .map(|(_, sentence)| sentence)
+            .collect();
+        assert_eq!(sentences, vec!["/ hallo, was geht".to_owned()]);
     }
 }

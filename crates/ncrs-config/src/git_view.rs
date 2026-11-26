@@ -9,6 +9,9 @@ pub struct GitViewSettings {
     pub author_width: Option<u16>,
     pub date_width: Option<u16>,
     pub sha_width: Option<u16>,
+    /// The panes of the Git tab, left and right.
+    pub sidebar_width: Option<u16>,
+    pub detail_width: Option<u16>,
     /// The folded groups of each repository, by the folder of its root.
     pub folded: BTreeMap<String, Vec<String>>,
 }

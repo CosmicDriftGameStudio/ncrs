@@ -1,38 +1,17 @@
 use super::*;
 
 /// A rule a list of filing locations breaks. Indices point into that list.
+// Goes with the old filing path: the new sources and targets pause instead
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilingRuleViolation {
-    InboxAsTarget {
-        index: usize,
-    },
-    SecondTarget {
-        index: usize,
-    },
     /// Same folder, or one inside the other.
-    Overlap {
-        earlier: usize,
-        later: usize,
-    },
+    Overlap { earlier: usize, later: usize },
 }
 
 /// The rules every list of locations obeys, in the config and in the setup
 /// alike. Paths are compared as they are: the config compares the spelling,
 /// the setup canonical paths.
 pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRuleViolation> {
-    let mut target_seen = false;
-    for (index, location) in locations.iter().enumerate() {
-        if !location.is_target {
-            continue;
-        }
-        if location.mode == LocationMode::Inbox {
-            return Err(FilingRuleViolation::InboxAsTarget { index });
-        }
-        if target_seen {
-            return Err(FilingRuleViolation::SecondTarget { index });
-        }
-        target_seen = true;
-    }
     for (later, later_location) in locations.iter().enumerate() {
         let overlapping = locations.iter().take(later).position(|earlier_location| {
             lies_within(&later_location.path, &earlier_location.path)
@@ -47,7 +26,7 @@ pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRule
 
 /// `Path::starts_with`, except that on macOS and Windows, whose default
 /// volumes ignore case, `~/Archive` and `~/archive` are the same folder.
-fn lies_within(path: &Path, base: &Path) -> bool {
+pub fn lies_within(path: &Path, base: &Path) -> bool {
     let mut components = path.components();
     base.components().all(|wanted| {
         components.next().is_some_and(|component| {
@@ -90,30 +69,9 @@ impl fmt::Display for FilingWriteError {
     }
 }
 
-/// Turns the filing module on and replaces its locations in the config at
-/// `path`, keeping every other line, comment and section as written. Returns
-/// the config read back from disk.
-pub fn write_filing_locations(
-    path: &Path,
-    locations: &[FilingLocation],
-) -> Result<Config, FilingWriteError> {
-    write_filing_locations_with_home(path, locations, home_from_env().as_deref())
-}
-
-pub fn write_filing_locations_with_home(
-    path: &Path,
-    locations: &[FilingLocation],
-    home: Option<&Path>,
-) -> Result<Config, FilingWriteError> {
-    check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
-    write_edited(path, home, |source| {
-        with_filing_locations(source, path, locations)
-    })
-}
-
 /// Replaces the read folders in the config at `path`, keeping every other
-/// line as written; unlike [`write_filing_locations`] it does not turn Hermes
-/// or its AI on, and an empty list is fine. Returns the config read back.
+/// line as written; it does not turn Hermes or its AI on, and an empty list is
+/// fine. Returns the config read back.
 pub fn write_read_folders(
     path: &Path,
     locations: &[FilingLocation],
@@ -128,7 +86,7 @@ pub fn write_read_folders_with_home(
 ) -> Result<Config, FilingWriteError> {
     check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
     write_edited(path, home, |source| {
-        with_read_folders(source, path, locations)
+        with_read_folders(source, path, locations, home)
     })
 }
 

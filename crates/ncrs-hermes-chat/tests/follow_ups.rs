@@ -7,11 +7,10 @@ mod common;
 mod tests {
 
     use crate::common::{letter, say, Talk};
+    use ncrs_ai::Levels;
     use ncrs_hermes_chat::{Action, ChipReply, Entry, Part};
     use ncrs_i18n::Msg;
     use ncrs_intake::test_archive::test_archive;
-
-    const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
 
     fn archive_talk() -> Talk {
         let dir = tempfile::tempdir().unwrap();
@@ -89,14 +88,18 @@ mod tests {
             .unwrap()
             .set_document_text(id, "Rechnung")
             .unwrap();
+        for _ in 0..2 {
+            talk.model
+                .push_levels(Ok(Levels::from_pattern("{year}/").unwrap()));
+        }
         talk.press(&ChipReply::Folder(talk.path("archive")));
+        let texts = all_texts(&talk);
         assert!(
-            talk.last_texts().contains(&say(
+            texts.contains(&say(
                 Msg::HermesChatReadingAiProgress,
                 &[("done", "0"), ("total", "1")]
             )),
-            "{:?}",
-            talk.last_texts()
+            "{texts:?}"
         );
     }
 
@@ -104,7 +107,9 @@ mod tests {
     fn a_typed_path_of_an_existing_folder_is_taken_as_a_folder_not_as_a_sentence() {
         let mut talk = archive_talk();
         talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
+        // Past the greeting, no folder is asked for any more.
+        talk.type_text_understood("hallo", r#"{"intent":"smalltalk"}"#);
+        talk.press(&ChipReply::IntentTidy);
         std::fs::create_dir_all(talk.path("elsewhere")).unwrap();
         let typed = talk.path("elsewhere").to_string_lossy().into_owned();
         talk.type_text(&typed);
@@ -119,63 +124,8 @@ mod tests {
             .into_owned();
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", &name)])]
+            vec![say(Msg::HermesChatUnknownPathConfirm, &[("name", &name)])]
         );
-    }
-
-    #[test]
-    fn a_single_target_is_asked_for_too_so_new_folder_and_per_file_are_reachable() {
-        let mut talk = small_talk();
-        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
-        talk.press(&ChipReply::ConfirmTidy);
-        let archive = ChipReply::Folder(talk.path("archive"));
-        let chips = talk.state.chips().to_vec();
-        assert_eq!(chips.len(), 3, "{:?}", talk.labels());
-        assert_eq!(chips[0].reply, archive);
-        assert!(chips[0].primary);
-        assert_eq!(chips[1].reply, ChipReply::NewTarget);
-        assert_eq!(chips[2].reply, ChipReply::DecidePerFile);
-    }
-
-    #[test]
-    fn always_on_a_watched_inbox_says_what_happens_and_asks_for_the_continuous_mark() {
-        let mut talk = small_talk();
-        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        talk.press(&ChipReply::Always);
-        assert!(
-            matches!(
-                talk.actions.as_slice(),
-                [Action::OpenFiling {
-                    watch_source: true,
-                    ..
-                }]
-            ),
-            "{:?}",
-            talk.actions
-        );
-        assert!(all_texts(&talk).contains(&say(Msg::HermesChatAlwaysSet, &[("folder", "inbox")])));
-    }
-
-    #[test]
-    fn the_folder_to_tidy_is_shown_from_home_not_as_the_resolved_path() {
-        let mut talk = small_talk();
-        talk.write("home/Downloads/x.txt", "x");
-        talk.type_text_understood(
-            "Räum Downloads auf",
-            r#"{"intent":"tidy_folder","source":"Downloads"}"#,
-        );
-        let mention = talk
-            .last_parts()
-            .iter()
-            .find_map(|part| match part {
-                Part::Folder(mention) => Some(mention.clone()),
-                _ => None,
-            })
-            .expect("a folder mention");
-        assert_eq!(mention.name, "Downloads");
-        assert_eq!(mention.path, "~/Downloads");
     }
 
     #[test]
@@ -186,10 +136,10 @@ mod tests {
             "pack alle Rechnungen nach Alt",
             r#"{"intent":"bulk_move","target":"Alt"}"#,
         );
-        assert!(
-            replies(&talk).contains(&ChipReply::IntentSearch),
-            "{:?}",
-            talk.labels()
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSortHint, &[])]);
+        assert_eq!(
+            replies(&talk),
+            vec![ChipReply::OpenSort(None), ChipReply::OpenRuleForm]
         );
         talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatUndoNone, &[])]);
@@ -199,10 +149,7 @@ mod tests {
             talk.labels()
         );
         assert!(!replies(&talk).contains(&ChipReply::IntentUndo));
-        assert!(talk
-            .actions
-            .iter()
-            .all(|action| *action != Action::OpenSearch));
+        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
     }
 
     #[test]

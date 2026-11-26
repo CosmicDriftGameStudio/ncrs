@@ -1,27 +1,25 @@
 //! Typed sentences: the local language model names what the user wants, and
 //! Hermes asks before it does anything about it.
 
-use std::path::PathBuf;
-
 use iced::Task;
 use ncrs_ai::{
-    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, ModelProblem, Schedule,
-    Transfer as SaidTransfer, LOCAL_MODEL,
+    ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, ModelProblem, EVERY_AREA, LOCAL_MODEL,
 };
 use ncrs_i18n::Msg;
-use ncrs_index::Transfer;
 use ncrs_ui_kit::format;
 
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
-use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
-use crate::texts::{fill, problem_text, shown_folder, text};
+use crate::named_folders::{self, Purpose};
+use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Thinking, Unsent};
+use crate::texts::{fill, problem_text, text};
+use crate::undo;
 use crate::update::{
-    batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, hermes, open_thread, say, say_failed, say_model_failed, say_off, search_not_yet,
+    ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
+    handle_reply, open_thread, say, say_failed, say_model_failed, say_off, search_not_yet,
+    sort_hint,
 };
-use crate::{follow_up, undo};
 
 /// The question the newest bubble of Hermes asks and its buttons. Read before
 /// the bubble of the user clears them.
@@ -43,6 +41,8 @@ pub fn asked(state: &State) -> Asked {
                 | ChipReply::IntentStructure
                 | ChipReply::IntentUndo
                 | ChipReply::PickFolder
+                | ChipReply::OpenSort(_)
+                | ChipReply::OpenRuleForm
         )
     });
     match last_text {
@@ -146,12 +146,6 @@ fn think(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked, loaded: bool) 
         message: typed.to_owned(),
         question,
         previous_search: None,
-        previous_request: state
-            .session
-            .previous_request
-            .as_ref()
-            .and_then(intent_json),
-        previous_message: state.session.previous_message.clone(),
     };
     let line = if loaded {
         Msg::HermesChatThinking
@@ -208,20 +202,13 @@ pub fn understood(
 ) -> Option<Action> {
     let thinking = state.thinking.take()?;
     drop_working(state);
+    if !matches!(result, Ok(ChatIntent::Answer { .. })) {
+        // The talk moves on, and the button for the confirmed levels is gone.
+        state.session.rule = None;
+    }
     match result {
-        Ok(intent) => {
-            if follow_up::answered_misread(state, ctx, &intent) {
-                return None;
-            }
-            follow_up::remember(state, &intent, &thinking.turn.message);
-            act_on(state, ctx, intent, &thinking.asked, &thinking.turn.message)
-        }
+        Ok(intent) => act_on(state, ctx, intent, &thinking.asked),
         Err(problem) => {
-            // A text too long for the model must not be sent again as the
-            // "previous message" of every later turn.
-            if problem == ModelProblem::TooLong {
-                follow_up::forget(state);
-            }
             if gate(state, ctx, None) == Gate::Usable {
                 say(state, problem_text(ctx.lang, problem), fallback_chips(ctx));
             }
@@ -313,13 +300,7 @@ fn resume(state: &mut State, ctx: &Ctx) -> Option<Action> {
     None
 }
 
-fn act_on(
-    state: &mut State,
-    ctx: &Ctx,
-    intent: ChatIntent,
-    asked: &Asked,
-    message: &str,
-) -> Option<Action> {
+fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {
     match intent {
         ChatIntent::Answer { choice } => match asked.chips.get(choice) {
             Some(answer) if answer.reply.changes_something() => {
@@ -332,14 +313,16 @@ fn act_on(
                 None
             }
         },
-        ChatIntent::TidyFolder {
-            source,
-            target,
-            schedule,
-            transfer,
-        } => propose_tidy(state, ctx, &source, target.as_deref(), schedule, transfer),
-        ChatIntent::ChangeStructure { .. } => {
-            crate::rule_flow::from_description(state, ctx, message);
+        ChatIntent::TidyFolder { source, .. } => {
+            look_for(state, ctx, &source, Purpose::Sort);
+            None
+        }
+        ChatIntent::ChangeStructure { area, .. } => {
+            if area == EVERY_AREA {
+                ask_read_folder(state, ctx);
+            } else {
+                look_for(state, ctx, &area, Purpose::Open);
+            }
             None
         }
         ChatIntent::Undo => {
@@ -355,13 +338,11 @@ fn act_on(
             None
         }
         ChatIntent::OpenFolder { folder } => {
-            if !crate::named_folders::start(state, ctx, &folder, None, None, None, true) {
-                fallback(state, ctx);
-            }
+            look_for(state, ctx, &folder, Purpose::Open);
             None
         }
         ChatIntent::BulkMove { .. } => {
-            batch_not_yet(state, ctx);
+            sort_hint(state, ctx, None);
             None
         }
         ChatIntent::SmallTalk => {
@@ -398,112 +379,9 @@ fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
     say(state, sentence, vec![answer, cancel_chip(ctx)]);
 }
 
-fn propose_tidy(
-    state: &mut State,
-    ctx: &Ctx,
-    source: &str,
-    target: Option<&str>,
-    schedule: Option<Schedule>,
-    said_transfer: Option<SaidTransfer>,
-) -> Option<Action> {
-    let transfer = said_transfer.map(|said| match said {
-        SaidTransfer::Copy => Transfer::Copy,
-        SaidTransfer::Move => Transfer::Move,
-    });
-    if !crate::named_folders::start(state, ctx, source, target, schedule, transfer, false) {
+/// Looks for the folder a sentence named.
+fn look_for(state: &mut State, ctx: &Ctx, said: &str, purpose: Purpose) {
+    if !named_folders::start(state, ctx, said, purpose) {
         fallback(state, ctx);
     }
-    None
-}
-
-/// "Source → target, move?" with the buttons to change what was understood.
-pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
-    let Some(proposal) = state.session.proposal.clone() else {
-        return;
-    };
-    let mode = match proposal.transfer {
-        Some(Transfer::Move) => text(ctx.lang, Msg::HermesChatConfirmMove),
-        Some(Transfer::Copy) => text(ctx.lang, Msg::HermesChatConfirmCopy),
-        _ => String::new(),
-    };
-    let source = shown_folder(ctx, &proposal.source);
-    let mention = crate::update::mention_of(ctx, &proposal.source);
-    let sentence = match &proposal.target {
-        Some(target) => fill(
-            ctx.lang,
-            Msg::HermesChatConfirmTidyTo,
-            &[
-                ("source", &source),
-                ("target", &shown_folder(ctx, target)),
-                ("mode", &mode),
-            ],
-        ),
-        None => fill(
-            ctx.lang,
-            Msg::HermesChatConfirmTidy,
-            &[("source", &mention.name), ("mode", &mode)],
-        ),
-    };
-    let mut chips: Vec<Chip> = vec![
-        chip(ctx, Msg::HermesChatConfirmYes, ChipReply::ConfirmTidy, true),
-        chip(
-            ctx,
-            Msg::HermesChatOtherTarget,
-            ChipReply::OtherTarget,
-            false,
-        ),
-    ];
-    match proposal.transfer {
-        Some(Transfer::Move) => chips.push(chip(
-            ctx,
-            Msg::HermesChatCopy,
-            ChipReply::SwitchToCopy,
-            false,
-        )),
-        Some(Transfer::Copy) => chips.push(chip(
-            ctx,
-            Msg::HermesChatMove,
-            ChipReply::SwitchToMove,
-            false,
-        )),
-        _ => {}
-    }
-    chips.push(cancel_chip(ctx));
-    state.step = Step::ConfirmTidy;
-    let mut parts = vec![Part::Text(sentence)];
-    if proposal.target.is_none() {
-        parts.push(Part::Folder(mention));
-    }
-    hermes(state, parts, chips);
-}
-
-pub fn switch_transfer(state: &mut State, ctx: &Ctx, transfer: Transfer) {
-    if let Some(proposal) = state.session.proposal.as_mut() {
-        proposal.transfer = Some(transfer);
-    }
-    confirm_tidy(state, ctx);
-}
-
-pub fn ask_other_target(state: &mut State, ctx: &Ctx) {
-    state.step = Step::OtherTarget;
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatAskOtherTarget),
-        crate::update::target_chips(state, ctx),
-    );
-}
-
-pub fn other_target(state: &mut State, ctx: &Ctx, target: PathBuf) {
-    if let Some(proposal) = state.session.proposal.as_mut() {
-        proposal.target = Some(target);
-    }
-    confirm_tidy(state, ctx);
-}
-
-/// "Yes" starts the usual way: read the folder, then the trial. Nothing is
-/// filed before the trial is shown and confirmed.
-pub fn confirm_tidy_yes(state: &mut State, ctx: &Ctx) -> Option<Action> {
-    let source = state.session.proposal.as_ref()?.source.clone();
-    state.step = Step::TidyFolder;
-    crate::update::folder_answer(state, ctx, source, false)
 }

@@ -37,6 +37,15 @@ pub struct Row {
     pub is_built_in: bool,
 }
 
+/// A Git action as the dialog lists it, read only: the keys of the Git tab are
+/// set in the `[keys.git]` table of the config file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitShortcut {
+    pub label: String,
+    /// The keys as they are shown.
+    pub keys: String,
+}
+
 /// An edit that would take keys from other actions, shown before anything is
 /// written.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +99,7 @@ pub struct KeyBindings {
     notice: Option<Notice>,
     /// A write is on its way; edits wait for the keymap it brings back.
     writing: bool,
+    git_shortcuts: Vec<GitShortcut>,
 }
 
 /// The label of an action, also of the cursor keys the command list leaves
@@ -161,9 +171,36 @@ impl KeyBindings {
             mode: Mode::Browsing,
             notice: None,
             writing: false,
+            git_shortcuts: Vec::new(),
         };
         dialog.refresh(keymap);
         dialog
+    }
+
+    /// The Git actions the dialog lists below the rows, read only.
+    pub fn with_git_shortcuts(mut self, shortcuts: Vec<GitShortcut>) -> Self {
+        self.git_shortcuts = shortcuts;
+        self
+    }
+
+    /// The Git actions that match the search words. None while the search is
+    /// by key, which only the rebindable actions answer.
+    pub fn git_shortcuts_shown(&self) -> Vec<&GitShortcut> {
+        if self.key_filter.is_some() {
+            return Vec::new();
+        }
+        let words: Vec<String> = self
+            .query
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        self.git_shortcuts
+            .iter()
+            .filter(|shortcut| {
+                let haystack = format!("{} {}", shortcut.label, shortcut.keys).to_lowercase();
+                words.iter().all(|word| haystack.contains(word.as_str()))
+            })
+            .collect()
     }
 
     pub fn query(&self) -> &str {
@@ -194,6 +231,12 @@ impl KeyBindings {
         matches!(self.mode, Mode::Recording { .. })
     }
 
+    /// How many lines the list has: the actions, then the Git actions.
+    pub fn listed_len(&self) -> usize {
+        self.rows.len() + self.git_shortcuts_shown().len()
+    }
+
+    /// The selected action; none on a Git action, which is read only.
     pub fn selected(&self) -> Option<&Row> {
         self.rows.get(self.cursor)
     }
@@ -205,7 +248,7 @@ impl KeyBindings {
 
     /// The first row shown.
     pub fn offset(&self) -> usize {
-        self.window.offset(self.rows.len(), VISIBLE_ROWS)
+        self.window.offset(self.listed_len(), VISIBLE_ROWS)
     }
 
     /// Lists the actions again with the keys of `keymap`, keeping the
@@ -233,7 +276,7 @@ impl KeyBindings {
             .unwrap_or(0);
         self.clamp_key_cursor();
         self.window
-            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
+            .ensure_visible(self.cursor, self.listed_len(), VISIBLE_ROWS);
     }
 
     /// Ignored while a key is awaited or a question is up: the list under the
@@ -263,11 +306,11 @@ impl KeyBindings {
         if !self.is_browsing() {
             return;
         }
-        let last = self.rows.len().saturating_sub(1);
+        let last = self.listed_len().saturating_sub(1);
         self.cursor = self.cursor.saturating_add_signed(delta).min(last);
         self.key_cursor = 0;
         self.window
-            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
+            .ensure_visible(self.cursor, self.listed_len(), VISIBLE_ROWS);
     }
 
     pub fn move_key_cursor(&mut self, delta: isize) {
@@ -279,14 +322,14 @@ impl KeyBindings {
     }
 
     pub fn select(&mut self, row: usize, key: Option<usize>) {
-        if !self.is_browsing() || row >= self.rows.len() {
+        if !self.is_browsing() || row >= self.listed_len() {
             return;
         }
         self.cursor = row;
         self.key_cursor = key.unwrap_or(0);
         self.clamp_key_cursor();
         self.window
-            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
+            .ensure_visible(self.cursor, self.listed_len(), VISIBLE_ROWS);
     }
 
     pub fn scroll(&mut self, delta: ScrollDelta) {
@@ -295,7 +338,7 @@ impl KeyBindings {
         }
         let before = self.cursor;
         self.window
-            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut self.cursor);
+            .scroll(delta, self.listed_len(), VISIBLE_ROWS, &mut self.cursor);
         if self.cursor != before {
             self.key_cursor = 0;
         }

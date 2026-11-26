@@ -1,32 +1,30 @@
 //! What a message does to the filing tab.
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use iced::Task;
-use ncrs_ai::AiError;
-use ncrs_filing::chat_work::{
-    mark_files, plan_live, run_plan, tally, ChatAccess, ChatResult, ChatWork, LiveFile, LivePlan,
-    LiveRun, LiveState, Override, PlanFailure, TrashItem,
-};
+use ncrs_filing::execute::TrashItem;
+use ncrs_filing::sorting::{RowState, RunRequest};
 use ncrs_i18n::Msg;
-use ncrs_index::Transfer;
+use ncrs_index::TargetId;
+use ncrs_intake::{canonical_path, LocationTransfer, SortSource};
 use ncrs_ui_kit::row_scroll::row_into_view;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::message::{FiledReport, Message};
+use crate::decide::{decide, Decided};
+use crate::folders::{list_target_folders, read_existing};
+use crate::left::link_of;
+use crate::message::Message;
+use crate::question::Question;
+use crate::run::{carry_answer, carry_out, file_name, problems, Carried, Duplicates, RunProgress};
 use crate::scroll::{LEFT_ROW_ID, LEFT_SCROLL_ID, RIGHT_ROW_ID, RIGHT_SCROLL_ID};
-use crate::state::{Session, State};
-use crate::texts::{say, tags};
+use crate::state::{Change, Outcome, Session, State};
+use crate::texts::say;
 
 /// The id of the field the new name is typed in.
 pub const RENAME_FIELD: &str = "filing-rename";
-
-/// How deep the folders of the write folder are listed for the full tree.
-const FOLDER_DEPTH: usize = 3;
 
 type Step = (Task<Message>, Option<Action>);
 
@@ -34,548 +32,671 @@ fn nothing() -> Step {
     (Task::none(), None)
 }
 
-/// A new session for `source` into `target`; a running one is stopped.
-pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> Task<Message> {
-    crate::state::stop(state);
-    let run = Arc::new(LiveRun::default());
-    let mut session = Session::new(source.clone(), target.clone(), Arc::clone(&run));
-    session.copy_only = ctx
-        .access
-        .as_ref()
-        .is_some_and(|access| access.copies_from(&source));
-    let (Some(access), Some(model)) = (ctx.access.clone(), ctx.model.clone()) else {
-        let reason = ctx.lang.text(Msg::FilingViewErrorNotReady).to_owned();
-        session.finished = Some(Err(reason.clone()));
-        session.error = Some(reason);
-        state.session = Some(session);
-        return Task::none();
-    };
-    let id = session.id;
-    state.session = Some(session);
-    let tags = tags(ctx.lang);
-    let lang = ctx.lang;
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || {
-                plan_live(&access, &source, &target, &*model, &tags, &run)
-                    .map_err(|failure| failure_text(lang, &failure))
-            })
-            .await
-            .unwrap_or_else(|err| Err(err.to_string()))
-        },
-        move |result| Message::PlanFinished(id, result),
-    )
+fn only(task: Task<Message>) -> Step {
+    (task, None)
 }
 
-/// What the user reads when planning ends early. The technical reason of a
-/// model failure is not shown.
-pub fn failure_text(lang: ncrs_i18n::Language, failure: &PlanFailure) -> String {
-    match failure {
-        PlanFailure::Model(AiError::Unsupported) => {
-            lang.text(Msg::FilingViewErrorFolderChoiceUnsupported)
-        }
-        PlanFailure::Model(AiError::ConsentRequired(_)) => {
-            lang.text(Msg::FilingViewErrorFolderConsentMissing)
-        }
-        PlanFailure::Model(_) => lang.text(Msg::FilingViewErrorModelFailed),
-        PlanFailure::Other(reason) => reason.as_str(),
+/// The target a rule of the file belongs to, where one rule has been tried.
+fn tried_target(state: &RowState) -> Option<&TargetId> {
+    match state {
+        RowState::Place(place) | RowState::NameTaken { place, .. } => Some(&place.target),
+        RowState::MissingValue { target, .. }
+        | RowState::BadName { target, .. }
+        | RowState::AlreadyThere { target, .. } => Some(target),
+        RowState::Several(_)
+        | RowState::NoRule
+        | RowState::NoText
+        | RowState::NotRead(_)
+        | RowState::SetAside => None,
     }
-    .to_owned()
+}
+
+/// A new session for `source`: the whole folder `once`, or the open questions
+/// of a watched source. An open one is stopped, but one that is filing stays.
+/// Nothing is filed by opening.
+pub fn open(state: &mut State, source: SortSource, once: bool, ctx: &Ctx) -> Task<Message> {
+    if state.session.as_ref().is_some_and(Session::is_filing) {
+        return Task::none();
+    }
+    crate::state::stop(state);
+    let mut session = Session::new(source, once);
+    // What is known is shown at once; the rest is read after that.
+    let task = decide_again(&mut session, false, ctx);
+    state.session = Some(session);
+    task
+}
+
+fn decide_again(session: &mut Session, read: bool, ctx: &Ctx) -> Task<Message> {
+    let Some(access) = ctx.access.clone() else {
+        session.error = Some(ctx.lang.text(Msg::IndexNotOpen).to_owned());
+        return Task::none();
+    };
+    session.error = None;
+    decide(session, access, read, ctx.lang)
+}
+
+/// Decides with what is known, now or once the work in hand is done.
+fn decide_when_idle(session: &mut Session, ctx: &Ctx) -> Task<Message> {
+    if session.planning || session.is_filing() {
+        session.stale = true;
+        return Task::none();
+    }
+    decide_again(session, false, ctx)
 }
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
     match message {
-        Message::Cancel => return cancel(state, ctx),
-        Message::Filed(result) => return filed(state, result),
-        Message::File(transfer) => return file(state, transfer, false, ctx),
-        Message::FileSure => return file(state, Transfer::Move, true, ctx),
-        Message::Marked(_) => return nothing(),
+        Message::Cancel => return cancel(state),
+        // The files are where they are now, also when the tab has gone.
+        Message::Carried(id, result) => return carried(state, id, result, ctx),
+        Message::Answered(id, relative, result) => {
+            return answered(state, id, &relative, result, ctx)
+        }
         _ => {}
     }
     let Some(session) = state.session.as_mut() else {
         return nothing();
     };
-    let mut task = Task::none();
     match message {
-        Message::Tick => {
-            session.take_snapshot();
-            task = read_existing(session);
-        }
-        Message::PlanFinished(id, _) if id != session.id => {}
-        Message::PlanFinished(_, result) => {
-            session.take_snapshot();
-            task = read_existing(session);
-            if let Err(reason) = &result {
-                session.error = Some(reason.clone());
-            } else if session
-                .plan
-                .as_ref()
-                .is_some_and(|plan| plan.folder_choice_unsupported)
-            {
-                session.error = Some(
-                    ctx.lang
-                        .text(Msg::FilingViewErrorFolderChoiceUnsupported)
-                        .to_owned(),
-                );
-            }
-            session.finished = Some(result);
-        }
-        Message::Select(path) => {
-            session.renaming = None;
-            session.selected = Some(path);
-        }
-        Message::SelectNext => return move_selection(session, true),
-        Message::SelectPrevious => return move_selection(session, false),
-        Message::StartRename => return start_rename(session),
-        Message::RenameInput(typed) => {
-            if session.renaming.is_some() {
-                session.renaming = Some(typed);
+        Message::Planned {
+            session: id,
+            read,
+            result,
+        } => {
+            if id == session.id {
+                return only(planned(session, read, result, ctx));
             }
         }
-        Message::RenameSubmit => submit_rename(session, ctx),
-        Message::RenameCancel => session.renaming = None,
-        Message::PickFolder => return pick_folder(session),
-        Message::FolderPicked(folder) => task = folder_picked(session, folder, ctx),
-        Message::Stay => {
-            if let Some(selected) = session.selected.clone() {
-                session.set_override(selected, Override::Stay);
-                session.renaming = None;
-                task = read_existing(session);
-            }
-        }
-        Message::ToggleOnlyNew => {
-            session.only_new = !session.only_new;
-            if !session.only_new {
-                task = list_target_folders(session);
+        Message::RulesChanged => return only(decide_when_idle(session, ctx)),
+        Message::Recheck => {
+            if !session.planning && !session.is_filing() {
+                session.outcome = None;
+                forget_folders(session);
+                return only(decide_again(session, session.once, ctx));
             }
         }
         Message::FoldersListed(id, folders) => {
             if session.id == id {
                 session.listing = false;
                 session.target_folders = folders;
-                task = read_existing(session);
+                return only(read_existing(session));
             }
         }
         Message::ExistingRead(id, read) => {
             if session.id == id {
-                for (folder, names) in read {
-                    session.reading.remove(&folder);
-                    session.existing.insert(folder, names);
+                for (key, names) in read {
+                    session.reading_folders.remove(&key);
+                    session.existing.insert(key, names);
                 }
             }
         }
+        Message::ToggleOnlyNew => {
+            session.only_new = !session.only_new;
+            if !session.only_new {
+                return only(list_target_folders(session));
+            }
+        }
+        Message::ToggleFolder(target, folder) => {
+            let key = (target, folder);
+            if !session.closed_folders.remove(&key) {
+                session.closed_folders.insert(key);
+            }
+        }
+        Message::Select(path) => select(session, path),
+        Message::SelectNext => return only(move_selection(session, true)),
+        Message::SelectPrevious => return only(move_selection(session, false)),
+        Message::LinkNext => mark_link(session, true),
+        Message::LinkPrevious => mark_link(session, false),
+        // What follows changes what a run carries out.
+        _ if session.running.is_some() => {}
+        Message::File(transfer) => return only(file(session, transfer, ctx)),
         Message::ToggleTrashDupes => {
-            session.trash_dupes = !session.trash_dupes && !session.copy_only;
+            session.trash_dupes =
+                !session.trash_dupes && !session.copy_only() && session.trash_can_restore;
         }
-        Message::ToggleFolder(folder) => {
-            if !session.closed_folders.remove(&folder) {
-                session.closed_folders.insert(folder);
+        other => return edit(session, other, ctx),
+    }
+    nothing()
+}
+
+/// The changes the user makes to single files.
+fn edit(session: &mut Session, message: Message, ctx: &Ctx) -> Step {
+    match message {
+        Message::PressMarkedLink => return press_marked_link(session, ctx),
+        Message::MakeRule(from) => {
+            let action = session.row(&from).map(|row| Action::OpenRuleForm {
+                target: tried_target(&row.state)
+                    .or_else(|| session.source.targets.first())
+                    .cloned(),
+                document: row.document,
+                path: row.path.clone(),
+            });
+            return (Task::none(), action);
+        }
+        Message::SuggestRule(from) => {
+            let source = session.source.path.clone();
+            let action = session.row(&from).map(|row| Action::SuggestRule {
+                source,
+                path: row.path.clone(),
+            });
+            return (Task::none(), action);
+        }
+        Message::Assign(from) => {
+            select(session, from);
+            return pick_folder(session);
+        }
+        Message::PickFolder => return pick_folder(session),
+        Message::FolderPicked(folder) => return only(folder_picked(session, folder, ctx)),
+        Message::Leave(from) => return only(change(session, from, Change::Stay, ctx)),
+        Message::Stay => return only(stay(session, ctx)),
+        Message::Ask(from) => ask(session, from, ctx),
+        Message::StartRename => return only(start_rename(session)),
+        Message::RenameInput(typed) => {
+            if session.renaming.is_some() {
+                session.renaming = Some(typed);
             }
         }
-        Message::Cancel
-        | Message::Filed(_)
-        | Message::File(_)
-        | Message::FileSure
-        | Message::Marked(_) => {}
-    }
-    (task, None)
-}
-
-/// The folders of `root`, relative to it, down to `FOLDER_DEPTH` levels.
-fn list_folders(root: &Path) -> BTreeSet<PathBuf> {
-    fn walk(root: &Path, relative: &Path, found: &mut BTreeSet<PathBuf>) {
-        if relative.components().count() >= FOLDER_DEPTH {
-            return;
+        Message::RenameSubmit => return only(submit_rename(session, ctx)),
+        Message::RenameCancel => session.renaming = None,
+        Message::QuestionAnswer(chosen) => return only(answer_question(session, &chosen, ctx)),
+        Message::QuestionConfirm => {
+            let chosen = session
+                .question
+                .as_ref()
+                .map_or_else(Vec::new, Question::confirmed);
+            return only(answer_question(session, &chosen, ctx));
         }
-        let Ok(entries) = std::fs::read_dir(root.join(relative)) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let is_folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
-            if !is_folder || name.to_string_lossy().starts_with('.') {
-                continue;
+        Message::QuestionLeave => {
+            if let Some(question) = session.question.take() {
+                return only(change(session, question.relative, Change::Stay, ctx));
             }
-            let child = relative.join(name);
-            walk(root, &child, found);
-            found.insert(child);
+        }
+        other => {
+            if let Some(question) = session.question.as_mut() {
+                move_in_question(question, &other);
+            }
         }
     }
-    let mut found = BTreeSet::new();
-    walk(root, Path::new(""), &mut found);
-    found
+    nothing()
 }
 
-/// Lists the folders of the write folder off the UI thread.
-fn list_target_folders(session: &mut Session) -> Task<Message> {
-    if session.listing {
-        return Task::none();
+fn move_in_question(question: &mut Question, message: &Message) {
+    match message {
+        Message::QuestionToggle(at) => {
+            question.marked = *at;
+            question.toggle(*at);
+        }
+        Message::QuestionToggleMarked => question.toggle(question.marked),
+        Message::QuestionNext => question.move_mark(true),
+        Message::QuestionPrevious => question.move_mark(false),
+        _ => {}
     }
-    session.listing = true;
-    let id = session.id;
-    let target = session.target.clone();
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || list_folders(&target))
-                .await
-                .unwrap_or_default()
-        },
-        move |folders| Message::FoldersListed(id, folders),
-    )
 }
 
-/// Reads the files of every folder of the write folder the plan files into,
-/// once per folder, off the UI thread.
-fn read_existing(session: &mut Session) -> Task<Message> {
-    let Some(plan) = session.shown_ref() else {
-        return Task::none();
+fn planned(
+    session: &mut Session,
+    read: bool,
+    result: Result<Box<Decided>, String>,
+    ctx: &Ctx,
+) -> Task<Message> {
+    session.planning = false;
+    session.reading = false;
+    let decided = match result {
+        Ok(decided) => *decided,
+        Err(reason) => {
+            // A stopped plan has no reason.
+            session.error = Some(reason).filter(|problem| !problem.is_empty());
+            return Task::none();
+        }
     };
-    let mut wanted: BTreeSet<PathBuf> = plan
-        .files
-        .iter()
-        .filter_map(|file| match &file.state {
-            LiveState::Filed { folder, .. } => Some(folder.clone()),
-            _ => None,
-        })
-        .collect();
-    if !session.only_new {
-        wanted.extend(session.target_folders.iter().cloned());
-    }
-    drop(plan);
-    let missing: Vec<PathBuf> = wanted
-        .into_iter()
-        .filter(|folder| {
-            !session.existing.contains_key(folder) && !session.reading.contains(folder)
-        })
-        .collect();
-    if missing.is_empty() {
-        return Task::none();
-    }
-    session.reading.extend(missing.iter().cloned());
-    let id = session.id;
-    let target = session.target.clone();
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || {
-                missing
-                    .into_iter()
-                    .map(|folder| {
-                        let names = names_in(&target.join(&folder));
-                        (folder, names)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .await
-            .unwrap_or_default()
-        },
-        move |read| Message::ExistingRead(id, read),
-    )
-}
-
-/// The names of the files in `folder`, sorted, without the hidden ones.
-fn names_in(folder: &Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(folder)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|entry| entry.file_type().is_ok_and(|kind| !kind.is_dir()))
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| !name.starts_with('.'))
-        .collect();
-    names.sort();
-    names
-}
-
-fn move_selection(session: &mut Session, forward: bool) -> Step {
-    let Some(plan) = &session.plan else {
-        return nothing();
+    let first = !session.planned;
+    session.planned = true;
+    session.rows = decided.rows;
+    session.waiting = decided.waiting;
+    session.targets = decided.targets;
+    session.rule_names = decided.rule_names;
+    session.trash_can_restore = decided.trash_can_restore;
+    drop_old_changes(session);
+    let folders = read_existing(session);
+    // A run that was started meanwhile asks again when it ends.
+    let again = if session.is_filing() {
+        Task::none()
+    } else if first && session.once && !read {
+        decide_again(session, true, ctx)
+    } else if session.stale {
+        decide_again(session, false, ctx)
+    } else {
+        Task::none()
     };
-    let at = session
+    Task::batch([folders, again])
+}
+
+/// What no longer has a row or is in its place already.
+fn drop_old_changes(session: &mut Session) {
+    let rows = &session.rows;
+    let open = |relative: &PathBuf| {
+        rows.iter().any(|row| {
+            row.relative == *relative && !matches!(row.state, RowState::AlreadyThere { .. })
+        })
+    };
+    session.changes.retain(|relative, _| open(relative));
+    if session
+        .question
+        .as_ref()
+        .is_some_and(|question| !open(&question.relative))
+    {
+        session.question = None;
+    }
+    if !session
         .selected
         .as_ref()
-        .and_then(|selected| plan.files.iter().position(|file| file.from == *selected));
+        .is_some_and(|selected| rows.iter().any(|row| row.relative == *selected))
+    {
+        session.selected = None;
+        session.renaming = None;
+    }
+    session.marked_link = None;
+}
+
+fn forget_folders(session: &mut Session) {
+    session.existing.clear();
+    session.reading_folders.clear();
+}
+
+fn select(session: &mut Session, path: PathBuf) {
+    session.renaming = None;
+    session.marked_link = None;
+    session.selected = Some(path);
+}
+
+fn move_selection(session: &mut Session, forward: bool) -> Task<Message> {
+    let at = session.selected.as_ref().and_then(|selected| {
+        session
+            .rows
+            .iter()
+            .position(|row| row.relative == *selected)
+    });
     let next = match (at, forward) {
         (None, _) => 0,
-        (Some(index), true) => (index + 1).min(plan.files.len().saturating_sub(1)),
+        (Some(index), true) => (index + 1).min(session.rows.len().saturating_sub(1)),
         (Some(index), false) => index.saturating_sub(1),
     };
-    if let Some(file) = plan.files.get(next) {
-        session.renaming = None;
-        session.selected = Some(file.from.clone());
+    if let Some(row) = session.rows.get(next) {
+        let path = row.relative.clone();
+        select(session, path);
     }
-    let scroll = Task::batch([
+    Task::batch([
         row_into_view(LEFT_SCROLL_ID, LEFT_ROW_ID),
         row_into_view(RIGHT_SCROLL_ID, RIGHT_ROW_ID),
-    ]);
-    (scroll, None)
+    ])
 }
 
-fn selected_file(session: &Session) -> Option<LiveFile> {
-    session.file(session.selected.as_ref()?)
-}
-
-fn start_rename(session: &mut Session) -> Step {
-    let Some(LiveState::Filed { name, .. }) = selected_file(session).map(|file| file.state) else {
-        return nothing();
+fn mark_link(session: &mut Session, forward: bool) {
+    let links = session
+        .selected_row()
+        .map_or(0, |row| session.links(row).len());
+    session.marked_link = match (session.marked_link, forward) {
+        _ if links == 0 => None,
+        (None, true) => Some(0),
+        (None, false) => None,
+        (Some(at), true) => Some((at + 1).min(links - 1)),
+        (Some(at), false) => at.checked_sub(1),
     };
-    session.renaming = Some(name);
-    (iced::widget::operation::focus(RENAME_FIELD), None)
 }
 
-fn submit_rename(session: &mut Session, ctx: &Ctx) {
-    let (Some(typed), Some(selected)) = (session.renaming.as_ref(), session.selected.clone())
-    else {
-        return;
+fn press_marked_link(session: &mut Session, ctx: &Ctx) -> Step {
+    let pressed = session
+        .marked_link
+        .zip(session.selected_row())
+        .and_then(|(at, row)| {
+            let link = *session.links(row).get(at)?;
+            Some(link_of(link, row).1)
+        });
+    match pressed {
+        Some(message) => edit(session, message, ctx),
+        None => nothing(),
+    }
+}
+
+fn start_rename(session: &mut Session) -> Task<Message> {
+    let place = session
+        .selected_row()
+        .filter(|_| session.once)
+        .and_then(|row| session.one_place(row));
+    let Some((_, relative)) = place else {
+        return Task::none();
+    };
+    session.renaming = Some(file_name(&relative));
+    iced::widget::operation::focus(RENAME_FIELD)
+}
+
+fn submit_rename(session: &mut Session, ctx: &Ctx) -> Task<Message> {
+    let Some(typed) = session.renaming.as_ref() else {
+        return Task::none();
     };
     let name = typed.trim().to_owned();
-    if name.is_empty() || name == "." || name == ".." || name.contains(std::path::is_separator) {
+    let is_only_dots = name.chars().all(|letter| letter == '.');
+    if is_only_dots || name.contains(std::path::is_separator) {
         session.error = Some(ctx.lang.text(Msg::FilingViewErrorName).to_owned());
-        return;
+        return Task::none();
     }
-    session.error = None;
-    session.set_override(selected, Override::Name(name));
+    let place = session.selected_row().and_then(|row| {
+        let (target, relative) = session.one_place(row)?;
+        Some((
+            row.relative.clone(),
+            (target, relative.with_file_name(&name)),
+        ))
+    });
     session.renaming = None;
+    session.error = None;
+    match place {
+        Some((from, new_place)) => change(session, from, Change::Places(vec![new_place]), ctx),
+        None => Task::none(),
+    }
 }
 
 fn pick_folder(session: &Session) -> Step {
-    let Some(file) = selected_file(session) else {
+    let Some(row) = session.selected_row() else {
         return nothing();
     };
-    let current = match file.state {
-        LiveState::Filed { folder, .. } => session.target.join(folder),
-        _ => session.target.clone(),
-    };
-    let start = if current.is_dir() {
-        current
-    } else {
-        session.target.clone()
-    };
-    (Task::none(), Some(Action::PickFolder { start }))
+    let mut targets = session.source_targets().map(|(_, target)| target);
+    let current = session.one_place(row).and_then(|(id, relative)| {
+        let target = session.targets.iter().find(|target| target.id == id)?;
+        let folder = target.path.join(relative.parent()?);
+        Some(if folder.is_dir() {
+            folder
+        } else {
+            target.path.clone()
+        })
+    });
+    let start = current.or_else(|| targets.next().map(|target| target.path.clone()));
+    (
+        Task::none(),
+        start.map(|first_folder| Action::PickFolder {
+            start: first_folder,
+        }),
+    )
+}
+
+/// The target of the source that `folder` is in; of nested ones the inner one.
+fn target_of(session: &Session, folder: &std::path::Path) -> Option<(TargetId, PathBuf)> {
+    session
+        .source_targets()
+        .filter_map(|(_, target)| {
+            let relative = folder.strip_prefix(&target.path).ok()?;
+            Some((target.id.clone(), relative.to_path_buf()))
+        })
+        .min_by_key(|(_, relative)| relative.components().count())
 }
 
 fn folder_picked(session: &mut Session, folder: Option<PathBuf>, ctx: &Ctx) -> Task<Message> {
-    let (Some(picked), Some(selected)) = (folder, session.selected.clone()) else {
+    let Some(picked) = folder else {
         return Task::none();
     };
-    match picked.strip_prefix(&session.target) {
-        Ok(relative) => {
-            session.error = None;
-            session.set_override(selected, Override::Folder(relative.to_path_buf()));
-            read_existing(session)
-        }
-        Err(_) => {
-            session.error = Some(say(
-                ctx.lang,
-                Msg::FilingViewErrorOutside,
-                &[("target", &session.target.display().to_string())],
-            ));
-            Task::none()
-        }
-    }
-}
-
-fn cancel(state: &mut State, ctx: &Ctx) -> Step {
-    // A run that is carrying files out reports to the chat when it ends; the
-    // tab stays until then.
-    if state.session.as_ref().is_some_and(|session| session.filing) {
-        return nothing();
-    }
-    let Some(session) = state.session.take() else {
-        return (Task::none(), Some(Action::Close));
+    let real_folder = canonical_path(&picked).unwrap_or(picked);
+    let Some(row) = session.selected_row() else {
+        return Task::none();
     };
-    session.run.stop.store(true, Ordering::Relaxed);
-    let (Some(access), Some(plan)) = (ctx.access.clone(), session.shown_plan()) else {
-        return (Task::none(), Some(Action::Close));
+    let Some((target, below)) = target_of(session, &real_folder) else {
+        session.error = Some(ctx.lang.text(Msg::FilingViewErrorOutside).to_owned());
+        return Task::none();
     };
-    let tags = tags(ctx.lang);
-    let task = Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || mark_files(&access, &plan, &tags))
-                .await
-                .unwrap_or_else(|err| Err(err.to_string()))
-        },
-        Message::Marked,
+    let name = session.one_place(row).map_or_else(
+        || file_name(&row.relative),
+        |(_, relative)| file_name(&relative),
     );
-    (task, Some(Action::Close))
-}
-
-fn file(state: &mut State, transfer: Transfer, sure_only: bool, ctx: &Ctx) -> Step {
-    let Some(session) = state.session.as_mut() else {
-        return nothing();
-    };
-    if session.filing || !session.plan_is_done() {
-        return nothing();
-    }
-    if session.copy_only && transfer == Transfer::Move {
-        return nothing();
-    }
-    if session.shown_ref().is_none_or(|plan| {
-        let counts = tally(&plan);
-        let carried = if sure_only {
-            counts.filed - counts.unsure
-        } else {
-            counts.filed
-        };
-        carried == 0
-    }) {
-        return nothing();
-    }
-    let (Some(access), Some(plan)) = (ctx.access.clone(), session.shown_plan()) else {
-        session.error = Some(ctx.lang.text(Msg::FilingViewErrorNotReady).to_owned());
-        return nothing();
-    };
-    session.filing = true;
+    let from = row.relative.clone();
     session.error = None;
-    let unexpected = ctx.lang.text(Msg::FilingViewErrorFilingFailed).to_owned();
-    let folder = session.source_name();
-    let run_name = say(ctx.lang, Msg::HermesChatRunName, &[("folder", &folder)]);
-    let trash_name = say(
-        ctx.lang,
-        Msg::HermesChatTrashRunName,
-        &[("folder", &folder)],
-    );
-    let tags = tags(ctx.lang);
-    let trash = session.trash_dupes;
-    let task = Task::perform(
+    change(
+        session,
+        from,
+        Change::Places(vec![(target, below.join(name))]),
+        ctx,
+    )
+}
+
+fn stay(session: &mut Session, ctx: &Ctx) -> Task<Message> {
+    let Some(selected) = session.selected.clone() else {
+        return Task::none();
+    };
+    if session.changes.get(&selected) == Some(&Change::Stay) {
+        session.changes.remove(&selected);
+        return read_existing(session);
+    }
+    change(session, selected, Change::Stay, ctx)
+}
+
+fn ask(session: &mut Session, from: PathBuf, ctx: &Ctx) {
+    let places = match session.row(&from).map(|row| &row.state) {
+        Some(RowState::Several(places)) => places.clone(),
+        _ => return,
+    };
+    select(session, from.clone());
+    session.question = Some(Question::new(session, from, &places, ctx.lang));
+}
+
+fn answer_question(session: &mut Session, chosen: &[usize], ctx: &Ctx) -> Task<Message> {
+    let Some(places) = session
+        .question
+        .as_ref()
+        .map(|question| question.places_at(chosen))
+        .filter(|places| !places.is_empty())
+    else {
+        return Task::none();
+    };
+    match session.question.take() {
+        Some(question) => change(session, question.relative, Change::Places(places), ctx),
+        None => Task::none(),
+    }
+}
+
+/// In a plan the decision waits for the run; the question of a watched source
+/// is answered right away.
+fn change(session: &mut Session, from: PathBuf, change: Change, ctx: &Ctx) -> Task<Message> {
+    session.renaming = None;
+    session.marked_link = None;
+    session.outcome = None;
+    if session.once {
+        session.changes.insert(from, change);
+        return read_existing(session);
+    }
+    if session.answering.contains(&from) {
+        return Task::none();
+    }
+    let Some(document) = session.row(&from).and_then(|row| row.document) else {
+        return Task::none();
+    };
+    let Some(access) = ctx.access.clone() else {
+        session.error = Some(ctx.lang.text(Msg::IndexNotOpen).to_owned());
+        return Task::none();
+    };
+    session.error = None;
+    session.answering.insert(from.clone());
+    let id = session.id;
+    let lang = ctx.lang;
+    let source = session.source.clone();
+    let name = run_name(session, Msg::HermesChatRunName, ctx);
+    Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                carry_out(
-                    &access,
-                    &plan,
-                    transfer,
-                    sure_only,
-                    (run_name, trash_name),
-                    trash,
-                    (&tags, &unexpected),
-                )
+                carry_answer(&access, &source, document, change, &name, lang)
             })
             .await
             .unwrap_or_else(|err| Err(err.to_string()))
+            .map(Box::new)
         },
-        Message::Filed,
-    );
-    (task, None)
+        move |result| Message::Answered(id, from.clone(), result),
+    )
 }
 
-/// Tags the files that stay, files the rest and, when asked, trashes the
-/// duplicates in the source.
-fn carry_out(
-    access: &ChatAccess,
-    plan: &LivePlan,
-    transfer: Transfer,
-    sure_only: bool,
-    names: (String, String),
-    trash: bool,
-    (tags, unexpected): (&ncrs_filing::chat_work::LiveTags, &str),
-) -> Result<FiledReport, String> {
-    let (run_name, trash_name) = names;
-    let _running = access.begin_work();
-    mark_files(access, plan, tags)?;
-    let ChatResult::Filed(report) = access.run(ChatWork::File {
-        run: run_plan(&carried_plan(plan, sure_only), transfer, run_name),
-    }) else {
-        return Err(unexpected.to_owned());
-    };
-    let carried = report?;
-    let mut trashed = 0;
-    if trash {
-        let items: Vec<TrashItem> = plan
-            .files
-            .iter()
-            .filter_map(|file| match (&file.state, file.hash) {
-                (LiveState::AlreadyThere { at }, Some(hash)) => Some(TrashItem {
-                    path: plan.source_root.join(&file.from),
-                    expected_hash: hash,
-                    keeper: plan.target_root.join(at),
-                }),
-                _ => None,
-            })
-            .collect();
-        if !items.is_empty() {
-            let ChatResult::Trashed(result) = access.run(ChatWork::TrashDuplicates {
-                name: trash_name,
-                root: plan.source_root.clone(),
-                items,
-            }) else {
-                return Err(unexpected.to_owned());
-            };
-            trashed = result?.trashed;
-        }
-    }
-    let left = plan
-        .files
+fn run_name(session: &Session, msg: Msg, ctx: &Ctx) -> String {
+    say(ctx.lang, msg, &[("folder", &session.source_name())])
+}
+
+fn duplicates(session: &Session, name: String) -> Duplicates {
+    let wanted = session.trash_dupes && !session.copy_only();
+    let items = session
+        .rows
         .iter()
-        .filter(|file| match &file.state {
-            LiveState::Filed { unsure: true, .. } if sure_only => true,
-            LiveState::Filed { folder, name, .. } => {
-                carried.skipped > 0 && not_carried(plan, transfer, &file.from, &folder.join(name))
-            }
-            LiveState::AlreadyThere { .. } => !trash,
-            _ => true,
+        .filter(|_| wanted)
+        .filter_map(|row| match (&row.state, row.hash) {
+            (RowState::AlreadyThere { path, .. }, Some(hash)) => Some(TrashItem {
+                path: row.path.clone(),
+                expected_hash: hash,
+                keeper: path.clone(),
+            }),
+            _ => None,
         })
-        .map(|file| file.from.clone())
         .collect();
-    Ok(FiledReport {
+    Duplicates { name, items }
+}
+
+fn file(session: &mut Session, transfer: LocationTransfer, ctx: &Ctx) -> Task<Message> {
+    if !session.can_file() {
+        return Task::none();
+    }
+    let Some(access) = ctx.access.clone() else {
+        session.error = Some(ctx.lang.text(Msg::IndexNotOpen).to_owned());
+        return Task::none();
+    };
+    let request = RunRequest {
+        name: run_name(session, Msg::HermesChatRunName, ctx),
+        source: session.source.clone(),
+        entries: session.entries(),
         transfer,
-        done: carried.done,
-        trashed,
+    };
+    let duplicates = duplicates(session, run_name(session, Msg::HermesChatTrashRunName, ctx));
+    let progress = Arc::new(RunProgress::new(request.entries.len()));
+    session.running = Some(Arc::clone(&progress));
+    session.renaming = None;
+    session.marked_link = None;
+    session.question = None;
+    session.outcome = None;
+    session.error = None;
+    let id = session.id;
+    let lang = ctx.lang;
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                carry_out(&access, &request, &duplicates, progress, lang)
+            })
+            .await
+            .unwrap_or_else(|err| Err(err.to_string()))
+            .map(Box::new)
+        },
+        move |result| Message::Carried(id, result),
+    )
+}
+
+/// The files that still lie in the source without a place: all rows but the
+/// filed ones, and a duplicate that is trashed or copied is not one either.
+fn left_after(session: &Session, carried: &Carried) -> usize {
+    let present = session
+        .rows
+        .iter()
+        .filter(|row| matches!(row.state, RowState::AlreadyThere { .. }))
+        .count();
+    let settled = match carried.transfer {
+        LocationTransfer::Copy => present,
+        LocationTransfer::Move => carried.trashed,
+    };
+    session
+        .rows
+        .len()
+        .saturating_sub(carried.report.done() + settled)
+}
+
+fn filed_action(source: PathBuf, carried: &Carried, left: usize) -> Option<Action> {
+    let batch = carried.report.run;
+    (batch.is_some() || carried.trashed > 0).then(|| Action::Filed {
+        source,
+        transfer: carried.transfer,
+        filed: carried.report.done(),
         left,
-        batch: carried.batch,
+        batch,
     })
 }
 
-/// The plan as it is carried out: without the unsure files when only the sure
-/// ones go.
-pub fn carried_plan(plan: &LivePlan, sure_only: bool) -> LivePlan {
-    let mut carried = plan.clone();
-    if sure_only {
-        carried
-            .files
-            .retain(|file| !matches!(file.state, LiveState::Filed { unsure: true, .. }));
-    }
-    carried
-}
-
-/// Whether a file the plan filed is still undone after a run that skipped some:
-/// it is still in the source when moved, and missing from the target when
-/// copied.
-fn not_carried(plan: &LivePlan, transfer: Transfer, from: &Path, to: &Path) -> bool {
-    match transfer {
-        Transfer::Move => plan.source_root.join(from).exists(),
-        Transfer::Copy | Transfer::Trash => !plan.target_root.join(to).exists(),
-    }
-}
-
-fn filed(state: &mut State, result: Result<FiledReport, String>) -> Step {
-    let Some(session) = state.session.as_mut() else {
+fn carried(state: &mut State, id: u64, result: Result<Box<Carried>, String>, ctx: &Ctx) -> Step {
+    let Some(session) = state.session.as_mut().filter(|session| session.id == id) else {
         return nothing();
     };
-    match result {
-        Ok(report) => {
-            let source = session.source.clone();
-            let then_continuous = session.then_continuous;
-            state.session = None;
-            (
-                Task::none(),
-                Some(Action::Finished {
-                    source,
-                    transfer: report.transfer,
-                    filed: report.done,
-                    left: report.left,
-                    batch: report.batch,
-                    then_continuous,
-                }),
-            )
-        }
+    session.running = None;
+    let carried = match result {
+        Ok(carried) => carried,
         Err(reason) => {
-            session.filing = false;
+            let task = decide_again(session, false, ctx);
             session.error = Some(reason);
-            nothing()
+            return only(task);
+        }
+    };
+    let left = left_after(session, &carried);
+    for entry in &carried.report.entries {
+        if entry.is_done() {
+            if let Some(row) = session.rows.iter().find(|row| row.path == entry.path) {
+                session.changes.remove(&row.relative);
+            }
         }
     }
+    session.outcome = Some(Outcome {
+        filed: carried.report.done(),
+        left,
+        trashed: carried.trashed,
+        problems: problems(ctx.lang, &carried.report),
+    });
+    forget_folders(session);
+    let task = decide_again(session, false, ctx);
+    session.error = carried.trash_problem.clone();
+    let action = filed_action(session.source.path.clone(), &carried, left);
+    (task, action)
 }
 
-/// Whether a plan can be carried out now, for the buttons.
-pub fn can_file(session: &Session) -> bool {
-    session.plan_is_done() && !session.filing
+fn answered(
+    state: &mut State,
+    id: u64,
+    relative: &std::path::Path,
+    result: Result<Box<Carried>, String>,
+    ctx: &Ctx,
+) -> Step {
+    let Some(session) = state.session.as_mut().filter(|session| session.id == id) else {
+        return nothing();
+    };
+    session.answering.remove(relative);
+    let carried = match result {
+        Ok(carried) => carried,
+        Err(reason) => {
+            let task = decide_when_idle(session, ctx);
+            session.error = Some(reason);
+            return only(task);
+        }
+    };
+    let left = session.rows.len().saturating_sub(1);
+    let found = problems(ctx.lang, &carried.report);
+    if !found.is_empty() {
+        session.outcome = Some(Outcome {
+            problems: found,
+            left: session.rows.len(),
+            ..Outcome::default()
+        });
+    }
+    forget_folders(session);
+    let action = filed_action(session.source.path.clone(), &carried, left);
+    (decide_when_idle(session, ctx), action)
+}
+
+/// A run is stopped first and the tab stays to show what it did; an answer
+/// that is being carried out is waited for.
+fn cancel(state: &mut State) -> Step {
+    if let Some(session) = &state.session {
+        if let Some(running) = &session.running {
+            running.stop();
+            return nothing();
+        }
+        if session.is_filing() {
+            return nothing();
+        }
+    }
+    crate::state::stop(state);
+    state.session = None;
+    (Task::none(), Some(Action::Close))
 }

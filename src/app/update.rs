@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::GitFileView;
 
 /// What a list of search hits has no use for: it is not a folder, so nothing is
 /// made, pasted or measured in it.
@@ -25,7 +26,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     panel.archive.as_ref()?;
     match message {
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
-        Message::OpenGitView => Some(Msg::GitViewNotARepository),
+        Message::OpenGitView | Message::OpenGitFile(_) => Some(Msg::GitViewNotARepository),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
@@ -40,14 +41,11 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
-        | Message::QuickFix(QuickFixMessage::Open)
         | Message::HermesFile(
-            HermesFileMessage::HandToInbox
-            | HermesFileMessage::ProcessAgain
+            HermesFileMessage::ProcessAgain
             | HermesFileMessage::FileOnce
-            | HermesFileMessage::FileContinuously
-            | HermesFileMessage::StopContinuous
-            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::WatchSource
+            | HermesFileMessage::AddTarget
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
         )
@@ -81,7 +79,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
-        Message::OpenGitView => Some(Msg::GitViewNotARepository),
+        Message::OpenGitView | Message::OpenGitFile(_) => Some(Msg::GitViewNotARepository),
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
         | Message::OpenExternal(fs::OpenKind::Edit)
@@ -95,14 +93,11 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
-        | Message::QuickFix(QuickFixMessage::Open)
         | Message::HermesFile(
-            HermesFileMessage::HandToInbox
-            | HermesFileMessage::ProcessAgain
+            HermesFileMessage::ProcessAgain
             | HermesFileMessage::FileOnce
-            | HermesFileMessage::FileContinuously
-            | HermesFileMessage::StopContinuous
-            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::WatchSource
+            | HermesFileMessage::AddTarget
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
         )
@@ -117,13 +112,12 @@ fn asks_for_hermes(message: &Message) -> bool {
     matches!(
         message,
         Message::HermesFile(
-            HermesFileMessage::HandToInbox
-                | HermesFileMessage::ProcessAgain
-                | HermesFileMessage::SetRole(_)
+            HermesFileMessage::ProcessAgain
+                | HermesFileMessage::WatchSource
+                | HermesFileMessage::AddTarget
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
-        ) | Message::QuickFix(QuickFixMessage::Open)
-            | Message::HermesPage(HermesPage::Rules | HermesPage::SavedQueries)
+        ) | Message::HermesPage(HermesPage::Sorting | HermesPage::SavedQueries)
     )
 }
 
@@ -186,9 +180,15 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let was_open = self.open_pages();
+        let repos_were_shown = self.repos_shown();
         let task = self.update_message(message);
         let compare = self.follow_compare();
         self.follow_opened_pages(was_open);
+        let repos = if repos_were_shown {
+            Task::none()
+        } else {
+            self.repos_came_into_view()
+        };
         self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
@@ -200,7 +200,7 @@ impl App {
         self.publish_key_state();
         #[cfg(target_os = "macos")]
         native_menu::sync(self.lang, &self.keymap, self.menu_state());
-        Task::batch([task, compare, chat])
+        Task::batch([task, compare, repos, chat])
     }
 
     fn update_message(&mut self, message: Message) -> Task<Message> {
@@ -243,7 +243,7 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
-            self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
+            self.with_hermes(ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
             if session_unchanged {
                 Task::none()
@@ -358,8 +358,6 @@ impl App {
 
             Message::HermesFile(file_message) => self.update_hermes_file(file_message),
 
-            Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
-
             // --- path field ---
             Message::ClickedOutside => self.update_path_field(Message::ClickedOutside),
 
@@ -439,7 +437,9 @@ impl App {
                 self.apply_window_size(size);
                 Task::none()
             }
-            Message::WindowFocused => self.reload_local_panels(),
+            Message::WindowFocused => {
+                Task::batch([self.reload_local_panels(), self.repos_came_into_view()])
+            }
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::HermesChat(chat) => self.update_hermes_chat(chat),
@@ -451,27 +451,35 @@ impl App {
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             plain @ (Message::Rules(_)
+            | Message::Sorting(_)
+            | Message::Targets(_)
+            | Message::Suggest(_)
             | Message::SavedQueries(_)
             | Message::Tags(_)
-            | Message::Reviews(_)
             | Message::Activity(_)) => self.update_hermes_plain(plain),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
             Message::OpenNotes => self.open_notes(),
+            Message::Repos(repos_message) => self.update_repos(repos_message),
+            Message::OpenRepos => self.open_repos(),
+            Message::CloseRepos => {
+                self.close_repos();
+                Task::none()
+            }
             Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
+            Message::GitAsked(request) => self.route_git_request(request),
+            Message::GitFetchDue => self.fetch_git_tabs_in_background(),
             Message::OpenGitView => self.open_git_view(),
+            Message::OpenGitFile(view) => self.open_git_file(view),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),
             Message::NoteOnFile => self.note_on_file(),
-            Message::HandoffPoll => self.poll_handoffs(),
             Message::HandedOver(requests) => self.open_handed_over(requests),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::Store(store_message) => self.update_store(store_message),
             Message::VersionPressed => self.open_version_info(),
             Message::HermesPage(page) => self.show_hermes_page(page),
-            plain @ (Message::DocumentsFiled(_) | Message::ContinuousFiled(_)) => {
-                self.update_hermes_plain(plain)
-            }
+            plain @ Message::ContinuousFiled(_) => self.update_hermes_plain(plain),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
@@ -531,6 +539,13 @@ impl App {
             if self.hermes.is_off() {
                 return self.explain_hermes_is_off();
             }
+        }
+        if let (Message::OpenGitFile(view), Some(id)) = (&message, self.shown_git_tab()) {
+            let file = match view {
+                GitFileView::History => ncrs_git_view::Message::HistoryKey,
+                GitFileView::Blame => ncrs_git_view::Message::BlameKey,
+            };
+            return self.update_git_tab(id, file);
         }
         let panel = self.panel(self.source_side());
         if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {

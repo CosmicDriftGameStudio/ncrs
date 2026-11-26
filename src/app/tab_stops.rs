@@ -17,6 +17,7 @@ pub(in crate::app) struct OpenPages {
     pub viewer: bool,
     pub notes: bool,
     pub filing: bool,
+    pub repos: bool,
     /// The open Git tabs, in the order they were opened.
     pub git: Vec<GitTabId>,
     pub hermes: bool,
@@ -31,6 +32,7 @@ impl OpenPages {
             ShownTab::Viewer => self.viewer,
             ShownTab::Notes => self.notes,
             ShownTab::Filing => self.filing,
+            ShownTab::Repos => self.repos,
             ShownTab::Git(id) => self.git.contains(&id),
             ShownTab::Hermes => self.hermes,
         }
@@ -38,13 +40,14 @@ impl OpenPages {
 }
 
 /// The order Ctrl+Tab walks the tabs in, up to the Git tabs.
-const TABS_BEFORE_GIT: [ShownTab; 6] = [
+const TABS_BEFORE_GIT: [ShownTab; 7] = [
     ShownTab::Panels,
     ShownTab::Settings,
     ShownTab::Monitor,
     ShownTab::Viewer,
     ShownTab::Notes,
     ShownTab::Filing,
+    ShownTab::Repos,
 ];
 
 impl OpenPages {
@@ -61,7 +64,12 @@ impl OpenPages {
 
 /// When several pages open at once, the last of these is the one shown; the
 /// Git tabs rank between `SHOWN_BEFORE_GIT` and `SHOWN_AFTER_GIT`.
-const SHOWN_BEFORE_GIT: [ShownTab; 3] = [ShownTab::Viewer, ShownTab::Notes, ShownTab::Filing];
+const SHOWN_BEFORE_GIT: [ShownTab; 4] = [
+    ShownTab::Viewer,
+    ShownTab::Notes,
+    ShownTab::Filing,
+    ShownTab::Repos,
+];
 const SHOWN_AFTER_GIT: [ShownTab; 3] = [ShownTab::Hermes, ShownTab::Monitor, ShownTab::Settings];
 
 /// The tab after `current` among the open ones; the panels are always open.
@@ -114,6 +122,9 @@ impl App {
                 iced::widget::operation::focus_next()
             }
         };
+        if self.hermes_dialog_keys() == HermesDialogKeys::Target {
+            return next_target_field();
+        }
         if self.shown_tab != ShownTab::Settings || field_focused {
             return in_widgets();
         }
@@ -137,6 +148,19 @@ impl App {
     }
 }
 
+/// The dialog of a target has two fields. Named, so Tab never walks to a field
+/// behind the dialog.
+fn next_target_field() -> Task<Message> {
+    use ncrs_hermes_ui::ui::target_dialog::{FOLDER_FIELD_ID, NAME_FIELD_ID};
+    operation::is_focused(NAME_FIELD_ID).then(|on_name| {
+        operation::focus(if on_name {
+            FOLDER_FIELD_ID
+        } else {
+            NAME_FIELD_ID
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +173,7 @@ mod tests {
         viewer: true,
         notes: true,
         filing: false,
+        repos: false,
         git: Vec::new(),
         hermes: true,
     };
@@ -158,6 +183,7 @@ mod tests {
         viewer: false,
         notes: false,
         filing: false,
+        repos: false,
         git: Vec::new(),
         hermes: false,
     };

@@ -15,6 +15,15 @@ impl App {
 
     /// The Git actions, while a Git tab is shown that offers them.
     pub(in crate::app) fn command_palette_git_commands(&self) -> Vec<GitCommandEntry> {
+        if self.repos_shown() {
+            return ncrs_repos::commands(self.lang, &self.repos_keys)
+                .into_iter()
+                .map(|(label, shortcut)| GitCommandEntry {
+                    label,
+                    shortcut: Some(shortcut).filter(|key| !key.is_empty()),
+                })
+                .collect();
+        }
         let offered = self
             .shown_git_tab()
             .and_then(|id| self.git_tabs.get(id))
@@ -22,11 +31,11 @@ impl App {
         if !offered {
             return Vec::new();
         }
-        ncrs_git_view::commands(self.lang)
+        ncrs_git_view::commands(self.lang, &self.git_keys)
             .into_iter()
             .map(|(label, shortcut)| GitCommandEntry {
                 label,
-                shortcut: Some(shortcut),
+                shortcut: Some(shortcut).filter(|key| !key.is_empty()),
             })
             .collect()
     }
@@ -48,9 +57,16 @@ impl App {
     /// as in an archive.
     pub(in crate::app) fn commands_the_panel_refuses(&self) -> Vec<KeyAction> {
         let panel = self.active_panel();
+        let has_git_file = match self.shown_git_tab().and_then(|id| self.git_tabs.get(id)) {
+            Some(tab) => ncrs_git_view::file_views::current_file(tab).is_some(),
+            None => self.git_file_under_cursor().is_some(),
+        };
         ncrs_config::commands::all()
             .map(|command| command.action)
             .filter(|action| {
+                if matches!(action, KeyAction::GitFileHistory | KeyAction::GitFileBlame) {
+                    return !has_git_file;
+                }
                 refusal_for(panel, &action.message()).is_some()
                     || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
             })
@@ -61,14 +77,8 @@ impl App {
     fn commands_without_a_folder_to_file(&self) -> Vec<KeyAction> {
         [
             (KeyAction::HermesFileOnce, HermesAction::FileOnce),
-            (
-                KeyAction::HermesFileContinuously,
-                HermesAction::FileContinuously,
-            ),
-            (
-                KeyAction::HermesStopContinuous,
-                HermesAction::StopContinuous,
-            ),
+            (KeyAction::WatchSource, HermesAction::WatchSource),
+            (KeyAction::AddTarget, HermesAction::AddTarget),
         ]
         .into_iter()
         .filter(|(_, action)| !self.hermes_action_enabled(*action))
@@ -139,6 +149,12 @@ impl App {
             // up.
             Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
             Some(CommandPaletteAction::RunGit(place)) => {
+                if self.repos_shown() {
+                    return match ncrs_repos::message_of_command(place) {
+                        Some(repos_message) => task.chain(self.update_repos(repos_message)),
+                        None => task,
+                    };
+                }
                 let sent = self
                     .shown_git_tab()
                     .zip(ncrs_git_view::message_of_command(place));

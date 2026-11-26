@@ -42,6 +42,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/034_filed_inbox_path.sql"),
     include_str!("migrations/035_duplicate_path_in_archive.sql"),
     include_str!("migrations/036_resolve_reviews_of_filed_documents.sql"),
+    include_str!("migrations/037_targets_and_backlog.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of
@@ -220,7 +221,7 @@ mod tests {
     #[test]
     fn reviews_of_documents_filed_before_are_resolved_and_the_others_stay_open() {
         let mut conn = Connection::open_in_memory().unwrap();
-        let (_, before) = MIGRATIONS.split_last().unwrap();
+        let (before, _) = MIGRATIONS.split_at(35);
         run_migrations(&mut conn, before).unwrap();
         conn.execute_batch(
             "INSERT INTO document (id, hash, path, source, received_at, status)
@@ -231,7 +232,8 @@ mod tests {
         )
         .unwrap();
 
-        run_migrations(&mut conn, MIGRATIONS).unwrap();
+        let (with_resolved_reviews, _) = MIGRATIONS.split_at(36);
+        run_migrations(&mut conn, with_resolved_reviews).unwrap();
 
         let open: Vec<i64> = conn
             .prepare("SELECT document_id FROM review_entry WHERE resolved_at IS NULL")

@@ -20,6 +20,8 @@ type Resolver<'a, Message> = Box<dyn Fn(&Key, Physical, Modifiers) -> Option<Mes
 struct KeyIntercept<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     resolve: Resolver<'a, Message>,
+    /// Published when the pointer presses inside the field, which gives it the focus.
+    on_press: Option<Box<dyn Fn() -> Message + 'a>>,
 }
 
 /// Wraps `content`, a text input: a press that `resolve` maps to a message
@@ -36,6 +38,26 @@ where
     Element::new(KeyIntercept {
         content: content.into(),
         resolve: Box::new(resolve),
+        on_press: None,
+    })
+}
+
+/// [`key_intercept`] that also publishes `on_press` when the pointer presses
+/// inside the field: the input takes the focus without telling anyone.
+pub fn key_intercept_pressed<'a, Message, Theme, Renderer>(
+    content: impl Into<Element<'a, Message, Theme, Renderer>>,
+    resolve: impl Fn(&Key, Physical, Modifiers) -> Option<Message> + 'a,
+    on_press: impl Fn() -> Message + 'a,
+) -> Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: 'a,
+    Renderer: iced::advanced::Renderer + 'a,
+{
+    Element::new(KeyIntercept {
+        content: content.into(),
+        resolve: Box::new(resolve),
+        on_press: Some(Box::new(on_press)),
     })
 }
 
@@ -161,6 +183,13 @@ where
                     shell.capture_event();
                     return;
                 }
+            }
+        }
+        if let (Some(message), Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))) =
+            (&self.on_press, event)
+        {
+            if cursor.is_over(layout.bounds()) {
+                shell.publish(message());
             }
         }
         self.content.as_widget_mut().update(

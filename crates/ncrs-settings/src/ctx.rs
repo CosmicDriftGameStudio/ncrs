@@ -10,6 +10,7 @@ use ncrs_ai::Secret;
 
 use crate::ai_model::{DownloadError as AiDownloadError, DownloadJob};
 use crate::ai_server::{AiCheckJob, AiCheckResult};
+use crate::key_bindings::GitShortcut;
 use crate::ocr_models::DownloadError as OcrDownloadError;
 use crate::open_vsx::{ExtensionId, FetchError, FetchedExtension};
 use crate::theme_fetch::{Installed, Pick};
@@ -34,6 +35,8 @@ pub struct Ctx<'a> {
     /// The log of what the own server used, next to the index; none while
     /// there is no index.
     pub usage_log: Option<PathBuf>,
+    /// The Git actions with their keys, for the shortcuts dialog to list.
+    pub git_shortcuts: Vec<GitShortcut>,
     pub services: Services,
 }
 

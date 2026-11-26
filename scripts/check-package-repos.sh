@@ -14,7 +14,7 @@
 # Usage: scripts/check-package-repos.sh <work-dir> <packages-dir> <new-version> <old-version>
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
+if [[ "$#" -ne 4 ]]; then
   echo "usage: $0 <work-dir> <packages-dir> <new-version> <old-version>" >&2
   exit 2
 fi
@@ -28,7 +28,7 @@ for version in "$new" "$old"; do
     exit 2
   fi
 done
-if [ "$new" = "$old" ]; then
+if [[ "$new" = "$old" ]]; then
   echo "the old and the new version must differ" >&2
   exit 2
 fi
@@ -40,13 +40,13 @@ base="$origin/signed"
 mkdir -p "$work"
 work=$(cd "$work" && pwd)
 packages=$(cd "$packages" && pwd)
-[ ! -e "$work/serve" ] || { echo "work folder is not clean: $work/serve exists" >&2; exit 2; }
+[[ ! -e "$work/serve" ]] || { echo "work folder is not clean: $work/serve exists" >&2; exit 2; }
 
 server_pid=""
 cleanup() {
-  [ -z "$server_pid" ] || kill "$server_pid" 2>/dev/null || true
+  [[ -z "$server_pid" ]] || kill "$server_pid" 2>/dev/null || true
   for home in "$work"/gnupg-*; do
-    [ -d "$home" ] || continue
+    [[ -d "$home" ]] || continue
     GNUPGHOME="$home" gpgconf --kill all 2>/dev/null || true
     rm -rf "$home"
   done
@@ -113,14 +113,14 @@ while IFS= read -r -d '' file; do
   candidate=$(dpkg-deb --field "$file" Version)
   case "$candidate" in "$old" | "$old"-*) old_deb_version="$candidate" ;; esac
 done < <(find "$packages" -type f -name '*.deb' -print0)
-[ -n "$old_deb_version" ] || { echo "::error::no .deb of version $old in $packages"; exit 1; }
+[[ -n "$old_deb_version" ]] || { echo "::error::no .deb of version $old in $packages"; exit 1; }
 
 # Run in the container of every case: the checks the README leaves to the user.
 prelude='
 export DEBIAN_FRONTEND=noninteractive
 installed_version() {
   ncrs --version | grep -F "ncrs $1 "
-  test -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so"
+  [[ -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so" ]]
 }
 # Runs the command, requires it to fail, and requires its output to say why.
 expect_failure() {

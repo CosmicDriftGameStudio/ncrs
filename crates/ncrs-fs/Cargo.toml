@@ -30,7 +30,7 @@ tempfile = "3.27"
 # `join_all` of the SFTP link lookups; the same crate iced re-exports.
 futures = { version = "0.3", default-features = false, features = ["std"] }
 # The change notifications of a shown folder; the same version as ncrs-intake.
-notify = "8"
+notify = "9"
 # Browsing and writing .zip archives.
 zip = { workspace = true }
 # Browsing archives like folders. Entries are unpacked by our own code, never
@@ -79,7 +79,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 
 [target.'cfg(unix)'.dependencies]
 # Owner and group names of the files in a listing. The `user` feature; `fs` for chmod of a file that cannot be opened and `dir` for walking a folder by its handle.
-nix = { version = "0.31", default-features = false, features = ["user", "fs", "dir"] }
+nix = { version = "0.32", default-features = false, features = ["user", "fs", "dir"] }
 # O_NOFOLLOW and friends for opening an entry without following a link.
 libc = "0.2"
 # Renaming without replacing (RENAME_NOREPLACE / RENAME_EXCL) and the extended
@@ -93,10 +93,10 @@ rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 sandbox = ["dep:ncrs-sandbox"]
 # The real-trash scene, the in-memory stores and the guards that panic in tests,
 # for the tests of the app.
-test-support = []
+test-support = ["tokio/fs", "tokio/io-util"]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["test-util"] }
+tokio = { version = "1", features = ["test-util", "fs", "io-util"] }
 
 [lints]
 workspace = true

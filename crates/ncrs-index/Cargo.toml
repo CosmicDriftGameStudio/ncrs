@@ -17,7 +17,7 @@ ncrs-index-types = { path = "../ncrs-index-types", version = "0.0.0" }
 # source, so no system library is needed. Windows has no system OpenSSL, and
 # the aarch64 Linux release is cross-compiled. No default features: no
 # statement cache (hashlink) and no wasm backend.
-rusqlite = { version = "0.42", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.43", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 # The default feature (v1) picks the platform store: Keychain on macOS,
 # Credential Manager on Windows, Secret Service over pure-Rust zbus on Linux
 # (no libdbus, no pkg-config; the store's crypto is RustCrypto, not a second
@@ -27,8 +27,6 @@ keyring = "4.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # Rule regexes are checked when a rule is saved.
 regex = "1.13"
-# A name typed or read with composed or decomposed umlauts is one name.
-unicode-normalization = "0.1.26"
 # The key comes from the OS random number generator, never from a seeded one.
 getrandom = "0.4"
 # The key bytes and the texts made from them are wiped when they are dropped.

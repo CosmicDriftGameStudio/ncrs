@@ -5,18 +5,20 @@ use std::time::{Duration, UNIX_EPOCH};
 use iced::widget::{column, container, Column};
 use iced::{Element, Length};
 use ncrs_git::{LogCommit, RefKind, SegmentHalf};
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::Msg;
+use ncrs_ui_kit::action_rows::context_area;
 use ncrs_ui_kit::commit_graph::{graph_cell, GraphCell, GraphLine, LineHalf, LANE_WIDTH};
 use ncrs_ui_kit::format;
+use ncrs_ui_kit::git_lines::{summarize_refs, wip_row, WipRow};
 use ncrs_ui_kit::git_rows::{
     commit_header, commit_message_width, commit_row, CommitRow, RefChipKind,
 };
 use ncrs_ui_kit::kit::{button, Tone};
-use ncrs_ui_kit::page_scroll::page_scroll;
-use ncrs_ui_kit::page_text::page_line;
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::page_scroll::page_scroll_tracked;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
 
-use super::COMMITS_ID;
+use super::{notice, COMMITS_ID};
+use crate::actions::MenuTarget;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::state::{Area, State};
@@ -31,7 +33,13 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     let show_sha = !super::is_narrow(ctx);
     let columns = state.columns_in_view(ctx.columns);
-    let lanes = log.lane_count.max(1);
+    // The column is at least as wide as its own title.
+    let title_lanes = (format::estimated_width(
+        ctx.lang.text(Msg::GitViewColumnGraph),
+        font_size::COLUMN_HEADER,
+    ) / LANE_WIDTH)
+        .ceil() as usize;
+    let lanes = log.lane_count.max(title_lanes).max(1);
     let graph_width = LANE_WIDTH * lanes as f32;
     let message_width = commit_message_width(
         super::commits_pane_width(state, ctx),
@@ -40,45 +48,48 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         show_sha,
     );
     let working = state.has_working_row().then(|| {
-        let count = state.current_worktree().map_or(0, |worktree| worktree.wip);
-        let empty = GraphCell {
-            lane: 0,
-            lines: Vec::new(),
-            merge: false,
-            dimmed: false,
-        };
-        commit_row(
-            CommitRow {
-                graph: graph_cell(empty, lanes, palette),
-                chips: Vec::new(),
-                message: fill_template(
-                    ctx.lang.text(Msg::GitViewWorkingCopy),
-                    &[("{count}", &count.to_string())],
-                ),
-                author: String::new(),
-                date: String::new(),
-                sha: String::new(),
-                columns,
-                message_width,
-                show_sha,
+        let changed = state.local_change_count();
+        // Without the lists nobody knows which files are staged.
+        let staged = state
+            .actions
+            .local
+            .as_ref()
+            .map(|local| u32::try_from(local.staged.len()).unwrap_or(u32::MAX));
+        wip_row(
+            WipRow {
+                changed: u32::try_from(changed).unwrap_or(u32::MAX),
+                staged,
                 chosen: state.area == Area::Commits && state.commit_cursor == 0,
-                dimmed: false,
+                marked: state.changes_shown(),
+                lanes,
+                columns,
+                show_sha,
                 on_press: Message::CommitPressed(0),
             },
+            ctx.lang,
             palette,
         )
     });
     let offset = usize::from(working.is_some());
     let commits = log.commits.iter().enumerate().map(|(index, commit)| {
         let row = index + offset;
-        commit_row(
+        let mut chips = summarize_refs(
+            commit
+                .refs
+                .iter()
+                .map(|label| (label.name.clone(), chip_kind(label.kind)))
+                .collect(),
+        );
+        if state.marked_commit.as_deref() == Some(commit.id.as_str()) {
+            chips.push((
+                ctx.lang.text(Msg::GitViewCommitMarked).to_owned(),
+                RefChipKind::Tag,
+            ));
+        }
+        let shown = commit_row(
             CommitRow {
                 graph: graph_cell(graph_of(commit), lanes, palette),
-                chips: commit
-                    .refs
-                    .iter()
-                    .map(|label| (label.name.clone(), chip_kind(label.kind)))
-                    .collect(),
+                chips,
                 message: commit.summary.clone(),
                 author: commit.author.clone(),
                 date: date_of(commit, ctx),
@@ -88,9 +99,14 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 show_sha,
                 chosen: state.area == Area::Commits && state.commit_cursor == row,
                 dimmed: commit.is_merge,
+                is_head: log.head.as_deref() == Some(commit.id.as_str()),
                 on_press: Message::CommitPressed(row),
             },
             palette,
+        );
+        context_area(
+            shown,
+            Message::OpenMenu(MenuTarget::Commit(commit.id.clone())),
         )
     });
     let mut rows = Column::new();
@@ -110,6 +126,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let header = commit_header(
         graph_width,
         [
+            ctx.lang.text(Msg::GitViewColumnGraph),
             ctx.lang.text(Msg::GitViewColumnMessage),
             ctx.lang.text(Msg::GitViewColumnAuthor),
             ctx.lang.text(Msg::GitViewColumnDate),
@@ -122,22 +139,17 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     );
     column![
         header,
-        page_scroll(COMMITS_ID, rows.width(Length::Fill).into())
+        theme::horizontal_rule(palette.border_inactive),
+        page_scroll_tracked(
+            COMMITS_ID,
+            rows.width(Length::Fill).into(),
+            Message::CommitsScrolled
+        )
     ]
     .into()
 }
 
-fn notice<'a>(ctx: ViewCtx<'a>, text: Msg) -> Element<'a, Message> {
-    container(page_line(
-        ctx.lang.text(text),
-        font_size::BODY,
-        ctx.palette.dim_text,
-    ))
-    .padding(spacing::M)
-    .into()
-}
-
-fn chip_kind(kind: RefKind) -> RefChipKind {
+pub fn chip_kind(kind: RefKind) -> RefChipKind {
     match kind {
         RefKind::Branch => RefChipKind::Branch,
         RefKind::Remote => RefChipKind::Remote,

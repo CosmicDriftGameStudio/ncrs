@@ -175,16 +175,6 @@ fn sidebar_item<'a>(chosen: bool, dimmed: bool, palette: &Palette) -> Cell<'a> {
     container(list).height(ONE_GROUP_HEIGHT).into()
 }
 
-fn focus_ring<'a>(content: Cell<'a>, palette: &Palette) -> Cell<'a> {
-    let ring = theme::focus_border(palette);
-    container(content)
-        .style(move |_: &iced::Theme| container::Style {
-            border: ring,
-            ..container::Style::default()
-        })
-        .into()
-}
-
 fn gallery<'a>(palette: &Palette) -> Cell<'a> {
     let p = palette;
     let button_of =
@@ -255,7 +245,11 @@ fn gallery<'a>(palette: &Palette) -> Cell<'a> {
                 Some(hermes_kit::dropdown(150.0, &items, 0, p)),
                 Some(hermes_kit::dropdown(150.0, &items, 1, p)),
                 None,
-                Some(focus_ring(hermes_kit::dropdown(150.0, &items, 0, p), p)),
+                Some(kit::focused(
+                    hermes_kit::dropdown(150.0, &items, 0, p),
+                    true,
+                    p,
+                )),
             ),
             p,
         ),
@@ -275,7 +269,7 @@ fn gallery<'a>(palette: &Palette) -> Cell<'a> {
                 Some(kit::segmented(&options, 0, true, p)),
                 Some(kit::segmented(&options, 1, true, p)),
                 Some(kit::segmented(&options, 0, false, p)),
-                None,
+                Some(kit::focusable_segmented(&options, 0, true, true, p)),
             ),
             p,
         ),
@@ -489,6 +483,303 @@ mod favourites_bar_ui_tests {
     fn the_favourites_bar_looks_the_same_in_every_preset() {
         for preset in ThemePreset::ALL {
             bar_picture(preset);
+        }
+    }
+}
+
+/// The ticked rows apart from the grid, for the same reason.
+mod check_rows_ui_tests {
+    use super::*;
+    use crate::check_rows::{check_group_head, check_row, CheckGroupHead, CheckRow};
+
+    fn picture(preset: ThemePreset) {
+        let palette = preset.palette();
+        let plain = |name: &str, check: Check, cursor: bool| {
+            check_row(
+                CheckRow {
+                    check,
+                    name: name.to_owned(),
+                    detail: None,
+                    reason: "in main".to_owned(),
+                    worktree: false,
+                    kept: false,
+                    cursor,
+                    on_toggle: Some(()),
+                    outcome: None,
+                },
+                &palette,
+            )
+        };
+        let content: Element<'_, ()> = iced::widget::column![
+            check_group_head(
+                CheckGroupHead {
+                    title: "infra".to_owned(),
+                    subtitle: "~/code/infra".to_owned(),
+                    count: 5,
+                    open: true,
+                    check: Check::Mixed,
+                    cursor: false,
+                    on_toggle_open: (),
+                    on_toggle_check: (),
+                },
+                &palette,
+            ),
+            plain("chore/renovate-oct", Check::On, false),
+            plain("fix/etcd-snapshot-s3", Check::Off, true),
+            check_row(
+                CheckRow {
+                    check: Check::On,
+                    name: "fix/redis-probe-timeout".to_owned(),
+                    detail: Some("~/code/infra-wt-redis".to_owned()),
+                    reason: "worktree only, branch merged".to_owned(),
+                    worktree: true,
+                    kept: false,
+                    cursor: false,
+                    on_toggle: Some(()),
+                    outcome: None,
+                },
+                &palette,
+            ),
+            check_row(
+                CheckRow {
+                    check: Check::Off,
+                    name: "feat/connector-oauth".to_owned(),
+                    detail: None,
+                    reason: "3 local changes".to_owned(),
+                    worktree: false,
+                    kept: true,
+                    cursor: false,
+                    on_toggle: None,
+                    outcome: None,
+                },
+                &palette,
+            ),
+        ]
+        .into();
+        let name = format!("check-rows-{}", format!("{preset:?}").to_lowercase());
+        let matches = Simulator::with_size(
+            iced::Settings {
+                default_font: crate::APP_FONT,
+                ..iced::Settings::default()
+            },
+            Size::new(560.0, 180.0),
+            container(content).style(theme::panel(&palette)),
+        )
+        .snapshot(&iced::Theme::Dark)
+        .unwrap()
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
+        .unwrap();
+        assert!(matches, "{name} differs from its image");
+    }
+
+    #[test]
+    fn the_ticked_rows_look_the_same_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            picture(preset);
+        }
+    }
+}
+
+/// The blocks of the filing pages apart from the grid, so the grid stays as it is.
+mod filing_blocks_ui_tests {
+    use super::*;
+    use crate::hermes_kit::TargetCheck;
+    use crate::kit::PatternField;
+    use crate::plan_rows::{plan_action_row, PlanActionRow, PlanFileRow, PlanLink};
+    use crate::setting_rows::RowButton;
+    use iced::widget::column;
+
+    fn chips<'a>(p: &Palette) -> Cell<'a> {
+        let chips =
+            (0..7).map(|index| hermes_kit::target_chip(index, &format!("T{}", index + 1), p));
+        Row::with_children(chips).spacing(spacing::M).into()
+    }
+
+    fn target_rows<'a>(p: &Palette) -> Cell<'a> {
+        let row = |state: Check, index: usize, number: &'a str, name: &'a str, marked: bool| {
+            hermes_kit::target_check_row(
+                TargetCheck {
+                    state,
+                    on_toggle: Some(()),
+                    index,
+                    number,
+                    name,
+                    path: "/Volumes/Vault/Documents",
+                    marked,
+                },
+                p,
+            )
+        };
+        column![
+            row(Check::On, 0, "T1", "Documents", false),
+            row(Check::On, 1, "T2", "Company", true),
+            row(Check::Off, 2, "T3", "Family", false),
+        ]
+        .into()
+    }
+
+    fn pattern<'a>(p: &Palette) -> Cell<'a> {
+        const TOKENS: [(&str, ()); 4] = [
+            ("{sender}", ()),
+            ("{kind}", ()),
+            ("{year}", ()),
+            ("{day}", ()),
+        ];
+        let field = |value: &'a str, preview: Option<&str>, problem: Option<&str>| {
+            kit::pattern_field(
+                PatternField {
+                    value,
+                    id: "gallery-pattern",
+                    on_input: Box::new(|_| ()),
+                    on_submit: (),
+                    tokens: &TOKENS,
+                    preview: preview.map(str::to_owned),
+                    problem: problem.map(str::to_owned),
+                },
+                p,
+            )
+        };
+        column![
+            kit::token_row("Add", &TOKENS, p),
+            field(
+                "Bank/{sender}/{year}/{kind}.pdf",
+                Some("Result: Bank/Example Bank/2026/Statement.pdf"),
+                None,
+            ),
+            field(
+                "Bank/{sender}/{unknown}",
+                None,
+                Some("{unknown} is not a block")
+            ),
+        ]
+        .spacing(spacing::M)
+        .into()
+    }
+
+    fn plan_rows<'a>(p: &Palette) -> Cell<'a> {
+        let line_width = 850.0;
+        let file = |chosen: bool| PlanFileRow {
+            name: "scan-006.pdf".to_owned(),
+            what: "no rule matches · stays where it is".to_owned(),
+            what_color: p.dim_text,
+            chip: None,
+            chosen,
+            on_press: (),
+        };
+        let links = || {
+            vec![
+                PlanLink {
+                    label: "Make a rule…".to_owned(),
+                    on_press: (),
+                },
+                PlanLink {
+                    label: "Hermes: suggest a rule".to_owned(),
+                    on_press: (),
+                },
+            ]
+        };
+        column![
+            plan_action_row(
+                PlanActionRow {
+                    file: file(false),
+                    links: Vec::new(),
+                    marked_link: None,
+                },
+                line_width,
+                p,
+            ),
+            plan_action_row(
+                PlanActionRow {
+                    file: file(false),
+                    links: links(),
+                    marked_link: None,
+                },
+                line_width,
+                p,
+            ),
+            plan_action_row(
+                PlanActionRow {
+                    file: file(true),
+                    links: links(),
+                    marked_link: Some(1),
+                },
+                line_width,
+                p,
+            ),
+        ]
+        .into()
+    }
+
+    fn folding_heads<'a>(p: &Palette) -> Cell<'a> {
+        let head = |open: bool, index: usize| {
+            SettingRow::folding_head(
+                open,
+                hermes_kit::target_chip(index, "T1", p),
+                "Documents".to_owned(),
+                Some("/Volumes/Vault/Documents · from Downloads".to_owned()),
+                (),
+                vec![
+                    RowButton::new("+ Rule…", Some(()), Tone::Secondary),
+                    RowButton::new("Remove", Some(()), Tone::Secondary),
+                ],
+                p,
+            )
+        };
+        let group = Group {
+            intro: None,
+            title: String::new(),
+            rows: vec![head(true, 0), head(false, 1)],
+        };
+        let focus = RowFocus {
+            row: 1,
+            open: None,
+            button: 0,
+        };
+        let rows = setting_rows::sections_with_focus(
+            vec![group],
+            |_| true,
+            None,
+            Some(focus),
+            |_, _| None,
+            p,
+        );
+        column(rows).width(Length::Fill).into()
+    }
+
+    fn picture(preset: ThemePreset) {
+        let palette = preset.palette();
+        let p = &palette;
+        let content: Cell<'_> = column![
+            chips(p),
+            target_rows(p),
+            pattern(p),
+            plan_rows(p),
+            folding_heads(p),
+        ]
+        .spacing(spacing::L)
+        .into();
+        let name = format!("filing-blocks-{}", format!("{preset:?}").to_lowercase());
+        let matches = Simulator::with_size(
+            iced::Settings {
+                default_font: crate::APP_FONT,
+                ..iced::Settings::default()
+            },
+            Size::new(900.0, 640.0),
+            container(content)
+                .padding(spacing::XXL)
+                .style(theme::panel(p)),
+        )
+        .snapshot(&iced::Theme::Dark)
+        .unwrap()
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
+        .unwrap();
+        assert!(matches, "{name} differs from its image");
+    }
+
+    #[test]
+    fn the_filing_blocks_look_the_same_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            picture(preset);
         }
     }
 }

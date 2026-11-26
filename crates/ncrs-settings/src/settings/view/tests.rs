@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::facts::{DocumentsFacts, FavouritesFacts};
+use crate::facts::{DocumentsFacts, FavouritesFacts, ReposScanFacts};
 use crate::message::{SettingChange, SettingField};
 use ncrs_config::config::{
     AiEndpointProblem, AiProviderChoice, AiProviderName, Filing, OwnDetail, ProgramLine,
@@ -27,7 +27,7 @@ fn typed(state: &mut SettingsState, field: SettingField, text: &str) -> Option<S
 }
 
 #[test]
-fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
+fn searching_the_theme_name_of_a_page_lists_it() {
     let filing = Filing::default();
     let palette = Palette::default();
     for typed_query in ["hermes", "HERMES"] {
@@ -46,6 +46,7 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
             entitlement: ncrs_store::Entitlement::Unrestricted,
             facts: DocumentsFacts::default(),
             favourites: FavouritesFacts::default(),
+            repos_scan: ReposScanFacts::default(),
             lang: Language::EnglishFuturama,
             palette: &palette,
         };
@@ -57,10 +58,6 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
             &query,
             Language::EnglishFuturama
         ));
-        assert!(groups_of(SettingsFeature::Hermes, &view)
-            .into_iter()
-            .flat_map(|group| group.rows)
-            .any(|setting| !row_matches(&setting, &query)));
     }
 }
 
@@ -88,6 +85,7 @@ fn the_full_version_page_is_nowhere_when_nothing_is_locked() {
             entitlement,
             facts: DocumentsFacts::default(),
             favourites: FavouritesFacts::default(),
+            repos_scan: ReposScanFacts::default(),
             lang: Language::English,
             palette: &palette,
         };
@@ -120,6 +118,7 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
         entitlement: ncrs_store::Entitlement::TrialNotStarted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang: Language::English,
         palette: &palette,
     };
@@ -586,6 +585,7 @@ fn rows_of(feature: SettingsFeature, state: &SettingsState, lang: Language) -> V
         entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang,
         palette: &palette,
     };
@@ -653,6 +653,7 @@ fn ai_view<'a>(
         entitlement: ncrs_store::Entitlement::Unrestricted,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
+        repos_scan: ReposScanFacts::default(),
         lang,
         palette,
     }
@@ -669,8 +670,12 @@ fn the_keyboard_starts_the_ai_page_on_the_hermes_switch() {
         keys.first(),
         Some(ncrs_ui_kit::setting_rows::RowKey::Choice { .. })
     ));
-    let hermes_labels = rows_of(SettingsFeature::Hermes, &state, Language::English);
-    assert!(!hermes_labels.contains(&Language::English.text(Msg::GroupHermes).to_owned()));
+    let ai_labels = rows_of(SettingsFeature::Ai, &state, Language::English);
+    assert!(ai_labels.contains(
+        &Language::English
+            .text(Msg::SettingsHermesRowChatKeep)
+            .to_owned()
+    ));
 }
 
 const FAR_SERVER: &str = "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\n\

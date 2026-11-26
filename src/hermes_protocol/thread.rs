@@ -32,17 +32,10 @@ pub fn entry_text(entry: &Entry) -> String {
                     .map(|row| format!("[{} | {} | {}]", row.name, row.description, row.example))
                     .collect::<Vec<_>>()
                     .join(" "),
-                Part::File(card) => card.segments.join("/"),
                 Part::Levels(card) => card
                     .rows
                     .iter()
                     .map(|row| format!("{}. {}", row.number, row.text))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                Part::Proposal(card) => card
-                    .facts
-                    .iter()
-                    .map(|fact| format!("{}: {}", fact.label, fact.value))
                     .collect::<Vec<_>>()
                     .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
@@ -117,10 +110,14 @@ pub fn is_ready(app: &App) -> bool {
 }
 
 pub fn documents_indexed(app: &App) -> Option<u64> {
-    let figures = app
+    let counts = app
         .filing_module_for_test()?
-        .index_figures_reader()?
+        .hermes_counts_reader()?
         .read()
         .ok()?;
-    Some(figures.statistics.document_count)
+    let documents = [counts.inbox, counts.archive]
+        .iter()
+        .map(|of| of.new + of.planned + of.in_review + of.filed)
+        .sum();
+    Some(documents)
 }

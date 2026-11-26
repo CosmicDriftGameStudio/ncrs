@@ -142,8 +142,8 @@ pub struct JobStatus {
     pub detail: Option<String>,
 }
 
-/// The filing progress at the right end of the bar; pressing it opens the
-/// filing status page. The text is the caller's, already translated.
+/// The filing progress at the right end of the bar; pressing it sends
+/// `on_press`. The text is the caller's, already translated.
 pub struct FilingBadge<M> {
     pub text: String,
     /// The text is in the error colour.

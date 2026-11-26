@@ -29,6 +29,7 @@ pub mod write;
 pub use action::Action;
 pub use ai_server::{check_ai_server, store_ai_key, AiCheckJob, AiCheckResult};
 pub use ctx::{Ctx, Services};
+pub use key_bindings::GitShortcut;
 pub use message::{
     AiModelMessage, FavouritesEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange,
     SettingField, SettingsMessage, StoreButton, TerminalChoice, ThemeFetchMessage,

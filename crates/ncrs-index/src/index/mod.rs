@@ -1,49 +1,22 @@
 use std::fs::File;
 use std::io::{ErrorKind, Read as _};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rusqlite::{Connection, ErrorCode};
 use zeroize::Zeroizing;
 
 use crate::error::IndexError;
-use crate::folder_pick::create_folder_pick_table;
 use crate::key::{IndexKey, RecoveryKey};
 use crate::key_store::KeyStore;
 use crate::kinds::KindCatalog;
 use crate::migrations::{run_migrations, MIGRATIONS};
-use crate::model::IndexStatistics;
-
-/// The FTS5 table `document_text` keeps its data in these shadow tables.
-const FULL_TEXT_TABLES: [&str; 5] = [
-    "document_text_data",
-    "document_text_idx",
-    "document_text_content",
-    "document_text_docsize",
-    "document_text_config",
-];
 
 const PLAINTEXT_HEADER: &[u8; 16] = b"SQLite format 3\0";
-
-static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
-
-fn next_instance() -> u64 {
-    NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed)
-}
-
-/// Differs whenever the index was written to or replaced by another one; two
-/// equal stamps mean nothing was written in between.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChangeStamp {
-    instance: u64,
-    changed_rows: u64,
-}
 
 #[derive(Debug)]
 pub struct Index {
     conn: Connection,
-    instance: u64,
     encrypted: bool,
     kinds: Arc<KindCatalog>,
 }
@@ -176,34 +149,6 @@ impl Index {
         &self.conn
     }
 
-    /// Cheap counts for a status display; reads no document or review rows.
-    pub fn statistics(&self) -> Result<IndexStatistics, IndexError> {
-        let conn = self.connection();
-        let schema_version = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        let document_count = conn.query_row("SELECT COUNT(*) FROM document", [], |row| {
-            row.get::<_, i64>(0).map(i64::unsigned_abs)
-        })?;
-        let open_reviews = conn.query_row(
-            "SELECT COUNT(*) FROM review_entry WHERE resolved_at IS NULL",
-            [],
-            |row| row.get::<_, i64>(0).map(i64::unsigned_abs),
-        )?;
-        let full_text_bytes = conn.query_row(
-            &format!(
-                "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat WHERE name IN ({})",
-                FULL_TEXT_TABLES.map(|name| format!("'{name}'")).join(", ")
-            ),
-            [],
-            |row| row.get::<_, i64>(0).map(i64::unsigned_abs),
-        )?;
-        Ok(IndexStatistics {
-            schema_version,
-            document_count,
-            open_reviews,
-            full_text_bytes,
-        })
-    }
-
     pub(crate) fn conn_mut(&mut self) -> &mut Connection {
         &mut self.conn
     }
@@ -230,7 +175,6 @@ impl Index {
         Ok((
             Self {
                 conn,
-                instance: next_instance(),
                 encrypted: true,
                 kinds: Arc::default(),
             },
@@ -253,7 +197,6 @@ impl Index {
             .map_err(|err| discard_half_created(db_path, err))?;
         Ok(Self {
             conn,
-            instance: next_instance(),
             encrypted: false,
             kinds: Arc::default(),
         })
@@ -287,20 +230,11 @@ impl Index {
         }
         run_migrations(&mut conn, migrations)?;
         crate::names::fold_name_keys(&mut conn)?;
-        create_folder_pick_table(&conn)?;
         Ok(Self {
             conn,
-            instance: next_instance(),
             encrypted,
             kinds: Arc::default(),
         })
-    }
-
-    pub fn change_stamp(&self) -> ChangeStamp {
-        ChangeStamp {
-            instance: self.instance,
-            changed_rows: self.conn.total_changes(),
-        }
     }
 
     /// The kinds this index knows; the built-in ones until the config is applied.
@@ -541,8 +475,7 @@ fn unlock(conn: &Connection, key: &IndexKey) -> Result<(), IndexError> {
 /// migration has to.
 fn write_header_and_migrate(conn: &mut Connection, migrations: &[&str]) -> Result<(), IndexError> {
     conn.pragma_update(None, "user_version", 0)?;
-    run_migrations(conn, migrations)?;
-    create_folder_pick_table(conn)
+    run_migrations(conn, migrations)
 }
 
 #[cfg(test)]

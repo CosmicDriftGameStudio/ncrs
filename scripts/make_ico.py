@@ -22,7 +22,7 @@ def png_size(data):
 def main(out_path, png_paths):
     images = []
     for path in png_paths:
-        with open(path, "rb") as file:
+        with open(path, "rb") as file:  # NOSONAR a developer tool, the paths are its arguments
             data = file.read()
         images.append((png_size(data), data))
     header = struct.pack("<HHH", 0, 1, len(images))
@@ -35,7 +35,7 @@ def main(out_path, png_paths):
         entries += struct.pack("<BBBBHHII", dimension, dimension, 0, 0, 1, 32, len(data), offset)
         body += data
         offset += len(data)
-    with open(out_path, "wb") as file:
+    with open(out_path, "wb") as file:  # NOSONAR as above
         file.write(header + entries + body)
 
 

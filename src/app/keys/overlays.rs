@@ -245,6 +245,7 @@ pub(in crate::app) fn is_page_spanning(message: &Message) -> bool {
             KeyAction::FilingStatus,
             KeyAction::Rules,
             KeyAction::SavedQueries,
+            KeyAction::Repos,
         ]
         .into_iter()
         .any(|action| *message == action.message())
@@ -453,11 +454,40 @@ pub(in crate::app) fn filing_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if let Some(message) = ncrs_filing_view::filing_key(key, key_modifiers, prompt.filing_renaming)
-    {
+    if let Some(message) = ncrs_filing_view::filing_key(key, key_modifiers, prompt.filing_keys) {
         return Some(Message::FilingView(message));
     }
     bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+}
+
+/// The dialog of Hermes on top takes every key. Typing, and Enter in a text
+/// field that answers it, never reach here.
+pub(in crate::app) fn hermes_dialog_key(
+    dialog: HermesDialogKeys,
+    key: &Key,
+    key_modifiers: Modifiers,
+) -> Option<Message> {
+    let is_tab = matches!(key.as_ref(), Key::Named(Named::Tab));
+    let is_escape = matches!(key.as_ref(), Key::Named(Named::Escape));
+    match dialog {
+        HermesDialogKeys::Closed => None,
+        HermesDialogKeys::Suggest if key_modifiers.is_empty() => {
+            ncrs_hermes_ui::keys::suggest_dialog_key(key).map(Message::from)
+        }
+        HermesDialogKeys::Suggest => None,
+        HermesDialogKeys::Source => {
+            ncrs_hermes_ui::keys::source_dialog_key(key, key_modifiers.shift()).map(Message::from)
+        }
+        HermesDialogKeys::Target | HermesDialogKeys::Rule if is_tab => {
+            page_tab_message(key_modifiers)
+        }
+        HermesDialogKeys::Target => ncrs_hermes_ui::keys::target_dialog_key(key).map(Message::from),
+        HermesDialogKeys::TargetRemoval => {
+            ncrs_hermes_ui::keys::target_removal_key(key).map(Message::from)
+        }
+        // Closes the dialog on top, and keeps one that holds typed input.
+        HermesDialogKeys::Rule => is_escape.then_some(Message::Settings(SettingsMessage::Close)),
+    }
 }
 
 /// The Git tab is up: it takes its own keys; of the bindings only the ones
@@ -469,16 +499,48 @@ pub(in crate::app) fn git_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let menu_pressed = bound.as_ref() == Some(&KeyAction::ContextMenu.message());
     if let Some(message) = ncrs_git_view::git_view_key(
+        &prompt.git_keys,
         key,
         key_modifiers,
-        prompt.git_filter,
-        prompt.git_diff,
-        prompt.git_dialog,
+        prompt.git_context,
+        menu_pressed,
     ) {
         return Some(Message::GitView(git, message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+    bound.filter(is_page_spanning)
+}
+
+/// The Repos tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn repos_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let app_key = match bound.as_ref() {
+        Some(message) if *message == KeyAction::ContextMenu.message() => {
+            Some(ncrs_repos::AppKey::ContextMenu)
+        }
+        Some(Message::OpenTerminal) => Some(ncrs_repos::AppKey::OpenTerminal),
+        Some(Message::CopyToClipboard(ClipboardKind::Path)) => Some(ncrs_repos::AppKey::CopyPath),
+        _ => None,
+    };
+    if let Some(message) = ncrs_repos::repos_key(
+        &prompt.repos_keys,
+        key,
+        key_modifiers,
+        prompt.repos_text,
+        prompt.repos_menu,
+        app_key,
+    ) {
+        return Some(Message::Repos(message));
+    }
+    bound.filter(is_page_spanning)
 }
 
 pub(in crate::app) fn viewer_or_monitor_key(
@@ -489,6 +551,8 @@ pub(in crate::app) fn viewer_or_monitor_key(
 ) -> Option<Message> {
     if prompt.filing {
         filing_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.repos {
+        repos_page_key(prompt, key, key_modifiers, scope)
     } else if let Some(git) = prompt.git {
         git_page_key(git, prompt, key, key_modifiers, scope)
     } else if prompt.notes {

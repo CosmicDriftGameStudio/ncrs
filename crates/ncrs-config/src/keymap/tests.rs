@@ -120,6 +120,51 @@ fn a_key_section_naming_a_retired_action_still_loads() {
 }
 
 #[test]
+fn the_names_of_the_old_hermes_commands_still_load_and_bind_nothing() {
+    for name in [
+        "hermes_quick_fix",
+        "hermes_hand_to_inbox",
+        "hermes_file_continuously",
+        "hermes_stop_continuous",
+        "hermes_set_inbox",
+        "hermes_set_filing_location",
+        "hermes_set_archive",
+    ] {
+        assert_eq!(KeyAction::from_name(name), None, "{name}");
+        let keymap = rebound(&format!("[keys]\n{name} = \"ctrl+shift+f9\"\n"));
+        assert_eq!(
+            keymap.action_for(
+                &named(Named::F9),
+                Modifiers::CTRL | Modifiers::SHIFT,
+                KeyScope::Panel
+            ),
+            None,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn the_commands_of_the_sorting_can_be_bound_to_a_key() {
+    for (name, action) in [
+        ("hermes_file_once", KeyAction::HermesFileOnce),
+        ("watch_source", KeyAction::WatchSource),
+        ("add_target", KeyAction::AddTarget),
+    ] {
+        let keymap = rebound(&format!("[keys]\n{name} = \"ctrl+shift+f9\"\n"));
+        assert_eq!(
+            keymap.action_for(
+                &named(Named::F9),
+                Modifiers::CTRL | Modifiers::SHIFT,
+                KeyScope::Panel
+            ),
+            Some(action),
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn only_the_command_line_gives_its_built_in_key_away() {
     let (_, clash_with_view) = failure("[keys]\ncopy = \"F3\"\n");
     assert!(
@@ -217,13 +262,9 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::Trash,
         KeyAction::OpenTrashInFinder,
         KeyAction::ComputeFolderSizes,
-        KeyAction::HermesHandToInbox,
-        KeyAction::HermesSetInbox,
         KeyAction::HermesFileOnce,
-        KeyAction::HermesFileContinuously,
-        KeyAction::HermesStopContinuous,
-        KeyAction::HermesSetFilingLocation,
-        KeyAction::HermesSetArchive,
+        KeyAction::WatchSource,
+        KeyAction::AddTarget,
         KeyAction::HermesExclude,
         KeyAction::HermesInspect,
         KeyAction::SearchDocuments,
@@ -490,4 +531,32 @@ fn the_git_view_is_on_primary_shift_g() {
             Modifiers::COMMAND | Modifiers::SHIFT
         )]
     );
+}
+
+#[test]
+fn the_history_and_the_blame_of_a_file_have_keys_and_can_be_rebound() {
+    let keys_of = |wanted: KeyAction, mac: bool| -> Vec<Binding> {
+        default_bindings_for(mac)
+            .into_iter()
+            .filter(|(action, _)| *action == wanted)
+            .map(|(_, binding)| binding)
+            .collect()
+    };
+    for mac in [true, false] {
+        for (action, letter) in [
+            (KeyAction::GitFileHistory, "y"),
+            (KeyAction::GitFileBlame, "i"),
+        ] {
+            let key = Key::Character(letter.into());
+            let command = if mac {
+                Modifiers::LOGO
+            } else {
+                Modifiers::CTRL
+            };
+            let expected = Binding::with_modifiers(key, command);
+            assert_eq!(keys_of(action, mac), [expected]);
+        }
+    }
+    let (_, reason) = failure("[keys]\ngit_file_history = \"alt+x\"\ngit_file_blame = \"alt+x\"\n");
+    assert!(reason.contains("already bound"), "{reason}");
 }

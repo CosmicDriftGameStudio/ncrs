@@ -215,7 +215,10 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::UndoRename
         | KeyAction::ContextMenu
         | KeyAction::NoteOnFile
-        | KeyAction::GitView => at(2),
+        | KeyAction::GitView
+        | KeyAction::GitFileHistory
+        | KeyAction::GitFileBlame
+        | KeyAction::Repos => at(2),
         KeyAction::CompareFolders => at(1).dialog(),
         KeyAction::SortByName
         | KeyAction::SortByModified
@@ -260,20 +263,15 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
             at(1).toggle()
         }
         KeyAction::OpenHitsLeft | KeyAction::OpenHitsRight => at(2),
-        KeyAction::HermesHandToInbox
+        KeyAction::HermesFileOnce
+        | KeyAction::WatchSource
+        | KeyAction::AddTarget
         | KeyAction::HermesProcessAgain
-        | KeyAction::HermesFileOnce
-        | KeyAction::HermesFileContinuously
-        | KeyAction::HermesStopContinuous
-        | KeyAction::HermesQuickFix
         | KeyAction::HermesExclude => at(0),
         KeyAction::Rules => at(1),
         KeyAction::FilingStatus | KeyAction::SavedQueries | KeyAction::HermesInspect => {
             at(1).within(HermesReview)
         }
-        KeyAction::HermesSetInbox
-        | KeyAction::HermesSetFilingLocation
-        | KeyAction::HermesSetArchive => at(1).within(HermesSetup),
         KeyAction::DownloadOcrModels | KeyAction::DownloadAiModel => {
             at(1).dialog().within(HermesSetup)
         }
@@ -359,6 +357,9 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Notes => Command::plain(action, Go, Msg::ActionNotes),
         KeyAction::NoteOnFile => Command::plain(action, File, Msg::ActionNoteOnFile),
         KeyAction::GitView => Command::plain(action, File, Msg::ActionGitView),
+        KeyAction::GitFileHistory => Command::plain(action, File, Msg::ActionGitFileHistory),
+        KeyAction::GitFileBlame => Command::plain(action, File, Msg::ActionGitFileBlame),
+        KeyAction::Repos => Command::plain(action, Go, Msg::ActionRepos),
         KeyAction::FileListTagsToggle => {
             Command::plain(action, View, Msg::ActionFileListTagsToggle)
         }
@@ -427,25 +428,12 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Rules => {
             Command::themed(action, Hermes, Msg::ActionRules, FuturamaName::ActionRules)
         }
-        KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
-        KeyAction::HermesHandToInbox => {
-            Command::plain(action, Hermes, Msg::ActionHermesHandToInbox)
-        }
         KeyAction::HermesProcessAgain => {
             Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
         }
         KeyAction::HermesFileOnce => Command::plain(action, Hermes, Msg::ActionHermesFileOnce),
-        KeyAction::HermesFileContinuously => {
-            Command::plain(action, Hermes, Msg::ActionHermesFileContinuously)
-        }
-        KeyAction::HermesStopContinuous => {
-            Command::plain(action, Hermes, Msg::ActionHermesStopContinuous)
-        }
-        KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
-        KeyAction::HermesSetFilingLocation => {
-            Command::plain(action, Hermes, Msg::ActionHermesSetFilingLocation)
-        }
-        KeyAction::HermesSetArchive => Command::plain(action, Hermes, Msg::ActionHermesSetArchive),
+        KeyAction::WatchSource => Command::plain(action, Hermes, Msg::ActionWatchSource),
+        KeyAction::AddTarget => Command::plain(action, Hermes, Msg::ActionAddTarget),
         KeyAction::HermesExclude => Command::plain(action, Hermes, Msg::ActionHermesExclude),
         KeyAction::HermesInspect => Command::plain(action, Hermes, Msg::ActionHermesInspect),
         KeyAction::SavedQueries => Command::themed(

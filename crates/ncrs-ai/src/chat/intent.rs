@@ -10,15 +10,6 @@ use crate::error::AiError;
 use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
 use crate::status::LocalModelStatus;
 
-/// Where a folder choice queues for the model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FolderChoiceLane {
-    /// A person waits for the answer: ahead of the document reading.
-    Waiting,
-    /// Nobody waits: in line with the document reading, at its priority.
-    Background,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Schedule {
     Once,
@@ -185,16 +176,6 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         previous: &Levels,
         sentence: &str,
     ) -> Result<Revision, AiError>;
-    /// For each document the index of the folder it belongs in, or `None`
-    /// when no folder fits. A model that cannot answer the question at all
-    /// says `AiError::Unsupported`. Each folder comes with a few names of
-    /// files already in it.
-    fn choose_folders(
-        &self,
-        folders: &[(String, Vec<String>)],
-        documents: &[String],
-        lane: FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

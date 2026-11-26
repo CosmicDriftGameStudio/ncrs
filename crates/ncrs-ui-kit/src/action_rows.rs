@@ -18,6 +18,8 @@ pub struct ActionRow<'a, M> {
     pub trail: Vec<(String, Color)>,
     pub actions: Vec<Element<'a, M>>,
     pub chosen: bool,
+    /// The list has the keys: the chosen row is in the accent, else in grey.
+    pub active: bool,
     pub on_press: M,
 }
 
@@ -33,7 +35,8 @@ impl<M> std::fmt::Debug for ActionRow<'_, M> {
 const LEAD_WIDTH: f32 = 14.0;
 
 pub fn action_row<'a, M: Clone + 'a>(entry: ActionRow<'a, M>, palette: &Palette) -> Element<'a, M> {
-    let ink = if entry.chosen {
+    let lit = entry.chosen && entry.active;
+    let ink = if lit {
         palette.cursor_text
     } else {
         palette.text
@@ -43,7 +46,7 @@ pub fn action_row<'a, M: Clone + 'a>(entry: ActionRow<'a, M>, palette: &Palette)
         .align_y(alignment::Vertical::Center);
     if let Some((letter, color)) = entry.lead {
         line = line.push(
-            container(text(letter).size(font_size::BODY).color(if entry.chosen {
+            container(text(letter).size(font_size::BODY).color(if lit {
                 palette.cursor_text
             } else {
                 color
@@ -65,11 +68,7 @@ pub fn action_row<'a, M: Clone + 'a>(entry: ActionRow<'a, M>, palette: &Palette)
         line = line.push(
             text(content)
                 .size(font_size::SMALL)
-                .color(if entry.chosen {
-                    palette.cursor_text
-                } else {
-                    color
-                })
+                .color(if lit { palette.cursor_text } else { color })
                 .wrapping(Wrapping::None),
         );
     }
@@ -82,7 +81,7 @@ pub fn action_row<'a, M: Clone + 'a>(entry: ActionRow<'a, M>, palette: &Palette)
     .width(Length::Fill)
     .height(size::ROW_TALL)
     .padding(0.0)
-    .style(theme::menu_item(palette, entry.chosen));
+    .style(theme::menu_item(palette, false));
     let mut whole = Row::new()
         .push(pressable)
         .spacing(spacing::M)
@@ -90,10 +89,22 @@ pub fn action_row<'a, M: Clone + 'a>(entry: ActionRow<'a, M>, palette: &Palette)
     for action in entry.actions {
         whole = whole.push(action);
     }
+    let (fill, ink_on_fill) = if lit {
+        (Some(palette.cursor), palette.cursor_text)
+    } else if entry.chosen {
+        (Some(palette.border_inactive), palette.text)
+    } else {
+        (None, palette.text)
+    };
     container(whole)
         .padding(Padding {
             right: spacing::M,
             ..Padding::ZERO
+        })
+        .style(move |_theme| container::Style {
+            background: fill.map(Into::into),
+            text_color: Some(ink_on_fill),
+            ..container::Style::default()
         })
         .into()
 }
@@ -133,13 +144,14 @@ pub fn hunk_bar<'a, M: 'a>(
     actions: Vec<Element<'a, M>>,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let mut line = row![
+    let mut line = row![container(
         text(content)
             .size(font_size::SMALL)
             .color(palette.dim_text)
             .wrapping(Wrapping::None),
-        Space::new().width(Length::Fill),
-    ]
+    )
+    .width(Length::Fill)
+    .clip(true)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     for action in actions {

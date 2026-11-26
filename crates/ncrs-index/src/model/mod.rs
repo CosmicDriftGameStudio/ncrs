@@ -9,7 +9,7 @@ use crate::error::IndexError;
 use crate::kinds::KindCatalog;
 
 pub use ncrs_index_types::{
-    amount_digits, amount_text, tag_name, Amount, ConditionKind, Currency, StatusCounts,
+    amount_digits, amount_text, tag_name, Amount, ConditionKind, Currency, StatusCounts, TargetId,
     MINOR_UNITS_PER_UNIT,
 };
 
@@ -64,7 +64,6 @@ impl DocumentId {
     }
 }
 id_newtype!(SavedQueryId);
-id_newtype!(SenderAliasId);
 
 /// SHA-256 of the file content. The index stores it; hashing is not its job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -296,6 +295,12 @@ pub enum ReviewReason {
     TargetExists,
     MissingField(Field),
     LowConfidence(Field),
+    /// The document has no text to decide on.
+    NoText,
+    /// The rules of several targets match it.
+    SeveralTargets,
+    /// The user took the filing back.
+    Undone,
 }
 
 impl ReviewReason {
@@ -308,6 +313,9 @@ impl ReviewReason {
             Self::TargetExists => ("target_exists", None),
             Self::MissingField(field) => ("missing_field", Some(field)),
             Self::LowConfidence(field) => ("low_confidence", Some(field)),
+            Self::NoText => ("no_text", None),
+            Self::SeveralTargets => ("several_targets", None),
+            Self::Undone => ("undone", None),
         }
     }
 
@@ -319,6 +327,9 @@ impl ReviewReason {
             ("target_exists", None) => Ok(Self::TargetExists),
             ("missing_field", Some(of)) => Ok(Self::MissingField(of)),
             ("low_confidence", Some(of)) => Ok(Self::LowConfidence(of)),
+            ("no_text", None) => Ok(Self::NoText),
+            ("several_targets", None) => Ok(Self::SeveralTargets),
+            ("undone", None) => Ok(Self::Undone),
             _ => Err(corrupt("review_entry.reason", reason)),
         }
     }
@@ -643,6 +654,8 @@ pub struct Rule {
     pub position: i64,
     /// Fixed when the rule is created; `Index::update_rule` keeps it.
     pub origin: RuleOrigin,
+    /// The target the rule files into; `Index::set_rule_target` changes it.
+    pub target: TargetId,
     pub spec: RuleSpec,
 }
 
@@ -658,14 +671,6 @@ impl RuleId {
                 .map_or(1, |highest| highest.saturating_add(1)),
         )
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IndexStatistics {
-    pub schema_version: u32,
-    pub document_count: u64,
-    pub open_reviews: u64,
-    pub full_text_bytes: u64,
 }
 
 /// What the automatic filing has done so far. `open_reviews_without_text`
@@ -753,11 +758,6 @@ pub enum RuleSuggestion {
     /// stored.
     Discarded,
 }
-
-mod reorganisation;
-pub use reorganisation::{
-    ConflictReason, Finding, FindingKind, NoActionReason, PlanItem, PlanOutcome,
-};
 
 #[cfg(test)]
 mod tests;

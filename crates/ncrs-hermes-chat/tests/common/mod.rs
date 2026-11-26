@@ -18,15 +18,14 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{Local, TimeZone as _};
 use ncrs_ai::{ChatModel, Compute, LocalModelStatus, ScriptedChatModel};
-use ncrs_filing::chat_work::ChatAccess;
+use ncrs_filing::chat_work::{ChatAccess, ChatWork};
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_hermes_chat::{update, Action, Availability, ChipReply, Ctx, Entry, Message, Part, State};
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_index::{BatchKind, Index};
+use ncrs_index::Index;
 use ncrs_intake::test_archive::OWN_NAME;
 use ncrs_intake::{Extracted, TextChain, TextError, TextSource};
 use ncrs_pipeline::OwnDetails;
-use ncrs_ui_kit::format;
 use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 
@@ -62,6 +61,8 @@ pub struct Talk {
     pub actions: Vec<Action>,
     /// Entries of the user: chips pressed and answers typed.
     pub entries: usize,
+    /// All work the chat asked for.
+    pub works: Vec<ChatWork>,
     pub index: Arc<Mutex<Option<Index>>>,
     /// The scripted model behind `ctx.model`.
     pub model: Arc<ScriptedChatModel>,
@@ -109,7 +110,6 @@ impl Talk {
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
             ai_on: true,
-            ocr_models_present: true,
             changes_allowed: true,
             model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
             resolve_folder,
@@ -122,6 +122,7 @@ impl Talk {
             state: State::default(),
             actions: Vec::new(),
             entries: 0,
+            works: Vec::new(),
             index: slot,
             model,
             real_model: None,
@@ -142,69 +143,16 @@ impl Talk {
             .unwrap_or(self.model.as_ref() as &dyn ChatModel)
     }
 
-    /// The chat can count, show and file the documents that wait; they are
-    /// filed below `archive`.
-    pub fn with_review(mut self) -> Self {
-        let review = ncrs_filing::review_work::ReviewAccess::new(
-            Arc::clone(&self.index),
-            self.path("archive"),
-        );
-        self.access = self.access.with_review(Some(review));
-        self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
-        self
-    }
-
-    /// The chat can try and save rules; its locations are the archive and the inbox.
-    pub fn with_rules(mut self) -> Self {
-        let mut locations: Vec<ncrs_intake::Location> = self
-            .ctx
-            .targets
-            .iter()
-            .map(|target| {
-                ncrs_intake::Location::new(target, ncrs_intake::LocationMode::Archive, false)
-                    .unwrap()
-            })
-            .collect();
-        std::fs::create_dir_all(self.path("inbox")).unwrap();
-        let inbox = ncrs_intake::Location::new(
-            &self.path("inbox"),
-            ncrs_intake::LocationMode::Inbox,
-            false,
-        )
-        .unwrap();
-        locations.push(inbox);
-        let target = locations.first().map(|location| location.path.clone());
-        let rules = ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), locations)
-            .with_target(target);
-        self.access = self.access.with_rules(Some(rules));
-        self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
-        self
-    }
-
-    /// A document of the archive the rules trial sees: the file on disk and
-    /// its entry in the index with `text`.
+    /// A document of the archive: the file on disk and its entry in the index
+    /// with `text`.
     pub fn index_document(&self, relative: &str, text: &str) -> ncrs_index::DocumentId {
-        self.index_with_source(relative, text, ncrs_index::DocumentSource::Archive)
-    }
-
-    /// A document that waits in the inbox, known to the index.
-    pub fn index_inbox_document(&self, relative: &str, text: &str) -> ncrs_index::DocumentId {
-        self.index_with_source(relative, text, ncrs_index::DocumentSource::Inbox)
-    }
-
-    fn index_with_source(
-        &self,
-        relative: &str,
-        text: &str,
-        source: ncrs_index::DocumentSource,
-    ) -> ncrs_index::DocumentId {
         self.write(relative, text);
         let mut guard = self.index.lock().unwrap();
         let index = guard.as_mut().unwrap();
         let new_document = |hash| ncrs_index::NewDocument {
             hash,
             path: self.path(relative),
-            source,
+            source: ncrs_index::DocumentSource::Archive,
             received_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
             stamp: None,
         };
@@ -244,30 +192,6 @@ impl Talk {
             .unwrap()
     }
 
-    /// What the saved-query search of the app finds for `word` in the text of
-    /// the documents: their paths below the temp dir. A hit whose file the
-    /// index thinks gone fails on the spot.
-    pub fn searched(&self, word: &str) -> std::collections::BTreeSet<String> {
-        let access = ncrs_filing::query_work::QueryAccess::new(Arc::clone(&self.index));
-        let spec = ncrs_index::QuerySpec {
-            full_text: Some(word.to_owned()),
-            ..ncrs_index::QuerySpec::default()
-        };
-        access
-            .run(&spec)
-            .unwrap()
-            .into_iter()
-            .map(|hit| {
-                assert!(!hit.missing, "the search finds a gone file: {:?}", hit.path);
-                hit.path
-                    .strip_prefix(&self.root)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect()
-    }
-
     pub fn path(&self, relative: &str) -> PathBuf {
         self.root.join(relative.split('/').collect::<PathBuf>())
     }
@@ -288,6 +212,7 @@ impl Talk {
         let (_task, action) = update(&mut self.state, message, &self.ctx);
         self.actions.extend(action);
         if let Some(work) = self.state.pending_work().cloned() {
+            self.works.push(work.clone());
             return Some(Message::Done(Box::new(self.access.run(work))));
         }
         if let Some(naming) = self.state.pending_naming() {
@@ -353,12 +278,21 @@ impl Talk {
         self.settle(next);
     }
 
-    /// Answers "Where should they go?" with the archive, when it is asked.
-    pub fn choose_archive_if_asked(&mut self) {
-        let archive = ChipReply::Folder(self.path("archive"));
-        if self.state.chips().iter().any(|chip| chip.reply == archive) {
-            self.press(&archive);
-        }
+    /// What the chat handed to the rule suggestions: the folder and the pattern.
+    pub fn suggestions(&self) -> Vec<(PathBuf, Option<String>)> {
+        self.actions
+            .iter()
+            .filter_map(|action| match action {
+                Action::SuggestRules { folder, pattern } => Some((folder.clone(), pattern.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The work of the chat only reads or undoes a run; what is left to check is
+    /// that it saved no rule.
+    pub fn assert_saves_no_rule(&self) {
+        assert_eq!(self.rule_count(), 0, "the chat saves no rule");
     }
 
     pub fn open(&mut self) {
@@ -381,30 +315,6 @@ impl Talk {
                 _ => None,
             })
             .collect()
-    }
-
-    /// The proposal card of the newest Hermes entry.
-    pub fn proposal(&self) -> Option<&ncrs_hermes_chat::ProposalCard> {
-        self.last_parts().iter().find_map(|part| match part {
-            Part::Proposal(card) => Some(card),
-            _ => None,
-        })
-    }
-
-    /// "{date} {time}" of the last undoable run, as the undo question says it.
-    pub fn last_run_when(&self) -> String {
-        let guard = self.index.lock().unwrap();
-        let index = guard.as_ref().unwrap();
-        let batch = index
-            .last_undoable_batch(BatchKind::Hermes)
-            .unwrap()
-            .unwrap();
-        let info = index.batch_info(batch).unwrap().unwrap();
-        let seconds = u64::try_from(info.finished_at.unwrap_or(info.started_at)).unwrap();
-        let at = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(seconds);
-        let formatted = format::time(Some(at));
-        let (date, time) = formatted.split_once(' ').unwrap();
-        say(Msg::HermesChatWhenDate, &[("date", date), ("time", time)])
     }
 
     pub fn labels(&self) -> Vec<String> {

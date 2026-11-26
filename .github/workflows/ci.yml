@@ -582,7 +582,7 @@ jobs:
           esac
 
       - name: Build
-        run: cargo build --release --features gpu-with-fallback --target ${{ matrix.target }}
+        run: cargo build --locked --release --features gpu-with-fallback --target ${{ matrix.target }}
 
       # The aarch64 Linux binary cannot run on this x86_64 runner.
       - name: Check the binary names its release version
@@ -763,7 +763,7 @@ jobs:
         shell: bash
         run: |
           # StoreKit 2 (the trial and the purchase) needs macOS 13.
-          MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
+          MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --locked --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
           mkdir -p sandbox-binary
           cp target/${{ matrix.target }}/release/ncrs sandbox-binary/ncrs
 

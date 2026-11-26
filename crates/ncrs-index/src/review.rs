@@ -16,7 +16,16 @@ impl Index {
         document: DocumentId,
         why: ReviewReason,
     ) -> Result<ReviewEntryId, IndexError> {
-        let tx = self.conn_mut().transaction()?;
+        self.add_review_shared(document, why)
+    }
+
+    /// `add_review` for a caller that holds the index shared only.
+    pub fn add_review_shared(
+        &self,
+        document: DocumentId,
+        why: ReviewReason,
+    ) -> Result<ReviewEntryId, IndexError> {
+        let tx = self.connection().unchecked_transaction()?;
         require_document(&tx, document)?;
         let already_open = tx
             .query_row(
@@ -57,25 +66,6 @@ impl Index {
         if changed == 0 {
             return Err(IndexError::ReviewNotFound(id));
         }
-        Ok(())
-    }
-
-    /// Sets the document to `Planned` and resolves its open review, both or
-    /// neither.
-    pub fn place_document(&mut self, document: DocumentId) -> Result<(), IndexError> {
-        let tx = self.conn_mut().transaction()?;
-        let changed = tx.execute(
-            "UPDATE document SET status = ?2 WHERE id = ?1",
-            params![document.get(), DocumentStatus::Planned.as_str()],
-        )?;
-        if changed == 0 {
-            return Err(IndexError::DocumentNotFound(document));
-        }
-        tx.execute(
-            "UPDATE review_entry SET resolved_at = ?2 WHERE document_id = ?1 AND resolved_at IS NULL",
-            params![document.get(), Utc::now().timestamp()],
-        )?;
-        tx.commit()?;
         Ok(())
     }
 
@@ -156,32 +146,6 @@ impl Index {
 mod tests {
     use super::*;
     use crate::test_support::{encrypted_index, new_document};
-
-    #[test]
-    fn placing_a_document_plans_it_and_resolves_only_its_own_review() {
-        let (_dir, mut index) = encrypted_index();
-        let placed = index.insert_document(&new_document(1)).unwrap();
-        let waiting = index.insert_document(&new_document(2)).unwrap();
-        index
-            .add_review(placed, ReviewReason::NoMatchingRule)
-            .unwrap();
-        index
-            .add_review(waiting, ReviewReason::NoMatchingRule)
-            .unwrap();
-
-        index.place_document(placed).unwrap();
-
-        assert_eq!(index.open_review_of(placed).unwrap(), None);
-        assert!(index.open_review_of(waiting).unwrap().is_some());
-        assert_eq!(
-            index.document(placed).unwrap().unwrap().status,
-            DocumentStatus::Planned
-        );
-        assert!(matches!(
-            index.place_document(DocumentId::new(9999)),
-            Err(IndexError::DocumentNotFound(_))
-        ));
-    }
 
     #[test]
     fn marking_a_document_filed_resolves_only_its_own_review() {

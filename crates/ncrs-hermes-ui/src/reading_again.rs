@@ -13,8 +13,7 @@ use ncrs_i18n::{Language, Msg};
 /// How reading a file again ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ending {
-    /// The rules or the AI placed it, or it waits in the review list: which
-    /// one only the index knows.
+    /// It was read; whether it waits for an answer only the index knows.
     Finished,
     Unchanged,
     Failed(Option<String>),
@@ -65,11 +64,13 @@ impl ReadingAgain {
             let ending = match snapshot.changes_since(since) {
                 None => Some(Ending::Lost),
                 Some(mut changes) => changes
-                    .find(|change| change.path == path && change.outcome != ChangeOutcome::Advanced)
+                    .find(|change| change.path == path && is_end(change.outcome))
                     .map(|change| match change.outcome {
                         ChangeOutcome::Unchanged => Ending::Unchanged,
                         ChangeOutcome::Failed => Ending::Failed(reason_of(snapshot, &path)),
-                        ChangeOutcome::Advanced | ChangeOutcome::Finished => Ending::Finished,
+                        ChangeOutcome::Advanced
+                        | ChangeOutcome::FilledByAi
+                        | ChangeOutcome::Finished => Ending::Finished,
                     }),
             };
             match ending {
@@ -88,6 +89,11 @@ impl ReadingAgain {
             .map(|(path, _)| (path, Ending::Lost))
             .collect()
     }
+}
+
+/// What the model adds later is no end: the file was reported before.
+fn is_end(outcome: ChangeOutcome) -> bool {
+    !matches!(outcome, ChangeOutcome::Advanced | ChangeOutcome::FilledByAi)
 }
 
 fn reason_of(snapshot: &Snapshot, path: &Path) -> Option<String> {

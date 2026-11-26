@@ -65,4 +65,31 @@ impl Git {
             Err(ActionError::Other { git_output: text })
         }
     }
+
+    /// Commits what is staged and pushes the branch. When the push fails the
+    /// commit stays, with its undo: the caller shows `push` as the failure.
+    pub fn commit_and_push(
+        &self,
+        message: &CommitMessage,
+        amend: bool,
+    ) -> Result<CommitAndPush, ActionError> {
+        let undo = if amend {
+            self.amend(Some(message))?;
+            None
+        } else {
+            self.commit(message)?
+        };
+        Ok(CommitAndPush {
+            undo,
+            push: self.push(),
+        })
+    }
+}
+
+/// The two halves of "commit and push".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitAndPush {
+    /// `None` for a first commit and for an amend.
+    pub undo: Option<UndoRecord>,
+    pub push: Result<(), ActionError>,
 }

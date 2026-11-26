@@ -24,16 +24,6 @@ pub struct PageImage {
     pub pixels: Vec<u8>,
 }
 
-/// The first page of a PDF for a preview: `rgba` holds `width * height * 4`
-/// bytes, row by row from the top left, without padding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreviewPage {
-    pub width: u32,
-    pub height: u32,
-    pub rgba: Vec<u8>,
-    pub page_count: usize,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Extracted {
     Text(String),

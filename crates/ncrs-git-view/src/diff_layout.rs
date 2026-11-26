@@ -64,3 +64,19 @@ pub fn hunk_rows(diff: &FileDiff, unified: bool) -> Vec<usize> {
 pub fn rows_before(diff: &FileDiff, unified: bool, index: usize) -> usize {
     hunk_rows(diff, unified).iter().take(index).sum()
 }
+
+/// "@@ -1,3 +1,4 @@" with the lengths, and the section the hunk is in after it.
+pub fn hunk_title(hunk: &DiffHunk) -> String {
+    let places = format!(
+        "@@ -{},{} +{},{} @@",
+        hunk.old_start,
+        hunk.old_len(),
+        hunk.new_start,
+        hunk.new_len()
+    );
+    if hunk.context.is_empty() {
+        places
+    } else {
+        format!("{places} {}", hunk.context)
+    }
+}

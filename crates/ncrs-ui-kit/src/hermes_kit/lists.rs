@@ -1,10 +1,9 @@
 //! Lists, rows and content areas.
 use iced::widget::text::LineHeight;
-use iced::widget::{
-    button, column, container, mouse_area, pick_list, scrollable, Column, Row, Space,
-};
-use iced::{alignment, Background, Border, Color, Element, Length, Padding, Pixels};
+use iced::widget::{button, column, container, mouse_area, pick_list, scrollable, Column, Row};
+use iced::{alignment, Color, Element, Length, Padding, Pixels};
 
+use crate::format;
 use crate::kit::{self, Check};
 use crate::palette::Palette;
 use crate::theme;
@@ -103,6 +102,122 @@ pub fn list_row_two<'a, M: Clone + 'a>(
     .into()
 }
 
+/// A target in a list where some are ticked.
+#[derive(Debug)]
+pub struct TargetCheck<'a, M> {
+    pub state: Check,
+    /// Toggles the target; a click anywhere on the row does.
+    pub on_toggle: Option<M>,
+    /// The colour of the chip; see [`target_chip`].
+    pub index: usize,
+    /// "T1": the number the target got when it was made.
+    pub number: &'a str,
+    pub name: &'a str,
+    pub path: &'a str,
+    /// The keyboard is on this row.
+    pub marked: bool,
+}
+
+/// A row of 28 px: the box, the chip of the target, its name and its path
+/// dimmed. A marked row is outlined like a row of the settings.
+pub fn target_check_row<'a, M: Clone + 'a>(
+    target: TargetCheck<'_, M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let (name_color, path_color) = if target.marked {
+        (palette.cursor_text, palette.cursor_text)
+    } else {
+        (palette.text, palette.dim_text)
+    };
+    let line = Row::new()
+        .push(kit::checkbox(target.state, None, palette))
+        .push(target_chip(target.index, target.number, palette))
+        .push(body(target.name.to_owned(), name_color))
+        .push(small(target.path.to_owned(), path_color))
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center);
+    let row = container(line)
+        .width(Length::Fill)
+        .height(ROW_ONE_LINE)
+        .padding([0.0, GAP_XS])
+        .align_y(alignment::Vertical::Center);
+    let framed_row = if target.marked {
+        row.style(theme::focused_setting(palette))
+    } else {
+        row
+    };
+    let area = mouse_area(framed_row);
+    match target.on_toggle {
+        Some(message) => area.on_press(message).into(),
+        None => area.into(),
+    }
+}
+
+/// A place in a target a file could go to.
+#[derive(Debug)]
+pub struct TargetPlace<'a, M> {
+    /// The box before it and what toggles it, where several can be ticked.
+    pub check: Option<(Check, M)>,
+    /// The colour of the chip; see [`target_chip`].
+    pub index: usize,
+    /// "T1 Documents".
+    pub label: &'a str,
+    /// The rule and the path, cut in the middle to the room.
+    pub line: &'a str,
+    /// The keyboard is on this row.
+    pub marked: bool,
+}
+
+/// A row of 28 px and `width`: the box, the chip of the target and where the
+/// file would go. A marked row is outlined like a row of the settings.
+pub fn target_place_row<'a, M: Clone + 'a>(
+    place: TargetPlace<'_, M>,
+    width: f32,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ink = if place.marked {
+        palette.cursor_text
+    } else {
+        palette.text
+    };
+    let chip_room = format::estimated_width(place.label, TEXT_SMALL) + 2.0 * GAP_S;
+    let mut room = width - 2.0 * GAP_XS - chip_room - GAP_S;
+    let mut line = Row::new()
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center);
+    let mut on_toggle = None;
+    if let Some((state, toggle)) = place.check {
+        room -= CHECK_ROOM;
+        line = line.push(kit::checkbox(state, None, palette));
+        on_toggle = Some(toggle);
+    }
+    let place_line = line
+        .push(target_chip(place.index, place.label, palette))
+        .push(small(
+            format::fit_middle(place.line, room.max(0.0), TEXT_SMALL),
+            ink,
+        ));
+    let row = container(place_line)
+        .width(Length::Fill)
+        .height(ROW_ONE_LINE)
+        .padding([0.0, GAP_XS])
+        .align_y(alignment::Vertical::Center)
+        .clip(true);
+    let framed_row = if place.marked {
+        row.style(theme::focused_setting(palette))
+    } else {
+        row
+    };
+    let area = mouse_area(framed_row);
+    match on_toggle {
+        Some(message) => area.on_press(message).into(),
+        None => area.into(),
+    }
+}
+
+/// The box of a [`target_place_row`] and the gap after it.
+const CHECK_ROOM: f32 = 24.0;
+
 /// The part right of a list: padding of 16 and 24, scrolling when it is long.
 pub fn detail<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
     scrollable(
@@ -135,38 +250,6 @@ pub fn path<'a, M: 'a>(parts: Vec<(String, bool)>, palette: &Palette) -> Element
         .height(CONTROL_HEIGHT)
         .align_y(alignment::Vertical::Center)
         .clip(true)
-        .into()
-}
-
-/// The page of a document as a stand-in of 48 x 64 px; a press shows the
-/// preview.
-pub fn thumbnail<'a, M: Clone + 'a>(on_press: Option<M>, palette: &Palette) -> Element<'a, M> {
-    let colors = *palette;
-    let lines = Column::with_children(
-        std::iter::repeat_with(|| {
-            container(Space::new())
-                .width(Length::Fill)
-                .height(3.0)
-                .style(fill_style(colors.border_inactive))
-                .into()
-        })
-        .take(6),
-    )
-    .spacing(GAP_XS);
-    button(lines)
-        .on_press_maybe(on_press)
-        .width(THUMBNAIL_WIDTH)
-        .height(THUMBNAIL_HEIGHT)
-        .padding([GAP_S, GAP_S - GAP_XS / 2.0])
-        .style(move |_, _| button::Style {
-            background: Some(Background::Color(colors.title)),
-            border: Border {
-                color: colors.border_inactive,
-                width: 1.0,
-                radius: RADIUS.into(),
-            },
-            ..button::Style::default()
-        })
         .into()
 }
 

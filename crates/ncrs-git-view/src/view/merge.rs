@@ -4,6 +4,7 @@
 
 use iced::widget::Column;
 use iced::{Element, Length};
+use ncrs_git::Integration;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::{action_row, banner, context_area, hunk_bar, ActionRow, BannerTone};
 use ncrs_ui_kit::git_rows::{diff_unified_line, DiffTone};
@@ -31,7 +32,16 @@ pub fn banner_view<'a>(
 ) -> Element<'a, Message> {
     let lang = ctx.lang;
     let open = merge.open_count();
+    let single_commit = match merge.kind {
+        Integration::CherryPick => Some(Msg::GitViewMergePickTitle),
+        Integration::Revert => Some(Msg::GitViewMergeRevertTitle),
+        Integration::Merge | Integration::Rebase => None,
+    };
     let headline = match open {
+        _ if single_commit.is_some() => fill_template(
+            lang.text(single_commit.unwrap_or(Msg::GitViewMergeBanner)),
+            &[("{sha}", &merge.from)],
+        ),
         0 => fill_template(
             lang.text(rebase_or(
                 rebasing,
@@ -137,11 +147,15 @@ fn conflict_row<'a>(
             trail: vec![state],
             actions: Vec::new(),
             chosen,
+            active: true,
             on_press: Message::SelectConflict(index),
         },
         palette,
     );
-    context_area(row, Message::OpenMenu(MenuTarget::Conflict(index)))
+    context_area(
+        row,
+        Message::OpenMenu(MenuTarget::Conflict(conflict.path.clone())),
+    )
 }
 
 /// Mine, theirs or both for one block, as three small icons.

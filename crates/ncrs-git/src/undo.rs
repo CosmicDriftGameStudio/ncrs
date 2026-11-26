@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::hash::{Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,12 @@ pub enum UndoSummary {
     Discard { files: usize },
     Commit { title: String },
     DeleteBranch { name: String },
+    Ignore { pattern: String },
+    CreateTag { name: String },
+    CherryPick { title: String },
+    Revert { title: String },
+    Reset { branch: String, sha: String },
+    CleanUp { branches: usize },
 }
 
 /// The last local action and how to take it back. Held by the caller (in memory
@@ -42,6 +49,11 @@ pub enum UndoAction {
         new_head: String,
         previous_head: String,
     },
+    /// A cherry-pick or revert: its changes go too, local changes made since stay.
+    ResetPick {
+        new_head: String,
+        previous_head: String,
+    },
     RestoreFiles {
         saved: Vec<SavedFile>,
     },
@@ -49,6 +61,31 @@ pub enum UndoAction {
         name: String,
         sha: String,
     },
+    /// Branches deleted together by the clean up, with the upstream they tracked.
+    RecreateBranches(Vec<RecreatedBranch>),
+    DeleteTag {
+        name: String,
+        sha: String,
+    },
+    /// A reset of the checked-out branch. The index trees are `None` while the
+    /// index had conflicts (no tree can be written then).
+    ResetBranch {
+        previous_head: String,
+        new_head: String,
+        index_before: Option<String>,
+        index_after: Option<String>,
+        /// What a hard reset would have thrown away; empty for soft and mixed.
+        saved: Vec<SavedFile>,
+        hard: bool,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecreatedBranch {
+    pub name: String,
+    pub sha: String,
+    /// The tracking name (`origin/feature`) to set again, when that ref still exists.
+    pub upstream: Option<String>,
 }
 
 /// A file as the discard found it, kept under `.git/ncrs-undo`.
@@ -150,6 +187,29 @@ impl Git {
         Ok(folder)
     }
 
+    fn undo_commit(
+        &self,
+        new_head: &str,
+        previous_head: &str,
+        reset_flag: &str,
+    ) -> Result<(), ActionError> {
+        if self.head_sha().as_deref() != Some(new_head) {
+            return Err(ActionError::UndoNotSafe(
+                "HEAD moved since the commit".to_string(),
+            ));
+        }
+        if !self
+            .text(&["branch", "-r", "--contains", new_head])?
+            .is_empty()
+        {
+            return Err(ActionError::UndoNotSafe(
+                "the commit is already pushed".to_string(),
+            ));
+        }
+        self.ok(&["reset", reset_flag, previous_head])?;
+        Ok(())
+    }
+
     /// Takes the last local action back, or says why that is not safe.
     pub fn undo(&self, record: &UndoRecord) -> Result<(), ActionError> {
         match &record.action {
@@ -165,24 +225,42 @@ impl Git {
             UndoAction::ResetCommit {
                 new_head,
                 previous_head,
-            } => {
-                if self.head_sha().as_deref() != Some(new_head.as_str()) {
-                    return Err(ActionError::UndoNotSafe(
-                        "HEAD moved since the commit".to_string(),
-                    ));
+            } => self.undo_commit(new_head, previous_head, "--soft"),
+            UndoAction::ResetPick {
+                new_head,
+                previous_head,
+            } => self.undo_commit(new_head, previous_head, "--keep"),
+            UndoAction::RestoreFiles { saved } => {
+                self.check_saved(saved)?;
+                self.apply_saved(saved)
+            }
+            UndoAction::RecreateBranches(branches) => self.recreate_branches(branches),
+            UndoAction::DeleteTag { name, sha } => {
+                let current =
+                    self.try_text(&["rev-parse", "--verify", "-q", &format!("refs/tags/{name}")]);
+                if current.as_deref() != Some(sha.as_str()) {
+                    return Err(ActionError::UndoNotSafe(format!(
+                        "tag {name} was moved or removed since"
+                    )));
                 }
-                if !self
-                    .text(&["branch", "-r", "--contains", new_head])?
-                    .is_empty()
-                {
-                    return Err(ActionError::UndoNotSafe(
-                        "the commit is already pushed".to_string(),
-                    ));
-                }
-                self.ok(&["reset", "--soft", previous_head])?;
+                self.ok(&["tag", "-d", "--", name])?;
                 Ok(())
             }
-            UndoAction::RestoreFiles { saved } => self.restore_files(saved),
+            UndoAction::ResetBranch {
+                previous_head,
+                new_head,
+                index_before,
+                index_after,
+                saved,
+                hard,
+            } => self.undo_reset(
+                previous_head,
+                new_head,
+                index_before,
+                index_after,
+                saved,
+                *hard,
+            ),
             UndoAction::RecreateBranch { name, sha } => {
                 if self
                     .try_text(&["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")])
@@ -198,7 +276,151 @@ impl Git {
         }
     }
 
-    fn restore_files(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
+    fn recreate_branches(&self, branches: &[RecreatedBranch]) -> Result<(), ActionError> {
+        for branch in branches {
+            if self
+                .try_text(&[
+                    "rev-parse",
+                    "--verify",
+                    "-q",
+                    &format!("refs/heads/{}", branch.name),
+                ])
+                .is_some()
+            {
+                return Err(ActionError::UndoNotSafe(format!(
+                    "branch {} exists again",
+                    branch.name
+                )));
+            }
+        }
+        for branch in branches {
+            self.ok(&["branch", "--", &branch.name, &branch.sha])?;
+            if let Some(upstream) = &branch.upstream {
+                let known = self
+                    .try_text(&[
+                        "rev-parse",
+                        "--verify",
+                        "-q",
+                        &format!("refs/remotes/{upstream}"),
+                    ])
+                    .is_some();
+                if known {
+                    self.ok(&[
+                        "branch",
+                        &format!("--set-upstream-to={upstream}"),
+                        &branch.name,
+                    ])?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn undo_reset(
+        &self,
+        previous_head: &str,
+        new_head: &str,
+        index_before: &Option<String>,
+        index_after: &Option<String>,
+        saved: &[SavedFile],
+        hard: bool,
+    ) -> Result<(), ActionError> {
+        if self.head_sha().as_deref() != Some(new_head) {
+            return Err(ActionError::UndoNotSafe(
+                "HEAD moved since the reset".to_string(),
+            ));
+        }
+        if index_after.is_some() && self.index_tree() != *index_after {
+            return Err(ActionError::UndoNotSafe(
+                "the index changed since".to_string(),
+            ));
+        }
+        if hard {
+            let changed = self.text(&["status", "--porcelain=v1", "--untracked-files=no"])?;
+            if !changed.is_empty() {
+                return Err(ActionError::UndoNotSafe(
+                    "tracked files changed since the reset".to_string(),
+                ));
+            }
+            self.check_saved(saved)?;
+            if let Some(path) = self.untracked_in_the_way(previous_head)?.first() {
+                return Err(ActionError::UndoNotSafe(format!(
+                    "{path} was created since the reset"
+                )));
+            }
+            self.ok(&["reset", "--hard", previous_head])?;
+        } else {
+            self.ok(&["reset", "--soft", previous_head])?;
+        }
+        if let Some(tree) = index_before {
+            self.ok(&["read-tree", tree])?;
+        }
+        self.apply_saved(saved)
+    }
+
+    /// The files a hard reset is about to lose, saved as `save_files` does.
+    /// Together with what lies where the reset to `target` writes a tracked
+    /// file: a folder cannot be saved, so it stops the reset.
+    pub(crate) fn save_changed_tracked(&self, target: &str) -> Result<Vec<SavedFile>, ActionError> {
+        let output = self.ok(&["diff", "--name-only", "-z", "HEAD", "--"])?;
+        let mut paths = raw_paths(&output)
+            .map(|raw| utf8_path(raw).map(str::to_string))
+            .collect::<Result<Vec<String>, ActionError>>()?;
+        for path in self.untracked_in_the_way(target)? {
+            let is_folder =
+                fs::symlink_metadata(self.root().join(&path)).is_ok_and(|found| found.is_dir());
+            if is_folder {
+                return Err(ActionError::Io(format!(
+                    "{path} is a folder the reset would replace"
+                )));
+            }
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+        for path in &paths {
+            refuse_symlinks(self.root(), path)?;
+        }
+        self.save_files(&paths)
+    }
+
+    /// Paths with something on the disk that the index does not track and
+    /// `target` does, or that stand where `target` needs a folder.
+    pub(crate) fn untracked_in_the_way(&self, target: &str) -> Result<Vec<String>, ActionError> {
+        let in_target = self.ok(&["ls-tree", "-r", "-z", "--name-only", target, "--"])?;
+        let listed = self.ok(&["ls-files", "-z"])?;
+        let in_index: HashSet<&[u8]> = raw_paths(&listed).collect();
+        let mut found = BTreeSet::new();
+        for raw in raw_paths(&in_target).filter(|raw| !in_index.contains(raw)) {
+            found.extend(self.thing_at_or_above(utf8_path(raw)?, &in_index));
+        }
+        Ok(found.into_iter().collect())
+    }
+
+    /// `path` if something is there, else the first untracked non-folder on the
+    /// way to it.
+    fn thing_at_or_above(&self, path: &str, in_index: &HashSet<&[u8]>) -> Option<String> {
+        let mut current = self.root().to_path_buf();
+        let mut prefix = String::new();
+        let parts: Vec<&str> = path.split('/').collect();
+        for (place, part) in parts.iter().enumerate() {
+            current.push(part);
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            let here = fs::symlink_metadata(&current).ok()?;
+            if place + 1 == parts.len() {
+                return Some(prefix);
+            }
+            if !here.is_dir() {
+                return (!in_index.contains(prefix.as_bytes())).then_some(prefix);
+            }
+        }
+        None
+    }
+
+    fn check_saved(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
         for file in saved {
             refuse_symlinks(self.root(), &file.path)?;
             if hash_of_file(&self.root().join(&file.path)) != file.after_hash {
@@ -208,6 +430,10 @@ impl Git {
                 )));
             }
         }
+        Ok(())
+    }
+
+    fn apply_saved(&self, saved: &[SavedFile]) -> Result<(), ActionError> {
         for file in saved {
             let target = self.root().join(&file.path);
             match &file.backup {
@@ -226,6 +452,24 @@ impl Git {
         }
         Ok(())
     }
+}
+
+/// The paths of a `-z` listing as git wrote them.
+fn raw_paths(output: &crate::cli::Output) -> impl Iterator<Item = &[u8]> {
+    output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+}
+
+/// A name that is not UTF-8 would be looked up under another name and so not be saved.
+fn utf8_path(raw: &[u8]) -> Result<&str, ActionError> {
+    std::str::from_utf8(raw).map_err(|_not_utf8| {
+        ActionError::Io(format!(
+            "{} is not a UTF-8 name and cannot be saved before the reset",
+            String::from_utf8_lossy(raw)
+        ))
+    })
 }
 
 /// Refuses a path that is, or runs through, a symlink inside `root`: a write

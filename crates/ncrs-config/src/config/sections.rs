@@ -63,6 +63,10 @@ pub struct GitViewSection {
     #[serde(default)]
     pub sha_width: Option<i64>,
     #[serde(default)]
+    pub sidebar_width: Option<i64>,
+    #[serde(default)]
+    pub detail_width: Option<i64>,
+    #[serde(default)]
     pub folded: std::collections::BTreeMap<String, Vec<String>>,
 }
 
@@ -234,12 +238,22 @@ pub struct FilingSection {
     /// Keeps the position of the whole array for the "no target" error.
     #[serde(default)]
     pub locations: Option<Spanned<Vec<LocationEntry>>>,
+    /// `Some` even for an empty list: once `sources` or `targets` is in the
+    /// file, `locations` no longer says anything about them.
+    #[serde(default)]
+    pub targets: Option<Spanned<Vec<TargetEntry>>>,
+    #[serde(default)]
+    pub sources: Option<Spanned<Vec<SourceEntry>>>,
+    /// The number the next `t<n>` target id starts from; ids of deleted
+    /// targets are never handed out again.
+    #[serde(default)]
+    pub next_target: Option<u32>,
     #[serde(default)]
     pub load: Option<Spanned<LoadValue>>,
     /// Keeps the position of the table for an error about a missing key.
     #[serde(default)]
     pub ai: Option<Spanned<AiSection>>,
-    /// Checked by `resolve_filing`: a pattern Hermes cannot render is ignored.
+    /// Files of before 1.8.0 have it; accepted, not read.
     #[serde(default)]
     pub default_pattern: Option<String>,
     /// Checked by `resolve_filing`: empty entries are dropped.
@@ -407,18 +421,26 @@ pub struct LocationEntry {
     #[serde(default)]
     pub target: Option<Spanned<bool>>,
     #[serde(default)]
-    pub transfer: Option<LocationTransfer>,
+    pub transfer: Option<TransferName>,
     #[serde(default)]
     pub continuous: bool,
 }
 
-/// What Hermes does with a file it takes from a read folder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+/// The spelling of `transfer` in a location; `load` maps it to `LocationTransfer`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum LocationTransfer {
+pub enum TransferName {
     Copy,
-    #[default]
     Move,
+}
+
+impl From<TransferName> for LocationTransfer {
+    fn from(name: TransferName) -> Self {
+        match name {
+            TransferName::Copy => Self::Copy,
+            TransferName::Move => Self::Move,
+        }
+    }
 }
 
 /// The spelling of a mode in the file; `load` maps it to `LocationMode`.
@@ -445,14 +467,20 @@ pub struct Filing {
     /// The config says nothing at all about filing: Hermes has never been
     /// switched on or off, so the first run turns it on.
     pub first_run: bool,
+    /// The folders as the old filing path sees them. Goes with the old filing
+    /// path: derived from `targets` and `sources` once those are in the file.
     pub locations: Vec<FilingLocation>,
+    /// Where files are put, in the order of the file.
+    pub targets: Vec<TargetSetting>,
+    /// Folders files are taken from, in the order of the file.
+    pub sources: Vec<SourceSetting>,
+    /// Target entries that could not be used at all (no valid id), each with
+    /// the reason.
+    pub dropped_entries: Vec<String>,
     /// How many workers the pipeline may use; counts above the core count are
     /// capped when the pipeline starts.
     pub load: Load,
     pub ai: AiSetting,
-    /// The one pattern proposed for documents no rule covers, instead of the
-    /// built-in ones; only ever a pattern `pattern_is_valid` accepts.
-    pub default_pattern: Option<String>,
     /// Names and companies of the user; never taken for a sender.
     pub own_names: Vec<String>,
     pub own_ibans: Vec<String>,
@@ -474,9 +502,11 @@ impl Default for Filing {
             enabled: false,
             first_run: true,
             locations: Vec::new(),
+            targets: Vec::new(),
+            sources: Vec::new(),
+            dropped_entries: Vec::new(),
             load: Load::default(),
             ai: AiSetting::default(),
-            default_pattern: None,
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),
@@ -486,14 +516,16 @@ impl Default for Filing {
 
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
 /// disk: whether the folder exists is for the module to find out when it starts.
+// Goes with the old filing path
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilingLocation {
     pub path: PathBuf,
     pub mode: LocationMode,
     pub images: bool,
+    /// This and the next two only carry what a file from before sources and
+    /// targets says until it is written in the new form.
     pub is_target: bool,
     pub transfer: LocationTransfer,
-    /// Hermes files the new files of a read folder by itself, with `transfer`.
     pub continuous: bool,
 }
 
@@ -578,12 +610,21 @@ pub struct KeyEntry {
     pub chords: Vec<Spanned<String>>,
 }
 
+/// A `[keys.<name>]` table: the keys of one tab, written like `[keys]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyTable {
+    pub name: Spanned<String>,
+    pub entries: Vec<KeyEntry>,
+}
+
 /// The `[keys]` section, unchecked. Names and keys stay text with their
 /// position, so a wrong one is reported at its own line once the keymap has
-/// looked at it.
+/// looked at it. A sub-table such as `[keys.git]` holds the keys of the tab
+/// of that name and stays apart from the actions of the panels.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeySection {
     pub entries: Vec<KeyEntry>,
+    pub tables: Vec<KeyTable>,
 }
 
 /// A single key or a list of them.
@@ -620,6 +661,58 @@ impl<'de> Deserialize<'de> for Chords {
     }
 }
 
+/// What a line of `[keys]` holds: the keys of an action, or the table of a tab.
+enum KeyValue {
+    Chords(Chords),
+    Table(Vec<KeyEntry>),
+}
+
+fn key_entry(action: Spanned<String>, span: std::ops::Range<usize>, value: Chords) -> KeyEntry {
+    let chords = match value {
+        Chords::One(text) => vec![Spanned::new(span, text)],
+        Chords::Many(texts) => texts,
+    };
+    KeyEntry { action, chords }
+}
+
+impl<'de> Deserialize<'de> for KeyValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct KeyValueVisitor;
+
+        impl<'de> Visitor<'de> for KeyValueVisitor {
+            type Value = KeyValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a key such as \"F5\", a list of keys or a table of tab keys")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<KeyValue, E> {
+                Ok(KeyValue::Chords(Chords::One(v.to_owned())))
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<KeyValue, A::Error> {
+                let mut chords = Vec::new();
+                while let Some(chord) = seq.next_element::<Spanned<String>>()? {
+                    chords.push(chord);
+                }
+                Ok(KeyValue::Chords(Chords::Many(chords)))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeyValue, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(action) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<Chords>>()?;
+                    let span = value.span();
+                    entries.push(key_entry(action, span, value.into_inner()));
+                }
+                Ok(KeyValue::Table(entries))
+            }
+        }
+
+        deserializer.deserialize_any(KeyValueVisitor)
+    }
+}
+
 impl<'de> Deserialize<'de> for KeySection {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct KeySectionVisitor;
@@ -632,17 +725,18 @@ impl<'de> Deserialize<'de> for KeySection {
             }
 
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeySection, A::Error> {
-                let mut entries = Vec::new();
-                while let Some(action) = map.next_key::<Spanned<String>>()? {
-                    let value = map.next_value::<Spanned<Chords>>()?;
+                let mut section = KeySection::default();
+                while let Some(name) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<KeyValue>>()?;
                     let span = value.span();
-                    let chords = match value.into_inner() {
-                        Chords::One(text) => vec![Spanned::new(span, text)],
-                        Chords::Many(texts) => texts,
-                    };
-                    entries.push(KeyEntry { action, chords });
+                    match value.into_inner() {
+                        KeyValue::Chords(chords) => {
+                            section.entries.push(key_entry(name, span, chords));
+                        }
+                        KeyValue::Table(entries) => section.tables.push(KeyTable { name, entries }),
+                    }
                 }
-                Ok(KeySection { entries })
+                Ok(section)
             }
         }
 

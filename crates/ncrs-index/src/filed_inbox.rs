@@ -62,32 +62,6 @@ impl Index {
         Ok((recorded == Some(stamp)).then(|| DocumentId::new(id)))
     }
 
-    /// Every inbox file noted as a repeat of a filed document, with the
-    /// stamp it had then, ordered by path.
-    pub fn filed_inbox_paths(&self) -> Result<Vec<FiledInboxCopy>, IndexError> {
-        let mut statement = self.connection().prepare(
-            "SELECT path, document_id, file_size, file_mtime FROM filed_inbox_path ORDER BY path",
-        )?;
-        let rows = statement.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })?;
-        let mut copies = Vec::new();
-        for row in rows {
-            let (path, id, size, mtime) = row?;
-            copies.push(FiledInboxCopy {
-                path: path.into(),
-                document: DocumentId::new(id),
-                stamp: FileStamp::from_columns(Some(size), Some(mtime))?,
-            });
-        }
-        Ok(copies)
-    }
-
     /// The file at `path` is no longer noted as a repeat; `false` when it
     /// was not.
     pub fn remove_filed_inbox_path(&self, path: &Path) -> Result<bool, IndexError> {
@@ -99,14 +73,4 @@ impl Index {
             .execute("DELETE FROM filed_inbox_path WHERE path = ?1", [path_text])?;
         Ok(removed > 0)
     }
-}
-
-/// An inbox file found to have the content of a filed document.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FiledInboxCopy {
-    pub path: std::path::PathBuf,
-    pub document: DocumentId,
-    /// What the file looked like then; `None` when the stored stamp is no
-    /// valid one.
-    pub stamp: Option<FileStamp>,
 }

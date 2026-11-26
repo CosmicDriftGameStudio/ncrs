@@ -1,5 +1,6 @@
-//! The list of read folders as the Index and Hermes pages edit it: pure
-//! functions from the list in the file to the list to write.
+//! The folders of the index as the Index page edits them: pure functions from
+//! the list in the file to the list to write. Sources and targets of filing
+//! are not edited here.
 
 use std::path::{Path, PathBuf};
 
@@ -9,83 +10,40 @@ use ncrs_intake::LocationMode;
 /// Which page a folder is added from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddAs {
-    /// Hermes: a folder new documents arrive in.
-    ReadFolder,
     /// Index: a folder that is only read where it is.
     Indexed,
     /// Favourites: a folder for the bar under the tabs and the drive menu.
     Favourite,
+    /// Git: a folder the Repos tab searches for repositories.
+    RepoSource,
+    /// Git: a folder name the search does not enter.
+    RepoSkip,
 }
 
-/// `path` joins the list. An indexed folder becomes the filing target when
-/// there is none yet; a folder that is listed already changes nothing.
-pub fn added(locations: &[FilingLocation], path: PathBuf, kind: AddAs) -> Vec<FilingLocation> {
+/// `path` joins the list as a folder that is only read; a folder that is
+/// listed already changes nothing.
+pub fn added(locations: &[FilingLocation], path: PathBuf) -> Vec<FilingLocation> {
     let mut list = locations.to_vec();
     if list.iter().any(|known| known.path == path) {
         return list;
     }
-    let is_target = kind == AddAs::Indexed && !list.iter().any(|known| known.is_target);
-    let mode = match kind {
-        AddAs::ReadFolder => LocationMode::Inbox,
-        AddAs::Indexed => LocationMode::Archive,
-        // A favourite is not a location of the filing.
-        AddAs::Favourite => return list,
-    };
     list.push(FilingLocation {
         path,
-        mode,
+        mode: LocationMode::Archive,
         images: false,
-        is_target,
+        is_target: false,
         transfer: LocationTransfer::default(),
         continuous: false,
     });
     list
 }
 
-/// `path` leaves the list. When it was the target, the first indexed folder
-/// left takes over; with none left there is no target.
+/// `path` leaves the list.
 pub fn removed(locations: &[FilingLocation], path: &Path) -> Vec<FilingLocation> {
-    let was_target = locations
-        .iter()
-        .any(|known| known.path == path && known.is_target);
-    let mut list: Vec<FilingLocation> = locations
+    locations
         .iter()
         .filter(|known| known.path != path)
         .cloned()
-        .collect();
-    if was_target {
-        if let Some(heir) = list
-            .iter_mut()
-            .find(|known| known.mode == LocationMode::Archive)
-        {
-            heir.is_target = true;
-        }
-    }
-    list
-}
-
-/// `path` stays in the list and no longer files its new files by itself.
-pub fn continuous_stopped(locations: &[FilingLocation], path: &Path) -> Vec<FilingLocation> {
-    locations
-        .iter()
-        .map(|known| FilingLocation {
-            continuous: known.continuous && known.path != path,
-            ..known.clone()
-        })
-        .collect()
-}
-
-/// The location with the path of `edited` takes its values.
-pub fn replaced(locations: &[FilingLocation], edited: FilingLocation) -> Vec<FilingLocation> {
-    locations
-        .iter()
-        .map(|known| {
-            if known.path == edited.path {
-                edited.clone()
-            } else {
-                known.clone()
-            }
-        })
         .collect()
 }
 
@@ -105,19 +63,13 @@ mod tests {
     }
 
     #[test]
-    fn a_read_folder_is_added_as_inbox_and_never_as_target() {
-        let list = added(&[], PathBuf::from("/in"), AddAs::ReadFolder);
-        assert_eq!(list, vec![location("/in", LocationMode::Inbox, false)]);
-    }
-
-    #[test]
-    fn the_first_indexed_folder_becomes_the_target_and_the_second_does_not() {
-        let first = added(&[], PathBuf::from("/a"), AddAs::Indexed);
-        let both = added(&first, PathBuf::from("/b"), AddAs::Indexed);
+    fn an_added_folder_is_only_read_and_never_a_target() {
+        let first = added(&[], PathBuf::from("/a"));
+        let both = added(&first, PathBuf::from("/b"));
         assert_eq!(
             both,
             vec![
-                location("/a", LocationMode::Archive, true),
+                location("/a", LocationMode::Archive, false),
                 location("/b", LocationMode::Archive, false),
             ]
         );
@@ -126,79 +78,21 @@ mod tests {
     #[test]
     fn a_folder_already_listed_is_not_added_again() {
         let list = vec![location("/a", LocationMode::Archive, true)];
-        assert_eq!(added(&list, PathBuf::from("/a"), AddAs::ReadFolder), list);
+        assert_eq!(added(&list, PathBuf::from("/a")), list);
     }
 
     #[test]
-    fn removing_the_target_hands_it_to_the_first_indexed_folder() {
+    fn removing_a_folder_leaves_sources_and_targets_as_they_are() {
         let list = vec![
             location("/in", LocationMode::Inbox, false),
             location("/a", LocationMode::Archive, true),
             location("/b", LocationMode::Archive, false),
         ];
         assert_eq!(
-            removed(&list, Path::new("/a")),
+            removed(&list, Path::new("/b")),
             vec![
                 location("/in", LocationMode::Inbox, false),
-                location("/b", LocationMode::Archive, true),
-            ]
-        );
-    }
-
-    #[test]
-    fn removing_the_last_indexed_folder_leaves_no_target() {
-        let list = vec![
-            location("/in", LocationMode::Inbox, false),
-            location("/a", LocationMode::Archive, true),
-        ];
-        assert_eq!(
-            removed(&list, Path::new("/a")),
-            vec![location("/in", LocationMode::Inbox, false)]
-        );
-    }
-
-    #[test]
-    fn removing_a_read_folder_keeps_the_target() {
-        let list = vec![
-            location("/in", LocationMode::Inbox, false),
-            location("/a", LocationMode::Archive, true),
-        ];
-        assert_eq!(
-            removed(&list, Path::new("/in")),
-            vec![location("/a", LocationMode::Archive, true)]
-        );
-    }
-
-    #[test]
-    fn an_edited_folder_replaces_only_its_own_entry() {
-        let list = vec![
-            location("/in", LocationMode::Inbox, false),
-            location("/other", LocationMode::Inbox, false),
-        ];
-        let edited = FilingLocation {
-            images: true,
-            transfer: LocationTransfer::Copy,
-            ..location("/in", LocationMode::Archive, false)
-        };
-        assert_eq!(
-            replaced(&list, edited.clone()),
-            vec![edited, location("/other", LocationMode::Inbox, false)]
-        );
-    }
-
-    #[test]
-    fn stopping_continuous_filing_changes_only_that_folder_and_keeps_its_role() {
-        let continuous = |path: &str| FilingLocation {
-            continuous: true,
-            ..location(path, LocationMode::Inbox, false)
-        };
-        let list = vec![continuous("/in"), continuous("/other")];
-
-        assert_eq!(
-            continuous_stopped(&list, Path::new("/in")),
-            vec![
-                location("/in", LocationMode::Inbox, false),
-                continuous("/other")
+                location("/a", LocationMode::Archive, true),
             ]
         );
     }

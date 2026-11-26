@@ -38,8 +38,6 @@ pub struct Ctx {
     pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
     /// Whether the AI setting is on; off, no sentence goes to the model.
     pub ai_on: bool,
-    /// Whether the text recognition models are installed.
-    pub ocr_models_present: bool,
     /// Whether the build may change files: a locked trial lets Hermes read but
     /// not file, trash or undo.
     pub changes_allowed: bool,

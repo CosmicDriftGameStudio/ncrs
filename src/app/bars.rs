@@ -118,18 +118,10 @@ impl App {
     }
 
     pub(in crate::app) fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
-        let on_press = Message::FilingStatus(FilingStatusMessage::Open);
-        if let Some(text) = ncrs_hermes_chat::picks_line(&self.hermes_chat, self.lang) {
-            return Some(statusbar::FilingBadge {
-                text,
-                failing: false,
-                on_press,
-            });
-        }
         ncrs_hermes_ui::filing_badge(&self.hermes, self.lang).map(|badge| statusbar::FilingBadge {
             text: badge.text,
             failing: badge.failing,
-            on_press,
+            on_press: Message::FilingStatus(badge.on_press),
         })
     }
 
@@ -207,6 +199,7 @@ impl App {
             viewer: self.viewer.is_open(),
             notes: self.notes.is_open(),
             filing: self.filing_view.session.is_some(),
+            repos: self.repos.is_some(),
             git: self.git_tabs.ids(),
             hermes: self.hermes_chat.open,
         }
@@ -230,6 +223,10 @@ impl App {
 
     pub(in crate::app) fn git_shown(&self) -> bool {
         self.shown_git_tab().is_some()
+    }
+
+    pub(in crate::app) fn repos_shown(&self) -> bool {
+        self.repos.is_some() && self.shown_tab == ShownTab::Repos
     }
 
     pub(in crate::app) fn filing_shown(&self) -> bool {
@@ -265,6 +262,12 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::Notes,
                 active: self.shown_tab == ShownTab::Notes,
+            });
+        }
+        if self.repos.is_some() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Repos,
+                active: self.shown_tab == ShownTab::Repos,
             });
         }
         for (id, state) in self.git_tabs.iter() {

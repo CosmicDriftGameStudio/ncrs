@@ -98,6 +98,36 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
         })?;
         config.keymap = Arc::new(keymap);
     }
+    let invalid = |span: std::ops::Range<usize>, reason: String| ConfigError::Invalid {
+        path: path.to_path_buf(),
+        line: line_at(source.as_bytes(), span.start),
+        reason,
+    };
+    if let Some(table) = config
+        .keys
+        .tables
+        .iter()
+        .find(|table| !TAB_KEY_TABLES.contains(&table.name.as_ref().as_str()))
+    {
+        return Err(invalid(
+            table.name.span(),
+            format!(
+                "unknown table [keys.{}]; the tabs with keys are {}",
+                table.name.as_ref(),
+                TAB_KEY_TABLES.join(", ")
+            ),
+        ));
+    }
+    config.git_keys = TabKeys::from_section(&config.keys, "git", |offset| {
+        line_at(source.as_bytes(), offset)
+    })
+    .map_err(|err| invalid(err.span, err.reason))?;
+    config.repos_keys = TabKeys::from_section(&config.keys, "repos", |offset| {
+        line_at(source.as_bytes(), offset)
+    })
+    .map_err(|err| invalid(err.span, err.reason))?;
+    config.repos = crate::repos::resolve_repos(&config.repos_section);
+    config.git = crate::git::resolve_git(&config.git_section);
     if !config.theme.entries.is_empty() {
         let vscode = load_vscode(&config.theme, path, home);
         let configured =
@@ -225,6 +255,8 @@ pub fn resolve_git_view(section: &GitViewSection) -> GitViewSettings {
         author_width: pixels(section.author_width),
         date_width: pixels(section.date_width),
         sha_width: pixels(section.sha_width),
+        sidebar_width: pixels(section.sidebar_width),
+        detail_width: pixels(section.detail_width),
         folded: section
             .folded
             .iter()

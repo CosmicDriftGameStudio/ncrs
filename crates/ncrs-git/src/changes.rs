@@ -4,6 +4,7 @@ use crate::cli::Git;
 use crate::detail::{ChangeKind, ChangedFile};
 use crate::diff::line_counts;
 use crate::undo::{SavedFile, UndoAction, UndoRecord, UndoSummary};
+use crate::working_file::read_working_file;
 use crate::ActionError;
 
 /// One line of `git status --porcelain`, reduced to what the actions need.
@@ -71,6 +72,7 @@ fn changed(path: &str, kind: ChangeKind, old: &[u8], new: &[u8]) -> ChangedFile 
         added: counts.map_or(0, |(added, _)| added),
         removed: counts.map_or(0, |(_, removed)| removed),
         binary: counts.is_none(),
+        untracked: false,
     }
 }
 
@@ -93,10 +95,10 @@ impl Git {
             }
             if entry.is_untracked() || entry.has_unstaged_change() {
                 let old = self.blob(&format!(":{path}")).unwrap_or_default();
-                let new = fs::read(self.root().join(path)).unwrap_or_default();
-                lists
-                    .unstaged
-                    .push(changed(path, kind_of_letter(entry.worktree), &old, &new));
+                let new = read_working_file(self.root(), path).unwrap_or_default();
+                let mut file = changed(path, kind_of_letter(entry.worktree), &old, &new);
+                file.untracked = entry.is_untracked();
+                lists.unstaged.push(file);
             }
         }
         lists.staged.sort_by(|a, b| a.path.cmp(&b.path));
@@ -105,7 +107,12 @@ impl Git {
     }
 
     pub(crate) fn porcelain(&self) -> Result<Vec<PorcelainEntry>, ActionError> {
-        let output = self.ok(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
+        let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+        if self.is_guarded() {
+            // Looking into a submodule runs the filters of its own config.
+            args.push("--ignore-submodules=dirty");
+        }
+        let output = self.ok(&args)?;
         let text = String::from_utf8_lossy(&output.stdout).to_string();
         let mut fields = text.split('\0');
         let mut entries = Vec::new();

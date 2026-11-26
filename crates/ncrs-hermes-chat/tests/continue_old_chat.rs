@@ -72,16 +72,6 @@ mod tests {
             turns.last().map(|turn| turn.message.as_str()),
             Some("Zweite Frage")
         );
-        assert_eq!(
-            turns
-                .last()
-                .and_then(|turn| turn.previous_message.as_deref()),
-            None
-        );
-        assert_eq!(
-            turns.last().and_then(|turn| turn.previous_request.as_ref()),
-            None
-        );
     }
 
     #[test]

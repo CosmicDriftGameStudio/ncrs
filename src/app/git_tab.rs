@@ -3,21 +3,53 @@
 
 use crate::app::update::git_repository_of;
 use crate::app::*;
-use crate::messages::GitTabId;
+use crate::messages::{GitFileView, GitTabId};
 use ncrs_git_view::Action as Ask;
 use ncrs_ui_kit::git_rows::CommitColumns;
 use std::path::{Path, PathBuf};
 
 impl App {
-    fn git_ctx(&self, root: Option<&Path>) -> ncrs_git_view::Ctx {
+    pub(in crate::app) fn git_ctx(&self, root: Option<&Path>) -> ncrs_git_view::Ctx {
         let settings = &self.git_view_settings;
         ncrs_git_view::Ctx {
             lang: self.lang,
             folded: root
-                .map(|folder| settings.folded_in(&folder.to_string_lossy()).to_vec())
+                .map(|folder| settings.folded_in(&folds_key(folder)).to_vec())
                 .unwrap_or_default(),
             columns: self.git_columns(),
+            panes: self.git_panes(),
+            repositories: self.git_known_repositories(),
+            pull_default: self.git_pull_default(),
         }
+    }
+
+    /// The way the Pull button joins what it fetched, from `[git] pull`.
+    fn git_pull_default(&self) -> ncrs_git::PullStrategy {
+        use ncrs_config::git::PullDefault;
+        match self.git_settings.pull {
+            PullDefault::Merge => ncrs_git::PullStrategy::Merge,
+            PullDefault::Rebase => ncrs_git::PullStrategy::Rebase,
+            PullDefault::FastForwardOnly => ncrs_git::PullStrategy::FastForwardOnly,
+        }
+    }
+
+    /// The repositories of the open Git tabs, for the repository list of the header.
+    fn git_known_repositories(&self) -> Vec<ncrs_git_view::RepoEntry> {
+        self.git_tabs
+            .iter()
+            .filter_map(|(_, state)| {
+                Some(ncrs_git_view::RepoEntry {
+                    name: state.name.clone(),
+                    path: state.root.clone()?,
+                })
+            })
+            .collect()
+    }
+
+    /// The panes the user dragged to; the standard widths where none were.
+    fn git_panes(&self) -> ncrs_git_view::PaneWidths {
+        let settings = &self.git_view_settings;
+        ncrs_git_view::PaneWidths::saved(settings.sidebar_width, settings.detail_width)
     }
 
     /// The commit columns the user dragged to; the standard width where none was.
@@ -46,6 +78,11 @@ impl App {
             date_format: self.columns.date_format,
             window: self.window_size,
             columns: self.git_columns(),
+            panes: self.git_panes(),
+            home: &self.home,
+            keys: &self.git_keys,
+            keymap: &self.keymap,
+            pull_default: self.git_pull_default(),
         };
         let content: Element<'_, Message> = match self
             .shown_git_tab()
@@ -73,9 +110,39 @@ impl App {
         self.open_git_tab_at(root)
     }
 
+    /// The repository and the path in it of the file under the cursor of the
+    /// active panel.
+    pub(in crate::app) fn git_file_under_cursor(&self) -> Option<(PathBuf, String)> {
+        let file = self.file_under_cursor()?;
+        let root = ncrs_git::repository_root_of(file.parent()?)?;
+        let path = ncrs_git::path_in_repository(&root, &file)?;
+        Some((root, path))
+    }
+
+    /// Shows the history or the blame of the file under the cursor in the Git
+    /// tab of its repository.
+    pub(in crate::app) fn open_git_file(&mut self, view: GitFileView) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let Some((root, path)) = self.git_file_under_cursor() else {
+            self.set_status_error(self.lang.text(Msg::GitViewNotARepositoryFile));
+            return Task::none();
+        };
+        let opened = self.open_git_tab_at(root);
+        let Some(id) = self.shown_git_tab() else {
+            return opened;
+        };
+        let message = match view {
+            GitFileView::History => ncrs_git_view::Message::OpenHistory(path),
+            GitFileView::Blame => ncrs_git_view::Message::OpenBlame(path, None),
+        };
+        Task::batch([opened, self.update_git_tab(id, message)])
+    }
+
     /// Shows the Git tab of the repository at `root`, opening one if it has
     /// none, and reads the repository.
-    fn open_git_tab_at(&mut self, root: PathBuf) -> Task<Message> {
+    pub(in crate::app) fn open_git_tab_at(&mut self, root: PathBuf) -> Task<Message> {
         let name = root
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -111,6 +178,42 @@ impl App {
         ])
     }
 
+    /// Hands a login question to the tab whose job asked; no tab left, no answer.
+    pub(in crate::app) fn route_git_request(
+        &mut self,
+        request: ncrs_git::askpass::AskRequest,
+    ) -> Task<Message> {
+        let asking = self
+            .git_tabs
+            .iter()
+            .find_map(|(id, state)| (state.job_token.0 == request.job).then_some(id));
+        match asking {
+            Some(id) => self.update_git_tab(id, ncrs_git_view::Message::CredentialAsked(request)),
+            None if self
+                .repos
+                .as_ref()
+                .is_some_and(|tab| tab.job == request.job) =>
+            {
+                self.update_repos(ncrs_repos::Message::CredentialAsked(request))
+            }
+            None => {
+                ncrs_git::askpass::answer(request.id, None);
+                Task::none()
+            }
+        }
+    }
+
+    /// The timer of the quiet fetch: every open tab looks at its own remote.
+    pub(in crate::app) fn fetch_git_tabs_in_background(&mut self) -> Task<Message> {
+        let tasks: Vec<_> = self
+            .git_tabs
+            .ids()
+            .into_iter()
+            .map(|id| self.update_git_tab(id, ncrs_git_view::Message::BackgroundFetch))
+            .collect();
+        Task::batch(tasks)
+    }
+
     fn run_git_action(&mut self, action: Ask) -> Task<Message> {
         match action {
             Ask::Close => Task::none(),
@@ -129,8 +232,23 @@ impl App {
             Ask::FoldsChanged { root, folded } => {
                 let changed = self
                     .git_view_settings
-                    .with_folded(&root.to_string_lossy(), folded);
+                    .with_folded(&folds_key(&root), folded);
                 self.save_git_view(changed)
+            }
+            Ask::PanesResized(widths) => {
+                let changed = ncrs_config::git_view::GitViewSettings {
+                    sidebar_width: Some(widths.sidebar),
+                    detail_width: Some(widths.detail),
+                    ..self.git_view_settings.clone()
+                };
+                self.save_git_view(changed)
+            }
+            Ask::OpenRepository(root) => self.open_git_tab_at(root),
+            Ask::WorktreesRemoved(folders) => {
+                for folder in &folders {
+                    self.worktree_removed(folder);
+                }
+                Task::none()
             }
             Ask::ColumnsResized(columns) => {
                 let changed = ncrs_config::git_view::GitViewSettings {
@@ -158,4 +276,33 @@ impl App {
             ncrs_settings::message::SettingChange::GitView(settings),
         ))
     }
+}
+
+impl App {
+    /// Takes the keys of `[keys.git]`. Keys that do not fit leave the
+    /// built-in ones and say why in the status line.
+    pub(in crate::app) fn apply_git_keys(&mut self, overrides: &ncrs_config::keymap::TabKeys) {
+        match crate::git_keys::resolve(overrides, &self.keymap, cfg!(target_os = "macos")) {
+            Ok(keys) => self.git_keys = Arc::new(keys),
+            Err(problem) => {
+                self.git_keys = Arc::default();
+                self.report(ConfigProblem::Invalid(
+                    ncrs_config::config::ConfigError::Invalid {
+                        path: self.config_path.clone().unwrap_or_default(),
+                        line: problem.line,
+                        reason: problem.reason,
+                    },
+                ));
+            }
+        }
+    }
+}
+
+/// The worktrees of one repository fold alike: their groups are remembered
+/// under the folder of the repository.
+fn folds_key(root: &Path) -> String {
+    ncrs_git::main_worktree_of(root)
+        .unwrap_or_else(|| root.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }

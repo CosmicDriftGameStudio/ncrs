@@ -1,53 +1,71 @@
 //! What lies over the Git tab: the context menus, the dialog for a new branch
 //! and the notice about a push or login that failed.
 
-use iced::widget::{column, stack};
+use iced::widget::{column, stack, Space};
 use iced::{Element, Point};
 use ncrs_git::PullStrategy;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::action_rows::{banner, BannerTone};
 use ncrs_ui_kit::frame::{DialogSize, Frame};
 use ncrs_ui_kit::kit::{
-    button, dim, enter_button, error_line, labelled_checkbox, paragraph, scrim, text_field, Check,
-    Tone,
+    button, dim, enter_button, error_line, labelled_checkbox, paragraph, radio_choice, scrim,
+    text_field, Check, Tone,
 };
 use ncrs_ui_kit::popup_menu::{
-    popup_layer, popup_menu_rows, popup_rows_height, MenuRow, PopupEntry, RightPress,
+    menu_rows_height, popup_layer, popup_menu_rows_in, MenuRow, PopupEntry, RightPress,
 };
 use ncrs_ui_kit::theme::{size, spacing};
 use ncrs_ui_kit::tree_list::{LIST_INSET, ROW_OVERHEAD, TREE_INDENT};
 
+use super::file_menu;
 use crate::actions::{
-    ConflictAction, Dialog, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu, Question,
-    RenameBranch, Side,
+    ConflictAction, Dialog, IgnoreChoice, MenuAction, MenuTarget, NewBranch, Notice, OpenMenu,
+    Question, RenameBranch, Side,
 };
 use crate::ctx::ViewCtx;
+use crate::file_views::{self, FileAction};
+use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 use crate::state::State;
 use crate::update::menu_target_of;
 
-const MENU_WIDTH: f32 = 300.0;
+pub const MENU_WIDTH: f32 = 300.0;
 pub const NAME_ID: &str = "git-new-branch-name";
 pub const RENAME_ID: &str = "git-rename-branch-name";
 
-fn row(label: String, shortcut: Shortcut, message: Message, enabled: bool) -> MenuRow<Message> {
+fn row(
+    keys: &GitKeys,
+    label: String,
+    shortcut: Shortcut,
+    message: Message,
+    enabled: bool,
+) -> MenuRow<Message> {
     MenuRow::Entry(PopupEntry {
         label,
-        key: Some(shortcut.label()),
+        key: Some(shortcut.label(keys)).filter(|key| !key.is_empty()),
         is_selected: false,
         on_press: enabled.then_some(message),
         on_hover: None,
     })
 }
 
-fn entry(label: String, action: MenuAction, enabled: bool) -> MenuRow<Message> {
+fn entry(keys: &GitKeys, label: String, action: MenuAction, enabled: bool) -> MenuRow<Message> {
     row(
+        keys,
         label,
         Shortcut::of_menu(action),
         Message::MenuPressed(action),
         enabled,
     )
+}
+
+/// The same entry, drawn as one that destroys something.
+fn danger(row: MenuRow<Message>) -> MenuRow<Message> {
+    match row {
+        MenuRow::Entry(entry) => MenuRow::Danger(entry),
+        other => other,
+    }
 }
 
 fn checked_out(state: &State) -> String {
@@ -59,24 +77,33 @@ fn checked_out(state: &State) -> String {
         .unwrap_or_default()
 }
 
-fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
+fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
     let lang = ctx.lang;
     let text = |msg| lang.text(msg).to_owned();
+    let writable = state.actions.unavailable.is_none();
+    let entry = |label, action, enabled: bool| entry(ctx.keys, label, action, enabled && writable);
     let current = checked_out(state);
     let with_current = |msg| fill_template(lang.text(msg), &[("{branch}", &current)]);
-    match menu.target {
-        MenuTarget::LocalBranch(index) => {
+    match &menu.target {
+        MenuTarget::Commit(sha) => state
+            .row_of_commit(sha)
+            .map(|row| super::commit_menu::rows(state, menu, row, ctx))
+            .unwrap_or_default(),
+        &MenuTarget::LocalBranch(index) => {
             let branch = state
                 .overview
                 .as_ref()
                 .and_then(|overview| overview.local.get(index));
             let is_current = branch.is_some_and(|found| found.is_current);
             let ahead = branch.is_some_and(|found| found.ahead > 0);
-            let mut rows = vec![entry(
-                text(Msg::GitViewMenuCheckout),
-                MenuAction::Checkout,
-                !is_current,
-            )];
+            let mut rows = vec![
+                entry(
+                    text(Msg::GitViewMenuCheckout),
+                    MenuAction::Checkout,
+                    !is_current,
+                ),
+                MenuRow::Separator,
+            ];
             if ahead {
                 rows.push(entry(text(Msg::GitViewMenuPush), MenuAction::Push, true));
             }
@@ -87,11 +114,6 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
                     true,
                 ),
                 entry(text(Msg::GitViewMenuRename), MenuAction::Rename, true),
-                entry(
-                    text(Msg::GitViewMenuDelete),
-                    MenuAction::Delete,
-                    !is_current,
-                ),
                 MenuRow::Separator,
                 entry(
                     with_current(Msg::GitViewMenuMergeInto),
@@ -103,6 +125,12 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
                     MenuAction::RebaseOnto,
                     !is_current,
                 ),
+                MenuRow::Separator,
+                danger(entry(
+                    text(Msg::GitViewMenuDelete),
+                    MenuAction::Delete,
+                    !is_current,
+                )),
             ]);
             rows
         }
@@ -112,22 +140,23 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
                 MenuAction::CheckoutAsLocal,
                 true,
             ),
+            MenuRow::Separator,
             entry(
                 text(Msg::GitViewMenuNewBranchFrom),
                 MenuAction::NewBranchFrom,
                 true,
             ),
-            MenuRow::Separator,
             entry(
                 with_current(Msg::GitViewMenuMergeInto),
                 MenuAction::MergeInto,
                 true,
             ),
-            entry(
+            MenuRow::Separator,
+            danger(entry(
                 text(Msg::GitViewMenuDeleteOnRemote),
                 MenuAction::DeleteOnRemote,
                 true,
-            ),
+            )),
         ],
         MenuTarget::Stash(_) => vec![
             entry(
@@ -141,22 +170,51 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
                 true,
             ),
             MenuRow::Separator,
-            entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true),
+            danger(entry(
+                text(Msg::GitViewMenuDelete),
+                MenuAction::StashDrop,
+                true,
+            )),
         ],
-        MenuTarget::Conflict(index) => {
+        MenuTarget::Worktree(index) => {
+            let removable = state
+                .overview
+                .as_ref()
+                .and_then(|overview| overview.worktrees.get(*index))
+                .is_some_and(|found| !found.is_main && !found.is_current);
+            vec![danger(entry(
+                text(Msg::GitViewMenuRemoveWorktree),
+                MenuAction::RemoveWorktree,
+                removable,
+            ))]
+        }
+        MenuTarget::File { path, .. } => file_views::menu_entries(state, path)
+            .into_iter()
+            .enumerate()
+            .flat_map(|(index, file_entry)| {
+                let starts_group =
+                    matches!(file_entry.0, FileAction::OpenEditor | FileAction::Ignore);
+                starts_group
+                    .then_some(MenuRow::Separator)
+                    .into_iter()
+                    .chain([file_menu::row(menu, index, file_entry, ctx)])
+            })
+            .collect(),
+        MenuTarget::Conflict(path) => {
             let conflict = state
                 .actions
                 .merge
                 .as_ref()
-                .and_then(|merge| merge.conflicts.get(index));
+                .and_then(|merge| merge.conflicts.iter().find(|it| it.path == *path));
             let resolved = conflict.is_some_and(|found| found.resolved);
             let edited = conflict.is_some_and(|found| found.edited);
-            let choice = |msg, action: ConflictAction, enabled| {
+            let choice = |msg, action: ConflictAction, enabled: bool| {
                 row(
+                    ctx.keys,
                     text(msg),
                     Shortcut::of_conflict(action),
-                    Message::ConflictPressed(index, action),
-                    enabled,
+                    Message::ConflictPressed(path.clone(), action),
+                    enabled && (writable || action == ConflictAction::OpenEditor),
                 )
             };
             vec![
@@ -192,20 +250,32 @@ fn rows_of(state: &State, menu: OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Messa
     }
 }
 
-/// Where the menu of `target` hangs: under its row, in the left list or among
-/// the files in conflict.
+/// Where the menu of `target` hangs: under its row, in the left list or in the
+/// pane at the right.
 fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
     let top = super::body_top(state);
-    match target {
-        MenuTarget::Conflict(index) => Point::new(
-            ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
-            top + (index + 1) as f32 * size::ROW_TALL,
-        ),
+    match &target {
+        MenuTarget::Commit(sha) => {
+            super::commit_menu::anchor(state, state.row_of_commit(sha).unwrap_or_default(), ctx)
+        }
+        MenuTarget::Conflict(path) => {
+            let conflicts = state
+                .actions
+                .merge
+                .iter()
+                .flat_map(|merge| &merge.conflicts);
+            let row = conflicts.into_iter().position(|it| it.path == *path);
+            Point::new(
+                ctx.window.width - super::detail_width(state, ctx) + ROW_OVERHEAD,
+                top + (row.unwrap_or_default() + 1) as f32 * size::ROW_TALL,
+            )
+        }
+        MenuTarget::File { path, .. } => file_menu::anchor(state, path, ctx),
         _ => {
             let row = state
                 .sidebar_items()
                 .iter()
-                .position(|item| menu_target_of(*item) == Some(target))
+                .position(|item| menu_target_of(state, *item).as_ref() == Some(&target))
                 .unwrap_or_default();
             Point::new(
                 LIST_INSET + ROW_OVERHEAD + 2.0 * TREE_INDENT,
@@ -216,16 +286,12 @@ fn anchor(state: &State, target: MenuTarget, ctx: ViewCtx<'_>) -> Point {
 }
 
 fn menu<'a>(state: &State, open: OpenMenu, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    let rows = rows_of(state, open, ctx);
-    let separators = rows
-        .iter()
-        .filter(|line| matches!(line, MenuRow::Separator))
-        .count();
-    let height = popup_rows_height(rows.len() - separators, separators);
-    let mut origin = anchor(state, open.target, ctx);
+    let rows = rows_of(state, &open, ctx);
+    let height = menu_rows_height(&rows);
+    let mut origin = anchor(state, open.target.clone(), ctx);
     origin.y = origin.y.min(ctx.window.height - height).max(0.0);
     popup_layer(
-        popup_menu_rows(rows, MENU_WIDTH, origin, ctx.palette),
+        popup_menu_rows_in(rows, MENU_WIDTH, origin, ctx.window, ctx.palette),
         Some(Message::CloseMenu),
         RightPress::Dismiss,
     )
@@ -297,7 +363,7 @@ fn new_branch_dialog<'a>(draft: &'a NewBranch, ctx: ViewCtx<'a>) -> Element<'a, 
 }
 
 /// The dialog with a cancel button and a confirm button that Enter presses.
-fn dialog_frame<'a>(
+pub fn dialog_frame<'a>(
     title: &str,
     content: Element<'a, Message>,
     confirm: &str,
@@ -328,6 +394,52 @@ fn dialog_frame<'a>(
     .into_element()
 }
 
+fn ignore_dialog<'a>(
+    path: &str,
+    folder: Option<&str>,
+    extension: Option<&str>,
+    chosen: IgnoreChoice,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let choice = |label: String, which: IgnoreChoice| {
+        radio_choice(
+            &label,
+            chosen == which,
+            Message::IgnoreChoiceChanged(which),
+            ctx.palette,
+        )
+    };
+    let mut rows = column![choice(
+        fill_template(lang.text(Msg::GitViewIgnoreFile), &[("{path}", path)]),
+        IgnoreChoice::File,
+    )]
+    .spacing(spacing::XS);
+    if let Some(directory) = folder {
+        rows = rows.push(choice(
+            fill_template(
+                lang.text(Msg::GitViewIgnoreFolder),
+                &[("{folder}", directory)],
+            ),
+            IgnoreChoice::Folder,
+        ));
+    }
+    if let Some(ending) = extension {
+        rows = rows.push(choice(
+            fill_template(lang.text(Msg::GitViewIgnoreExtension), &[("{ext}", ending)]),
+            IgnoreChoice::Extension,
+        ));
+    }
+    dialog_frame(
+        lang.text(Msg::GitViewIgnoreTitle),
+        rows.into(),
+        lang.text(Msg::GitViewIgnoreConfirm),
+        Some(Message::ConfirmDialog),
+        Tone::Primary,
+        ctx,
+    )
+}
+
 fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
     let (title, text, button_label) = match question {
@@ -355,7 +467,7 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
             ),
             Msg::GitViewAskDeleteButton,
         ),
-        Question::DeleteOnRemote { remote, branch } => (
+        Question::DeleteOnRemote { remote, branch, .. } => (
             Msg::GitViewAskDeleteRemoteTitle,
             fill_template(
                 lang.text(Msg::GitViewAskDeleteRemoteText),
@@ -363,6 +475,38 @@ fn question_dialog<'a>(question: &'a Question, ctx: ViewCtx<'a>) -> Element<'a, 
             ),
             Msg::GitViewAskDeleteButton,
         ),
+        Question::Ignore {
+            path,
+            folder,
+            extension,
+            chosen,
+        } => {
+            return ignore_dialog(path, folder.as_deref(), extension.as_deref(), *chosen, ctx);
+        }
+        Question::ResetHard { .. } => return super::commit_menu::reset_dialog(question, ctx),
+        Question::ForcePush { plan } => return super::sync_menu::force_push_dialog(plan, ctx),
+        Question::RemoveWorktree {
+            path,
+            ignored_files,
+        } => {
+            let mut text = fill_template(
+                lang.text(Msg::GitViewAskRemoveWorktreeText),
+                &[("{name}", &path.display().to_string())],
+            );
+            if !ignored_files.is_empty() {
+                let files = ncrs_ui_kit::check_rows::named_files(ignored_files, lang);
+                text.push(' ');
+                text.push_str(&fill_template(
+                    lang.text(Msg::GitViewAskRemoveWorktreeIgnored),
+                    &[("{files}", &files)],
+                ));
+            }
+            (
+                Msg::GitViewAskRemoveWorktreeTitle,
+                text,
+                Msg::GitViewAskDeleteButton,
+            )
+        }
         Question::DropStash { message, .. } => (
             Msg::GitViewAskDropStashTitle,
             fill_template(
@@ -504,6 +648,17 @@ pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Me
                 ),
             ],
         ),
+        Notice::LeaseRejected => (
+            lang.text(Msg::GitViewLeaseRejected).to_owned(),
+            lang.text(Msg::GitViewLeaseRejectedText).to_owned(),
+            None,
+            vec![button(
+                lang.text(Msg::GitViewLeaseRejectedFetch),
+                Some(Message::Fetch),
+                Tone::Primary,
+                palette,
+            )],
+        ),
         Notice::NothingToCommit => (
             lang.text(Msg::GitViewNothingToCommit).to_owned(),
             lang.text(Msg::GitViewNothingToCommitText).to_owned(),
@@ -554,7 +709,7 @@ pub fn notice_banner<'a>(notice: &'a Notice, ctx: ViewCtx<'a>) -> Element<'a, Me
     };
     let asks = matches!(
         notice,
-        Notice::BranchNotMerged { .. } | Notice::NeedsPullStrategy
+        Notice::BranchNotMerged { .. } | Notice::NeedsPullStrategy | Notice::LeaseRejected
     );
     let mut buttons = vec![button(
         lang.text(if asks {
@@ -593,10 +748,33 @@ pub fn over<'a>(
         Some(Dialog::Rename(rename)) => {
             return stack![page, scrim(rename_dialog(rename, ctx))].into();
         }
+        Some(Dialog::Tag(draft)) => {
+            return stack![page, scrim(super::commit_menu::tag_dialog(draft, ctx))].into();
+        }
+        Some(Dialog::Cleanup(dialog)) => {
+            return stack![
+                page,
+                scrim(super::cleanup::cleanup_dialog(dialog, &state.name, ctx))
+            ]
+            .into();
+        }
+        Some(Dialog::Credential(ask)) => {
+            return stack![page, scrim(super::credentials::credential_dialog(ask, ctx))].into();
+        }
         None => {}
     }
-    if let Some(open) = state.actions.menu {
+    if let Some(open) = state.actions.menu.clone() {
         return stack![page, menu(state, open, ctx)].into();
+    }
+    if state.actions.sync_menu.is_some() {
+        // The header stays live: its buttons close the menu themselves.
+        let below_header = size::PICKER_HEADER + spacing::BORDER_WIDTH;
+        let catcher = popup_layer(
+            Space::new().into(),
+            Some(Message::CloseMenu),
+            RightPress::Dismiss,
+        );
+        return stack![page, column![Space::new().height(below_header), catcher]].into();
     }
     page
 }

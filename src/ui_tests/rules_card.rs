@@ -28,6 +28,7 @@ fn listed(
             id: rule_id(usize::try_from(id).unwrap()),
             position: id,
             origin,
+            target: ncrs_index::TargetId::main(),
             spec: RuleSpec {
                 name: None,
                 conditions,
@@ -152,29 +153,29 @@ fn the_page_lists_the_rules_with_their_buttons_in_the_row() {
         "Strom",
         "Erinnerungen",
         "12 hits",
+        "off",
         "↑",
         "↓",
         "Change",
-        "Remove",
-        "+ Rule",
+        "+ Rule…",
     ] {
         assert!(shows(three_rules(), label), "{label}");
     }
 }
 
 #[test]
-fn an_empty_page_says_where_rules_come_from() {
-    assert!(shows(
-        empty(),
-        "No rules yet. Create one with “+ Rule”, or let rules come from sorting in the chat."
-    ));
+fn a_target_without_rules_says_so() {
+    assert!(shows(empty(), "No scheme yet."));
+    assert!(!shows(three_rules(), "No scheme yet."));
 }
 
 #[test]
-fn the_buttons_send_what_they_say_for_their_row() {
-    click_sends(three_rules(), "+ Rule", RulesMessage::New);
-    click_sends(three_rules(), "Change", RulesMessage::Edit(0));
-    click_sends(three_rules(), "Remove", RulesMessage::AskDelete(0));
+fn the_buttons_send_what_they_say() {
+    click_sends(
+        three_rules(),
+        "+ Rule…",
+        RulesMessage::NewIn(ncrs_index::TargetId::main()),
+    );
     click_sends(
         three_rules(),
         "↓",
@@ -243,8 +244,7 @@ fn cancelling_the_dialog_drops_what_was_typed() {
 #[test]
 fn the_list_stays_the_same_while_a_dialog_is_up() {
     for page in [with_edit_form(), with_new_form(), asking_to_delete()] {
-        assert!(shows(page.clone(), "Strom"));
-        assert!(shows(page, "Remove"));
+        assert!(shows(page, "Strom"));
     }
 }
 
@@ -299,7 +299,7 @@ fn the_view_matches_its_snapshots() {
 
 fn with_new_form() -> RulesPage {
     let mut page = three_rules();
-    page.begin_new();
+    page.begin_new_in(ncrs_index::TargetId::main());
     page
 }
 
@@ -323,12 +323,7 @@ fn with_invalid_form() -> RulesPage {
         1,
         "(".to_owned(),
     )));
-    form.update(RuleFormMessage::Target(
-        crate::filing_pieces::TargetEdit::Remove(0),
-    ));
-    form.update(RuleFormMessage::Target(
-        crate::filing_pieces::TargetEdit::Remove(0),
-    ));
+    form.update(RuleFormMessage::Pattern("{unknown}".to_owned()));
     assert_eq!(page.begin_save(), None);
     page
 }
@@ -400,45 +395,34 @@ fn the_rule_form_matches_its_snapshots() {
 }
 
 fn with_tried_form() -> RulesPage {
-    use crate::rules_work::{TriedDocument, TryOutcome, TryResult, TrySection};
-    use ncrs_index::ReviewReason;
+    use crate::rules_work::{SortTry, SortTryRow, SortTryState};
     use std::path::PathBuf;
 
     let mut page = with_edit_form();
     let Some(form) = page.form_mut() else {
         panic!("no form");
     };
-    let filed = |path: &str| TryOutcome::Filed(PathBuf::from(path));
-    form.live_try.status = crate::rule_form::TryStatus::Ready(TryResult {
-        documents: vec![
-            TriedDocument {
-                section: TrySection::Inbox,
-                path: PathBuf::from("rent-march.pdf"),
-                now: TryOutcome::Review(ReviewReason::NoMatchingRule),
-                after: filed("Invoice/2024/Telekom"),
-                conflicts: Vec::new(),
-            },
-            TriedDocument {
-                section: TrySection::Review,
-                path: PathBuf::from("scan-0412.pdf"),
-                now: TryOutcome::Review(ReviewReason::MissingField(ncrs_index::Field::Date)),
-                after: filed("Invoice/2024/Telekom"),
-                conflicts: Vec::new(),
-            },
-            TriedDocument {
-                section: TrySection::Archive,
-                path: PathBuf::from("2021/telekom-may.pdf"),
-                now: TryOutcome::Lies(PathBuf::from("2021/telekom-may.pdf")),
-                after: filed("Invoice/2021/Telekom"),
-                conflicts: vec![rule_id(2), rule_id(3)],
-            },
+    let row = |relative: &str, state| SortTryRow {
+        relative: PathBuf::from(relative),
+        state,
+    };
+    form.live_try.status = crate::rule_form::TryStatus::Ready(SortTry {
+        rows: vec![
+            row(
+                "rent-march.pdf",
+                SortTryState::Filed(PathBuf::from("Invoice/2024/Telekom/rent-march.pdf")),
+            ),
+            row(
+                "scan-0412.pdf",
+                SortTryState::MissingValue(ncrs_index::Field::Date),
+            ),
+            row(
+                "2021/telekom-may.pdf",
+                SortTryState::NameTaken(PathBuf::from("Invoice/2021/Telekom/telekom-may.pdf")),
+            ),
         ],
         more: 0,
-        in_archive: 0,
-        not_indexed: 0,
-        archive_moves: Vec::new(),
-        archive_blocked: 0,
-        conflict_names: [(rule_id(2), 2), (rule_id(3), 3)].into_iter().collect(),
+        no_text: 2,
     });
     page
 }
@@ -478,7 +462,7 @@ fn an_edit_of_the_form_starts_a_try_and_a_stale_timer_does_nothing() {
     assert_eq!(waiting(&app), edited);
     let _ = app.update(Message::Rules(RulesMessage::Tried {
         generation: opened.generation,
-        result: Ok(crate::rules_work::TryResult::default()),
+        result: Ok(crate::rules_work::SortTry::default()),
     }));
     assert_eq!(waiting(&app), edited);
 }
@@ -486,15 +470,17 @@ fn an_edit_of_the_form_starts_a_try_and_a_stale_timer_does_nothing() {
 #[test]
 fn the_new_rule_button_opens_the_form_and_the_edit_button_fills_it() {
     let mut app = App::with_rules(three_rules());
-    let _ = app.update(Message::Rules(RulesMessage::New));
+    let _ = app.update(Message::Rules(RulesMessage::NewIn(
+        ncrs_index::TargetId::main(),
+    )));
     let new_form = app.rules_for_test().unwrap().form().unwrap();
     assert_eq!(new_form.name, "");
-    assert_eq!(new_form.filing.pattern(), "{year}/{sender}/");
+    assert_eq!(new_form.pattern, "");
 
     let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
     let _ = app.update(Message::Rules(RulesMessage::Edit(0)));
     let edit_form = app.rules_for_test().unwrap().form().unwrap();
-    assert_eq!(edit_form.filing.pattern(), "{year}/{sender}");
+    assert_eq!(edit_form.pattern, "{year}/{sender}");
     assert!(matches!(
         edit_form.target,
         crate::rule_form::RuleFormTarget::Edit(_)
@@ -539,7 +525,10 @@ fn an_invalid_form_sends_nothing_and_shows_what_is_wrong() {
 
     let page = app.rules_for_test().unwrap();
     assert!(!page.form().unwrap().saving);
-    for text in ["Enter a value.", "Add at least one folder."] {
+    for text in [
+        "Enter a value.",
+        "{unknown} is not a block of the pattern. Use the blocks below the field.",
+    ] {
         assert!(simulator(&app).find(text).is_ok(), "{text}");
     }
 }

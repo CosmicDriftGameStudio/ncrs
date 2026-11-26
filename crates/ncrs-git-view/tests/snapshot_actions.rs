@@ -11,393 +11,44 @@
 
 // The CI runs `ui_tests` only on macOS, where the reference images were made.
 mod ui_tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use iced::widget::text_editor;
     use iced::{Point, Size};
     use iced_test::Simulator;
+    use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
+    use ncrs_git::ForcePushPlan;
     use ncrs_git::{
         BranchInfo, ChangeKind, ChangedFile, CommitDetail, DiffHunk, DiffRow, FileDiff, GraphRow,
         Log, LogCommit, RefKind, RefLabel, RefsOverview, RowKind, WorktreeInfo,
     };
     use ncrs_git_view::actions::{
-        ChangeSide, Conflict, ConflictLine, Dialog, LocalChanges, MenuTarget, MergeInProgress,
-        NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar,
+        ChangeSide, Conflict, ConflictLine, Dialog, ForceBlock, LocalChanges, MenuTarget,
+        MergeInProgress, NewBranch, Notice, OpenMenu, Question, RenameBranch, StashEntry, SyncBar,
+        Unavailable,
     };
-    use ncrs_git_view::state::{Area, Detail, Subject};
-    use ncrs_git_view::{update, view, Ctx, Message, State, ViewCtx};
+    use ncrs_git_view::credentials::CredentialAsk;
+    use ncrs_git_view::panes::PaneDrag;
+    use ncrs_git_view::picker::Picker;
+    use ncrs_git_view::state::{Area, Detail, Fold, Section, Subject};
+    use ncrs_git_view::sync_menu::{SyncKind, SyncMenu};
+    use ncrs_git_view::{
+        update, view, Ctx, Message, PaneWidths, PickerKind, RepoEntry, Split, State, ViewCtx,
+    };
     use ncrs_i18n::Language;
     use ncrs_ui_kit::format::DateFormat;
     use ncrs_ui_kit::git_rows::CommitColumns;
     use ncrs_ui_kit::palette::ThemePreset;
     use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
-    const CTX: Ctx = Ctx::new(Language::German);
-    const WINDOW: Size = Size::new(1740.0, 1130.0);
-    const SUMMARIES: [&str; 10] = [
-        "Rechnungen als PDF exportieren",
-        "Rundung der Mehrwertsteuer auf Cent korrigiert",
-        "Kassenbuch: Monatsabschluss ergänzt",
-        "Fehler beim Import von Bankdateien mit Umlauten behoben",
-        "Mahnwesen: dritte Mahnstufe hinzugefügt",
-        "Kundenliste nach Ort und Name sortierbar",
-        "Skonto bei Zahlung innerhalb von 14 Tagen",
-        "Sicherung vor dem Löschen einer Buchung",
-        "Dokumentation der Schnittstelle zum Steuerberater",
-        "Abhängigkeiten aktualisiert",
-    ];
-    const AUTHORS: [&str; 3] = ["Lena Hartmann", "Tobias Engel", "Mira Sommer"];
-
-    fn commit(number: usize) -> LogCommit {
-        let spread = (number as u128 + 1).wrapping_mul(0x9e37_79b9_7f4a_7c15_f39c_c060_5ced_c835);
-        let id = format!("{spread:032x}{number:08x}");
-        LogCommit {
-            short: id.chars().take(7).collect(),
-            id,
-            parents: Vec::new(),
-            author: AUTHORS.get(number % 3).expect("an author").to_string(),
-            time: 1_790_000_000 - number as i64 * 7_300,
-            summary: SUMMARIES
-                .get(number % SUMMARIES.len())
-                .expect("a summary")
-                .to_string(),
-            refs: Vec::new(),
-            is_merge: false,
-            graph: GraphRow::default(),
-        }
-    }
-
-    fn branch(name: &str, is_current: bool, ahead: u32, behind: u32) -> BranchInfo {
-        BranchInfo {
-            name: name.to_owned(),
-            is_current,
-            has_upstream: true,
-            ahead,
-            behind,
-            merged: false,
-        }
-    }
-
-    fn label(name: &str, kind: RefKind) -> RefLabel {
-        RefLabel {
-            name: name.to_owned(),
-            kind,
-        }
-    }
-
-    fn file(path: &str, kind: ChangeKind, added: u32, removed: u32) -> ChangedFile {
-        ChangedFile {
-            path: path.to_owned(),
-            old_path: None,
-            kind,
-            added,
-            removed,
-            binary: false,
-        }
-    }
-
-    /// A repository of 40 commits with 7 changed files in the working copy.
-    fn repository() -> State {
-        let mut state = State {
-            root: Some(PathBuf::from("/repo")),
-            name: "kassenbuch".to_owned(),
-            ..State::default()
-        };
-        let (read_log, _) = state.loads.log.begin();
-        let mut commits: Vec<LogCommit> = (0..40).map(commit).collect();
-        if let Some(first) = commits.first_mut() {
-            first.refs = vec![
-                label("main", RefKind::Branch),
-                label("origin/main", RefKind::Remote),
-            ];
-        }
-        if let Some(fourth) = commits.get_mut(3) {
-            fourth.refs = vec![label("feature/rechnungs-export", RefKind::Branch)];
-        }
-        if let Some(tenth) = commits.get_mut(9) {
-            tenth.refs = vec![label("v1.4.0", RefKind::Tag)];
-        }
-        let log = Log {
-            commits,
-            has_more: false,
-            lane_count: 1,
-            head: None,
-        };
-        drop(update(
-            &mut state,
-            Message::LogLoaded(read_log, Box::new(Ok(log))),
-            &CTX,
-        ));
-        let (read_refs, _) = state.loads.refs.begin();
-        let overview = RefsOverview {
-            main_branch: Some("main".to_owned()),
-            local: vec![
-                branch("main", true, 1, 2),
-                branch("feature/rechnungs-export", false, 3, 0),
-                branch("feature/mehrwertsteuer", false, 0, 0),
-                branch("fix/rundung", false, 0, 4),
-                branch("release/1.4", false, 0, 0),
-            ],
-            remote: vec![
-                "origin/main".to_owned(),
-                "origin/feature/rechnungs-export".to_owned(),
-                "origin/fix/rundung".to_owned(),
-                "upstream/main".to_owned(),
-            ],
-            tags: vec![
-                "v1.4.0".to_owned(),
-                "v1.3.2".to_owned(),
-                "v1.3.0".to_owned(),
-            ],
-            stashes: 3,
-            worktrees: vec![WorktreeInfo {
-                path: PathBuf::from("/repo"),
-                branch: Some("main".to_owned()),
-                head_short: None,
-                wip: 7,
-                ahead: 1,
-                behind: 2,
-                merged: false,
-                is_main: true,
-                is_current: true,
-            }],
-        };
-        drop(update(
-            &mut state,
-            Message::RefsLoaded(read_refs, Box::new(Ok(overview))),
-            &CTX,
-        ));
-        state.actions.stashes = vec![
-            StashEntry {
-                message: "WIP auf main: Mahnwesen umbauen".to_owned(),
-                origin: "vor 2 Std.".to_owned(),
-            },
-            StashEntry {
-                message: "WIP auf fix/rundung: Testfall".to_owned(),
-                origin: "gestern".to_owned(),
-            },
-            StashEntry {
-                message: "Skonto-Experiment".to_owned(),
-                origin: "vor 6 Tagen".to_owned(),
-            },
-        ];
-        state.actions.sync = Some(sync());
-        state.actions.local = Some(local_changes());
-        state
-    }
-
-    /// The second row of the list chosen, with its commit on the right.
-    fn on_commit(state: &mut State) {
-        state.commit_cursor = 0;
-        let first = commit(0);
-        state.detail = Some(Detail {
-            subject: Subject::Commit(first.id.clone()),
-            info: Some(CommitDetail {
-                id: first.id,
-                short: first.short,
-                parents: Vec::new(),
-                author: first.author,
-                time: first.time,
-                message: "Rechnungen als PDF exportieren\n\nDer Export nimmt die gewählten Rechnungen und legt sie als eine PDF-Datei je Kunde ab.\n\n- Vorlage mit Briefkopf aus den Einstellungen\n- Fehlende Anschrift wird vor dem Export gemeldet".to_owned(),
-                files: Vec::new(),
-            }),
-            files: vec![
-                file("src/export/pdf.rs", ChangeKind::Added, 212, 0),
-                file("src/export/mod.rs", ChangeKind::Modified, 14, 2),
-                file("src/ui/rechnungen.rs", ChangeKind::Modified, 31, 8),
-            ],
-        });
-    }
-
-    fn row(kind: RowKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffRow {
-        DiffRow {
-            kind,
-            old_line: old,
-            new_line: new,
-            text: text.to_owned(),
-        }
-    }
-
-    fn local_changes() -> LocalChanges {
-        use RowKind::{Added, Context, Removed};
-        let diff = FileDiff {
-            path: "src/steuer/mwst.rs".to_owned(),
-            hunks: vec![
-                DiffHunk {
-                    old_start: 41,
-                    new_start: 41,
-                    rows: vec![
-                        row(
-                            Context,
-                            Some(41),
-                            Some(41),
-                            "pub fn brutto(netto: Cent, satz: Satz) -> Cent {",
-                        ),
-                        row(
-                            Removed,
-                            Some(42),
-                            None,
-                            "    let aufschlag = netto.0 * satz.prozent() / 100;",
-                        ),
-                        row(
-                            Added,
-                            None,
-                            Some(42),
-                            "    let aufschlag = (netto.0 * satz.prozent() + 50) / 100;",
-                        ),
-                        row(Context, Some(43), Some(43), "    Cent(netto.0 + aufschlag)"),
-                        row(Context, Some(44), Some(44), "}"),
-                    ],
-                },
-                DiffHunk {
-                    old_start: 88,
-                    new_start: 88,
-                    rows: vec![
-                        row(Context, Some(88), Some(88), "#[cfg(test)]"),
-                        row(Context, Some(89), Some(89), "mod tests {"),
-                        row(Added, None, Some(90), "    #[test]"),
-                        row(Added, None, Some(91), "    fn rundet_halbe_cent_auf() {"),
-                        row(
-                            Added,
-                            None,
-                            Some(92),
-                            "        assert_eq!(brutto(Cent(1_005), Satz::Voll), Cent(1_196));",
-                        ),
-                        row(Added, None, Some(93), "    }"),
-                        row(Context, Some(90), Some(94), "}"),
-                    ],
-                },
-            ],
-            added: 5,
-            removed: 1,
-            binary: false,
-            too_large: false,
-        };
-        LocalChanges {
-            unstaged: vec![
-                file("src/steuer/mwst.rs", ChangeKind::Modified, 5, 1),
-                file("src/mahnwesen/stufen.rs", ChangeKind::Modified, 22, 4),
-                file("src/mahnwesen/vorlagen/dritte_mahnung.txt", ChangeKind::Added, 18, 0),
-                file("Cargo.lock", ChangeKind::Modified, 6, 6),
-                file("doku/schnittstelle.md", ChangeKind::Deleted, 0, 41),
-            ],
-            staged: vec![
-                file("src/kassenbuch/abschluss.rs", ChangeKind::Modified, 37, 3),
-                file("src/kassenbuch/mod.rs", ChangeKind::Modified, 2, 0),
-            ],
-            selected: Some((ChangeSide::Unstaged, 0)),
-            diff: Some(diff),
-            title: "Mehrwertsteuer kaufmännisch runden".to_owned(),
-            body: text_editor::Content::with_text(
-                "Halbe Cent wurden bisher abgeschnitten. Jetzt wird wie in der Rechnung des Steuerberaters aufgerundet.",
-            ),
-            amend: false,
-        }
-    }
-
-    fn merge() -> MergeInProgress {
-        use ConflictLine::{Mine, Shared, Theirs};
-        MergeInProgress {
-            from: "feature/rechnungs-export".to_owned(),
-            into: "main".to_owned(),
-            conflicts: vec![
-                Conflict {
-                    path: "src/export/mod.rs".to_owned(),
-                    places: 2,
-                    edited: false,
-                    resolved: false,
-                },
-                Conflict {
-                    path: "src/ui/rechnungen.rs".to_owned(),
-                    places: 1,
-                    edited: false,
-                    resolved: false,
-                },
-                Conflict {
-                    path: "Cargo.toml".to_owned(),
-                    places: 1,
-                    edited: true,
-                    resolved: false,
-                },
-                Conflict {
-                    path: "README.md".to_owned(),
-                    places: 1,
-                    edited: false,
-                    resolved: true,
-                },
-            ],
-            selected: 0,
-            preview: vec![
-                Shared(12, "use crate::kassenbuch::Buchung;".to_owned()),
-                Shared(13, "use crate::steuer::Cent;".to_owned()),
-                Shared(14, String::new()),
-                Mine("pub fn exportiere(buchungen: &[Buchung]) -> Result<Vec<u8>, Fehler> {".to_owned()),
-                Mine("    let vorlage = Vorlage::laden(&einstellungen.briefkopf)?;".to_owned()),
-                Theirs("pub fn exportiere(rechnungen: &[Rechnung], ziel: &Path) -> Result<(), Fehler> {".to_owned()),
-                Theirs("    let vorlage = Vorlage::aus_datei(ziel.join(\"briefkopf.pdf\"))?;".to_owned()),
-                Shared(17, "    let mut seiten = Vec::new();".to_owned()),
-                Shared(18, "    for rechnung in rechnungen {".to_owned()),
-                Shared(19, "        seiten.push(vorlage.seite(rechnung)?);".to_owned()),
-                Shared(20, "    }".to_owned()),
-                Shared(21, String::new()),
-                Mine("    Ok(zusammenfuegen(seiten))".to_owned()),
-                Theirs("    schreibe(ziel, zusammenfuegen(seiten))".to_owned()),
-                Shared(24, "}".to_owned()),
-            ],
-        }
-    }
-
-    /// Over the first icon of the toolbar.
-    const TOOLBAR_FETCH_X: f32 = 222.0;
-
-    fn picture(state: &State, reference: &str) {
-        picture_at(state, reference, None);
-    }
-
-    /// With the pointer over `hover`, so a tooltip shows.
-    fn picture_at(state: &State, reference: &str, hover: Option<Point>) {
-        let palette = ThemePreset::Cosmic.palette();
-        let ctx = ViewCtx {
-            lang: Language::German,
-            palette: &palette,
-            date_format: DateFormat::Iso,
-            window: WINDOW,
-            columns: CommitColumns::STANDARD,
-        };
-        let mut simulator = Simulator::with_size(
-            iced::Settings {
-                default_font: ncrs_ui_kit::APP_FONT,
-                ..iced::Settings::default()
-            },
-            WINDOW,
-            view(state, ctx).map(|message: Message| message),
-        );
-        if let Some(point) = hover {
-            simulator.point_at(point);
-            simulator.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
-                position: point,
-            })]);
-        }
-        let matches = simulator
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_reference_image(reference)
-            .unwrap();
-        assert!(matches, "{reference} differs from its image");
-    }
-
-    fn sync() -> SyncBar {
-        SyncBar {
-            ahead: 1,
-            behind: 2,
-            undo: Some("Commit „Fix Rundung der …“".to_owned()),
-        }
-    }
+    mod fixtures;
+    use fixtures::*;
+    mod file_views;
 
     #[test]
     fn local_changes_picture() {
         let mut state = repository();
-        state.actions.changes_open = true;
+        state.commit_cursor = 0;
         picture(&state, "tests/snapshots/git-local-changes-cosmic");
     }
 
@@ -409,6 +60,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 10,
                     new_start: 10,
+                    context: "mod abschluss {".to_owned(),
                     rows: vec![
                         row(
                             Context,
@@ -439,6 +91,7 @@ mod ui_tests {
                 DiffHunk {
                     old_start: 52,
                     new_start: 54,
+                    context: String::new(),
                     rows: vec![
                         row(Context, Some(52), Some(54), "impl Abschluss {"),
                         row(
@@ -462,6 +115,8 @@ mod ui_tests {
             removed: 0,
             binary: false,
             too_large: false,
+            old_total: Some(120),
+            new_total: Some(124),
         }
     }
 
@@ -473,7 +128,7 @@ mod ui_tests {
         local.selected = Some((ChangeSide::Staged, 0));
         local.diff = Some(staged_diff());
         state.actions.local = Some(local);
-        state.actions.changes_open = true;
+        state.commit_cursor = 0;
         picture(&state, "tests/snapshots/git-local-changes-staged-cosmic");
     }
 
@@ -495,7 +150,10 @@ mod ui_tests {
         state.actions.sync = Some(sync());
         state.area = Area::Sidebar;
         state.sidebar_cursor = cursor;
-        state.actions.menu = Some(OpenMenu { target });
+        state.actions.stash_ids = (0..state.actions.stashes.len())
+            .map(|index| format!("stash-{index}"))
+            .collect();
+        state.actions.menu = Some(OpenMenu::new(target));
         state
     }
 
@@ -507,13 +165,13 @@ mod ui_tests {
 
     #[test]
     fn remote_branch_menu_picture() {
-        let state = with_menu(MenuTarget::RemoteBranch(1), 9);
+        let state = with_menu(MenuTarget::RemoteBranch(1), 15);
         picture(&state, "tests/snapshots/git-branch-menu-remote-cosmic");
     }
 
     #[test]
     fn stash_menu_picture() {
-        let state = with_menu(MenuTarget::Stash(0), 19);
+        let state = with_menu(MenuTarget::Stash("stash-0".to_owned()), 24);
         picture(&state, "tests/snapshots/git-stash-menu-cosmic");
     }
 
@@ -566,8 +224,20 @@ mod ui_tests {
         let state = with_dialog(Dialog::Ask(Question::DeleteOnRemote {
             remote: "origin".to_owned(),
             branch: "fix/rundung".to_owned(),
+            tip: None,
         }));
         picture(&state, "tests/snapshots/git-ask-delete-remote-cosmic");
+    }
+
+    #[test]
+    fn remove_worktree_question_with_ignored_files_picture() {
+        let state = with_dialog(Dialog::Ask(Question::RemoveWorktree {
+            path: "/work/kassenbuch-rundung".into(),
+            ignored_files: [".env", "lokal.toml", "notizen.md"]
+                .map(str::to_owned)
+                .to_vec(),
+        }));
+        picture(&state, "tests/snapshots/git-ask-remove-worktree-cosmic");
     }
 
     #[test]
@@ -586,6 +256,60 @@ mod ui_tests {
             name: "feature/mehrwertsteuer-satz".to_owned(),
         }));
         picture(&state, "tests/snapshots/git-rename-dialog-cosmic");
+    }
+
+    fn with_sync_menu(kind: SyncKind, force_blocked: Option<ForceBlock>) -> State {
+        let mut state = repository();
+        on_commit(&mut state);
+        let mut bar = sync();
+        bar.force_blocked = force_blocked;
+        state.actions.sync = Some(bar);
+        state.actions.sync_menu = Some(SyncMenu::new(kind));
+        state
+    }
+
+    #[test]
+    fn pull_menu_picture() {
+        let state = with_sync_menu(SyncKind::Pull, None);
+        picture(&state, "tests/snapshots/git-pull-menu-cosmic");
+    }
+
+    #[test]
+    fn push_menu_picture() {
+        let state = with_sync_menu(SyncKind::Push, Some(ForceBlock::NoUpstream));
+        picture(&state, "tests/snapshots/git-push-menu-cosmic");
+    }
+
+    #[test]
+    fn force_push_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::ForcePush {
+            plan: ForcePushPlan {
+                remote: "origin".to_owned(),
+                branch: "feature/rechnungs-export".to_owned(),
+                target: "feature/rechnungs-export".to_owned(),
+                expected: "3f9c2d1".to_owned(),
+                lost: 3,
+                lost_titles: vec![
+                    "Kassenbuch: Abschluss pro Monat".to_owned(),
+                    "Fix Rundung der Mehrwertsteuer".to_owned(),
+                    "Merge branch 'main' into feature".to_owned(),
+                ],
+            },
+        }));
+        picture(&state, "tests/snapshots/git-ask-force-push-cosmic");
+    }
+
+    #[test]
+    fn credentials_password_picture() {
+        let mut ask = CredentialAsk::of(&AskRequest {
+            id: 1,
+            job: 1,
+            prompt: "Password for 'https://marc@git.example.test': ".to_owned(),
+            kind: PromptKind::Secret,
+        });
+        ask.typed = Secret::new("hunter2hunter2");
+        let state = with_dialog(Dialog::Credential(ask));
+        picture(&state, "tests/snapshots/git-credentials-password-cosmic");
     }
 
     #[test]
@@ -609,9 +333,8 @@ mod ui_tests {
     fn conflict_menu_picture() {
         let mut state = repository();
         state.actions.merge = Some(merge());
-        state.actions.menu = Some(OpenMenu {
-            target: MenuTarget::Conflict(2),
-        });
+        let conflict = merge().conflicts.swap_remove(2).path;
+        state.actions.menu = Some(OpenMenu::new(MenuTarget::Conflict(conflict)));
         picture(&state, "tests/snapshots/git-conflict-menu-cosmic");
     }
 
@@ -646,7 +369,334 @@ mod ui_tests {
         on_commit(&mut state);
         state.actions.sync = Some(sync());
         state.area = Area::Sidebar;
-        state.sidebar_cursor = 18;
+        state.sidebar_cursor = 23;
         picture(&state, "tests/snapshots/git-stash-list-cosmic");
+    }
+
+    /// A branch list and a repository list with enough rows to scroll.
+    fn open_picker(kind: PickerKind, query: &str, cursor: usize) -> State {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.picker = Some(Picker {
+            kind,
+            query: query.to_owned(),
+            cursor,
+            repositories: vec![
+                RepoEntry {
+                    name: "kassenbuch".to_owned(),
+                    path: PathBuf::from("/repo"),
+                },
+                RepoEntry {
+                    name: "kassenbuch-rechnungs-export".to_owned(),
+                    path: PathBuf::from("/work/kassenbuch-rechnungs-export"),
+                },
+                RepoEntry {
+                    name: "buchhaltung-web".to_owned(),
+                    path: PathBuf::from("/work/buchhaltung-web"),
+                },
+                RepoEntry {
+                    name: "steuer-tabellen".to_owned(),
+                    path: PathBuf::from("/work/steuer-tabellen"),
+                },
+            ],
+        });
+        state
+    }
+
+    #[test]
+    fn header_behind_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        picture(&state, "tests/snapshots/git-header-behind-cosmic");
+    }
+
+    #[test]
+    fn header_up_to_date_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.actions.local = None;
+        state.actions.sync = Some(SyncBar {
+            ahead: 0,
+            behind: 0,
+            undo: None,
+            force_blocked: None,
+        });
+        if let Some(overview) = state.overview.as_mut() {
+            for branch in &mut overview.local {
+                branch.ahead = 0;
+                branch.behind = 0;
+            }
+            for worktree in &mut overview.worktrees {
+                worktree.wip = 0;
+            }
+        }
+        picture(&state, "tests/snapshots/git-header-up-to-date-cosmic");
+    }
+
+    #[test]
+    fn header_sandbox_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.actions.sync = None;
+        state.actions.local = None;
+        state.actions.unavailable = Some(Unavailable::Sandbox);
+        picture_at(
+            &state,
+            "tests/snapshots/git-header-sandbox-cosmic",
+            Some(Point::new(700.0, 20.0)),
+        );
+    }
+
+    #[test]
+    fn branch_picker_picture() {
+        let state = open_picker(PickerKind::Branch, "", 1);
+        picture(&state, "tests/snapshots/git-branch-picker-cosmic");
+    }
+
+    #[test]
+    fn branch_picker_filtered_picture() {
+        let state = open_picker(PickerKind::Branch, "rund", 0);
+        picture(&state, "tests/snapshots/git-branch-picker-filtered-cosmic");
+    }
+
+    #[test]
+    fn repo_picker_picture() {
+        let state = open_picker(PickerKind::Repository, "", 2);
+        picture(&state, "tests/snapshots/git-repo-picker-cosmic");
+    }
+
+    #[test]
+    fn splitter_resized_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.area = Area::SidebarSplit;
+        picture_in(
+            &state,
+            "tests/snapshots/git-splitter-resized-cosmic",
+            None,
+            PaneWidths {
+                sidebar: 380,
+                detail: 560,
+            },
+            ThemePreset::Cosmic,
+        );
+    }
+
+    #[test]
+    fn splitter_dragged_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        let widths = PaneWidths {
+            sidebar: 372,
+            detail: 450,
+        };
+        state.pane_drag = Some(PaneDrag {
+            split: Split::Sidebar,
+            start: PaneWidths::STANDARD,
+            origin: Some(300.0),
+            current: widths,
+        });
+        picture(&state, "tests/snapshots/git-splitter-dragged-cosmic");
+    }
+
+    #[test]
+    fn head_row_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        if let Some(log) = state.log.as_mut() {
+            log.head = log.commits.get(3).map(|head| head.id.clone());
+        }
+        state.commit_cursor = 5;
+        picture(&state, "tests/snapshots/git-head-row-cosmic");
+    }
+
+    #[test]
+    fn detail_full_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        let second = commit(1);
+        let third = commit(2);
+        if let Some(info) = state
+            .detail
+            .as_mut()
+            .and_then(|detail| detail.info.as_mut())
+        {
+            info.parents = vec![second.id.clone(), third.id];
+            info.committer = "Tobias Engel".to_owned();
+            info.committer_time += 3_600;
+        }
+        let shown = commit(0).id;
+        state.containing = Some((
+            shown,
+            vec![
+                label("main", RefKind::Branch),
+                label("origin/main", RefKind::Remote),
+                label("feature/rechnungs-export", RefKind::Branch),
+                label("release/1.4", RefKind::Branch),
+            ],
+        ));
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-detail-full-cosmic");
+    }
+
+    #[test]
+    fn sidebar_sections_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        state.area = Area::Sidebar;
+        state.sidebar_cursor = 7;
+        state.collapsed.insert(Fold::Section(Section::Tags));
+        picture(&state, "tests/snapshots/git-sidebar-sections-cosmic");
+    }
+
+    #[test]
+    fn dracula_picture() {
+        let mut state = repository();
+        on_commit(&mut state);
+        picture_in(
+            &state,
+            "tests/snapshots/git-overview-dracula",
+            None,
+            PaneWidths::STANDARD,
+            ThemePreset::Dracula,
+        );
+    }
+
+    #[test]
+    fn wip_row_picture() {
+        let mut state = repository();
+        state.actions.sync = Some(sync());
+        state.actions.local = Some(local_changes());
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-wip-row-cosmic");
+    }
+
+    #[test]
+    fn wip_diff_picture() {
+        let mut state = repository();
+        let mut local = local_changes();
+        local.selected = Some((ChangeSide::Unstaged, 0));
+        local.diff = Some(staged_diff());
+        local.diff_open = true;
+        state.actions.local = Some(local);
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-wip-diff-cosmic");
+    }
+
+    #[test]
+    fn commit_box_disabled_picture() {
+        let mut state = repository();
+        let mut local = local_changes();
+        local.staged.clear();
+        local.focus = ncrs_git_view::actions::WipFocus::Title;
+        local.title =
+            "Rundung der Mehrwertsteuer auf Cent korrigiert und den Monatsabschluss ergänzt"
+                .to_owned();
+        state.actions.local = Some(local);
+        state.commit_cursor = 0;
+        state.area = Area::Detail;
+        picture(&state, "tests/snapshots/git-commit-box-disabled-cosmic");
+    }
+
+    #[test]
+    fn ignore_dialog_picture() {
+        let state = with_dialog(Dialog::Ask(Question::Ignore {
+            path: "target/debug/kassenbuch.log".to_owned(),
+            folder: Some("target/debug".to_owned()),
+            extension: Some("log".to_owned()),
+            chosen: ncrs_git_view::actions::IgnoreChoice::File,
+        }));
+        picture(&state, "tests/snapshots/git-ignore-dialog-cosmic");
+    }
+
+    #[test]
+    fn sandbox_changes_picture() {
+        let mut state = repository();
+        state.actions.sync = None;
+        state.actions.local = None;
+        state.actions.unavailable = Some(Unavailable::Sandbox);
+        state.commit_cursor = 0;
+        state.detail = Some(Detail {
+            subject: Subject::Working,
+            info: None,
+            files: vec![
+                file("src/steuer/mwst.rs", ChangeKind::Modified, 3, 1),
+                file("README.md", ChangeKind::Modified, 2, 0),
+            ],
+        });
+        picture(&state, "tests/snapshots/git-sandbox-changes-cosmic");
+    }
+
+    fn with_commit_menu(cursor: usize, submenu: Option<usize>) -> State {
+        let mut state = repository();
+        state.actions.sync = Some(sync());
+        state.area = Area::Commits;
+        state.commit_cursor = 3;
+        state.marked_commit = Some(commit(6).id);
+        let opened_on = state.commit_at(3).unwrap().id.clone();
+        state.actions.menu = Some(OpenMenu {
+            target: MenuTarget::Commit(opened_on),
+            cursor,
+            submenu,
+        });
+        state
+    }
+
+    #[test]
+    fn commit_menu_picture() {
+        let state = with_commit_menu(2, None);
+        picture(&state, "tests/snapshots/git-commit-menu-cosmic");
+    }
+
+    #[test]
+    fn commit_menu_reset_picture() {
+        let state = with_commit_menu(6, Some(2));
+        picture(&state, "tests/snapshots/git-commit-menu-reset-cosmic");
+    }
+
+    #[test]
+    fn reset_hard_question_picture() {
+        let state = with_dialog(Dialog::Ask(Question::ResetHard {
+            branch: "main".to_owned(),
+            sha: commit(3).id,
+            commits: 3,
+            changed_files: 2,
+        }));
+        picture(&state, "tests/snapshots/git-ask-reset-hard-cosmic");
+    }
+
+    #[test]
+    fn tag_dialog_picture() {
+        let state = with_dialog(Dialog::Tag(ncrs_git_view::actions::TagDraft {
+            name: "v1.8.0".to_owned(),
+            sha: commit(3).id,
+            problem: None,
+        }));
+        picture(&state, "tests/snapshots/git-tag-dialog-cosmic");
+    }
+
+    #[test]
+    fn compare_working_picture() {
+        let mut state = repository();
+        state.actions.sync = Some(sync());
+        state.area = Area::Detail;
+        state.diff = Some(ncrs_git_view::state::DiffState {
+            subject: Subject::Compare {
+                from: commit(5).id,
+                to: None,
+            },
+            files: vec![
+                file("src/kassenbuch/abschluss.rs", ChangeKind::Modified, 4, 1),
+                file("src/steuer/mwst.rs", ChangeKind::Modified, 3, 1),
+            ],
+            file: 0,
+            diff: Some(staged_diff()),
+            unified: false,
+            ignore_whitespace: false,
+            hunk: 0,
+        });
+        picture(&state, "tests/snapshots/git-compare-working-cosmic");
     }
 }

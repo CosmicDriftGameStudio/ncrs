@@ -116,12 +116,16 @@ fn the_git_actions_are_listed_with_their_keys_while_a_git_tab_offers_them() {
     let mut app = app_showing_git(true);
     open_palette(&mut app);
     let entries = git_entries(&app);
-    let commands = ncrs_git_view::commands(app.lang);
+    let commands = ncrs_git_view::commands(app.lang, &app.git_keys);
     assert!(!commands.is_empty());
     assert_eq!(entries.len(), commands.len());
+    // The three ways to pull are picked by their letter in the pull menu.
+    let without_key = commands.iter().filter(|(_, key)| key.is_empty()).count();
+    assert_eq!(without_key, 3);
     for (label, shortcut) in commands {
+        let listed_shortcut = Some(shortcut).filter(|key| !key.is_empty());
         assert!(
-            entries.contains(&(label.clone(), Some(shortcut))),
+            entries.contains(&(label.clone(), listed_shortcut)),
             "{label} is missing"
         );
     }
@@ -416,4 +420,32 @@ fn the_input_state_closes_it_on_escape_too() {
         input.handle(&escape, event::Status::Ignored),
         Some(palette_message(CommandPaletteMessage::Close))
     );
+}
+
+#[test]
+fn the_history_of_a_file_is_listed_once_and_only_with_a_file() {
+    let times_listed = |app: &App| {
+        let palette = app.command_palette_for_test().unwrap();
+        palette
+            .hits()
+            .filter_map(|hit| palette.entry(hit))
+            .filter(|entry| entry.label == app.lang.text(Msg::ActionGitFileHistory))
+            .count()
+    };
+    let mut panels = App::with_fixed_panels();
+    open_palette(&mut panels);
+    assert_eq!(times_listed(&panels), 0, "the folder is no repository");
+
+    let mut without_file = app_showing_git(false);
+    open_palette(&mut without_file);
+    assert_eq!(times_listed(&without_file), 0);
+
+    let mut in_the_blame = app_showing_git(false);
+    let id = in_the_blame.shown_git_tab().unwrap();
+    drop(in_the_blame.update(Message::GitView(
+        id,
+        ncrs_git_view::Message::OpenBlame("main.rs".to_owned(), None),
+    )));
+    open_palette(&mut in_the_blame);
+    assert_eq!(times_listed(&in_the_blame), 1);
 }

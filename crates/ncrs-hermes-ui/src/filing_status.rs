@@ -1,6 +1,8 @@
 //! What the filing status page knows: the latest snapshot of the pipeline, how
-//! far the current stretch of work has come, and the counts of Hermes.
+//! far the current stretch of work has come, the counts of Hermes and the
+//! questions that wait for the user.
 
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use ncrs_index::HermesCounts;
@@ -13,6 +15,13 @@ pub const IDLE_SNAPSHOT_EVERY: Duration = Duration::from_secs(5);
 /// The counts of Hermes are read this often, also while its page is closed.
 pub const HERMES_COUNTS_EVERY_TICKS: u32 = 5;
 
+/// How many open questions a source has.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceQuestions {
+    pub source: PathBuf,
+    pub count: usize,
+}
+
 #[derive(Debug)]
 pub struct FilingStatus {
     snapshot: Snapshot,
@@ -20,6 +29,9 @@ pub struct FilingStatus {
     page_open: bool,
     /// The last counts that could be read; kept when a later read fails.
     counts: Option<HermesCounts>,
+    /// The last questions that could be read, like the counts; only of the
+    /// sources that have any.
+    questions: Vec<SourceQuestions>,
     counts_in_flight: bool,
     ticks_since_counts: u32,
 }
@@ -31,6 +43,7 @@ impl Default for FilingStatus {
             taken_at: SystemTime::UNIX_EPOCH,
             page_open: false,
             counts: None,
+            questions: Vec::new(),
             counts_in_flight: false,
             ticks_since_counts: HERMES_COUNTS_EVERY_TICKS,
         }
@@ -94,6 +107,22 @@ impl FilingStatus {
 
     pub fn hermes_counts(&self) -> Option<&HermesCounts> {
         self.counts.as_ref()
+    }
+
+    pub fn questions(&self) -> &[SourceQuestions] {
+        &self.questions
+    }
+
+    /// Files that wait for an answer of the user, over all sources.
+    pub fn waiting(&self) -> usize {
+        self.questions.iter().map(|asked| asked.count).sum()
+    }
+
+    pub fn questions_arrived(&mut self, read: Result<Vec<SourceQuestions>, String>) {
+        if let Ok(questions) = read {
+            self.questions = questions;
+            self.questions.retain(|asked| asked.count > 0);
+        }
     }
 
     /// Counts a tick; true when the counts are due.
@@ -164,6 +193,48 @@ mod tests {
         status.close_page();
         status.set_snapshot(snapshot(RunnerState::Running, 0, 1), at());
         assert_eq!(status.tick_every(), SNAPSHOT_EVERY);
+    }
+
+    fn asked(source: &str, count: usize) -> SourceQuestions {
+        SourceQuestions {
+            source: PathBuf::from(source),
+            count,
+        }
+    }
+
+    #[test]
+    fn waiting_questions_do_not_speed_up_an_idle_tick() {
+        let mut status = FilingStatus::default();
+        status.set_snapshot(snapshot(RunnerState::Idle, 0, 0), at());
+        status.questions_arrived(Ok(vec![asked("/in", 3)]));
+        assert_eq!(status.tick_every(), IDLE_SNAPSHOT_EVERY);
+
+        status.counts_requested();
+        assert!((0..HERMES_COUNTS_EVERY_TICKS * 2).all(|_| !status.tick_wants_counts()));
+        status.counts_arrived(Ok(HermesCounts::default()));
+        let due = (0..HERMES_COUNTS_EVERY_TICKS)
+            .filter(|_| status.tick_wants_counts())
+            .count();
+        assert_eq!(due, 1);
+    }
+
+    #[test]
+    fn the_questions_of_all_sources_are_added_up_and_outlive_a_failed_read() {
+        let mut status = FilingStatus::default();
+        assert_eq!(status.waiting(), 0);
+
+        status.questions_arrived(Ok(vec![
+            asked("/in", 3),
+            asked("/calm", 0),
+            asked("/scans", 4),
+        ]));
+        assert_eq!(status.waiting(), 7);
+        assert_eq!(status.questions(), [asked("/in", 3), asked("/scans", 4)]);
+
+        status.questions_arrived(Err("no index".to_owned()));
+        assert_eq!(status.waiting(), 7);
+        status.questions_arrived(Ok(Vec::new()));
+        assert_eq!(status.waiting(), 0);
     }
 
     #[test]

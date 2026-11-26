@@ -1,22 +1,21 @@
-//! The opening question: folders where new files arrive are tidied, folders
-//! where documents are kept are read for their order, any other folder is
-//! asked about once.
+//! The opening sentence: the targets as buttons and the picker; a folder that
+//! is pressed or picked is looked at for its order, whatever it is used for.
 
 mod common;
 
 #[cfg(test)]
 mod tests {
     use crate::common::{letter, say, Talk};
+    use ncrs_ai::Levels;
     use ncrs_hermes_chat::{Action, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
-    use ncrs_ui_kit::hermes_state::FolderRole;
 
-    fn talk() -> Talk {
-        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+    fn talk_with(targets: &[&str]) -> Talk {
+        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), targets, &["inbox"]);
         for folder in ["archive", "papers"] {
             for (month, day) in [(1, 10), (3, 11), (6, 12)] {
                 talk.write(
-                    &format!("{folder}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                    &format!("{folder}/Alfa/2020/2020-{month:02}-{day}.pdf"),
                     &letter(
                         "Alfa AG",
                         &format!("{day}.{month:02}.2020"),
@@ -26,10 +25,7 @@ mod tests {
                 );
             }
         }
-        talk.write(
-            "inbox/neu_alfa.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
+        std::fs::create_dir_all(talk.path("inbox")).unwrap();
         talk
     }
 
@@ -45,148 +41,92 @@ mod tests {
             .count()
     }
 
-    #[test]
-    fn the_greeting_labels_what_each_folder_is_for() {
-        let mut talk = talk();
-        talk.open();
-        let labels = talk.labels();
-        let source = say(Msg::HermesChatGreetingSourceChip, &[("folder", "inbox")]);
-        let target = say(Msg::HermesChatGreetingTargetChip, &[("folder", "archive")]);
-        assert!(labels.contains(&source), "{labels:?}");
-        assert!(labels.contains(&target), "{labels:?}");
+    fn shows_levels(talk: &Talk) -> bool {
+        talk.last_parts()
+            .iter()
+            .any(|part| matches!(part, Part::Levels(_)))
     }
 
     #[test]
-    fn a_source_starts_tidying_without_an_areas_card() {
-        let mut talk = talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("inbox")));
-        assert_eq!(areas_cards(&talk), 0);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatSourceSummary,
-                &[("folder", "inbox"), ("count", "1")]
-            )]
-        );
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatAskOnce, &[("folder", "inbox")])]
-        );
-    }
+    fn the_greeting_offers_every_target_by_its_name_and_the_picker() {
+        let mut talk = talk_with(&["archive", "papers"]);
 
-    #[test]
-    fn the_archive_offers_its_areas_as_folders_to_open() {
-        let mut talk = talk();
         talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        assert_eq!(areas_cards(&talk), 0);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAreaHere, &[])]);
-        assert!(talk
+
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
+        assert_eq!(
+            talk.labels(),
+            vec![
+                "archive".to_owned(),
+                "papers".to_owned(),
+                say(Msg::HermesChatChooseFolder, &[])
+            ],
+            "no source, and no question what a folder is for"
+        );
+        let replies: Vec<_> = talk
             .state
             .chips()
             .iter()
-            .any(|chip| chip.reply == ChipReply::Folder(talk.path("archive/Alfa"))));
-    }
-
-    #[test]
-    fn a_folder_without_a_role_asks_once_and_a_source_answer_tidies_it() {
-        let mut talk = talk();
-        talk.open();
-        let papers = talk.path("papers");
-        talk.send(Message::FolderPicked(Some(papers.clone())));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatAskRole, &[("folder", "papers")])]
-        );
-        assert_eq!(areas_cards(&talk), 0);
-        talk.press(&ChipReply::RoleSource);
-        assert_eq!(
-            talk.actions,
-            vec![Action::SetFolderRole {
-                folder: papers,
-                role: FolderRole::Inbox,
-            }]
-        );
-        assert_eq!(areas_cards(&talk), 0);
-    }
-
-    #[test]
-    fn a_folder_without_a_role_answered_as_kept_here_shows_its_areas() {
-        let mut talk = talk();
-        talk.open();
-        talk.send(Message::FolderPicked(Some(talk.path("papers"))));
-        talk.press(&ChipReply::RoleTarget);
-        assert_eq!(areas_cards(&talk), 1);
-        assert!(talk.actions.is_empty());
-    }
-
-    fn photo_talk() -> Talk {
-        let mut talk = talk();
-        std::fs::write(talk.path("inbox/scan.png"), [0xff, 0xd8, 0xff, 0x00]).unwrap();
-        talk.ctx.ocr_models_present = false;
-        talk
-    }
-
-    #[test]
-    fn photos_without_text_recognition_are_asked_about_and_can_be_skipped() {
-        let mut talk = photo_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("inbox")));
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatAskPhotos,
-                &[("folder", "inbox"), ("count", "1")]
-            )]
-        );
-        talk.press(&ChipReply::PhotosNo);
-        let texts: Vec<String> = talk
-            .state
-            .thread()
-            .iter()
-            .filter_map(|entry| match entry {
-                Entry::Hermes { parts, .. } => Some(parts.clone()),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|part| match part {
-                Part::Text(text) => Some(text),
-                _ => None,
-            })
+            .map(|chip| chip.reply.clone())
             .collect();
-        assert!(texts.contains(&say(Msg::HermesChatPhotosSkipped, &[("count", "1")])));
         assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatSourceSummary,
-                &[("folder", "inbox"), ("count", "2")]
-            )]
+            replies,
+            vec![
+                ChipReply::Folder(talk.path("archive")),
+                ChipReply::Folder(talk.path("papers")),
+                ChipReply::PickFolder
+            ]
         );
     }
 
     #[test]
-    fn reading_the_photos_opens_the_models_and_goes_on_once_they_are_there() {
-        let mut talk = photo_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("inbox")));
-        talk.press(&ChipReply::PhotosYes);
-        assert_eq!(talk.actions, vec![Action::OpenOcrModels]);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatPhotosModels, &[])]
-        );
+    fn without_a_target_the_picker_is_the_main_button() {
+        let mut talk = talk_with(&[]);
 
-        talk.ctx.ocr_models_present = true;
-        talk.press(&ChipReply::PhotosYes);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatSourceSummary,
-                &[("folder", "inbox"), ("count", "2")]
-            )],
-            "the photos are not asked about twice"
-        );
+        talk.open();
+
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatChooseFolder, &[])]);
+        assert!(talk.state.chips()[0].primary);
+        talk.press(&ChipReply::PickFolder);
+        assert_eq!(talk.actions, vec![Action::PickFolder]);
+    }
+
+    #[test]
+    fn a_target_shows_its_areas_and_then_its_levels() {
+        let mut talk = talk_with(&["archive"]);
+        talk.model
+            .push_levels(Ok(Levels::from_pattern("Alfa/{year}/{date}").unwrap()));
+        talk.open();
+
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+
+        assert_eq!(areas_cards(&talk), 1);
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
+        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
+    }
+
+    #[test]
+    fn any_picked_folder_is_looked_at_without_a_question() {
+        let mut talk = talk_with(&["archive"]);
+        talk.model
+            .push_levels(Ok(Levels::from_pattern("Alfa/{year}/{date}").unwrap()));
+        talk.open();
+
+        talk.send(Message::FolderPicked(Some(talk.path("papers"))));
+
+        assert_eq!(areas_cards(&talk), 1);
+        assert!(shows_levels(&talk), "{:?}", talk.last_parts());
+        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
+    }
+
+    #[test]
+    fn a_picker_that_is_closed_says_so_and_reads_nothing() {
+        let mut talk = talk_with(&["archive"]);
+        talk.open();
+
+        talk.send(Message::FolderPicked(None));
+
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatLaterReply, &[])]);
+        assert!(talk.works.is_empty(), "{:?}", talk.works);
     }
 }

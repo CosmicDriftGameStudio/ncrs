@@ -4,8 +4,8 @@ use std::path::{Component, Path};
 use crate::image_text;
 use crate::location::Location;
 
-const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
-const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
+pub const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
+pub const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
 const TEMPORARY_SUFFIXES: [&str; 3] = [".part", ".crdownload", ".tmp"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -146,7 +146,6 @@ mod tests {
             path: PathBuf::from("/data/inbox"),
             mode: LocationMode::Inbox,
             images,
-            continuous: false,
         }
     }
 
@@ -193,7 +192,6 @@ mod tests {
             path: PathBuf::from("/home/.local/inbox"),
             mode: LocationMode::Inbox,
             images: false,
-            continuous: false,
         };
 
         let result = classify(&inside_hidden, Path::new("/home/.local/inbox/a.pdf"));
@@ -222,7 +220,6 @@ mod tests {
             path: dir.path().to_path_buf(),
             mode: LocationMode::Inbox,
             images: false,
-            continuous: false,
         };
         let mail = dir.path().join("mail");
         let lone = dir.path().join("lone");

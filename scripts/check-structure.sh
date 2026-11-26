@@ -18,7 +18,6 @@ crates/ncrs-filing/src/chat_work/tests/mod.rs
 crates/ncrs-pipeline/src/runner/mod.rs
 crates/ncrs-intake/src/filing_plan/tests/mod.rs
 crates/ncrs-index/src/model/mod.rs
-crates/ncrs-hermes-chat/tests/rule_flow.rs
 "
 
 status=0
@@ -36,7 +35,7 @@ done
 
 while IFS= read -r file; do
   lines=$(wc -l < "$file")
-  if [ "$lines" -gt 1000 ] && ! printf '%s\n' "$oversized_allowance" | grep -qxF "$file"; then
+  if [[ "$lines" -gt 1000 ]] && ! printf '%s\n' "$oversized_allowance" | grep -qxF "$file"; then
     echo "::error file=$file::$file has $lines lines; split it (limit about 1000)"
     status=1
   fi

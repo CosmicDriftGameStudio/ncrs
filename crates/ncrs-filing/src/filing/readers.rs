@@ -2,52 +2,8 @@
 
 use super::*;
 
-/// What the status page shows about the index.
-#[derive(Debug, Clone, PartialEq)]
-pub struct IndexFigures {
-    pub path: PathBuf,
-    pub file_bytes: Option<u64>,
-    pub encrypted: bool,
-    pub statistics: IndexStatistics,
-}
-
-/// Reads the figures of the index. Meant for a blocking thread: the intake may
-/// hold the index for as long as it hashes a large file.
-pub struct IndexFiguresReader {
-    db_path: PathBuf,
-    slot: IndexSlot,
-}
-
-impl fmt::Debug for IndexFiguresReader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IndexFiguresReader")
-            .field("db_path", &self.db_path)
-            .finish_non_exhaustive()
-    }
-}
-
-impl IndexFiguresReader {
-    pub fn read(self) -> Result<IndexFigures, String> {
-        let file_bytes = std::fs::metadata(&self.db_path)
-            .ok()
-            .map(|metadata| metadata.len());
-        let (encrypted, statistics) = {
-            let guard = lock(&self.slot);
-            let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-            let statistics = index.statistics().map_err(|err| err.to_string())?;
-            (index.is_encrypted(), statistics)
-        };
-        Ok(IndexFigures {
-            path: self.db_path,
-            file_bytes,
-            encrypted,
-            statistics,
-        })
-    }
-}
-
-/// Reads the counts of the automatic filing, on a blocking thread like
-/// [`IndexFiguresReader`].
+/// Reads the counts of the automatic filing. Meant for a blocking thread: the
+/// intake may hold the index for as long as it hashes a large file.
 pub struct HermesCountsReader {
     slot: IndexSlot,
 }
@@ -90,22 +46,53 @@ pub struct ActivityBatch {
 }
 
 impl ActivityReader {
-    pub fn read(self, batches: usize) -> Result<Vec<ActivityBatch>, String> {
+    /// The latest `runs` runs, newest first; a run of several batches is one.
+    pub fn read(self, runs: usize) -> Result<Vec<ActivityBatch>, String> {
         let guard = lock(&self.slot);
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        let recent = index
-            .recent_batches(batches)
-            .map_err(|err| err.to_string())?;
-        Ok(recent
-            .into_iter()
-            .map(|(info, items)| ActivityBatch {
-                kind: info.kind,
-                at: info.finished_at.unwrap_or(info.started_at),
-                undone: info.undone_at.is_some(),
-                moves: items.into_iter().map(|item| (item.from, item.to)).collect(),
-            })
-            .collect())
+        let mut fetched = runs.saturating_add(1);
+        loop {
+            let recent = index
+                .recent_batches(fetched)
+                .map_err(|err| err.to_string())?;
+            let is_everything = recent.len() < fetched;
+            let mut grouped = grouped_by_run(recent);
+            // A run more than asked for: the last one shown is not cut off.
+            if is_everything || grouped.len() > runs {
+                grouped.truncate(runs);
+                return Ok(grouped);
+            }
+            fetched = fetched.saturating_mul(2);
+        }
     }
+}
+
+fn grouped_by_run(
+    recent: Vec<(ncrs_index::BatchInfo, Vec<ncrs_index::JournalItem>)>,
+) -> Vec<ActivityBatch> {
+    let mut grouped: Vec<(Option<ncrs_index::BatchId>, ActivityBatch)> = Vec::new();
+    for (info, items) in recent {
+        let at = info.finished_at.unwrap_or(info.started_at);
+        let undone = info.undone_at.is_some();
+        let moves = items.into_iter().map(|item| (item.from, item.to));
+        let same_run = grouped
+            .iter_mut()
+            .find(|(run, _)| run.is_some() && *run == info.run);
+        if let Some((_, activity)) = same_run {
+            activity.at = activity.at.max(at);
+            activity.undone &= undone;
+            activity.moves.extend(moves);
+        } else {
+            let activity = ActivityBatch {
+                kind: info.kind,
+                at,
+                undone,
+                moves: moves.collect(),
+            };
+            grouped.push((info.run, activity));
+        }
+    }
+    grouped.into_iter().map(|(_, activity)| activity).collect()
 }
 
 /// Reads what one panel's Hermes column needs, on a blocking thread like
@@ -242,19 +229,7 @@ impl ProcessAgainFinder {
 }
 
 impl FilingModule {
-    /// Only looks at the phase and never at the index, so it is safe on the UI
-    /// thread; `read` then runs elsewhere.
-    pub fn index_figures_reader(&self) -> Option<IndexFiguresReader> {
-        match self.phase {
-            Phase::Ready => Some(IndexFiguresReader {
-                db_path: self.db_path.clone(),
-                slot: Arc::clone(&self.index),
-            }),
-            _ => None,
-        }
-    }
-
-    /// Like [`Self::index_figures_reader`]: looks at the phase only.
+    /// Like [`Self::hermes_counts_reader`]: looks at the phase only.
     pub fn activity_reader(&self) -> Option<ActivityReader> {
         match self.phase {
             Phase::Ready => Some(ActivityReader {
@@ -264,6 +239,8 @@ impl FilingModule {
         }
     }
 
+    /// Only looks at the phase and never at the index, so it is safe on the UI
+    /// thread; `read` then runs elsewhere.
     pub fn hermes_counts_reader(&self) -> Option<HermesCountsReader> {
         match self.phase {
             Phase::Ready => Some(HermesCountsReader {
@@ -273,7 +250,7 @@ impl FilingModule {
         }
     }
 
-    /// Like [`Self::index_figures_reader`]: looks at the phase only.
+    /// Like [`Self::hermes_counts_reader`]: looks at the phase only.
     pub fn column_reader(&self) -> Option<ColumnReader> {
         match self.phase {
             Phase::Ready => Some(ColumnReader {

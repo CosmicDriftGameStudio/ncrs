@@ -3,6 +3,11 @@ use std::time::SystemTime;
 
 use crate::app::*;
 use crate::messages::{ActivityMessage, SettingsFeature};
+use iced_test::futures::subscription::into_recipes;
+use ncrs_config::config::SourceSetting;
+use ncrs_hermes_ui::filing_status::SourceQuestions;
+use ncrs_index::TargetId;
+use ncrs_intake::SortSource;
 use ncrs_pipeline::{RunnerState, Settings, Snapshot, SystemClock};
 
 fn status(message: FilingStatusMessage) -> Message {
@@ -90,13 +95,112 @@ fn the_status_key_and_the_chip_open_the_activity_page() {
     );
 }
 
-#[test]
-fn the_activity_page_leads_to_the_reviews_and_to_the_read_errors() {
-    let mut app = App::with_fixed_panels();
+fn watched_source(path: &str) -> SourceSetting {
+    SourceSetting {
+        source: SortSource {
+            path: PathBuf::from(path),
+            include: String::new(),
+            exclude: String::new(),
+            targets: vec![TargetId::main()],
+            watch: true,
+            transfer: Default::default(),
+            no_text: Default::default(),
+            several: Default::default(),
+            own_volume: None,
+        },
+        paused: None,
+    }
+}
+
+/// An app with two watched sources, of which those in `questions` wait for
+/// answers.
+fn app_with_questions(questions: &[(&str, usize)]) -> App {
+    let mut app = App::with_fixed_filing(Phase::Ready);
+    app.hermes.filing_config.sources = vec![
+        watched_source("/home/test/Scans"),
+        watched_source("/home/test/Mail"),
+    ];
+    let asked = questions
+        .iter()
+        .map(|(source, count)| SourceQuestions {
+            source: PathBuf::from(source),
+            count: *count,
+        })
+        .collect();
+    app.hermes.filing_status.questions_arrived(Ok(asked));
+    let mut idle = Snapshot::off();
+    idle.state = RunnerState::Idle;
+    let now = app.wall_clock.now();
+    app.hermes.filing_status.set_snapshot(idle, now);
+    app
+}
+
+fn press_badge(app: &mut App) {
+    let pressed = app.filing_badge().expect("the counter").on_press;
+    drop(app.update(pressed));
+}
+
+#[tokio::test]
+async fn the_counter_opens_the_plan_of_the_only_source_that_asks() {
+    let mut app = app_with_questions(&[("/home/test/Scans", 3)]);
+
+    press_badge(&mut app);
+
+    assert_eq!(app.shown_tab, ShownTab::Filing);
+    let session = app.filing_view.session.as_ref().expect("the plan");
+    assert_eq!(session.source, watched_source("/home/test/Scans").source);
+    assert!(!session.once);
+}
+
+#[tokio::test]
+async fn the_counter_opens_the_sources_when_several_ask() {
+    let mut app = app_with_questions(&[("/home/test/Scans", 2), ("/home/test/Mail", 1)]);
+
+    press_badge(&mut app);
+
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Sorting));
+    assert!(app.filing_view.session.is_none());
+}
+
+#[tokio::test]
+async fn the_counter_opens_the_activity_page_when_nothing_asks() {
+    let mut app = app_with_questions(&[]);
+
+    press_badge(&mut app);
+
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Activity));
+}
+
+fn stream_count(app: &App) -> usize {
+    into_recipes(app.subscription()).len()
+}
+
+#[tokio::test]
+async fn an_open_plan_keeps_no_stream_running_once_it_is_made() {
+    let mut app = app_with_questions(&[("/home/test/Scans", 3)]);
+    let before = stream_count(&app);
+
+    press_badge(&mut app);
+    assert_eq!(stream_count(&app), before + 1, "the plan is being made");
+
+    let session = app.filing_view.session.as_ref().expect("the plan").id;
+    drop(
+        app.update(Message::FilingView(ncrs_filing_view::Message::Planned {
+            session,
+            read: false,
+            result: Err("the index is gone".to_owned()),
+        })),
+    );
+    assert_eq!(stream_count(&app), before);
+}
+
+#[tokio::test]
+async fn the_activity_page_leads_to_what_waits_and_to_the_read_errors() {
+    let mut app = app_with_questions(&[("/home/test/Scans", 2), ("/home/test/Mail", 1)]);
     drop(app.update(status(FilingStatusMessage::Open)));
 
-    drop(app.update(Message::Activity(ActivityMessage::OpenReviews)));
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Reviews));
+    drop(app.update(Message::Activity(ActivityMessage::OpenWaiting)));
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Sorting));
 
     drop(app.update(Message::Activity(ActivityMessage::OpenReadErrors)));
     assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));

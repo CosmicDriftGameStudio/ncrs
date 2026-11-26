@@ -371,7 +371,7 @@ fn new_file_builder() -> tempfile::Builder<'static, 'static> {
     let mut builder = tempfile::Builder::new();
     // tempfile defaults to 0600; asking for 0666 gets the umask applied, so a
     // new note is readable like any other new file.
-    builder.permissions(fs::Permissions::from_mode(0o666));
+    builder.permissions(fs::Permissions::from_mode(0o666)); // NOSONAR the umask applies
     builder
 }
 

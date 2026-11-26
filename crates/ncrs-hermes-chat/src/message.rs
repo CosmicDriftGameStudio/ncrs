@@ -8,9 +8,6 @@ use crate::state::{ChipReply, Step};
 #[derive(Debug, Clone)]
 pub enum Message {
     Open,
-    /// Opens the chat on these review documents: it asks about each one, as
-    /// it does about the waiting ones, and skips the greeting.
-    OpenAbout(Vec<ncrs_filing::review_work::ReviewItem>),
     Close,
     /// The button of the chat list: a new chat with a fresh greeting; the old
     /// one stays in the list.
@@ -39,7 +36,7 @@ pub enum Message {
     TurnOnFailed(String),
     /// What the language model made of a typed sentence, or why it failed.
     Understood(Result<ChatIntent, ncrs_ai::ModelProblem>),
-    /// What the model made of a rule or levels it was asked.
+    /// What the model made of the levels it was asked about.
     RuleAnswered(crate::rule_flow::RuleAnswer),
     /// The check of a typed folder, for the step it was typed in.
     TypedFolderResolved {
@@ -47,11 +44,10 @@ pub enum Message {
         step: Step,
         result: Result<PathBuf, String>,
     },
-    /// The candidates of the folders a sentence named, checked: the ones that
-    /// exist, per name.
+    /// The candidates of the folder a sentence named, checked: the ones that
+    /// exist.
     NamedFoldersResolved {
-        source: Vec<PathBuf>,
-        target: Option<Vec<PathBuf>>,
+        folders: Vec<PathBuf>,
     },
     /// The model was downloaded; sent by the app when the download is done.
     ModelReady,
@@ -59,21 +55,8 @@ pub enum Message {
     AiTurnedOn,
     /// The filing module finished its start; sent by the app.
     HermesReady,
-    /// The settings page asks to change the order of one area of a read folder.
-    ChangeArea {
-        folder: PathBuf,
-        area: String,
-    },
-    /// New documents may be waiting; sent by the app now and then while the
-    /// chat is open.
-    WaitingCheck,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
-    /// The pipeline is idle; `sequence` changes whenever what it handled
-    /// changes. Sent by the app on its tick.
-    ReadingSettled(usize),
-    /// The background picks of the read folders are done.
-    PicksRemembered,
 }
 
 impl Message {
@@ -87,8 +70,6 @@ impl Message {
             Self::ModelReady
                 | Self::Done(_)
                 | Self::Failed(_)
-                | Self::PicksRemembered
-                | Self::ReadingSettled(_)
                 | Self::Understood(_)
                 | Self::RuleAnswered(_)
                 | Self::TypedFolderResolved { .. }
@@ -110,10 +91,7 @@ impl PartialEq for Message {
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
-            | (Self::WaitingCheck, Self::WaitingCheck)
-            | (Self::WorkTick, Self::WorkTick)
-            | (Self::PicksRemembered, Self::PicksRemembered) => true,
-            (Self::ReadingSettled(left), Self::ReadingSettled(right)) => left == right,
+            | (Self::WorkTick, Self::WorkTick) => true,
             (Self::List(left), Self::List(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))
@@ -139,27 +117,11 @@ impl PartialEq for Message {
                 },
             ) => left_label == right_label && left_reply == right_reply,
             (Self::FolderPicked(left), Self::FolderPicked(right)) => left == right,
-            (
-                Self::ChangeArea {
-                    folder: left_folder,
-                    area: left_area,
-                },
-                Self::ChangeArea {
-                    folder: right_folder,
-                    area: right_area,
-                },
-            ) => left_folder == right_folder && left_area == right_area,
             (Self::Understood(left), Self::Understood(right)) => left == right,
             (
-                Self::NamedFoldersResolved {
-                    source: left_source,
-                    target: left_target,
-                },
-                Self::NamedFoldersResolved {
-                    source: right_source,
-                    target: right_target,
-                },
-            ) => left_source == right_source && left_target == right_target,
+                Self::NamedFoldersResolved { folders: left },
+                Self::NamedFoldersResolved { folders: right },
+            ) => left == right,
             (
                 Self::TypedFolderResolved {
                     typed: left_typed,

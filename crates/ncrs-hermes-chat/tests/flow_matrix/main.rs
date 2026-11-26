@@ -9,12 +9,6 @@
 
 #[path = "../common/mod.rs"]
 mod common;
-mod rules;
-
-use rules::{
-    change_the_condition, create_and_check, only_new, saved_twice_for_the_same_folder,
-    saved_twice_with_a_new_level_word,
-};
 
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,12 +25,11 @@ use ncrs_ai::{
 };
 use ncrs_hermes_chat::{ChipReply, LevelsCard, Message, Part};
 use ncrs_i18n::Msg;
-use ncrs_index::{DocumentFields, Kinds, RuleOrigin, RuleSpec};
+use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 use ncrs_ui_kit::hermes_kit::MoveRow;
 
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
 const SENDER: &str = "Cosmicdrift GmbH";
-const AREA_PREFIX: &str = "Arbeit/";
 const FOUND: [&str; 3] = ["Gehalt", "{year}", "Gehaltsabrechnung_{date}"];
 const EXAMPLES_SHOWN: usize = 3;
 
@@ -185,15 +178,6 @@ impl ChatModel for CachedModel {
         parse_revision(&raw)
     }
 
-    fn choose_folders(
-        &self,
-        folders: &[(String, Vec<String>)],
-        documents: &[String],
-        lane: ncrs_ai::FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError> {
-        self.inner.choose_folders(folders, documents, lane)
-    }
-
     fn status(&self) -> LocalModelStatus {
         self.inner.status()
     }
@@ -206,10 +190,9 @@ impl ChatModel for CachedModel {
 /// A document of the fixture: where it lies below the area, and its date.
 #[derive(Debug, Clone)]
 struct Doc {
-    /// `Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf` or the name in the inbox.
+    /// `Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf`.
     in_area: String,
     date: NaiveDate,
-    inbox: bool,
 }
 
 /// The pattern below the area written for the document's date.
@@ -222,15 +205,13 @@ fn render(pattern: &str, date: NaiveDate) -> String {
     format!("{path}.pdf")
 }
 
-/// The test archive with sender and date on the pay slips, and five pay slips
-/// in the inbox.
+/// The test archive with sender and date on the pay slips.
 fn fixture(model: &Arc<CachedModel>) -> (Talk, Vec<Doc>) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("archive")).unwrap();
     let archive = ncrs_intake::test_archive::test_archive();
     let talk = Talk::in_dir(dir, &["archive"], &["inbox"])
-        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>)
-        .with_rules();
+        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>);
     let mut docs = Vec::new();
     for file in &archive.archive {
         let Some(text) = file.text() else { continue };
@@ -252,35 +233,8 @@ fn fixture(model: &Arc<CachedModel>) -> (Talk, Vec<Doc>) {
             docs.push(Doc {
                 in_area: relative.trim_start_matches("archive/Arbeit/").to_owned(),
                 date: file.date.unwrap(),
-                inbox: false,
             });
         }
-    }
-    for month in 1..=5 {
-        let date = NaiveDate::from_ymd_opt(2025, month, 25).unwrap();
-        let name = format!("Eingang_{month}.pdf");
-        let id = talk.index_inbox_document(
-            &format!("inbox/{name}"),
-            &common::letter(
-                SENDER,
-                &date.format("%d.%m.%Y").to_string(),
-                "Gehaltsabrechnung",
-                month,
-            ),
-        );
-        talk.set_fields(
-            id,
-            &DocumentFields {
-                sender: Some(SENDER.to_owned()),
-                date: Some(date),
-                ..DocumentFields::default()
-            },
-        );
-        docs.push(Doc {
-            in_area: name,
-            date,
-            inbox: true,
-        });
     }
     (talk, docs)
 }
@@ -379,10 +333,7 @@ fn check_change(talk: &Talk, docs: &[Doc], pattern: &str) {
         !joined.contains("passt bei") && !joined.contains(" soll "),
         "{joined}"
     );
-    let moving: Vec<&Doc> = docs
-        .iter()
-        .filter(|doc| !doc.inbox && render(pattern, doc.date) != doc.in_area)
-        .collect();
+    let moving = archive_moves(docs, pattern);
     let Some(block) = card.moves.as_ref() else {
         assert!(moving.is_empty(), "no renames in the card: {joined}");
         return;
@@ -409,66 +360,20 @@ fn check_change(talk: &Talk, docs: &[Doc], pattern: &str) {
 /// The archive documents `pattern` writes to another path.
 fn archive_moves<'a>(docs: &'a [Doc], pattern: &str) -> Vec<&'a Doc> {
     docs.iter()
-        .filter(|doc| !doc.inbox && render(pattern, doc.date) != doc.in_area)
+        .filter(|doc| render(pattern, doc.date) != doc.in_area)
         .collect()
 }
 
-/// The dry run: counts, examples (the inbox first, then the archive), the
-/// button to create the rule. The archive renames are the ones the change
-/// preview announced.
-fn check_trial(talk: &Talk, docs: &[Doc], pattern: &str) {
-    let inbox: Vec<&Doc> = docs.iter().filter(|doc| doc.inbox).collect();
-    let in_archive = docs.len() - inbox.len();
-    let renamed = archive_moves(docs, pattern);
-    let moves = inbox.len() + renamed.len();
-    let card = talk.proposal().expect("the proposal card");
-    assert!(
-        card.facts.iter().any(|fact| fact.value
-            == say(
-                Msg::HermesChatProposalMatches,
-                &[("count", &count(docs.len()))]
-            )),
-        "matches: {:?}",
-        card.facts
+/// The levels are taken: one click hands the folder and its pattern to the
+/// rule suggestions, and the chat itself has changed nothing.
+fn check_suggestion(talk: &mut Talk, pattern: &str) {
+    assert_eq!(talk.labels(), vec![say(Msg::HermesChatSuggestRules, &[])]);
+    talk.press(&ChipReply::SuggestRules);
+    assert_eq!(
+        talk.suggestions(),
+        vec![(talk.path("archive/Arbeit"), Some(pattern.to_owned()))]
     );
-    let shown = moves.min(EXAMPLES_SHOWN);
-    let more = say(
-        Msg::HermesChatRuleExamplesMore,
-        &[("count", &count(moves - shown))],
-    );
-    let counts = say(
-        Msg::HermesChatRuleTrialCounts,
-        &[
-            ("right", &count(in_archive - renamed.len())),
-            ("moves", &count(moves)),
-            ("inbox", &count(inbox.len())),
-        ],
-    );
-    let rows = card
-        .moves
-        .as_ref()
-        .map(|block| block.rows.as_slice())
-        .unwrap_or_default();
-    assert_eq!(rows.len(), shown, "{rows:?}");
-    let sources: Vec<&Doc> = inbox
-        .iter()
-        .copied()
-        .chain(renamed.iter().copied())
-        .collect();
-    for (row, doc) in rows.iter().zip(&sources) {
-        check_example(row, &[doc], pattern);
-    }
-    let shown_more = card.moves.as_ref().and_then(|block| block.more.clone());
-    assert_eq!(shown_more, (moves > shown).then_some(more));
-    assert_eq!(card.counts, Some(counts));
-    assert!(
-        talk.state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::RuleCreate),
-        "{:?}",
-        talk.labels()
-    );
+    talk.assert_saves_no_rule();
 }
 
 fn has_levels_card(talk: &Talk) -> bool {
@@ -584,19 +489,17 @@ fn change_then_apply(model: &Arc<CachedModel>, change: &Change, english: bool) {
     talk.type_text(pick(english, (change.german, change.english)));
     check_change(&talk, &docs, change.pattern);
     talk.press(&ChipReply::LevelsApply);
-    check_trial(&talk, &docs, change.pattern);
-    create_and_check(&mut talk, &docs, change.pattern);
+    check_suggestion(&mut talk, change.pattern);
 }
 
 fn looks_right(model: &Arc<CachedModel>, english: bool) {
-    let (mut talk, docs) = entered(model, english);
+    let (mut talk, _) = entered(model, english);
     talk.press(&ChipReply::LevelsKeep);
-    check_trial(&talk, &docs, &found_pattern());
-    create_and_check(&mut talk, &docs, &found_pattern());
+    check_suggestion(&mut talk, &found_pattern());
 }
 
 fn standard(model: &Arc<CachedModel>, english: bool) {
-    let (mut talk, docs) = entered(model, english);
+    let (mut talk, _) = entered(model, english);
     talk.press(&ChipReply::LevelsDefault);
     assert_eq!(levels_card(&talk).rows.len(), 2);
     expect_chips(&talk, &CHANGE_CHIPS);
@@ -606,38 +509,22 @@ fn standard(model: &Arc<CachedModel>, english: bool) {
         "{joined}"
     );
     talk.press(&ChipReply::LevelsApply);
-    let card = talk.proposal().expect("the proposal card");
-    assert!(
-        card.facts.iter().any(|fact| fact.value
-            == say(
-                Msg::HermesChatProposalMatches,
-                &[("count", &count(docs.len()))]
-            )),
-        "{:?}",
-        card.facts
-    );
-    talk.press(&ChipReply::RuleCreate);
-    assert_eq!(
-        talk.rules()[0].spec.filing_pattern,
-        format!("{AREA_PREFIX}{{year}}/{{date}}_{{sender}}_{{kind}}")
-    );
+    check_suggestion(&mut talk, "{year}/{date}_{sender}_{kind}");
 }
 
 fn fertig_at_once(model: &Arc<CachedModel>, english: bool) {
-    let (mut talk, docs) = entered(model, english);
+    let (mut talk, _) = entered(model, english);
     talk.press(&ChipReply::LevelsChange);
     expect_chips(&talk, &[Msg::HermesChatLevelsDone]);
     talk.press(&ChipReply::LevelsDone);
-    check_trial(&talk, &docs, &found_pattern());
-    create_and_check(&mut talk, &docs, &found_pattern());
+    check_suggestion(&mut talk, &found_pattern());
 }
 
 fn done_sentence_without_change(model: &Arc<CachedModel>, english: bool) {
-    let (mut talk, docs) = entered(model, english);
+    let (mut talk, _) = entered(model, english);
     talk.press(&ChipReply::LevelsChange);
     talk.type_text(pick(english, NOTHING_MORE));
-    check_trial(&talk, &docs, &found_pattern());
-    create_and_check(&mut talk, &docs, &found_pattern());
+    check_suggestion(&mut talk, &found_pattern());
 }
 
 fn change_then_discard(model: &Arc<CachedModel>, english: bool) {
@@ -650,8 +537,7 @@ fn change_then_discard(model: &Arc<CachedModel>, english: bool) {
     check_levels(levels_card(&talk), &FOUND);
     expect_chips(&talk, &FOUND_CHIPS);
     talk.press(&ChipReply::LevelsKeep);
-    check_trial(&talk, &docs, &found_pattern());
-    create_and_check(&mut talk, &docs, &found_pattern());
+    check_suggestion(&mut talk, &found_pattern());
 }
 
 fn change_then_leave_the_rest(model: &Arc<CachedModel>, english: bool) {
@@ -661,8 +547,7 @@ fn change_then_leave_the_rest(model: &Arc<CachedModel>, english: bool) {
     talk.type_text(pick(english, (change.german, change.english)));
     check_change(&talk, &docs, change.pattern);
     talk.type_text(pick(english, LEAVE_THE_REST));
-    check_trial(&talk, &docs, change.pattern);
-    create_and_check(&mut talk, &docs, change.pattern);
+    check_suggestion(&mut talk, change.pattern);
 }
 
 fn change_then_change_more(model: &Arc<CachedModel>, english: bool) {
@@ -675,8 +560,7 @@ fn change_then_change_more(model: &Arc<CachedModel>, english: bool) {
     let pattern = "Lohn/{year}/{date}_Gehaltsabrechnung";
     check_change(&talk, &docs, pattern);
     talk.press(&ChipReply::LevelsApply);
-    check_trial(&talk, &docs, pattern);
-    create_and_check(&mut talk, &docs, pattern);
+    check_suggestion(&mut talk, pattern);
 }
 
 /// How much of Marc's two pay slips the index knows.
@@ -698,8 +582,7 @@ fn marc_fixture(model: &Arc<CachedModel>, indexed: Indexed) -> (Talk, Vec<Doc>) 
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("archive")).unwrap();
     let talk = Talk::in_dir(dir, &["archive"], &["inbox"])
-        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>)
-        .with_rules();
+        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>);
     let mut docs = Vec::new();
     for (position, (in_area, year, month, day)) in MARC_SLIPS.into_iter().enumerate() {
         let date = NaiveDate::from_ymd_opt(year as i32, month, day).unwrap();
@@ -731,7 +614,6 @@ fn marc_fixture(model: &Arc<CachedModel>, indexed: Indexed) -> (Talk, Vec<Doc>) 
         docs.push(Doc {
             in_area: in_area.to_owned(),
             date,
-            inbox: false,
         });
     }
     (talk, docs)
@@ -743,19 +625,16 @@ const DATE_FIRST_AT_3: (&str, &str) = (
     "put the date first in level 3",
 );
 
-/// The path of the report: the archive opened, the area picked, "Change",
-/// a bare "3", then the sentence; the trial counts the files the preview
-/// listed whatever the index knows.
+/// The path of the report: the area opened, "Change", a bare "3", then the
+/// sentence; the preview lists the files whatever the index knows.
 fn marc_path(model: &Arc<CachedModel>, english: bool, indexed: Indexed) {
     let (mut talk, docs) = marc_fixture(model, indexed);
     talk.send(Message::Open);
-    let archive_root = talk.path("archive").display().to_string();
-    talk.type_text(&if english {
-        format!("open {archive_root}")
+    talk.type_text(if english {
+        "open /Arbeit"
     } else {
-        format!("öffne {archive_root}")
+        "öffne /Arbeit"
     });
-    talk.press(&ChipReply::Folder(talk.path("archive/Arbeit")));
     check_levels(levels_card(&talk), &FOUND);
     expect_chips(&talk, &FOUND_CHIPS);
     talk.press(&ChipReply::LevelsChange);
@@ -769,8 +648,7 @@ fn marc_path(model: &Arc<CachedModel>, english: bool, indexed: Indexed) {
     let pattern = "Gehalt/{year}/{date}_Gehaltsabrechnung";
     check_change(&talk, &docs, pattern);
     talk.press(&ChipReply::LevelsApply);
-    check_trial(&talk, &docs, pattern);
-    create_and_check(&mut talk, &docs, pattern);
+    check_suggestion(&mut talk, pattern);
 }
 
 fn message_of(panic: &(dyn std::any::Any + Send)) -> String {
@@ -803,17 +681,7 @@ fn with_model_level_change_matrix() {
             Box::new(move |model, english| change_then_apply(model, &change, english)),
         ));
     }
-    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 15] = [
-        ("save, no: only new ones", only_new),
-        ("change the condition in a sentence", change_the_condition),
-        (
-            "save twice for the same folder",
-            saved_twice_for_the_same_folder,
-        ),
-        (
-            "save twice for the same folder, new level word",
-            saved_twice_with_a_new_level_word,
-        ),
+    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 11] = [
         ("report path, index knows both", |model, english| {
             marc_path(model, english, Indexed::Both);
         }),

@@ -5,7 +5,7 @@
 # Usage: scripts/homebrew-cask.sh <version> <sha256-arm> <sha256-intel> <out-dir>
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
+if [[ "$#" -ne 4 ]]; then
   echo "usage: $0 <version> <sha256-arm> <sha256-intel> <out-dir>" >&2
   exit 2
 fi

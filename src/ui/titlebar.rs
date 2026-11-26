@@ -1,12 +1,12 @@
 //! The row across the window top: a tab with the path of each panel, the
 //! Where the system draws no window frame it also holds the window buttons,
 //! and the window edges resize.
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::Path;
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
 use iced::{alignment, mouse, Element, Length, Padding};
 
-use super::format::{ellipsize_end, ellipsize_middle, estimated_text_width};
+use super::format::{ellipsize_end, ellipsize_middle, estimated_text_width, home_relative};
 use super::kit::{self, TAB_LABEL_GAP as TAB_GAP, TAB_PADDING_X};
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
@@ -26,6 +26,7 @@ pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
 pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
 pub const NOTES_TAB_ID: &str = "title-tab-notes";
 pub const FILING_TAB_ID: &str = "title-tab-filing";
+pub const REPOS_TAB_ID: &str = "title-tab-repos";
 pub const GIT_TAB_ID: &str = "title-tab-git";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 /// Characters of room the cross of a hit list tab takes from its title.
@@ -71,6 +72,8 @@ pub enum PageTab {
     /// The file viewer; the title is the file name.
     Viewer(String),
     Notes,
+    /// The Repos tab, every repository of the machine.
+    Repos,
     /// The filing tab; the title is already worded.
     Filing(String),
     /// A Git tab; the title is already worded, the name is the repository alone.
@@ -112,17 +115,6 @@ pub fn tab_label(path: &Path, home: &Path, loading: bool, max_chars: usize) -> S
         label.push_str(LOADING_MARK);
     }
     label
-}
-
-fn home_relative(path: &Path, home: &Path) -> String {
-    if home.as_os_str().is_empty() {
-        return path.display().to_string();
-    }
-    match path.strip_prefix(home) {
-        Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Ok(rest) => format!("~{MAIN_SEPARATOR}{}", rest.display()),
-        Err(_) => path.display().to_string(),
-    }
 }
 
 fn characters_that_fit(width: f32, font_size: f32) -> usize {
@@ -250,6 +242,13 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 NOTES_TAB_ID,
                 open.active,
                 (ShownTab::Notes, Message::Notes(ncrs_notes::Message::Close)),
+                fit,
+            ),
+            PageTab::Repos => page_tab(
+                lang.text(Msg::ReposTitle),
+                REPOS_TAB_ID,
+                open.active,
+                (ShownTab::Repos, Message::CloseRepos),
                 fit,
             ),
             PageTab::Git(id, title, name) => page_tab_named(
@@ -426,6 +425,8 @@ pub fn with_resize_edges<'a>(content: Element<'a, Message>) -> Element<'a, Messa
 // lint is meant for the production paths.
 #[cfg(test)]
 mod tests {
+    use std::path::MAIN_SEPARATOR;
+
     use super::*;
 
     #[test]

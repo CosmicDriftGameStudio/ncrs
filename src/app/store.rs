@@ -75,11 +75,6 @@ fn changes_files(message: &Message) -> bool {
         | Message::Panel(PanelMessage::RenameStart)
         | Message::Ops(OpsMessage::FileDropped(_))
         | Message::FilingView(ncrs_filing_view::Message::File(_))
-        | Message::Reviews(
-            ncrs_hermes_ui::ReviewsMessage::Answer(..)
-            | ncrs_hermes_ui::ReviewsMessage::AnswerFile(..)
-            | ncrs_hermes_ui::ReviewsMessage::AnswerRepeat(..),
-        )
         | Message::Notes(
             ncrs_notes::Message::NewNote
             | ncrs_notes::Message::NewFolder
@@ -100,7 +95,25 @@ impl App {
     /// Holds `message` back when it would change files and the trial does not
     /// allow it.
     pub(in crate::app) fn refuse_if_locked(&mut self, message: &Message) -> Option<Task<Message>> {
-        (!self.changes_allowed() && changes_files(message)).then(|| self.refuse_locked_change())
+        (!self.changes_allowed() && (changes_files(message) || self.answers_open_question(message)))
+            .then(|| self.refuse_locked_change())
+    }
+
+    /// The answer to an open question of a watched source files at once; in a
+    /// plan it only changes what a run would do.
+    fn answers_open_question(&self, message: &Message) -> bool {
+        matches!(
+            message,
+            Message::FilingView(
+                ncrs_filing_view::Message::QuestionAnswer(_)
+                    | ncrs_filing_view::Message::QuestionConfirm
+                    | ncrs_filing_view::Message::FolderPicked(Some(_))
+            )
+        ) && self
+            .filing_view
+            .session
+            .as_ref()
+            .is_some_and(|session| !session.once)
     }
 
     /// The notice of an action that did not run, pressing it opens the page.

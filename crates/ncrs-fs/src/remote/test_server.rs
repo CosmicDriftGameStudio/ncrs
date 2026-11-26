@@ -10,7 +10,7 @@
 )]
 
 use std::collections::HashMap;
-use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
+use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -21,8 +21,9 @@ use russh::keys::{PrivateKey, PublicKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, PublicKeyOffer, Session, VerifiedPublicKey};
 use russh::{Channel, ChannelId};
 use russh_sftp::protocol::{
-    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
+    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, SftpHandle, Status, StatusCode,
 };
+use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
 
 use super::credentials::PassphraseStore;
 use super::known_hosts::KnownHostsFiles;
@@ -461,13 +462,13 @@ impl russh::server::Handler for Ssh {
 
 enum Open {
     Dir(Option<Vec<File>>),
-    File(std::fs::File),
+    File(tokio::fs::File),
 }
 
 struct Fs {
     root: PathBuf,
     control: Arc<Control>,
-    handles: HashMap<String, Open>,
+    handles: HashMap<SftpHandle, Open>,
     next: u64,
 }
 
@@ -494,9 +495,9 @@ impl Fs {
         self.root.join(relative.trim_start_matches('/'))
     }
 
-    fn remember(&mut self, open: Open) -> String {
+    fn remember(&mut self, open: Open) -> SftpHandle {
         self.next += 1;
-        let handle = format!("h{}", self.next);
+        let handle = SftpHandle::from(format!("h{}", self.next));
         self.handles.insert(handle.clone(), open);
         handle
     }
@@ -521,7 +522,7 @@ impl russh_sftp::server::Handler for Fs {
         _attrs: FileAttributes,
     ) -> Result<Handle, Self::Error> {
         self.control.log("open");
-        let mut options = std::fs::OpenOptions::new();
+        let mut options = tokio::fs::OpenOptions::new();
         options
             .read(pflags.contains(OpenFlags::READ))
             .write(pflags.contains(OpenFlags::WRITE));
@@ -533,14 +534,17 @@ impl russh_sftp::server::Handler for Fs {
         if pflags.contains(OpenFlags::TRUNCATE) {
             options.truncate(true);
         }
-        let file = options.open(self.path(&filename)).map_err(|e| code(&e))?;
+        let file = options
+            .open(self.path(&filename))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(Handle {
             id,
             handle: self.remember(Open::File(file)),
         })
     }
 
-    async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
+    async fn close(&mut self, id: u32, handle: SftpHandle) -> Result<Status, Self::Error> {
         self.handles.remove(&handle);
         Ok(status(id))
     }
@@ -548,7 +552,7 @@ impl russh_sftp::server::Handler for Fs {
     async fn read(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
@@ -559,9 +563,11 @@ impl russh_sftp::server::Handler for Fs {
         let Some(Open::File(file)) = self.handles.get_mut(&handle) else {
             return Err(StatusCode::Failure);
         };
-        file.seek(SeekFrom::Start(offset)).map_err(|e| code(&e))?;
+        file.seek(SeekFrom::Start(offset))
+            .await
+            .map_err(|e| code(&e))?;
         let mut data = vec![0; len as usize];
-        let read = file.read(&mut data).map_err(|e| code(&e))?;
+        let read = file.read(&mut data).await.map_err(|e| code(&e))?;
         if read == 0 {
             return Err(StatusCode::Eof);
         }
@@ -573,20 +579,26 @@ impl russh_sftp::server::Handler for Fs {
     async fn write(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
         let Some(Open::File(file)) = self.handles.get_mut(&handle) else {
             return Err(StatusCode::Failure);
         };
-        file.seek(SeekFrom::Start(offset)).map_err(|e| code(&e))?;
-        file.write_all(&data).map_err(|e| code(&e))?;
+        file.seek(SeekFrom::Start(offset))
+            .await
+            .map_err(|e| code(&e))?;
+        file.write_all(&data).await.map_err(|e| code(&e))?;
+        // A tokio file answers before the bytes are written.
+        file.flush().await.map_err(|e| code(&e))?;
         Ok(status(id))
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
-        let meta = std::fs::symlink_metadata(self.path(&path)).map_err(|e| code(&e))?;
+        let meta = tokio::fs::symlink_metadata(self.path(&path))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(Attrs {
             id,
             attrs: attrs_of(&meta),
@@ -597,7 +609,9 @@ impl russh_sftp::server::Handler for Fs {
         if self.control.stall_stat.load(Ordering::SeqCst) {
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }
-        let meta = std::fs::metadata(self.path(&path)).map_err(|e| code(&e))?;
+        let meta = tokio::fs::metadata(self.path(&path))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(Attrs {
             id,
             attrs: attrs_of(&meta),
@@ -610,9 +624,13 @@ impl russh_sftp::server::Handler for Fs {
             File::new(".", FileAttributes::dummy()),
             File::new("..", FileAttributes::dummy()),
         ];
-        for item in std::fs::read_dir(self.path(&path)).map_err(|e| code(&e))? {
-            let found = item.map_err(|e| code(&e))?;
-            let meta = std::fs::symlink_metadata(found.path()).map_err(|e| code(&e))?;
+        let mut listing = tokio::fs::read_dir(self.path(&path))
+            .await
+            .map_err(|e| code(&e))?;
+        while let Some(found) = listing.next_entry().await.map_err(|e| code(&e))? {
+            let meta = tokio::fs::symlink_metadata(found.path())
+                .await
+                .map_err(|e| code(&e))?;
             files.push(File::new(
                 found.file_name().to_string_lossy().into_owned(),
                 attrs_of(&meta),
@@ -624,7 +642,7 @@ impl russh_sftp::server::Handler for Fs {
         })
     }
 
-    async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
+    async fn readdir(&mut self, id: u32, handle: SftpHandle) -> Result<Name, Self::Error> {
         if self.control.stall_listing.load(Ordering::SeqCst) {
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }
@@ -644,18 +662,24 @@ impl russh_sftp::server::Handler for Fs {
         _attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         self.control.log("mkdir");
-        std::fs::create_dir(self.path(&path)).map_err(|e| code(&e))?;
+        tokio::fs::create_dir(self.path(&path))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(status(id))
     }
 
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
-        std::fs::remove_dir(self.path(&path)).map_err(|e| code(&e))?;
+        tokio::fs::remove_dir(self.path(&path))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(status(id))
     }
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         self.control.log("remove");
-        std::fs::remove_file(self.path(&filename)).map_err(|e| code(&e))?;
+        tokio::fs::remove_file(self.path(&filename))
+            .await
+            .map_err(|e| code(&e))?;
         Ok(status(id))
     }
 
@@ -670,7 +694,9 @@ impl russh_sftp::server::Handler for Fs {
         if to.exists() {
             return Err(StatusCode::Failure);
         }
-        std::fs::rename(self.path(&oldpath), to).map_err(|e| code(&e))?;
+        tokio::fs::rename(self.path(&oldpath), to)
+            .await
+            .map_err(|e| code(&e))?;
         Ok(status(id))
     }
 

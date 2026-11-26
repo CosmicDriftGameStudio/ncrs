@@ -7,7 +7,7 @@
 # Usage: scripts/winget-manifests.sh <version> <installer-url> <sha256> <out-dir>
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
+if [[ "$#" -ne 4 ]]; then
   echo "usage: $0 <version> <installer-url> <sha256> <out-dir>" >&2
   exit 2
 fi
