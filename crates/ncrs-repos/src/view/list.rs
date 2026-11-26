@@ -19,25 +19,20 @@ use ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID;
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
 use ncrs_ui_kit::theme::{font_size, spacing};
 
-use crate::bulk::Outcome;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::resize::remembered;
 use crate::rows::{name_of, Group, GroupKey, Row, RowKind};
 use crate::state::State;
 use crate::summary::Reading;
-use crate::texts::log_text;
 use crate::update::LIST_ID;
 
 /// The widest a location gets before its start is cut.
 const LOCATION_CHARS: usize = 52;
-/// The last column of a run holds the result and needs more room.
-const RESULT_WIDTH: f32 = 440.0;
 
 /// The remembered widths, or those of the drag that runs.
 /// Beside the clean-up there is only room for the branch and the standing.
 fn columns(state: &State, ctx: ViewCtx<'_>) -> RepoColumns {
-    let is_run = state.run().is_some();
     let beside_cleanup = state.cleanup.is_some();
     let base = state
         .column_drag
@@ -46,11 +41,6 @@ fn columns(state: &State, ctx: ViewCtx<'_>) -> RepoColumns {
         location: !beside_cleanup,
         changes: if beside_cleanup { 0.0 } else { base.changes },
         fetched: if beside_cleanup { 0.0 } else { base.fetched },
-        actions: if is_run {
-            RESULT_WIDTH
-        } else {
-            RepoColumns::STANDARD.actions
-        },
         ..base
     }
 }
@@ -105,25 +95,12 @@ fn result_cell<'a>(
     ctx: ViewCtx<'a>,
 ) -> Option<Element<'a, Message>> {
     let outcome = state.run()?.result(path)?;
-    let detail = match outcome {
-        Outcome::AlreadyCurrent | Outcome::Running => None,
-        other => Some(log_text(other, ctx.lang)),
-    };
-    let mark = if cursor {
+    // The cell is as wide as the "Cleanable" column; what git said is in the log.
+    Some(if cursor {
         outcome_mark_inked(outcome.kind(), ctx.lang, ctx.palette.cursor_text)
     } else {
         outcome_mark(outcome.kind(), ctx.lang, ctx.palette)
-    };
-    let mut cell = iced::widget::row![mark].spacing(spacing::M);
-    if let Some(note) = detail {
-        let ink = if cursor {
-            ctx.palette.cursor_text
-        } else {
-            ctx.palette.dim_text
-        };
-        cell = cell.push(page_line(note, font_size::SMALL, ink));
-    }
-    Some(cell.into())
+    })
 }
 
 fn one_row<'a>(
@@ -170,8 +147,9 @@ fn one_row<'a>(
     } else {
         ctx.palette.text
     };
-    let actions = if is_run {
-        result_cell(is_cursor, &row.owner, state, ctx).filter(|_| !is_worktree)
+    let result = result_cell(is_cursor, &row.owner, state, ctx).filter(|_| !is_worktree);
+    let actions = if result.is_some() {
+        result
     } else if let Some(count) =
         cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable)
     {
@@ -262,7 +240,11 @@ fn all_checked(state: &State) -> Check {
 /// The column head and the scrolling groups below it.
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let is_run = state.run().is_some();
-    let cleanable_title = (!is_run).then(|| ctx.lang.text(Msg::ReposColumnCleanable));
+    let cleanable_title = Some(ctx.lang.text(if is_run {
+        Msg::ReposColumnResult
+    } else {
+        Msg::ReposColumnCleanable
+    }));
     let header = container(repo_header_titled(
         columns(state, ctx),
         ctx.lang,

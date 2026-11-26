@@ -42,6 +42,8 @@ pub struct ReposSection {
     pub concurrency: Option<i64>,
     /// Checked by `resolve_repos`: a width that is no pixel count is dropped.
     #[serde(default)]
+    pub show_worktrees: Option<bool>,
+    #[serde(default)]
     pub name_width: Option<i64>,
     #[serde(default)]
     pub branch_width: Option<i64>,
@@ -77,6 +79,8 @@ pub struct ReposSettings {
     /// Every repo opened in a file panel joins the list.
     pub learn_from_panel: bool,
     pub concurrency: u8,
+    /// The list shows the worktrees of a repository under it.
+    pub show_worktrees: bool,
     pub columns: ReposColumnWidths,
 }
 
@@ -87,6 +91,7 @@ impl ReposSettings {
             learn_from_panel: self.learn_from_panel,
             concurrency: self.concurrency,
             columns: self.columns,
+            show_worktrees: self.show_worktrees,
             ..other.clone()
         };
         *self == same_search
@@ -116,6 +121,7 @@ impl Default for ReposSettings {
             skip_network: true,
             learn_from_panel: true,
             concurrency: DEFAULT_CONCURRENCY,
+            show_worktrees: true,
             columns: ReposColumnWidths::default(),
         }
     }
@@ -159,6 +165,7 @@ pub fn resolve_repos(section: &ReposSection) -> ReposSettings {
             .learn_from_panel
             .unwrap_or(defaults.learn_from_panel),
         concurrency: within(section.concurrency, MAX_CONCURRENCY, defaults.concurrency),
+        show_worktrees: section.show_worktrees.unwrap_or(defaults.show_worktrees),
         columns: ReposColumnWidths {
             name: pixels(section.name_width),
             branch: pixels(section.branch_width),

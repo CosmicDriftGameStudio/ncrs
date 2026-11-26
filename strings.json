@@ -13537,6 +13537,18 @@
       "de": "{n} gewählt"
     },
     {
+      "key": "repos.show_worktrees",
+      "context": "Tick box in the toolbar of the Repos tab, also the name of the action in the command list: when off, the worktrees of a repository are not listed under it.",
+      "en": "Show worktrees",
+      "de": "Worktrees zeigen"
+    },
+    {
+      "key": "repos.column_result",
+      "context": "Column head in the list of the Repos tab while a bulk action runs or its result is shown: what the action did to the repository. Replaces the head Cleanable. One word.",
+      "en": "Result",
+      "de": "Ergebnis"
+    },
+    {
       "key": "repos.only_needs_action",
       "context": "Tick box in the Repos tab: shows only repositories that are behind, ahead or have local changes.",
       "en": "Only those that need action",

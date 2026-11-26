@@ -60,6 +60,7 @@ pub fn open(ctx: &Ctx) -> (State, Task<Message>) {
         }
     };
     state.open_roots.clone_from(&ctx.open_roots);
+    state.show_worktrees = ctx.settings.show_worktrees;
     let reads = refresh(&mut state, ctx);
     let scan = start_scan(&mut state, ctx, false);
     (state, Task::batch([reads, scan]))
@@ -464,6 +465,21 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Message::OnlyNeedingActionToggled => {
             state.only_needing_action = !state.only_needing_action;
             quiet(Task::none())
+        }
+        Message::ShowWorktreesToggled => {
+            let owner_of_worktree = state
+                .cursor()
+                .and_then(|path| state.row(&path))
+                .filter(|row| row.kind == RowKind::Worktree)
+                .map(|row| row.owner);
+            state.show_worktrees = !state.show_worktrees;
+            if let Some(owner) = owner_of_worktree.filter(|_| !state.show_worktrees) {
+                state.marks.move_to(owner);
+            }
+            (
+                scroll_to_cursor(),
+                vec![Action::ShowWorktreesChanged(state.show_worktrees)],
+            )
         }
         Message::Escape => escape(state),
         Message::OpenMenuKey => {

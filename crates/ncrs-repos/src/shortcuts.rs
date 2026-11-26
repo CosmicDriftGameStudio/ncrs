@@ -24,6 +24,7 @@ pub enum Shortcut {
     Favourite,
     Remove,
     ShowInFiles,
+    ShowWorktrees,
 }
 
 impl Shortcut {
@@ -40,6 +41,7 @@ impl Shortcut {
         Self::Favourite,
         Self::Remove,
         Self::ShowInFiles,
+        Self::ShowWorktrees,
     ];
 
     /// The name of the action in `[keys.repos]`.
@@ -57,6 +59,7 @@ impl Shortcut {
             Self::Favourite => "favourite",
             Self::Remove => "remove",
             Self::ShowInFiles => "show_in_files",
+            Self::ShowWorktrees => "show_worktrees",
         }
     }
 
@@ -101,6 +104,7 @@ impl Shortcut {
             Self::Favourite => letter(Modifiers::empty(), "*"),
             Self::Remove => named(Modifiers::empty(), Named::Delete),
             Self::ShowInFiles => letter(command | Modifiers::ALT, "f"),
+            Self::ShowWorktrees => letter(command | Modifiers::ALT, "w"),
         }
     }
 
@@ -123,6 +127,7 @@ impl Shortcut {
             Self::Favourite => Msg::ReposToggleFavourite,
             Self::Remove => Msg::ReposRemove,
             Self::ShowInFiles => Msg::ReposShowInFiles,
+            Self::ShowWorktrees => Msg::ReposShowWorktrees,
         }
     }
 
@@ -140,6 +145,7 @@ impl Shortcut {
             Self::Favourite => Message::ToggleFavouriteAtCursor,
             Self::Remove => Message::RemoveAtCursor,
             Self::ShowInFiles => Message::ShowInFilesAtCursor,
+            Self::ShowWorktrees => Message::ShowWorktreesToggled,
         }
     }
 }

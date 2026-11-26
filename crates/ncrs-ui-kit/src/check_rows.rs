@@ -5,13 +5,13 @@
 use std::path::Path;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{alignment, Color, Element, Length};
+use iced::widget::{button, column, container, mouse_area, rich_text, row, span, text, Space};
+use iced::{alignment, Color, Element, Length, Renderer, Theme};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::file_icon::git_branch_icon;
 use crate::format::ellipsize_middle;
-use crate::kit::{self, Check};
+use crate::kit::{self, icon, Check, Icon};
 use crate::palette::Palette;
 use crate::theme::git::{self, faint};
 use crate::theme::{self, font_size, size, spacing};
@@ -64,9 +64,9 @@ pub fn worktree_detail(path: &Path, ignored_files: &[String], lang: Language) ->
 /// What became of an entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RowOutcome {
-    /// Stands in the place of the reason.
+    /// A green chip with this word in the place of the reason.
     Done(String),
-    /// Gets a line of its own under the name.
+    /// A red chip with this reason in the place of the reason.
     Failed(String),
 }
 
@@ -129,51 +129,58 @@ fn inks(palette: &Palette, cursor: bool) -> (Color, Color) {
     }
 }
 
+/// An icon and a word in one ink: what became of an entry.
+fn chip<'a, M: 'a>(sign: Icon, words: String, ink: Color) -> Element<'a, M> {
+    row![icon(sign, ink), line(words, font_size::SMALL, ink)]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .into()
+}
+
 pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<M>, palette: &Palette) -> Element<'a, M> {
     let (text_ink, dim_ink) = inks(palette, item.cursor);
     let name_ink = if item.kept { faint(text_ink) } else { text_ink };
-    let tick: Element<'a, M> = if item.kept {
-        Space::new().into()
-    } else {
-        kit::checkbox(item.check, None, palette)
+    let tick: Element<'a, M> = match (&item.outcome, item.kept) {
+        (_, true) => Space::new().into(),
+        (Some(RowOutcome::Done(_)), false) => icon(Icon::CircleCheck, palette.success),
+        (Some(RowOutcome::Failed(_)), false) => icon(Icon::CircleX, palette.error),
+        (None, false) => kit::checkbox(item.check, None, palette),
     };
+    let is_done = matches!(item.outcome, Some(RowOutcome::Done(_)));
     let glyph: Element<'a, M> = if item.worktree {
         git_branch_icon(dim_ink, size::ICON)
     } else {
         Space::new().into()
     };
-    let (reason, failure) = match item.outcome {
-        Some(RowOutcome::Done(done)) => (Some(done), None),
-        Some(RowOutcome::Failed(failure)) => (None, Some(failure)),
-        None => (Some(item.reason), None),
-    };
     let reason_ink = if item.kept { faint(dim_ink) } else { dim_ink };
-    let mut name_line = row![
+    let slot: Element<'a, M> = match item.outcome {
+        Some(RowOutcome::Done(done)) => chip(Icon::CircleCheck, done, palette.success),
+        Some(RowOutcome::Failed(failure)) => chip(Icon::CircleX, failure, palette.error),
+        None => line(item.reason, font_size::SMALL, reason_ink),
+    };
+    // A finished row steps back: dimmed, and the name struck through.
+    let name_cell: Element<'a, M> = if is_done {
+        let dimmed = faint(name_ink);
+        rich_text::<(), M, Theme, Renderer>([span(item.name).color(dimmed).strikethrough(true)])
+            .size(font_size::BODY)
+            .wrapping(Wrapping::None)
+            .into()
+    } else {
+        line(item.name, font_size::BODY, name_ink)
+    };
+    let name_line = row![
         container(glyph).width(GLYPH_CELL),
-        container(line(item.name, font_size::BODY, name_ink))
-            .width(Length::Fill)
+        container(name_cell).width(Length::Fill).clip(true),
+        container(slot)
+            .width(REASON_WIDTH)
+            .align_x(alignment::Horizontal::Right)
             .clip(true),
     ]
     .align_y(alignment::Vertical::Center);
-    if let Some(shown_reason) = reason {
-        name_line = name_line.push(
-            container(line(shown_reason, font_size::SMALL, reason_ink))
-                .width(REASON_WIDTH)
-                .align_x(alignment::Horizontal::Right)
-                .clip(true),
-        );
-    }
-    let second = match (failure, item.detail) {
-        (Some(problem), _) => {
-            let ink = if item.cursor { text_ink } else { palette.error };
-            Some((problem, ink))
-        }
-        (None, Some(place)) => {
-            let shown_place = ellipsize_middle(&place, DETAIL_CHARS);
-            Some((format!("\u{25a2} {shown_place}"), dim_ink))
-        }
-        (None, None) => None,
-    };
+    let second = item.detail.map(|place| {
+        let shown_place = ellipsize_middle(&place, DETAIL_CHARS);
+        (format!("\u{25a2} {shown_place}"), dim_ink)
+    });
     let mut lines = column![name_line].spacing(spacing::XS);
     let mut height = size::CHECK_ROW;
     if let Some((content, ink)) = second {

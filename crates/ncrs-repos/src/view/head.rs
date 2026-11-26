@@ -183,7 +183,25 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    container(line.push(only_action))
+    let show_worktrees = row![
+        kit::checkbox(
+            if state.show_worktrees() {
+                Check::On
+            } else {
+                Check::Off
+            },
+            Some(Message::ShowWorktreesToggled),
+            palette,
+        ),
+        page_line(
+            ctx.lang.text(Msg::ReposShowWorktrees),
+            font_size::BODY,
+            palette.text
+        ),
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center);
+    container(line.push(show_worktrees).push(only_action))
         .padding([0.0, spacing::XXL])
         .height(size::HEADER)
         .center_y(size::HEADER)

@@ -506,6 +506,32 @@ pub fn result_banner<'a, M: Clone + 'a>(
         Tone::Secondary,
         palette,
     ));
+    banner_frame(line, palette)
+}
+
+/// The bar of a result in the words of the caller: `heading`, then each
+/// result as its sign and text in the ink of `outcome`. No buttons, no close.
+pub fn result_strip<'a, M: Clone + 'a>(
+    heading: String,
+    results: Vec<(RunOutcome, String)>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut line = Row::new()
+        .spacing(spacing::L)
+        .align_y(alignment::Vertical::Center)
+        .push(label(heading, palette.text));
+    for (outcome, words) in results {
+        let ink = outcome.color(palette);
+        line = line.push(
+            row![icon::<M>(outcome.icon(), ink), label(words, ink)]
+                .spacing(spacing::XS)
+                .align_y(alignment::Vertical::Center),
+        );
+    }
+    banner_frame(line, palette)
+}
+
+fn banner_frame<'a, M: Clone + 'a>(line: Row<'a, M>, palette: &Palette) -> Element<'a, M> {
     container(
         row![
             container(Space::new())

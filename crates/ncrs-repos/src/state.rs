@@ -123,6 +123,8 @@ pub struct State {
     pub filter: String,
     pub filter_focused: bool,
     pub only_needing_action: bool,
+    /// The worktrees of a repository stand under it; remembered in `[repos]`.
+    pub show_worktrees: bool,
     pub folded: BTreeSet<GroupKey>,
     pub hovered: Option<PathBuf>,
     pub open_roots: Vec<PathBuf>,
@@ -163,6 +165,7 @@ impl State {
             filter: String::new(),
             filter_focused: false,
             only_needing_action: false,
+            show_worktrees: true,
             folded: BTreeSet::new(),
             hovered: None,
             open_roots: Vec::new(),
@@ -209,6 +212,10 @@ impl State {
         self.only_needing_action
     }
 
+    pub const fn show_worktrees(&self) -> bool {
+        self.show_worktrees
+    }
+
     pub const fn is_scanning(&self) -> bool {
         self.scanning.is_some()
     }
@@ -239,29 +246,22 @@ impl State {
         self.folded.contains(key)
     }
 
-    /// The groups as shown: with a run, only the repos it ran on, and with
-    /// "only problems" only those that went wrong.
+    /// The groups as shown. A run does not change them; only after "only
+    /// problems" were chosen are just the repos that went wrong left.
     pub fn groups(&self) -> Vec<Group> {
-        let unfolded = BTreeSet::new();
-        // A run shows what it ran on, every group open.
-        let folded = if self.run.is_some() {
-            &unfolded
-        } else {
-            &self.folded
-        };
         let shape = Shape {
             readings: &self.readings,
             open_roots: &self.open_roots,
             filter: &self.filter,
             only_needing_action: self.only_needing_action,
-            folded,
+            show_worktrees: self.show_worktrees,
+            folded: &self.folded,
         };
         let mut groups = rows::build(&self.store, &shape);
-        if let Some(run) = &self.run {
+        if let Some(run) = self.run.as_ref().filter(|run| run.only_problems) {
             let keeps = |path: &Path| {
                 run.order.iter().any(|target| target == path)
-                    && (!run.only_problems
-                        || run.results.get(path).is_some_and(Outcome::is_problem))
+                    && run.results.get(path).is_some_and(Outcome::is_problem)
             };
             for group in &mut groups {
                 group.rows.retain(|row| keeps(&row.owner));

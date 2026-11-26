@@ -66,6 +66,8 @@ pub enum Message {
     FilterChanged(String),
     FilterSubmitted,
     OnlyNeedingActionToggled,
+    /// The switch "Show worktrees".
+    ShowWorktreesToggled,
     // The list.
     /// Searches again, or stops the search that runs.
     ScanNow,

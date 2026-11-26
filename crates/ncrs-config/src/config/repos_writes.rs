@@ -38,6 +38,11 @@ pub fn repos_settings(settings: &ReposSettings) -> Vec<Setting> {
         setting("skip_network", settings.skip_network.into()),
         setting("learn_from_panel", settings.learn_from_panel.into()),
         setting("concurrency", i64::from(settings.concurrency).into()),
+        Setting {
+            tables: &[REPOS_TABLE],
+            key: "show_worktrees",
+            value: (!settings.show_worktrees).then(|| false.into()),
+        },
         width("name_width", settings.columns.name),
         width("branch_width", settings.columns.branch),
         width("standing_width", settings.columns.standing),
@@ -69,6 +74,7 @@ mod tests {
             skip_network: true,
             learn_from_panel: false,
             concurrency: 8,
+            show_worktrees: false,
             columns: crate::repos::ReposColumnWidths {
                 name: Some(300),
                 standing: Some(180),
@@ -77,6 +83,16 @@ mod tests {
         };
         let read_back = write_repos(&path, &settings).unwrap().repos;
         assert_eq!(read_back, settings);
+    }
+
+    #[test]
+    fn the_standard_switch_and_widths_write_no_line() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        write_repos(&path, &ReposSettings::default()).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("show_worktrees"), "{text}");
+        assert!(!text.contains("_width"), "{text}");
     }
 
     #[test]

@@ -53,6 +53,8 @@ pub struct Shape<'a> {
     pub open_roots: &'a [PathBuf],
     pub filter: &'a str,
     pub only_needing_action: bool,
+    /// The worktrees of a repository stand under it.
+    pub show_worktrees: bool,
     pub folded: &'a BTreeSet<GroupKey>,
 }
 
@@ -142,7 +144,9 @@ pub fn build(store: &Store, shape: &Shape<'_>) -> Vec<Group> {
             let rows = if open {
                 paths
                     .into_iter()
-                    .flat_map(|path| repo_with_worktrees(path, shape.readings))
+                    .flat_map(|path| {
+                        repo_with_worktrees(path, shape.readings, shape.show_worktrees)
+                    })
                     .collect()
             } else {
                 Vec::new()
@@ -157,14 +161,19 @@ pub fn build(store: &Store, shape: &Shape<'_>) -> Vec<Group> {
         .collect()
 }
 
-fn repo_with_worktrees(path: &Path, readings: &BTreeMap<PathBuf, Reading>) -> Vec<Row> {
+fn repo_with_worktrees(
+    path: &Path,
+    readings: &BTreeMap<PathBuf, Reading>,
+    show_worktrees: bool,
+) -> Vec<Row> {
     let mut rows = vec![Row {
         path: path.to_path_buf(),
         kind: RowKind::Repo,
         owner: path.to_path_buf(),
         branch: None,
     }];
-    if let Some(summary) = readings.get(path).and_then(Reading::summary) {
+    let summary = readings.get(path).and_then(Reading::summary);
+    if let Some(summary) = summary.filter(|_| show_worktrees) {
         rows.extend(
             summary
                 .worktrees
@@ -223,6 +232,7 @@ mod tests {
             open_roots,
             filter: "",
             only_needing_action: false,
+            show_worktrees: true,
             folded,
         }
     }

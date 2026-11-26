@@ -122,6 +122,13 @@ impl App {
                 self.shown_tab = ShownTab::Panels;
                 self.show_folder_in_active_panel(folder, None)
             }
+            Ask::ShowWorktreesChanged(shown) => {
+                let changed = ncrs_config::repos::ReposSettings {
+                    show_worktrees: shown,
+                    ..self.repos_settings.clone()
+                };
+                self.save_repos_settings(changed)
+            }
             Ask::ColumnsResized(columns) => {
                 let changed = ncrs_config::repos::ReposSettings {
                     columns,

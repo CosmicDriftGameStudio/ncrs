@@ -158,6 +158,7 @@ fn a_failed_row_stays_visible_next_to_the_deleted_ones() {
     assert_eq!(pane.result_of(&items[0]), Some(Ok(())));
     assert!(matches!(pane.result_of(&items[1]), Some(Err(_))));
     assert_eq!(pane.deleted_count(), 2);
+    assert_eq!(pane.failed_count(), 1);
 }
 
 #[test]

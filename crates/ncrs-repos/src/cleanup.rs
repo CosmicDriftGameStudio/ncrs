@@ -457,6 +457,15 @@ impl Cleanup {
             .count()
     }
 
+    /// How many entries the deleting could not delete.
+    pub fn failed_count(&self) -> usize {
+        self.offering()
+            .into_iter()
+            .flat_map(|repo| self.items(repo))
+            .filter(|item| matches!(self.result_of(item), Some(Err(_))))
+            .count()
+    }
+
     fn clamp_cursor(&mut self) {
         let last = self.lines().len().saturating_sub(1);
         self.cursor = self.cursor.min(last);

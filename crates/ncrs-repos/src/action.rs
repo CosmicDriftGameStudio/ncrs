@@ -22,6 +22,8 @@ pub enum Action {
     OpenTerminal(PathBuf),
     /// Put this path on the clipboard.
     CopyPath(PathBuf),
+    /// "Show worktrees" was switched: remember it.
+    ShowWorktreesChanged(bool),
     /// A column of the list was dragged: remember these widths.
     ColumnsResized(ncrs_config::repos::ReposColumnWidths),
 }

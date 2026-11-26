@@ -13,6 +13,8 @@ use ncrs_ui_kit::check_rows::{
     check_group_head, check_row, close_cross, worktree_detail, CheckGroupHead, CheckRow, RowOutcome,
 };
 use ncrs_ui_kit::format::time;
+use ncrs_ui_kit::git_state::RunOutcome;
+use ncrs_ui_kit::repo_row::result_strip;
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
 use ncrs_ui_kit::page_text::{page_heading, page_line};
@@ -249,8 +251,38 @@ fn keep_section<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Option<Element<'a, M
     Some(section.into())
 }
 
+/// What the deleting did, as the bar the other results use: "infra: 2 deleted, 1 failed".
+fn deleted_banner<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let lang = ctx.lang;
+    let heading = match cleanup.order.as_slice() {
+        [only] => format!("{}:", name_of(only)),
+        repos => fill_template(
+            lang.text(Msg::GitBannerReposOther),
+            &[("{count}", &repos.len().to_string())],
+        ),
+    };
+    let mut results = vec![(
+        RunOutcome::Updated,
+        fill_template(
+            lang.text(Msg::ReposCleanupDeleted),
+            &[("{count}", &cleanup.deleted_count().to_string())],
+        ),
+    )];
+    let failed = cleanup.failed_count();
+    if failed > 0 {
+        results.push((
+            RunOutcome::Failed,
+            format!("{failed} {}", RunOutcome::Failed.label(lang)),
+        ));
+    }
+    result_strip(heading, results, ctx.palette)
+}
+
 fn summary_line<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let lang = ctx.lang;
+    if cleanup.phase == Phase::Done && cleanup.undone.is_none() {
+        return deleted_banner(cleanup, ctx);
+    }
     let text_line = match cleanup.phase {
         Phase::Reading => fill_template(
             lang.text(Msg::ReposCleanupReading),
@@ -270,16 +302,17 @@ fn summary_line<'a>(cleanup: &Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message>
                 ],
             )
         }
-        Phase::Done => match &cleanup.undone {
-            Some(undone) => fill_template(
-                lang.text(Msg::ReposCleanupUndone),
-                &[("{count}", &undone.branches.to_string())],
-            ),
-            None => fill_template(
-                lang.text(Msg::ReposCleanupDeleted),
-                &[("{count}", &cleanup.deleted_count().to_string())],
-            ),
-        },
+        Phase::Done => fill_template(
+            lang.text(Msg::ReposCleanupUndone),
+            &[(
+                "{count}",
+                &cleanup
+                    .undone
+                    .as_ref()
+                    .map_or(0, |undone| undone.branches)
+                    .to_string(),
+            )],
+        ),
     };
     let fetched = cleanup.fetched_at.map(|at| {
         fill_template(
