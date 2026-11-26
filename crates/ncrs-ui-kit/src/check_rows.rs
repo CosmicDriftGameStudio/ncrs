@@ -153,10 +153,12 @@ pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<M>, palette: &Palette) -> Ele
         Space::new().into()
     };
     let reason_ink = if item.kept { faint(dim_ink) } else { dim_ink };
-    let slot: Element<'a, M> = match item.outcome {
-        Some(RowOutcome::Done(done)) => chip(Icon::CircleCheck, done, palette.success),
-        Some(RowOutcome::Failed(failure)) => chip(Icon::CircleX, failure, palette.error),
-        None => line(item.reason, font_size::SMALL, reason_ink),
+    // A failure is git's own sentence and too long for the reason column: it
+    // gets the second line, in place of the worktree path.
+    let (slot, failure): (Element<'a, M>, Option<String>) = match item.outcome {
+        Some(RowOutcome::Done(done)) => (chip(Icon::CircleCheck, done, palette.success), None),
+        Some(RowOutcome::Failed(failure)) => (Space::new().into(), Some(failure)),
+        None => (line(item.reason, font_size::SMALL, reason_ink), None),
     };
     // A finished row steps back: dimmed, and the name struck through.
     let name_cell: Element<'a, M> = if is_done {
@@ -177,10 +179,13 @@ pub fn check_row<'a, M: Clone + 'a>(item: CheckRow<M>, palette: &Palette) -> Ele
             .clip(true),
     ]
     .align_y(alignment::Vertical::Center);
-    let second = item.detail.map(|place| {
-        let shown_place = ellipsize_middle(&place, DETAIL_CHARS);
-        (format!("\u{25a2} {shown_place}"), dim_ink)
-    });
+    let second = match failure {
+        Some(sentence) => Some((sentence, palette.error)),
+        None => item.detail.map(|place| {
+            let shown_place = ellipsize_middle(&place, DETAIL_CHARS);
+            (format!("\u{25a2} {shown_place}"), dim_ink)
+        }),
+    };
     let mut lines = column![name_line].spacing(spacing::XS);
     let mut height = size::CHECK_ROW;
     if let Some((content, ink)) = second {
