@@ -523,6 +523,12 @@ enum Reading {
     New,
 }
 
+/// `file` is written with `/`; the index holds the path in the system's spelling.
+fn below(root: &Path, file: &str) -> PathBuf {
+    file.split('/')
+        .fold(root.to_path_buf(), |path, part| path.join(part))
+}
+
 impl Started {
     fn read(&self, location: &Location, file: &str) -> Reading {
         let steps = intake_steps(
@@ -531,7 +537,7 @@ impl Started {
             Some(Arc::clone(&self.provider) as Arc<dyn Provider>),
             OwnDetails::default(),
         );
-        let mut item = Item::at_first_step(location, &location.path.join(file), false);
+        let mut item = Item::at_first_step(location, &below(&location.path, file), false);
         let known = {
             let index = self.index.0.lock().unwrap();
             index.document_by_path(&item.path).unwrap().is_some()
@@ -564,7 +570,9 @@ impl Started {
 
     fn document(&self, location: &Location, file: &str) -> Option<Document> {
         let index = self.index.0.lock().unwrap();
-        index.document_by_path(&location.path.join(file)).unwrap()
+        index
+            .document_by_path(&below(&location.path, file))
+            .unwrap()
     }
 }
 

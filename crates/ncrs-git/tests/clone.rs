@@ -44,6 +44,9 @@ fn an_address_that_looks_like_an_option_is_refused() {
 #[test]
 fn a_clone_of_nothing_fails_without_a_prompt() {
     let parent = tempfile::tempdir().unwrap();
-    let missing = parent.path().join("nowhere");
+    // Not inside `parent`: Git for Windows makes the target first, and a target
+    // that is the missing address itself is then cloned as an empty repository.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let missing = elsewhere.path().join("nowhere");
     ncrs_git::clone(&missing.to_string_lossy(), parent.path()).unwrap_err();
 }

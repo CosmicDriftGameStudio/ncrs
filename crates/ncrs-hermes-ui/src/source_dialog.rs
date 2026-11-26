@@ -392,7 +392,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let target = dir.path().join("docs");
         std::fs::create_dir_all(target.join("in")).expect("folders");
-        let real_target = target.canonicalize().expect("a real path");
+        let real_target = ncrs_intake::canonical_path(&target).expect("a real path");
         let (filing, id) = filing_with_target(&real_target);
         let mut draft = SourceDialog::new(
             SourceDialogKind::Watched,

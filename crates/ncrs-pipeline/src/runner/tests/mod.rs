@@ -349,6 +349,10 @@ fn a_failed_file_that_changes_is_tried_again() {
     runner.wait_for("all three handled", |snapshot| {
         is_idle(snapshot) && snapshot.steps[0].done + snapshot.steps[0].failed == 3
     });
+    // The report below is the only one: the real watcher may report the move
+    // a second time (it does on Windows), so it is swapped for one that sees nothing.
+    let (deaf, _) = ncrs_intake::LocationWatcher::start_forwarding(&[], |_| {});
+    runner.shared.update(|state| state.watcher = Some(deaf));
 
     // Moved in whole, so no report can see the file half written.
     let staging = TempDir::new().unwrap();

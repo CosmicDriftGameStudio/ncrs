@@ -76,6 +76,8 @@ fn literal_patterns_escape_what_git_would_read_as_a_pattern() {
     assert_eq!(literal_pattern("a*b?.txt"), "/a\\*b\\?.txt");
 }
 
+// Windows allows no `*` in a file name, so the case cannot arise there.
+#[cfg(unix)]
 #[test]
 fn an_escaped_name_really_matches_only_that_file() {
     let repo = repo();
