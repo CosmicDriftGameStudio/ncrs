@@ -366,6 +366,10 @@ pub fn default_bindings_for(mac: bool) -> Vec<(KeyAction, Binding)> {
             },
         ),
     ));
+    if mac {
+        let (held, key) = mac_menu_chord();
+        bindings.insert(0, (A::ContextMenu, Binding::with_modifiers(key, held)));
+    }
     // Safari's and Finder's back and forward; elsewhere Alt+arrows are enough.
     if mac {
         bindings.push((

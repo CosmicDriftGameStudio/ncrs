@@ -269,8 +269,12 @@ mod tests {
         assert_eq!(clash.is_err(), !cfg!(target_os = "macos"), "{clash:?}");
         let (_second_dir, second_path) = written("[keys.git]\nfetch = \"primary+alt+shift+k\"\n");
         let second_config = config::load(&second_path).unwrap();
-        let keys = crate::git_keys::resolve(&second_config.git_keys, &second_config.keymap, false)
-            .unwrap();
+        let keys = crate::git_keys::resolve(
+            &second_config.git_keys,
+            &second_config.keymap,
+            cfg!(target_os = "macos"),
+        )
+        .unwrap();
         assert_eq!(
             keys.pressed(
                 &Key::Character("k".into()),

@@ -43,6 +43,13 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
         let pressed = route_key(&app.prompt_key_state(), Key::Named(key), modifiers);
         drop(app.update(pressed.unwrap()));
     };
+    if cfg!(target_os = "macos") {
+        press(&mut app, Named::Enter, Modifiers::CTRL);
+        assert_eq!(app.repos.as_ref().unwrap().menu.as_deref(), Some(root.path()));
+        // Escape comes through `InputState`, not the key routing.
+        drop(app.update(Message::Repos(ncrs_repos::Message::Escape)));
+        assert!(app.repos.as_ref().unwrap().menu.is_none());
+    }
     press(&mut app, Named::F10, Modifiers::SHIFT);
     let repos = app.repos.as_ref().unwrap();
     assert_eq!(repos.menu.as_deref(), Some(root.path()));

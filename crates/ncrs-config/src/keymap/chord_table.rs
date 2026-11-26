@@ -9,6 +9,12 @@ use iced_core::keyboard::key::Named;
 /// The modifiers held and the key pressed.
 pub type Chord = (Modifiers, Key);
 
+/// Opens the context menu on a Mac, which has no menu key and sends F10 only
+/// with fn held.
+pub fn mac_menu_chord() -> Chord {
+    (Modifiers::CTRL, Key::Named(Named::Enter))
+}
+
 /// One line of `[keys.<tab>]`: the name of an action and the keys written for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyOverride {

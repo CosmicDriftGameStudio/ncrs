@@ -47,7 +47,7 @@ use self::action::*;
 pub use self::action::{system_reads_scans, KeyAction, KeyScope};
 pub use self::bindings::{Keymap, KeymapError, FUNCTION_KEY_COUNT, NEW_FOLDER_SLOT};
 pub use self::chord_table::{
-    chord_label, same_key, Chord, ChordTable, ChordTableError, KeyOverride, TabActions,
+    chord_label, mac_menu_chord, same_key, Chord, ChordTable, ChordTableError, KeyOverride, TabActions,
 };
 use self::chords::*;
 pub use self::chords::{

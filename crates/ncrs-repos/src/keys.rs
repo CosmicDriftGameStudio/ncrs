@@ -4,7 +4,7 @@
 
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
-use ncrs_config::keymap::{ChordTable, ChordTableError, TabActions};
+use ncrs_config::keymap::{mac_menu_chord, ChordTable, ChordTableError, TabActions};
 
 pub use ncrs_config::keymap::{Chord, KeyOverride};
 
@@ -41,7 +41,10 @@ impl ReposKeys {
             table: ChordTable::new(
                 Shortcut::ALL
                     .iter()
-                    .map(|shortcut| vec![shortcut.default_chord(command)])
+                    .map(|&shortcut| {
+                        let mac_menu = (mac && shortcut == Shortcut::OpenMenu).then(mac_menu_chord);
+                        mac_menu.into_iter().chain([shortcut.default_chord(command)]).collect()
+                    })
                     .collect(),
             ),
         }
@@ -290,6 +293,11 @@ mod tests {
         assert_eq!(press(Named::ContextMenu, false), Some(Message::OpenMenuKey));
         assert_eq!(
             repos_key(&keys, &Key::Named(Named::F10), Modifiers::SHIFT, false, false),
+            Some(Message::OpenMenuKey)
+        );
+        let mac = ReposKeys::defaults_for(true);
+        assert_eq!(
+            repos_key(&mac, &Key::Named(Named::Enter), Modifiers::CTRL, false, false),
             Some(Message::OpenMenuKey)
         );
         assert_eq!(press(Named::ArrowDown, true), Some(Message::MenuDown));
