@@ -1,10 +1,12 @@
 //! The top of the tab: title and summary, the buttons of the list, the bar of
 //! the bulk actions and, after a run, the result banner.
 
+use std::path::PathBuf;
+
 use iced::widget::{container, row, Space};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::kit::{self, text_field, Check, Tone};
+use ncrs_ui_kit::kit::{self, text_field, Check, GitAction, Tone};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::repo_row::result_banner;
 use ncrs_ui_kit::theme::{font_size, size, spacing};
@@ -75,11 +77,15 @@ pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     .into()
 }
 
-pub fn scope_text(scope: Scope, ctx: ViewCtx<'_>) -> String {
+/// What the actions run on; a single repository by its name.
+pub fn scope_text(scope: Scope, targets: &[PathBuf], ctx: ViewCtx<'_>) -> String {
     let (msg, count) = match scope {
         Scope::Marked(count) => (Msg::ReposSelected, count),
         Scope::Favourites(count) => (Msg::ReposScopeFavourites, count),
-        Scope::Row => (Msg::ReposScopeRow, 1),
+        Scope::Row => match targets.first().and_then(|path| path.file_name()) {
+            Some(name) => return name.to_string_lossy().into_owned(),
+            None => (Msg::ReposScopeRow, 1),
+        },
     };
     fill_template(ctx.lang.text(msg), &[("{n}", &count.to_string())])
 }
@@ -91,44 +97,50 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let (scope, targets) = state.targets();
     let busy = state.run().is_some_and(|run| !run.is_finished()) || state.cleanup.is_some();
     let can_run = ctx.actions_available && !busy && !targets.is_empty();
-    let bulk = |action: BulkAction, shortcut: Shortcut| {
-        let label = format!(
-            "{} · {}  {}",
-            ctx.lang.text(match action {
-                BulkAction::Fetch => Msg::GitViewToolbarFetch,
-                BulkAction::SwitchToDefault => Msg::ReposActionSwitchDefault,
-                BulkAction::PullFastForward => Msg::ReposActionPullFf,
-                BulkAction::Both => Msg::ReposActionBoth,
-            }),
-            scope_text(scope, ctx),
-            ctx.keys.label(shortcut),
-        );
-        kit::button(
-            label.trim_end(),
-            can_run.then_some(Message::Bulk(action)),
+    let git_button = |git_action: GitAction, what: Msg, shortcut: Shortcut, message: Message| {
+        let key = ctx.keys.label(shortcut);
+        let tip = if key.is_empty() {
+            ctx.lang.text(what).to_owned()
+        } else {
+            format!("{} ({key})", ctx.lang.text(what))
+        };
+        kit::icon_button(
+            git_action.icon(),
+            None,
+            &tip,
+            can_run.then_some(message),
             Tone::Secondary,
             palette,
         )
+    };
+    let bulk = |action: BulkAction, shortcut: Shortcut| {
+        let (git_action, what) = match action {
+            BulkAction::Fetch => (GitAction::Fetch, Msg::GitViewToolbarFetch),
+            BulkAction::SwitchToDefault => (GitAction::SwitchToDefault, Msg::ReposActionSwitchDefault),
+            BulkAction::PullFastForward => (GitAction::Pull, Msg::ReposActionPullFf),
+            BulkAction::Both => (GitAction::SwitchAndPull, Msg::ReposActionBoth),
+        };
+        git_button(git_action, what, shortcut, Message::Bulk(action))
     };
     let marked = state.marked_repos().len();
     let mut line = row![]
         .spacing(spacing::L)
         .align_y(alignment::Vertical::Center);
+    let scope_label = fill_template(
+        ctx.lang.text(Msg::ReposScopeLabel),
+        &[("{what}", &scope_text(scope, &targets, ctx))],
+    );
     line = line
+        .push(page_line(&scope_label, font_size::BODY, palette.dim_text))
         .push(bulk(BulkAction::Fetch, Shortcut::Fetch))
         .push(bulk(BulkAction::SwitchToDefault, Shortcut::SwitchToDefault))
         .push(bulk(BulkAction::PullFastForward, Shortcut::PullFastForward))
         .push(bulk(BulkAction::Both, Shortcut::Both))
-        .push(kit::button(
-            &format!(
-                "{} · {}  {}",
-                ctx.lang.text(Msg::ReposToolbarCleanup),
-                scope_text(scope, ctx),
-                ctx.keys.label(Shortcut::CleanUp)
-            ),
-            can_run.then_some(Message::Cleanup(CleanupMessage::Open)),
-            Tone::Secondary,
-            palette,
+        .push(git_button(
+            GitAction::CleanUp,
+            Msg::ReposToolbarCleanup,
+            Shortcut::CleanUp,
+            Message::Cleanup(CleanupMessage::Open),
         ))
         .push(kit::button(
             ctx.lang.text(Msg::ReposOpenInTabs),

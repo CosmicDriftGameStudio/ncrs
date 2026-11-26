@@ -1,11 +1,11 @@
 //! The buttons of the header: fetch, pull, push, a new branch, stash and
-//! undo, with their words. Where the actions are off they stay and are
+//! undo, as their icons with the words in the tooltips. Where the actions are off they stay and are
 //! locked; the tooltip says why.
 
 use iced::widget::row;
 use iced::{alignment, Element};
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::kit::{toolbar_button, Tone};
+use ncrs_ui_kit::kit::{icon_button, GitAction, Tone};
 use ncrs_ui_kit::split_button::split_button;
 use ncrs_ui_kit::theme::spacing;
 
@@ -18,7 +18,7 @@ use crate::shortcuts::Shortcut;
 use crate::state::State;
 use crate::sync_menu::SyncKind;
 
-/// Shown on the button whose operation is running.
+/// Shown beside the icon of the button whose operation is running.
 const BUSY_LABEL: &str = "\u{2026}";
 
 /// The tooltip: what it does and the key that does the same.
@@ -28,14 +28,6 @@ pub(in crate::view) fn tip(what: &str, shortcut: Shortcut, keys: &GitKeys) -> St
         what.to_owned()
     } else {
         format!("{what} ({key})")
-    }
-}
-
-fn counted(word: &str, glyph: &str, count: u32) -> String {
-    if count > 0 {
-        format!("{word} {glyph}{count}")
-    } else {
-        word.to_owned()
     }
 }
 
@@ -49,71 +41,70 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         Unavailable::GitMissing => Msg::GitViewHintGitMissing,
         Unavailable::Sandbox => Msg::GitViewHintSandbox,
     });
-    let word = |operation: Operation, idle_word: String| {
-        if busy == Some(operation) {
-            BUSY_LABEL.to_owned()
+    let help = |what: &str, shortcut: Shortcut| match locked_reason {
+        Some(reason) => lang.text(reason).to_owned(),
+        None => tip(what, shortcut, ctx.keys),
+    };
+    // The count beside the icon, or the dots while it runs.
+    let beside = |operation: Option<Operation>, count: usize| {
+        if operation.is_some() && busy == operation {
+            Some(BUSY_LABEL.to_owned())
         } else {
-            idle_word
+            (count > 0).then(|| count.to_string())
         }
     };
+    let enabled = |operation: Option<Operation>| {
+        locked_reason.is_none() && operation.is_none_or(|op| busy != Some(op))
+    };
     let action = |operation: Option<Operation>,
-                  label: String,
+                  git_action: GitAction,
                   what: Msg,
                   shortcut: Shortcut,
-                  message: Message,
-                  tone: Tone| {
-        let enabled = locked_reason.is_none() && operation.is_none_or(|op| busy != Some(op));
-        let shown = match operation {
-            Some(op) => word(op, label),
-            None => label,
-        };
-        let help = match locked_reason {
-            Some(reason) => lang.text(reason).to_owned(),
-            None => tip(lang.text(what), shortcut, ctx.keys),
-        };
-        toolbar_button(
-            &shown,
-            None,
-            &help,
-            enabled.then_some(message),
-            tone,
+                  message: Message| {
+        icon_button(
+            git_action.icon(),
+            beside(operation, 0),
+            &help(lang.text(what), shortcut),
+            enabled(operation).then_some(message),
+            Tone::Secondary,
             palette,
         )
     };
-    let pull_tone = if sync.behind > 0 {
-        Tone::Primary
-    } else {
-        Tone::Secondary
-    };
     let split = |operation: Operation,
                  kind: SyncKind,
-                 label: String,
+                 git_action: GitAction,
+                 count: u32,
                  what: Msg,
                  shortcut: Shortcut,
-                 message: Message,
-                 tone: Tone| {
-        let enabled = locked_reason.is_none() && busy != Some(operation);
-        let help = match locked_reason {
-            Some(reason) => lang.text(reason).to_owned(),
-            None => tip(lang.text(what), shortcut, ctx.keys),
+                 message: Message| {
+        let tone = if kind == SyncKind::Pull && count > 0 {
+            Tone::Primary
+        } else {
+            Tone::Secondary
         };
+        let shown_help = help(lang.text(what), shortcut);
+        let is_enabled = enabled(Some(operation));
         let open = state
             .actions
             .sync_menu
             .filter(|menu| menu.kind == kind)
             .map(|menu| super::sync_menu::rows(&menu, sync.force_blocked, ctx));
         split_button(
-            &word(operation, label),
-            &help,
-            enabled.then_some(message),
-            enabled.then_some(Message::OpenSyncMenu(kind)),
+            icon_button(
+                git_action.icon(),
+                beside(Some(operation), usize::try_from(count).unwrap_or(usize::MAX)),
+                &shown_help,
+                is_enabled.then_some(message),
+                tone,
+                palette,
+            ),
+            &shown_help,
+            is_enabled.then_some(Message::OpenSyncMenu(kind)),
             open,
             tone,
             palette,
         )
     };
-    let pull_label = counted(lang.text(Msg::GitViewToolbarPull), "\u{2193}", sync.behind);
-    let push_label = counted(lang.text(Msg::GitViewToolbarPush), "\u{2191}", sync.ahead);
     let undo_help = match (&sync.undo, locked_reason) {
         (_, Some(reason)) => lang.text(reason).to_owned(),
         (Some(what), None) => tip(
@@ -128,72 +119,63 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let mut bar = row![
         action(
             Some(Operation::Fetch),
-            lang.text(Msg::GitViewToolbarFetch).to_owned(),
+            GitAction::Fetch,
             Msg::GitViewToolbarFetch,
             Shortcut::Fetch,
             Message::Fetch,
-            Tone::Secondary
         ),
         split(
             Operation::Pull,
             SyncKind::Pull,
-            pull_label,
+            GitAction::Pull,
+            sync.behind,
             Msg::GitViewToolbarPull,
             Shortcut::Pull,
             Message::Pull,
-            pull_tone
         ),
         split(
             Operation::Push,
             SyncKind::Push,
-            push_label,
+            GitAction::Push,
+            sync.ahead,
             Msg::GitViewToolbarPush,
             Shortcut::Push,
             Message::Push,
-            Tone::Secondary
         ),
         action(
             None,
-            lang.text(Msg::GitViewToolbarBranch).to_owned(),
+            GitAction::NewBranch,
             Msg::GitViewToolbarBranch,
             Shortcut::NewBranch,
             Message::MenuPressed(MenuAction::NewBranchFrom),
-            Tone::Secondary
         ),
         action(
             Some(Operation::Stash),
-            lang.text(Msg::GitViewToolbarStash).to_owned(),
+            GitAction::Stash,
             Msg::GitViewToolbarStash,
             Shortcut::Stash,
             Message::Stash,
-            Tone::Secondary
         ),
-        toolbar_button(
-            &word(
-                Operation::Undo,
-                lang.text(Msg::GitViewToolbarUndoLabel).to_owned()
-            ),
-            None,
+        icon_button(
+            GitAction::Undo.icon(),
+            beside(Some(Operation::Undo), 0),
             &undo_help,
             undo_enabled.then_some(Message::Undo),
             Tone::Secondary,
-            palette
+            palette,
         ),
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     let cleanable = state.actions.cleanable.len();
     if cleanable > 0 {
-        bar = bar.push(action(
-            None,
-            fill_template(
-                lang.text(Msg::GitViewToolbarCleanup),
-                &[("{count}", &cleanable.to_string())],
-            ),
-            Msg::GitViewCommandCleanup,
-            Shortcut::CleanUp,
-            Message::Cleanup(CleanupMessage::Open),
+        bar = bar.push(icon_button(
+            GitAction::CleanUp.icon(),
+            Some(cleanable.to_string()),
+            &help(lang.text(Msg::GitViewCommandCleanup), Shortcut::CleanUp),
+            enabled(None).then_some(Message::Cleanup(CleanupMessage::Open)),
             Tone::Secondary,
+            palette,
         ));
     }
     bar.into()

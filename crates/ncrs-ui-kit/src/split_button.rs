@@ -57,21 +57,20 @@ fn entry_row<'a, M: Clone + 'a>(entry: PopupEntry<M>, palette: &Palette) -> Elem
     )
 }
 
-/// The button (`label`, `tip`) and the arrow beside it, which has the same tip and `tone`.
+/// The button `main` and the arrow beside it, with `tip` and `tone`.
 /// `menu` is the rows to show under them while the menu is open; `None` keeps
 /// it closed. A click outside the list is for the caller to catch: the list
 /// itself takes no outside clicks.
 pub fn split_button<'a, M: Clone + 'a>(
-    label: &str,
+    main: Element<'a, M>,
     tip: &str,
-    on_main: Option<M>,
     on_arrow: Option<M>,
     menu: Option<Vec<MenuRow<M>>>,
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
     let halves = row![
-        toolbar_button(label, None, tip, on_main, tone, palette),
+        main,
         toolbar_button(ARROW, None, tip, on_arrow, tone, palette),
     ]
     .spacing(spacing::BORDER_WIDTH);

@@ -13387,12 +13387,6 @@
       "de": "Branch"
     },
     {
-      "key": "git_view.toolbar_undo_label",
-      "context": "Git tab, toolbar button that takes back the last Git action. One word.",
-      "en": "Undo",
-      "de": "Rückgängig"
-    },
-    {
       "key": "git_view.toolbar_nothing_to_undo",
       "context": "Git tab, tooltip of the locked Undo button: there is no Git action of this tab to take back.",
       "en": "Nothing to undo",
@@ -14093,6 +14087,12 @@
       "context": "Entry of the command list while the Repos tab is shown: opens the clean-up of merged branches and worktrees over the chosen repositories.",
       "en": "Clean up merged branches and worktrees…",
       "de": "Gemergte Branches und Worktrees aufräumen…"
+    },
+    {
+      "key": "repos.scope_label",
+      "context": "In front of the bulk action buttons of the Repos tab: what they run on. {what} is the name of the repository under the cursor, or a count such as \"6 selected\" or \"5 favourites\".",
+      "en": "For {what}:",
+      "de": "Für {what}:"
     },
     {
       "key": "repos.scope_row",
@@ -15035,12 +15035,6 @@
       "context": "Entry of the command list and of the shortcut table: the commit each line of the file under the cursor comes from.",
       "en": "Git blame",
       "de": "Git-Blame"
-    },
-    {
-      "key": "git_view.toolbar_cleanup",
-      "context": "Git tab, header button that opens the clean-up of merged branches and worktrees; {count} is how many could go.",
-      "en": "Clean up {count}",
-      "de": "Aufräumen {count}"
     },
     {
       "key": "git_view.command_cleanup",

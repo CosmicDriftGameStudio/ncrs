@@ -31,10 +31,14 @@ pub enum Icon {
     Star,
     CircleX,
     CirclePause,
+    RefreshCw,
+    GitBranch,
+    GitBranchPlus,
+    BrushCleaning,
 }
 
 impl Icon {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 26] = [
         Self::Clock,
         Self::Loader,
         Self::CircleCheck,
@@ -57,6 +61,10 @@ impl Icon {
         Self::Star,
         Self::CircleX,
         Self::CirclePause,
+        Self::RefreshCw,
+        Self::GitBranch,
+        Self::GitBranchPlus,
+        Self::BrushCleaning,
     ];
 
     pub(super) const fn bytes(self) -> &'static [u8] {
@@ -89,6 +97,10 @@ impl Icon {
             Self::Star => include_bytes!("../../../../assets/icons/star.svg"),
             Self::CircleX => include_bytes!("../../../../assets/icons/circle-x.svg"),
             Self::CirclePause => include_bytes!("../../../../assets/icons/circle-pause.svg"),
+            Self::RefreshCw => include_bytes!("../../../../assets/icons/refresh-cw.svg"),
+            Self::GitBranch => include_bytes!("../../../../assets/icons/git-branch.svg"),
+            Self::GitBranchPlus => include_bytes!("../../../../assets/icons/git-branch-plus.svg"),
+            Self::BrushCleaning => include_bytes!("../../../../assets/icons/brush-cleaning.svg"),
         }
     }
 
@@ -101,6 +113,36 @@ impl Icon {
             .get(self as usize)
             .cloned()
             .unwrap_or_else(|| svg::Handle::from_memory(self.bytes()))
+    }
+}
+
+/// A Git action, which has the same icon on every button that runs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitAction {
+    Fetch,
+    Pull,
+    Push,
+    NewBranch,
+    Stash,
+    Undo,
+    CleanUp,
+    SwitchToDefault,
+    SwitchAndPull,
+}
+
+impl GitAction {
+    pub const fn icon(self) -> Icon {
+        match self {
+            Self::Fetch => Icon::RefreshCw,
+            Self::Pull => Icon::ArrowDownToLine,
+            Self::Push => Icon::ArrowUpFromLine,
+            Self::NewBranch => Icon::GitBranchPlus,
+            Self::Stash => Icon::Archive,
+            Self::Undo => Icon::Undo,
+            Self::CleanUp => Icon::BrushCleaning,
+            Self::SwitchToDefault => Icon::GitBranch,
+            Self::SwitchAndPull => Icon::Download,
+        }
     }
 }
 

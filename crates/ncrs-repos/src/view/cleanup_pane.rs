@@ -453,7 +453,7 @@ pub fn view<'a>(cleanup: &'a Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> 
     let pane = column![
         row![
             page_heading(&title, palette),
-            dim(super::head::scope_text(cleanup.scope, ctx), ctx),
+            dim(super::head::scope_text(cleanup.scope, &cleanup.order, ctx), ctx),
             Space::new().width(Length::Fill),
             close_cross(
                 (cleanup.phase != Phase::Deleting)
