@@ -803,13 +803,14 @@ fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, Strin
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
         // Replaced in one rename: fs::write truncates first, and on Windows the runner can
         // fingerprint that empty in-between state.
-        // Beside the target, so the rename never crosses a volume.
+        // Beside the target, so the rename never crosses a volume. Closed before the
+        // rename: Windows can set the write time when a handle closes, and a file
+        // renamed while open would change once more after the move.
         let folder = path.parent().ok_or("the file has no folder")?;
-        let mut grown =
-            tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
-        std::io::Write::write_all(&mut grown, b"a body that grew while the step was not ready")
+        let grown = folder.join(".grown");
+        fs::write(&grown, b"a body that grew while the step was not ready")
             .map_err(|error| error.to_string())?;
-        grown.persist(path).map_err(|error| error.to_string())?;
+        fs::rename(&grown, path).map_err(|error| error.to_string())?;
         return Ok(StepOutcome::NotReady);
     }
     Ok(StepOutcome::Continue)
