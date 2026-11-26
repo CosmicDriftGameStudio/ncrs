@@ -69,7 +69,9 @@ pub fn view<'a>(
         .iter()
         .enumerate()
         .skip(offset)
-        .map(|(index, entry)| action_row(dialog, index, entry, action_width(window), lang, palette));
+        .map(|(index, entry)| {
+            action_row(dialog, index, entry, action_width(window), lang, palette)
+        });
     let first_git = dialog.rows().len();
     let git = git_shown
         .iter()

@@ -1,8 +1,8 @@
 //! The repository list: the column head, one row per repository or worktree,
 //! and the bar that sums up what a fetch or pull did.
 
-use iced::widget::text::Wrapping;
 use iced::mouse::Interaction;
+use iced::widget::text::Wrapping;
 use iced::widget::{container, mouse_area, row, stack, text, Row, Space};
 use iced::{alignment, Color, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
@@ -63,7 +63,10 @@ impl RepoColumns {
     pub fn with(self, column: RepoColumn, wanted: f32) -> Self {
         let width = wanted.round().clamp(REPO_COLUMN_MIN, REPO_COLUMN_MAX);
         match column {
-            RepoColumn::Name => Self { name: width, ..self },
+            RepoColumn::Name => Self {
+                name: width,
+                ..self
+            },
             RepoColumn::Branch => Self {
                 branch: width,
                 ..self
@@ -251,13 +254,9 @@ pub fn repo_header_titled<'a, M: Clone + 'a>(
         } else {
             alignment::Horizontal::Left
         };
-        let handle = mouse_area(
-            Space::new()
-                .width(size::COLUMN_GAP)
-                .height(Length::Fill),
-        )
-        .on_press(pressed(column))
-        .interaction(Interaction::ResizingHorizontally);
+        let handle = mouse_area(Space::new().width(size::COLUMN_GAP).height(Length::Fill))
+            .on_press(pressed(column))
+            .interaction(Interaction::ResizingHorizontally);
         stack![
             fixed(width, content),
             container(handle)

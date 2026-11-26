@@ -52,8 +52,8 @@ fn a_run_on_one_row_leaves_the_list_as_it_is_and_the_result_lies_at_the_row() {
 #[test]
 fn switching_the_worktrees_off_drops_their_rows_and_moves_the_cursor_to_the_repo() {
     let mut fixture = with_worktrees();
-    let worktree_rows = |fixture: &Fixture| {
-        fixture
+    let worktree_rows = |shown: &Fixture| {
+        shown
             .state
             .groups()
             .iter()
@@ -70,15 +70,15 @@ fn switching_the_worktrees_off_drops_their_rows_and_moves_the_cursor_to_the_repo
         .unwrap();
     fixture.send(Message::RowPressed(worktree));
 
-    let actions = fixture.send(Message::ShowWorktreesToggled);
+    let switched_off = fixture.send(Message::ShowWorktreesToggled);
 
-    assert_eq!(actions, vec![Action::ShowWorktreesChanged(false)]);
+    assert_eq!(switched_off, vec![Action::ShowWorktreesChanged(false)]);
     assert_eq!(worktree_rows(&fixture), 0);
     assert_eq!(fixture.state.visible().len(), NAMES.len());
     assert_eq!(fixture.state.cursor(), Some(repo("bravo")));
 
-    let actions = fixture.send(Message::ShowWorktreesToggled);
-    assert_eq!(actions, vec![Action::ShowWorktreesChanged(true)]);
+    let switched_on = fixture.send(Message::ShowWorktreesToggled);
+    assert_eq!(switched_on, vec![Action::ShowWorktreesChanged(true)]);
     assert_eq!(worktree_rows(&fixture), 1);
 }
 

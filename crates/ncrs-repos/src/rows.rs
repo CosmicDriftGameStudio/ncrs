@@ -172,8 +172,8 @@ fn repo_with_worktrees(
         owner: path.to_path_buf(),
         branch: None,
     }];
-    let summary = readings.get(path).and_then(Reading::summary);
-    if let Some(summary) = summary.filter(|_| show_worktrees) {
+    let repo_summary = readings.get(path).and_then(Reading::summary);
+    if let Some(summary) = repo_summary.filter(|_| show_worktrees) {
         rows.extend(
             summary
                 .worktrees

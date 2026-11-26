@@ -164,7 +164,7 @@ mod tests {
     }
 
     fn ask(state: &mut State, request: AskRequest) {
-        assert!(update(state, Message::CredentialAsked(request)).is_ok());
+        drop(update(state, Message::CredentialAsked(request)).unwrap());
     }
 
     #[test]
@@ -173,8 +173,8 @@ mod tests {
         ask(&mut state, request(10, PromptKind::Text));
         ask(&mut state, request(11, PromptKind::Secret));
         assert_eq!(state.credential.as_ref().map(|open| open.id), Some(10));
-        assert!(update(&mut state, Message::CredentialTyped(10, Secret::new("me"))).is_ok());
-        assert!(update(&mut state, Message::CredentialSend(10)).is_ok());
+        drop(update(&mut state, Message::CredentialTyped(10, Secret::new("me"))).unwrap());
+        drop(update(&mut state, Message::CredentialSend(10)).unwrap());
         assert_eq!(state.credential.as_ref().map(|open| open.id), Some(11));
     }
 
@@ -182,19 +182,19 @@ mod tests {
     fn an_empty_answer_to_a_text_question_stays_unsent() {
         let mut state = state();
         ask(&mut state, request(10, PromptKind::Secret));
-        assert!(update(&mut state, Message::CredentialSend(10)).is_ok());
+        drop(update(&mut state, Message::CredentialSend(10)).unwrap());
         assert!(state.credential.is_some());
     }
 
     #[test]
     fn the_keys_of_the_list_do_nothing_behind_the_dialog() {
         let mut state = state();
-        assert!(update(&mut state, Message::Enter).is_err());
+        update(&mut state, Message::Enter).unwrap_err();
         ask(&mut state, request(10, PromptKind::Secret));
-        assert!(update(&mut state, Message::Enter).is_ok());
-        assert!(update(&mut state, Message::Down).is_ok());
+        drop(update(&mut state, Message::Enter).unwrap());
+        drop(update(&mut state, Message::Down).unwrap());
         assert!(state.credential.is_some());
-        assert!(update(&mut state, Message::Escape).is_ok());
+        drop(update(&mut state, Message::Escape).unwrap());
         assert!(state.credential.is_none());
     }
 
@@ -202,7 +202,7 @@ mod tests {
     fn enter_refuses_a_yes_or_no_question() {
         let mut state = state();
         ask(&mut state, request(10, PromptKind::Confirm));
-        assert!(update(&mut state, Message::Enter).is_ok());
+        drop(update(&mut state, Message::Enter).unwrap());
         assert!(state.credential.is_none());
     }
 }

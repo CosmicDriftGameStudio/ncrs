@@ -9,7 +9,7 @@ use crate::state::State;
 
 /// Where the key shown at the right of an entry comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MenuKey {
+pub enum MenuKey {
     /// The key of the tab for this action.
     Own(Shortcut),
     /// The app's key that opens the thing under the cursor, Enter by default.
@@ -18,20 +18,20 @@ pub(crate) enum MenuKey {
     AppCopyPath,
 }
 
-pub(crate) struct MenuItem {
-    pub(crate) label: Msg,
-    pub(crate) key: MenuKey,
-    pub(crate) entry: MenuEntry,
-    pub(crate) enabled: bool,
+pub struct MenuItem {
+    pub label: Msg,
+    pub key: MenuKey,
+    pub entry: MenuEntry,
+    pub enabled: bool,
     /// A line is drawn above: the entry starts a group.
-    pub(crate) starts_group: bool,
+    pub starts_group: bool,
     /// It destroys something: drawn in the error color.
-    pub(crate) is_danger: bool,
+    pub is_danger: bool,
 }
 
 /// What the menu of the cursor row offers, in groups like the menu of the file
 /// panels; `run` is whether the write actions run.
-pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
+pub fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
     let unreachable = state
         .cursor()
         .as_deref()
@@ -135,7 +135,7 @@ pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
 
 /// The next entry that can be picked from `from` in `step` direction, round
 /// the end; `from` itself when no other can.
-pub(crate) fn next_enabled(items: &[MenuItem], from: usize, step: isize) -> usize {
+pub fn next_enabled(items: &[MenuItem], from: usize, step: isize) -> usize {
     let count = items.len();
     (1..=count)
         .map(|distance| {

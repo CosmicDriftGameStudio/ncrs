@@ -59,12 +59,7 @@ impl<M, F> std::fmt::Debug for CredentialDialog<'_, M, F> {
 }
 
 impl<'a, M: Clone + 'a, F: Fn(String) -> M + 'a> CredentialDialog<'a, M, F> {
-    pub fn view(
-        self,
-        window: Size,
-        lang: Language,
-        palette: &'a Palette,
-    ) -> Element<'a, M> {
+    pub fn view(self, window: Size, lang: Language, palette: &'a Palette) -> Element<'a, M> {
         let side_line = fill_template(
             lang.text(Msg::GitViewCredentialsAsk),
             &[("{prompt}", &shown_prompt(self.prompt))],
@@ -73,7 +68,10 @@ impl<'a, M: Clone + 'a, F: Fn(String) -> M + 'a> CredentialDialog<'a, M, F> {
         match self.kind {
             CredentialKind::Text => {
                 content = content
-                    .push(paragraph(lang.text(Msg::GitViewCredentialsFieldText), palette))
+                    .push(paragraph(
+                        lang.text(Msg::GitViewCredentialsFieldText),
+                        palette,
+                    ))
                     .push(text_field(
                         "",
                         self.typed,

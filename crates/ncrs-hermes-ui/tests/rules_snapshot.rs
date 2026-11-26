@@ -122,7 +122,7 @@ mod ui_tests {
 
     /// Eight rules in the first target, three in the second, none in the third.
     fn listed_rules() -> Vec<ListedRule> {
-        let layout = [("documents", 8_usize), ("company", 3)];
+        let layout: [(&str, usize); 2] = [("documents", 8), ("company", 3)];
         let ids = rule_ids(layout.iter().map(|(_, count)| count).sum());
         let mut unused_ids = ids.into_iter();
         let mut rules = Vec::new();

@@ -39,9 +39,9 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
     drop(app.update(Message::Repos(ncrs_repos::Message::Learn(
         root.path().to_path_buf(),
     ))));
-    let press = |app: &mut App, key: Named, modifiers: Modifiers| {
-        let pressed = route_key(&app.prompt_key_state(), Key::Named(key), modifiers);
-        drop(app.update(pressed.unwrap()));
+    let press = |target: &mut App, key: Named, modifiers: Modifiers| {
+        let pressed = route_key(&target.prompt_key_state(), Key::Named(key), modifiers);
+        drop(target.update(pressed.unwrap()));
     };
     if cfg!(target_os = "macos") {
         press(&mut app, Named::Enter, Modifiers::CTRL);
@@ -74,9 +74,9 @@ async fn a_tap_of_option_opens_the_menu_of_the_row_as_in_the_panels() {
     drop(app.update(Message::Repos(ncrs_repos::Message::Learn(
         root.path().to_path_buf(),
     ))));
-    let tap = |app: &mut App| {
-        app.publish_key_state();
-        let mut input = app.input.lock();
+    let tap = |target: &mut App| {
+        target.publish_key_state();
+        let mut input = target.input.lock();
         let modifiers = |held| iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(held));
         assert_eq!(
             input.handle(&modifiers(Modifiers::ALT), event::Status::Ignored),

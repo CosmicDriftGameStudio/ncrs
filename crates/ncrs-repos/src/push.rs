@@ -132,7 +132,7 @@ mod tests {
     /// leaves a mark and ends with `exit`.
     #[cfg(unix)]
     fn clone_ahead_with_hook(root: &Path, exit: u8) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::PermissionsExt as _;
         let remote = root.join("remote.git");
         let work = root.join("work");
         let (remote_arg, work_arg) = (remote.to_str().unwrap(), work.to_str().unwrap());

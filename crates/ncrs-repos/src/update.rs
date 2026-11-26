@@ -396,15 +396,15 @@ fn reachable_cursor(state: &State) -> Option<PathBuf> {
 
 pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
     state.open_roots.clone_from(&ctx.open_roots);
-    let message = match cleanup::update(state, incoming, ctx) {
+    let after_cleanup = match cleanup::update(state, incoming, ctx) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
-    let message = match crate::credential::update(state, message) {
+    let after_credential = match crate::credential::update(state, after_cleanup) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
-    let list_message = match crate::clone::update(state, message, ctx) {
+    let list_message = match crate::clone::update(state, after_credential, ctx) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };

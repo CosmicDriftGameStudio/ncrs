@@ -142,8 +142,8 @@ pub fn repos_key(
             _ => None,
         };
     }
-    if let Some(app_key) = app_key {
-        return Some(app_key.message());
+    if let Some(bound_key) = app_key {
+        return Some(bound_key.message());
     }
     if let Some(shortcut) = keys.pressed(key, modifiers) {
         return Some(shortcut.message());

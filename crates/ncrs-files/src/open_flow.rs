@@ -133,10 +133,8 @@ pub fn launch_external(
 /// one found, started in the folder under the cursor or the panel's folder.
 /// Where the panel has no local folder the update refuses before this runs.
 pub fn open_terminal(panels: &Panels, search_is_open: bool, ctx: &OpenCtx<'_>) -> Vec<Action> {
-    let folder = panels
-        .local_folder_target()
-        .filter(|_| !search_is_open);
-    match folder {
+    let target = panels.local_folder_target().filter(|_| !search_is_open);
+    match target {
         Some(folder) => open_terminal_in(&folder, ctx),
         None => vec![Action::ClearMessages],
     }
