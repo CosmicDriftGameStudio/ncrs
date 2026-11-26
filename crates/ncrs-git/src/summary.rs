@@ -31,6 +31,19 @@ pub struct RepoSummary {
     pub main_worktree: Option<PathBuf>,
 }
 
+/// When `root` is a linked worktree: the folder of the repository it belongs to.
+pub fn main_worktree_of(root: &Path) -> Option<PathBuf> {
+    main_worktree(&open(root).ok()?)
+}
+
+fn main_worktree(repository: &gix::Repository) -> Option<PathBuf> {
+    let common = std::fs::canonicalize(repository.common_dir()).ok()?;
+    let own = std::fs::canonicalize(repository.git_dir()).ok()?;
+    (common != own)
+        .then(|| common.parent().map(Path::to_path_buf))
+        .flatten()
+}
+
 /// When the repository last fetched, or `None` when it never did.
 pub fn last_fetch(root: &Path) -> Option<SystemTime> {
     let repository = open(root).ok()?;
@@ -78,11 +91,7 @@ pub fn repo_summary(
             branch: linked_branch,
         });
     }
-    let common = std::fs::canonicalize(repository.common_dir()).ok();
-    let own = std::fs::canonicalize(repository.git_dir()).ok();
-    let main_worktree = common
-        .filter(|found| Some(found) != own.as_ref())
-        .and_then(|found| found.parent().map(Path::to_path_buf));
+    let main_worktree = main_worktree(&repository);
     Ok(RepoSummary {
         branch,
         default_branch: default_branch(&repository).map(|found| found.name),

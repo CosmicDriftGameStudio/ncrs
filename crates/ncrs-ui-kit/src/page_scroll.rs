@@ -44,7 +44,15 @@ pub fn page_scroll_tracked_padded<'a, M: 'a>(
     padding: Padding,
     on_scroll: impl Fn(f32) -> M + 'a,
 ) -> Element<'a, M> {
+    // The bar floats in the right margin, so a column head above the page
+    // lines up with the columns whether the bar is shown or not.
     page_scrollable(id, content, padding)
+        .direction(Direction::Vertical(
+            Scrollbar::new()
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH)
+                .margin(SCROLLBAR_MARGIN),
+        ))
         .on_scroll(move |viewport| on_scroll(viewport.absolute_offset().y))
         .into()
 }

@@ -14,7 +14,7 @@ impl App {
         ncrs_git_view::Ctx {
             lang: self.lang,
             folded: root
-                .map(|folder| settings.folded_in(&folder.to_string_lossy()).to_vec())
+                .map(|folder| settings.folded_in(&folds_key(folder)).to_vec())
                 .unwrap_or_default(),
             columns: self.git_columns(),
             panes: self.git_panes(),
@@ -224,7 +224,7 @@ impl App {
             Ask::FoldsChanged { root, folded } => {
                 let changed = self
                     .git_view_settings
-                    .with_folded(&root.to_string_lossy(), folded);
+                    .with_folded(&folds_key(&root), folded);
                 self.save_git_view(changed)
             }
             Ask::PanesResized(widths) => {
@@ -288,4 +288,13 @@ impl App {
             }
         }
     }
+}
+
+/// The worktrees of one repository fold alike: their groups are remembered
+/// under the folder of the repository.
+fn folds_key(root: &Path) -> String {
+    ncrs_git::main_worktree_of(root)
+        .unwrap_or_else(|| root.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }

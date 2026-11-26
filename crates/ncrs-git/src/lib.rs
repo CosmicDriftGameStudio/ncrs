@@ -69,7 +69,7 @@ pub use repository::{is_repository_root, path_in_repository, repository_root_of}
 pub use stash::StashEntry;
 pub use state::FileState;
 pub use status::{state_of_entry, status, RepoStatus};
-pub use summary::{last_fetch, repo_summary, RepoSummary, WorktreeSummary};
+pub use summary::{last_fetch, main_worktree_of, repo_summary, RepoSummary, WorktreeSummary};
 pub use sync::{ForcePushPlan, PullStrategy};
 pub use undo::{RecreatedBranch, UndoRecord, UndoSummary};
 pub use working_file::{is_text_without_markers, read_working_text};
