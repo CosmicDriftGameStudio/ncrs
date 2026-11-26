@@ -39,7 +39,7 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
     drop(app.update(Message::Repos(ncrs_repos::Message::Learn(
         root.path().to_path_buf(),
     ))));
-    let mut press = |app: &mut App, key: Named, modifiers: Modifiers| {
+    let press = |app: &mut App, key: Named, modifiers: Modifiers| {
         let pressed = route_key(&app.prompt_key_state(), Key::Named(key), modifiers);
         drop(app.update(pressed.unwrap()));
     };
