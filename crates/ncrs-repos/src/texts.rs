@@ -27,6 +27,9 @@ pub fn outcome_text(outcome: &Outcome, lang: Language) -> String {
         Outcome::Skipped(SkipReason::ContentFilters) => {
             lang.text(Msg::ReposResultContentFilters).to_owned()
         }
+        Outcome::Skipped(SkipReason::NoUpstream) => {
+            lang.text(Msg::ReposResultNoUpstream).to_owned()
+        }
         Outcome::Skipped(SkipReason::Diverged { ahead }) => {
             number(Msg::ReposResultAhead, &ahead.to_string())
         }
@@ -78,6 +81,7 @@ mod tests {
             Outcome::Skipped(SkipReason::LocalChanges(4)),
             Outcome::Skipped(SkipReason::DetachedHead),
             Outcome::Skipped(SkipReason::ContentFilters),
+            Outcome::Skipped(SkipReason::NoUpstream),
             Outcome::Skipped(SkipReason::Diverged { ahead: 2 }),
             Outcome::NoAccess {
                 remote: "origin".to_owned(),

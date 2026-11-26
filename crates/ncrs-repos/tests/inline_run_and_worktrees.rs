@@ -89,3 +89,53 @@ fn the_tab_opens_with_the_remembered_switch() {
     let (state, _task) = ncrs_repos::open(&fixture.ctx);
     assert!(!state.show_worktrees());
 }
+
+/// The index of the push entry in the row menu: the sixth.
+const PUSH_MENU_ENTRY: usize = 5;
+
+fn worktree_row_of_bravo(fixture: &Fixture) -> std::path::PathBuf {
+    fixture
+        .state
+        .visible()
+        .into_iter()
+        .find(|path| *path != repo("bravo") && path.to_string_lossy().contains("bravo-wt"))
+        .unwrap()
+}
+
+#[test]
+fn the_menu_of_a_worktree_row_cannot_push_but_that_of_its_repo_can() {
+    let mut fixture = with_worktrees();
+    let worktree = worktree_row_of_bravo(&fixture);
+
+    fixture.send(Message::RowPressed(worktree.clone()));
+    fixture.send(Message::OpenMenuAt(worktree.clone()));
+    fixture.send(Message::MenuCursor(PUSH_MENU_ENTRY));
+    fixture.send(Message::MenuEnter);
+    assert!(fixture.state.run().is_none());
+
+    fixture.send(Message::RowPressed(worktree.clone()));
+    fixture.send(Message::OpenMenuAt(worktree));
+    fixture.send(Message::MenuPicked(ncrs_repos::MenuEntry::Bulk(
+        BulkAction::Push,
+    )));
+    assert!(fixture.state.run().is_none());
+
+    fixture.send(Message::RowPressed(repo("bravo")));
+    fixture.send(Message::OpenMenuAt(repo("bravo")));
+    fixture.send(Message::MenuCursor(PUSH_MENU_ENTRY));
+    fixture.send(Message::MenuEnter);
+    assert!(fixture.state.run().is_some());
+}
+
+#[test]
+fn a_push_with_the_cursor_on_a_worktree_row_starts_no_run() {
+    let mut fixture = with_worktrees();
+    let worktree = worktree_row_of_bravo(&fixture);
+    fixture.send(Message::RowPressed(worktree));
+
+    fixture.send(Message::Bulk(BulkAction::Push));
+    assert!(fixture.state.run().is_none());
+
+    fixture.send(Message::Bulk(BulkAction::Fetch));
+    assert!(fixture.state.run().is_some());
+}

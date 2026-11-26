@@ -37,6 +37,10 @@ pub fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
         .as_deref()
         .and_then(|path| state.reading(path))
         .is_some_and(crate::summary::Reading::is_unreachable);
+    let on_worktree = state
+        .cursor()
+        .as_deref()
+        .is_some_and(|path| state.is_worktree_row(path));
     let item = |label, key, entry, enabled| MenuItem {
         label,
         key,
@@ -69,7 +73,10 @@ pub fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
                 BulkAction::PullFastForward,
             ),
             bulk(Msg::ReposActionBoth, Shortcut::Both, BulkAction::Both),
-            bulk(Msg::GitViewToolbarPush, Shortcut::Push, BulkAction::Push),
+            MenuItem {
+                enabled: run && !on_worktree,
+                ..bulk(Msg::GitViewToolbarPush, Shortcut::Push, BulkAction::Push)
+            },
             own(
                 Shortcut::CleanUp,
                 Msg::ReposToolbarCleanup,

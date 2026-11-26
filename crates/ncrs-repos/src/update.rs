@@ -15,13 +15,14 @@ use crate::menu::{menu_items, next_enabled};
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
+use crate::bulk::BulkAction;
 use crate::cleanup;
 use crate::ctx::Ctx;
 use crate::message::{MenuEntry, Message};
 use crate::rows::{is_hidden_worktree, RowKind};
 use crate::run;
 use crate::scan::{ScanRequest, ScanResult};
-use crate::state::State;
+use crate::state::{Scope, State};
 use crate::store::{Origin, ScanStamp, Store};
 use crate::tasks;
 use crate::texts::store_error_text;
@@ -368,6 +369,7 @@ fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
         MenuEntry::Favourite => update(state, Message::FavouriteClicked(path), ctx),
         MenuEntry::Remove => update(state, Message::RowRemoved(path), ctx),
         MenuEntry::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
+        MenuEntry::Bulk(BulkAction::Push) if state.is_worktree_row(&path) => quiet(Task::none()),
         MenuEntry::Bulk(action) => {
             let targets = state.targets_of_row(&path);
             quiet(run::start(state, action, targets, ctx))
@@ -639,6 +641,12 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Message::Bulk(_) if state.cleanup.is_some() => quiet(Task::none()),
         Message::Bulk(action) => {
             let targets = state.targets();
+            let on_worktree_row = state
+                .cursor()
+                .is_some_and(|path| state.is_worktree_row(&path));
+            if action == BulkAction::Push && targets.0 == Scope::Row && on_worktree_row {
+                return quiet(Task::none());
+            }
             quiet(run::start(state, action, targets, ctx))
         }
         Message::StepDone(path, executed) => {

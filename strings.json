@@ -13789,6 +13789,12 @@
       "de": "eigene Git-Filter, übersprungen"
     },
     {
+      "key": "repos.result_no_upstream",
+      "context": "Result column of a bulk push in the Repos tab: skipped because the branch exists only locally; the bulk push does not publish new branches.",
+      "en": "no upstream branch, skipped",
+      "de": "kein Upstream-Branch, übersprungen"
+    },
+    {
       "key": "repos.result_ahead",
       "context": "Result column of a bulk action in the Repos tab: skipped because the branch has own commits and would need a merge.",
       "en": "{n} own commits, needs a merge, skipped",

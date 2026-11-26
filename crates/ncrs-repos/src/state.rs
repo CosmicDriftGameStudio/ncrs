@@ -340,6 +340,11 @@ impl State {
             .filter(|owner| self.store.contains(owner))
     }
 
+    pub fn is_worktree_row(&self, path: &Path) -> bool {
+        self.row(path)
+            .is_some_and(|row| row.kind == RowKind::Worktree)
+    }
+
     pub fn row(&self, path: &Path) -> Option<Row> {
         self.groups()
             .into_iter()

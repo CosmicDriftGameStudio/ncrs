@@ -86,6 +86,8 @@ pub enum SkipReason {
     /// The repository's own config names content filters (git-crypt, a local
     /// LFS). They are off in a bulk run, so a checkout would write raw content.
     ContentFilters,
+    /// A push would publish a branch that exists only locally.
+    NoUpstream,
     /// Local commits and remote commits: not a fast-forward.
     Diverged {
         ahead: u32,
@@ -124,10 +126,11 @@ pub fn plan_for(action: BulkAction, facts: &Facts) -> Plan {
 
 /// A push touches no file of the working copy, so changes and linked
 /// worktrees (a branch of their own) do not stop it. A branch without an
-/// upstream is always pushed: `push_branch` sets the upstream itself.
+/// upstream is skipped: a new branch is published in the Git tab.
 fn plan_push(facts: &Facts) -> Plan {
     match (facts.branch.is_some(), facts.ahead, facts.behind) {
         (false, ..) => Plan::Skip(SkipReason::DetachedHead),
+        (true, ..) if !facts.has_upstream => Plan::Skip(SkipReason::NoUpstream),
         (true, ahead, behind) if ahead > 0 && behind > 0 => {
             Plan::Skip(SkipReason::Diverged { ahead })
         }
@@ -647,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn a_push_runs_for_new_commits_and_for_a_branch_without_upstream() {
+    fn a_push_runs_for_new_commits_but_skips_a_branch_without_upstream() {
         let ahead = Facts {
             ahead: 1,
             ..facts()
@@ -655,9 +658,10 @@ mod tests {
         assert_eq!(pushing(ahead), Plan::Run);
         let no_upstream = Facts {
             has_upstream: false,
+            ahead: 1,
             ..facts()
         };
-        assert_eq!(pushing(no_upstream), Plan::Run);
+        assert_eq!(pushing(no_upstream), Plan::Skip(SkipReason::NoUpstream));
     }
 
     #[test]
