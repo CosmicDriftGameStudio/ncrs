@@ -189,7 +189,11 @@ impl App {
             .find_map(|(id, state)| (state.job_token.0 == request.job).then_some(id));
         match asking {
             Some(id) => self.update_git_tab(id, ncrs_git_view::Message::CredentialAsked(request)),
-            None if self.repos.as_ref().is_some_and(|tab| tab.job == request.job) => {
+            None if self
+                .repos
+                .as_ref()
+                .is_some_and(|tab| tab.job == request.job) =>
+            {
                 self.update_repos(ncrs_repos::Message::CredentialAsked(request))
             }
             None => {

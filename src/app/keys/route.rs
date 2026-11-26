@@ -418,7 +418,27 @@ pub fn route_press(
         Some(Message::Panel(PanelMessage::TypeAhead(_))) => type_ahead_message(&key, modifiers),
         other => other,
     };
-    routed.filter(|message| !repeat || repeats(message))
+    routed.filter(|message| !repeat || is_held_movement(&key, modifiers) || repeats(message))
+}
+
+/// Arrows, Page Up/Down, Home and End move a cursor in every page, so holding
+/// one repeats without each page listing its messages. With ⌘, ⌃ or ⌥ they
+/// are actions that must happen once.
+fn is_held_movement(key: &Key, modifiers: Modifiers) -> bool {
+    let is_movement = matches!(
+        key.as_ref(),
+        Key::Named(
+            Named::ArrowUp
+                | Named::ArrowDown
+                | Named::ArrowLeft
+                | Named::ArrowRight
+                | Named::PageUp
+                | Named::PageDown
+                | Named::Home
+                | Named::End
+        )
+    );
+    is_movement && !(modifiers.command() || modifiers.control() || modifiers.alt())
 }
 
 pub(in crate::app) fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {

@@ -93,3 +93,29 @@ async fn a_tap_of_option_opens_the_menu_of_the_row_as_in_the_panels() {
     // A second tap while the menu is open does not open it again.
     assert_eq!(tap(&mut app), None);
 }
+
+#[test]
+fn a_held_arrow_repeats_in_the_repo_list_without_the_page_listing_it() {
+    let state = PromptKeyState {
+        repos: true,
+        ..PromptKeyState::default()
+    };
+    let held = |key: Named, modifiers: Modifiers| {
+        route_press(
+            &state,
+            Key::Named(key),
+            iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::ArrowDown),
+            modifiers,
+            true,
+        )
+    };
+    assert!(matches!(
+        held(Named::ArrowDown, Modifiers::empty()),
+        Some(Message::Repos(_))
+    ));
+    assert!(matches!(
+        held(Named::PageDown, Modifiers::empty()),
+        Some(Message::Repos(_))
+    ));
+    assert_eq!(held(Named::ArrowDown, Modifiers::COMMAND), None);
+}
