@@ -111,10 +111,15 @@ pub struct InputState {
     pub filing_question: bool,
     /// The filing tab is up with nothing over it: an Option tap opens no menu.
     pub filing: bool,
-    /// The Git tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
+    /// The Git tab is up with nothing over it: Escape is its own.
     pub git: Option<GitTabId>,
-    /// The Repos tab is up with nothing over it: Escape is its own and an Option tap opens no menu.
+    /// The Repos tab is up with nothing over it: Escape is its own.
     pub repos: bool,
+    /// The Repos tab is up and neither a field nor its menu has the keys: an
+    /// Option tap opens the menu of the row, as in the panels.
+    pub repos_menu_key: bool,
+    /// The same for the Git tab.
+    pub git_menu_key: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
@@ -255,7 +260,15 @@ impl InputState {
                     && !self.permissions_dialog
                     && !self.batch_rename_dialog
                     && !self.settings;
-                if self.viewer || self.notes || self.filing || self.repos || self.git.is_some() {
+                if self.repos {
+                    return (nothing_else_up && self.repos_menu_key)
+                        .then_some(Message::Repos(ncrs_repos::Message::OpenMenuKey));
+                }
+                if let Some(git) = self.git {
+                    return (nothing_else_up && self.git_menu_key)
+                        .then_some(Message::GitView(git, ncrs_git_view::Message::OpenMenuKey));
+                }
+                if self.viewer || self.notes || self.filing {
                     return None;
                 }
                 if self.monitor {

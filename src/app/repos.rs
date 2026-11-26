@@ -151,7 +151,10 @@ impl App {
 
     /// Takes `settings` at once and writes them to the config, one write after
     /// the other with the other settings.
-    fn save_repos_settings(&mut self, settings: ncrs_config::repos::ReposSettings) -> Task<Message> {
+    fn save_repos_settings(
+        &mut self,
+        settings: ncrs_config::repos::ReposSettings,
+    ) -> Task<Message> {
         if settings == self.repos_settings {
             return Task::none();
         }

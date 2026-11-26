@@ -45,7 +45,10 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
     };
     if cfg!(target_os = "macos") {
         press(&mut app, Named::Enter, Modifiers::CTRL);
-        assert_eq!(app.repos.as_ref().unwrap().menu.as_deref(), Some(root.path()));
+        assert_eq!(
+            app.repos.as_ref().unwrap().menu.as_deref(),
+            Some(root.path())
+        );
         // Escape comes through `InputState`, not the key routing.
         drop(app.update(Message::Repos(ncrs_repos::Message::Escape)));
         assert!(app.repos.as_ref().unwrap().menu.is_none());
@@ -60,4 +63,33 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
     press(&mut app, Named::Enter, Modifiers::empty());
     assert!(app.repos.as_ref().unwrap().menu.is_none());
     assert!(matches!(app.shown_tab, ShownTab::Git(_)));
+}
+
+#[tokio::test]
+async fn a_tap_of_option_opens_the_menu_of_the_row_as_in_the_panels() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".git")).unwrap();
+    let mut app = App::with_fixed_panels();
+    drop(app.update(Message::OpenRepos));
+    drop(app.update(Message::Repos(ncrs_repos::Message::Learn(
+        root.path().to_path_buf(),
+    ))));
+    let tap = |app: &mut App| {
+        app.publish_key_state();
+        let mut input = app.input.lock();
+        let modifiers = |held| iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(held));
+        assert_eq!(
+            input.handle(&modifiers(Modifiers::ALT), event::Status::Ignored),
+            None
+        );
+        input.handle(&modifiers(Modifiers::empty()), event::Status::Ignored)
+    };
+    let tapped = tap(&mut app).expect("the tap opens nothing");
+    drop(app.update(tapped));
+    assert_eq!(
+        app.repos.as_ref().unwrap().menu.as_deref(),
+        Some(root.path())
+    );
+    // A second tap while the menu is open does not open it again.
+    assert_eq!(tap(&mut app), None);
 }

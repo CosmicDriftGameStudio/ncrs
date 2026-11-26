@@ -401,7 +401,7 @@ pub fn picture_in(
         panes,
         home: Path::new("/Users/marc"),
         keys: &ncrs_git_view::GitKeys::default(),
-            keymap: &ncrs_config::keymap::Keymap::default(),
+        keymap: &ncrs_config::keymap::Keymap::default(),
         pull_default: ncrs_git::PullStrategy::FastForwardOnly,
     };
     let mut simulator = Simulator::with_size(

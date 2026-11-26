@@ -27,6 +27,18 @@ pub struct KeyContext {
     pub area: Area,
 }
 
+impl KeyContext {
+    /// Whether the menu key, or a tap of Option, opens the menu of the row:
+    /// nothing that takes its own keys is open.
+    pub const fn takes_menu_key(&self) -> bool {
+        !(self.cleanup_open
+            || self.dialog_open
+            || self.picker_open
+            || self.sync_menu_open
+            || self.filter_focused)
+    }
+}
+
 /// The message of a press. Escape is not here: the app sends
 /// [`Message::Escape`] whatever field took the key. While the filter has the
 /// keyboard only the arrows that leave it count.

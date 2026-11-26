@@ -38,6 +38,8 @@ impl App {
         input.git = self
             .shown_git_tab()
             .filter(|_| !self.blocking_overlay_is_open());
+        input.repos_menu_key = input.repos && !state.repos_text && !state.repos_menu;
+        input.git_menu_key = input.git.is_some() && state.git_context.takes_menu_key();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();

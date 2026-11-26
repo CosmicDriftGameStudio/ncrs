@@ -170,7 +170,11 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                 true,
             ),
             MenuRow::Separator,
-            danger(entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true)),
+            danger(entry(
+                text(Msg::GitViewMenuDelete),
+                MenuAction::StashDrop,
+                true,
+            )),
         ],
         MenuTarget::Worktree(index) => {
             let removable = state
@@ -188,10 +192,8 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
             .into_iter()
             .enumerate()
             .flat_map(|(index, file_entry)| {
-                let starts_group = matches!(
-                    file_entry.0,
-                    FileAction::OpenEditor | FileAction::Ignore
-                );
+                let starts_group =
+                    matches!(file_entry.0, FileAction::OpenEditor | FileAction::Ignore);
                 starts_group
                     .then_some(MenuRow::Separator)
                     .into_iter()

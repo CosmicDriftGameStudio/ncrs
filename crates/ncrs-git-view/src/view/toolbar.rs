@@ -92,7 +92,10 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         split_button(
             icon_button(
                 git_action.icon(),
-                beside(Some(operation), usize::try_from(count).unwrap_or(usize::MAX)),
+                beside(
+                    Some(operation),
+                    usize::try_from(count).unwrap_or(usize::MAX),
+                ),
                 &shown_help,
                 is_enabled.then_some(message),
                 tone,
@@ -173,7 +176,8 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             GitAction::CleanUp.icon(),
             Some(format!(
                 "{} {cleanable}",
-                lang.text(Msg::ReposToolbarCleanup).trim_end_matches('\u{2026}')
+                lang.text(Msg::ReposToolbarCleanup)
+                    .trim_end_matches('\u{2026}')
             )),
             &help(lang.text(Msg::GitViewCommandCleanup), Shortcut::CleanUp),
             enabled(None).then_some(Message::Cleanup(CleanupMessage::Open)),
