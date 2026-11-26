@@ -4,7 +4,7 @@
 use iced::widget::{container, row, text, Space};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Msg};
-use ncrs_ui_kit::format::home_relative;
+use ncrs_ui_kit::format::{ellipsize_middle, home_relative, MONOSPACE_EM};
 use ncrs_ui_kit::git_state::{standing_chip, Standing};
 use ncrs_ui_kit::header_picker::{
     header_picker, picker_list, picker_separator, PickerLine, PickerMark, PickerRow,
@@ -22,6 +22,14 @@ use crate::message::{Chip, Message};
 use crate::picker::{self, Choice, Entry, PickerKind, PICKER_ID};
 use crate::shortcuts::Shortcut;
 use crate::state::State;
+
+/// What the head spends besides the chips and the path: pickers, buttons,
+/// filter, gaps and padding.
+const HEADER_FIXED_WIDTH: f32 = 1000.0;
+/// What one state chip spends, with its gap.
+const HEADER_CHIP_WIDTH: f32 = 100.0;
+/// Fewer characters than this say nothing of a path, so it is left out.
+const PATH_MIN_CHARS: usize = 16;
 
 /// How wide the open list of a picker is.
 const PICKER_WIDTH: f32 = 440.0;
@@ -62,7 +70,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let mut line = row![repository, picker_separator(palette), branch]
         .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
-    for (standing, chip) in standings(state) {
+    let chips = standings(state);
+    let chip_count = chips.len();
+    for (standing, chip) in chips {
         line = line.push(standing_chip(
             &standing,
             lang,
@@ -70,20 +80,35 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Some(Message::ChipPressed(chip)),
         ));
     }
-    if let Some(path) = state
+    // The path takes what the pickers, chips, buttons and filter leave: cut in
+    // the middle to fit, and left out where nothing useful fits. The widths of
+    // the fixed parts are estimates; the clip is the safety net.
+    let room_chars = ((ctx.window.width
+        - HEADER_FIXED_WIDTH
+        - HEADER_CHIP_WIDTH * chip_count as f32)
+        / (font_size::SMALL * MONOSPACE_EM)) as usize;
+    let worktree_path: Element<'a, Message> = match state
         .current_worktree()
         .map(|worktree| worktree.path.as_path())
+        .filter(|_| room_chars >= PATH_MIN_CHARS)
     {
-        line = line.push(
-            text(fill_template(
-                lang.text(Msg::GitViewWorktreePath),
-                &[("{path}", &home_relative(path, ctx.home))],
+        Some(path) => container(
+            text(ellipsize_middle(
+                &fill_template(
+                    lang.text(Msg::GitViewWorktreePath),
+                    &[("{path}", &home_relative(path, ctx.home))],
+                ),
+                room_chars,
             ))
             .size(font_size::SMALL)
             .color(palette.dim_text)
             .wrapping(text::Wrapping::None),
-        );
-    }
+        )
+        .width(Length::Fill)
+        .clip(true)
+        .into(),
+        None => Space::new().width(Length::Fill).into(),
+    };
     let filter = text_field(
         lang.text(Msg::GitViewFilterPlaceholder),
         &state.filter,
@@ -93,7 +118,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         palette,
     );
     container(
-        line.push(Space::new().width(Length::Fill))
+        line.push(worktree_path)
             .push(toolbar::view(state, ctx))
             .push(container(filter).width(size::FIELD_WIDE))
             .spacing(spacing::L),
