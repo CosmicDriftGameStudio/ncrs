@@ -81,6 +81,7 @@ impl App {
             panes: self.git_panes(),
             home: &self.home,
             keys: &self.git_keys,
+            keymap: &self.keymap,
             pull_default: self.git_pull_default(),
         };
         let content: Element<'_, Message> = match self

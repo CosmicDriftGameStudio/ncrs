@@ -13675,6 +13675,12 @@
       "de": "Im Git-Tab öffnen"
     },
     {
+      "key": "repos.show_in_files",
+      "context": "Menu entry and command in the Repos tab: shows the folder of the repository in the active file panel (the two-panel file view) and switches to it.",
+      "en": "Show in file panel",
+      "de": "Im Dateifenster zeigen"
+    },
+    {
       "key": "repos.never_fetched",
       "context": "Column of the Repos list that shows when a repository last fetched: the repository never did.",
       "en": "never",

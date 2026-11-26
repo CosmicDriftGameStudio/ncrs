@@ -34,10 +34,11 @@ pub enum Icon {
     RefreshCw,
     GitBranch,
     GitBranchPlus,
+    Broom,
 }
 
 impl Icon {
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::Clock,
         Self::Loader,
         Self::CircleCheck,
@@ -63,6 +64,7 @@ impl Icon {
         Self::RefreshCw,
         Self::GitBranch,
         Self::GitBranchPlus,
+        Self::Broom,
     ];
 
     pub(super) const fn bytes(self) -> &'static [u8] {
@@ -98,6 +100,7 @@ impl Icon {
             Self::RefreshCw => include_bytes!("../../../../assets/icons/refresh-cw.svg"),
             Self::GitBranch => include_bytes!("../../../../assets/icons/git-branch.svg"),
             Self::GitBranchPlus => include_bytes!("../../../../assets/icons/git-branch-plus.svg"),
+            Self::Broom => include_bytes!("../../../../assets/icons/broom.svg"),
         }
     }
 
@@ -136,7 +139,7 @@ impl GitAction {
             Self::NewBranch => Icon::GitBranchPlus,
             Self::Stash => Icon::Archive,
             Self::Undo => Icon::Undo,
-            Self::CleanUp => Icon::Trash,
+            Self::CleanUp => Icon::Broom,
             Self::SwitchToDefault => Icon::GitBranch,
             Self::SwitchAndPull => Icon::Download,
         }

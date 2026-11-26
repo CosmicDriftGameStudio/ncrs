@@ -16,4 +16,10 @@ pub enum Action {
     WorktreeRemoved(PathBuf),
     /// Branches of this repository changed: a Git tab that shows it reads it again.
     RepoChanged(PathBuf),
+    /// Show this folder in the active file panel.
+    ShowInFiles(PathBuf),
+    /// Start the terminal in this folder.
+    OpenTerminal(PathBuf),
+    /// Put this path on the clipboard.
+    CopyPath(PathBuf),
 }

@@ -100,7 +100,7 @@ async fn send(state: &mut State, message: Message) {
 async fn press(state: &mut State, letter: &str) {
     let keys = GitKeys::default();
     let key = Key::Character(letter.into());
-    let message = git_view_key(&keys, &key, Modifiers::COMMAND, state.key_context())
+    let message = git_view_key(&keys, &key, Modifiers::COMMAND, state.key_context(), false)
         .expect("the key is bound here");
     send(state, message).await;
 }

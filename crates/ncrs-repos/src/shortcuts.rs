@@ -23,7 +23,7 @@ pub enum Shortcut {
     SelectAll,
     Favourite,
     Remove,
-    OpenMenu,
+    ShowInFiles,
 }
 
 impl Shortcut {
@@ -39,7 +39,7 @@ impl Shortcut {
         Self::SelectAll,
         Self::Favourite,
         Self::Remove,
-        Self::OpenMenu,
+        Self::ShowInFiles,
     ];
 
     /// The name of the action in `[keys.repos]`.
@@ -56,7 +56,7 @@ impl Shortcut {
             Self::SelectAll => "select_all",
             Self::Favourite => "favourite",
             Self::Remove => "remove",
-            Self::OpenMenu => "open_menu",
+            Self::ShowInFiles => "show_in_files",
         }
     }
 
@@ -79,10 +79,7 @@ impl Shortcut {
     /// or one that only counts in a file panel: the check against the app
     /// keymap skips these.
     pub const fn shares_an_app_key(self) -> bool {
-        matches!(
-            self,
-            Self::OpenMenu | Self::SelectAll | Self::Favourite | Self::Remove
-        )
+        matches!(self, Self::SelectAll | Self::Favourite | Self::Remove)
     }
 
     /// The key it ships with; `command` is what Cmd or Ctrl is on the
@@ -103,7 +100,7 @@ impl Shortcut {
             Self::SelectAll => letter(command, "a"),
             Self::Favourite => letter(Modifiers::empty(), "*"),
             Self::Remove => named(Modifiers::empty(), Named::Delete),
-            Self::OpenMenu => named(Modifiers::SHIFT, Named::F10),
+            Self::ShowInFiles => letter(command | Modifiers::ALT, "f"),
         }
     }
 
@@ -111,9 +108,9 @@ impl Shortcut {
         keys.label(self)
     }
 
-    /// The name in the command list; the menu key opens a menu and is no command.
-    pub const fn command_label(self) -> Option<Msg> {
-        Some(match self {
+    /// The name in the command list and in the menu.
+    pub const fn command_label(self) -> Msg {
+        match self {
             Self::Fetch => Msg::GitViewToolbarFetch,
             Self::SwitchToDefault => Msg::ReposActionSwitchDefault,
             Self::PullFastForward => Msg::ReposActionPullFf,
@@ -125,8 +122,8 @@ impl Shortcut {
             Self::SelectAll => Msg::ReposSelectAll,
             Self::Favourite => Msg::ReposToggleFavourite,
             Self::Remove => Msg::ReposRemove,
-            Self::OpenMenu => return None,
-        })
+            Self::ShowInFiles => Msg::ReposShowInFiles,
+        }
     }
 
     pub fn message(self) -> Message {
@@ -142,7 +139,7 @@ impl Shortcut {
             Self::SelectAll => Message::MarkAll,
             Self::Favourite => Message::ToggleFavouriteAtCursor,
             Self::Remove => Message::RemoveAtCursor,
-            Self::OpenMenu => Message::OpenMenuKey,
+            Self::ShowInFiles => Message::ShowInFilesAtCursor,
         }
     }
 }
@@ -153,18 +150,14 @@ impl Shortcut {
 pub fn commands(lang: Language, keys: &ReposKeys) -> Vec<(String, String)> {
     Shortcut::ALL
         .iter()
-        .filter_map(|shortcut| {
-            let label = lang.text(shortcut.command_label()?).to_owned();
-            Some((label, shortcut.label(keys)))
+        .map(|shortcut| {
+            let label = lang.text(shortcut.command_label()).to_owned();
+            (label, shortcut.label(keys))
         })
         .collect()
 }
 
 /// The message of the command at `place` in [`commands`].
 pub fn message_of_command(place: usize) -> Option<Message> {
-    Shortcut::ALL
-        .iter()
-        .filter(|shortcut| shortcut.command_label().is_some())
-        .nth(place)
-        .map(|shortcut| shortcut.message())
+    Shortcut::ALL.get(place).map(|shortcut| shortcut.message())
 }

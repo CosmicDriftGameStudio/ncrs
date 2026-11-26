@@ -105,6 +105,7 @@ mod ui_tests {
             palette: &palette,
             window: WINDOW,
             keys: &keys,
+            keymap: &ncrs_config::keymap::Keymap::default(),
             home: Some(Path::new(HOME)),
             now: now(),
             actions_available: true,
@@ -130,6 +131,16 @@ mod ui_tests {
         assert!(matches_picture(
             &fixture.state,
             "tests/snapshots/repos-list-full"
+        ));
+    }
+
+    #[test]
+    fn repos_menu_opened_from_the_keyboard() {
+        let mut fixture = crowded();
+        fixture.send(Message::OpenMenuKey);
+        assert!(matches_picture(
+            &fixture.state,
+            "tests/snapshots/repos-menu"
         ));
     }
 

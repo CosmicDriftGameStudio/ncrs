@@ -32,7 +32,7 @@ pub use cleanup::{
 };
 pub use clone::CLONE_URL_ID;
 pub use ctx::{Ctx, ViewCtx};
-pub use keys::{repos_key, KeyOverride, ReposKeys, ReposKeysError};
+pub use keys::{repos_key, AppKey, KeyOverride, ReposKeys, ReposKeysError};
 pub use message::{MenuEntry, Message};
 pub use rows::GroupKey;
 pub use scan::ScanResult;

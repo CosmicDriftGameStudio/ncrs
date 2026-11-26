@@ -210,6 +210,7 @@ mod ui_tests {
             panes: PaneWidths::STANDARD,
             home: Path::new("/Users/marc"),
             keys: &ncrs_git_view::GitKeys::default(),
+            keymap: &ncrs_config::keymap::Keymap::default(),
             pull_default: ncrs_git::PullStrategy::FastForwardOnly,
         };
         let mut simulator = Simulator::with_size(

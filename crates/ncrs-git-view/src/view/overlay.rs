@@ -23,7 +23,7 @@ use crate::actions::{
     Question, RenameBranch, Side,
 };
 use crate::ctx::ViewCtx;
-use crate::file_views;
+use crate::file_views::{self, FileAction};
 use crate::git_keys::GitKeys;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
@@ -60,6 +60,14 @@ fn entry(keys: &GitKeys, label: String, action: MenuAction, enabled: bool) -> Me
     )
 }
 
+/// The same entry, drawn as one that destroys something.
+fn danger(row: MenuRow<Message>) -> MenuRow<Message> {
+    match row {
+        MenuRow::Entry(entry) => MenuRow::Danger(entry),
+        other => other,
+    }
+}
+
 fn checked_out(state: &State) -> String {
     state
         .overview
@@ -88,11 +96,14 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                 .and_then(|overview| overview.local.get(index));
             let is_current = branch.is_some_and(|found| found.is_current);
             let ahead = branch.is_some_and(|found| found.ahead > 0);
-            let mut rows = vec![entry(
-                text(Msg::GitViewMenuCheckout),
-                MenuAction::Checkout,
-                !is_current,
-            )];
+            let mut rows = vec![
+                entry(
+                    text(Msg::GitViewMenuCheckout),
+                    MenuAction::Checkout,
+                    !is_current,
+                ),
+                MenuRow::Separator,
+            ];
             if ahead {
                 rows.push(entry(text(Msg::GitViewMenuPush), MenuAction::Push, true));
             }
@@ -103,11 +114,6 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                     true,
                 ),
                 entry(text(Msg::GitViewMenuRename), MenuAction::Rename, true),
-                entry(
-                    text(Msg::GitViewMenuDelete),
-                    MenuAction::Delete,
-                    !is_current,
-                ),
                 MenuRow::Separator,
                 entry(
                     with_current(Msg::GitViewMenuMergeInto),
@@ -119,6 +125,12 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                     MenuAction::RebaseOnto,
                     !is_current,
                 ),
+                MenuRow::Separator,
+                danger(entry(
+                    text(Msg::GitViewMenuDelete),
+                    MenuAction::Delete,
+                    !is_current,
+                )),
             ]);
             rows
         }
@@ -128,22 +140,23 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                 MenuAction::CheckoutAsLocal,
                 true,
             ),
+            MenuRow::Separator,
             entry(
                 text(Msg::GitViewMenuNewBranchFrom),
                 MenuAction::NewBranchFrom,
                 true,
             ),
-            MenuRow::Separator,
             entry(
                 with_current(Msg::GitViewMenuMergeInto),
                 MenuAction::MergeInto,
                 true,
             ),
-            entry(
+            MenuRow::Separator,
+            danger(entry(
                 text(Msg::GitViewMenuDeleteOnRemote),
                 MenuAction::DeleteOnRemote,
                 true,
-            ),
+            )),
         ],
         MenuTarget::Stash(_) => vec![
             entry(
@@ -157,7 +170,7 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                 true,
             ),
             MenuRow::Separator,
-            entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true),
+            danger(entry(text(Msg::GitViewMenuDelete), MenuAction::StashDrop, true)),
         ],
         MenuTarget::Worktree(index) => {
             let removable = state
@@ -165,16 +178,25 @@ fn rows_of(state: &State, menu: &OpenMenu, ctx: ViewCtx<'_>) -> Vec<MenuRow<Mess
                 .as_ref()
                 .and_then(|overview| overview.worktrees.get(*index))
                 .is_some_and(|found| !found.is_main && !found.is_current);
-            vec![entry(
+            vec![danger(entry(
                 text(Msg::GitViewMenuRemoveWorktree),
                 MenuAction::RemoveWorktree,
                 removable,
-            )]
+            ))]
         }
         MenuTarget::File { path, .. } => file_views::menu_entries(state, path)
             .into_iter()
             .enumerate()
-            .map(|(index, file_entry)| file_menu::row(menu, index, file_entry, ctx))
+            .flat_map(|(index, file_entry)| {
+                let starts_group = matches!(
+                    file_entry.0,
+                    FileAction::OpenEditor | FileAction::Ignore
+                );
+                starts_group
+                    .then_some(MenuRow::Separator)
+                    .into_iter()
+                    .chain([file_menu::row(menu, index, file_entry, ctx)])
+            })
             .collect(),
         MenuTarget::Conflict(path) => {
             let conflict = state

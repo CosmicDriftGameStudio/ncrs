@@ -317,11 +317,12 @@ pub fn focusable_segmented<'a, M: Clone + 'a>(
 }
 
 /// A button with an icon instead of a word, and the tooltip that names what it
-/// does. `count` stays next to the icon (the commits a pull or push moves).
+/// does. `beside` is the text next to the icon, a number (the commits a pull or
+/// push moves) or a word where the icon alone does not say enough.
 /// `on_press` of `None` disables it.
 pub fn icon_button<'a, M: Clone + 'a>(
     shown: super::Icon,
-    count: Option<String>,
+    beside: Option<String>,
     tooltip_label: &str,
     on_press: Option<M>,
     tone: Tone,
@@ -341,9 +342,9 @@ pub fn icon_button<'a, M: Clone + 'a>(
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center)
         .push(super::icon(shown, ink));
-    if let Some(number) = count {
+    if let Some(shown_text) = beside {
         content = content.push(
-            text(number)
+            text(shown_text)
                 .size(font_size::BODY)
                 .color(ink)
                 .wrapping(Wrapping::None),

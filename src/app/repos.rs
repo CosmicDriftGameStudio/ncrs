@@ -38,6 +38,7 @@ impl App {
                     palette: &self.palette,
                     window: self.window_size,
                     keys: &self.repos_keys,
+                    keymap: &self.keymap,
                     home: Some(&self.home),
                     now: std::time::SystemTime::now(),
                     actions_available: ncrs_git::write_actions_available(),
@@ -116,6 +117,12 @@ impl App {
                     )))
                 })
             }),
+            Ask::ShowInFiles(folder) => {
+                self.shown_tab = ShownTab::Panels;
+                self.show_folder_in_active_panel(folder, None)
+            }
+            Ask::OpenTerminal(folder) => self.open_terminal_in(&folder),
+            Ask::CopyPath(path) => self.copy_path_of(&path),
             Ask::WorktreeRemoved(folder) => {
                 self.worktree_removed(&folder);
                 Task::none()

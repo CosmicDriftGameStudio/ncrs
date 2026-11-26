@@ -358,7 +358,7 @@ fn the_tab_is_titled_with_the_repository_and_has_none_while_closed() {
 }
 
 pub fn pressed(key: Key, held: Modifiers, context: KeyContext) -> Option<Message> {
-    git_view_key(&GitKeys::default(), &key, held, context)
+    git_view_key(&GitKeys::default(), &key, held, context, false)
 }
 
 pub fn character(letter: &str) -> Key {

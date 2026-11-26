@@ -171,7 +171,10 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if cleanable > 0 {
         bar = bar.push(icon_button(
             GitAction::CleanUp.icon(),
-            Some(cleanable.to_string()),
+            Some(format!(
+                "{} {cleanable}",
+                lang.text(Msg::ReposToolbarCleanup).trim_end_matches('\u{2026}')
+            )),
             &help(lang.text(Msg::GitViewCommandCleanup), Shortcut::CleanUp),
             enabled(None).then_some(Message::Cleanup(CleanupMessage::Open)),
             Tone::Secondary,

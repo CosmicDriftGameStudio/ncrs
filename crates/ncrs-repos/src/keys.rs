@@ -4,7 +4,7 @@
 
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
-use ncrs_config::keymap::{mac_menu_chord, ChordTable, ChordTableError, TabActions};
+use ncrs_config::keymap::{ChordTable, ChordTableError, TabActions};
 
 pub use ncrs_config::keymap::{Chord, KeyOverride};
 
@@ -41,10 +41,7 @@ impl ReposKeys {
             table: ChordTable::new(
                 Shortcut::ALL
                     .iter()
-                    .map(|&shortcut| {
-                        let mac_menu = (mac && shortcut == Shortcut::OpenMenu).then(mac_menu_chord);
-                        mac_menu.into_iter().chain([shortcut.default_chord(command)]).collect()
-                    })
+                    .map(|&shortcut| vec![shortcut.default_chord(command)])
                     .collect(),
             ),
         }
@@ -95,15 +92,35 @@ impl ReposKeys {
     }
 }
 
-/// The message of a press. Escape is not here: the app sends
-/// [`Message::Escape`] whatever field took the key. While the filter has the
-/// keyboard only the keys that leave it count.
+/// A key of the app's own keymap that the tab answers for the row under its
+/// cursor: the app resolves the press, so the tab follows what the user bound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppKey {
+    ContextMenu,
+    OpenTerminal,
+    CopyPath,
+}
+
+impl AppKey {
+    fn message(self) -> Message {
+        match self {
+            Self::ContextMenu => Message::OpenMenuKey,
+            Self::OpenTerminal => Message::OpenTerminalAtCursor,
+            Self::CopyPath => Message::CopyPathAtCursor,
+        }
+    }
+}
+
+/// The message of a press; `app_key` is what the app's keymap makes of it.
+/// Escape is not here: the app sends [`Message::Escape`] whatever field took
+/// the key. While the filter has the keyboard only the keys that leave it count.
 pub fn repos_key(
     keys: &ReposKeys,
     key: &Key,
     modifiers: Modifiers,
     filter_focused: bool,
     menu_open: bool,
+    app_key: Option<AppKey>,
 ) -> Option<Message> {
     if menu_open {
         if !modifiers.is_empty() {
@@ -124,6 +141,9 @@ pub fn repos_key(
             (true, Key::Named(Named::Enter)) => Some(Message::FilterSubmitted),
             _ => None,
         };
+    }
+    if let Some(app_key) = app_key {
+        return Some(app_key.message());
     }
     if let Some(shortcut) = keys.pressed(key, modifiers) {
         return Some(shortcut.message());
@@ -156,7 +176,6 @@ pub fn repos_key(
         Key::Named(Named::End) => Some(Message::Last),
         Key::Named(Named::Space) => Some(Message::Mark),
         Key::Named(Named::Enter) => Some(Message::Enter),
-        Key::Named(Named::ContextMenu) => Some(Message::OpenMenuKey),
         _ => None,
     }
 }
@@ -225,21 +244,21 @@ mod tests {
         let keys = ReposKeys::with_overrides(
             &[KeyOverride {
                 action: "fetch".to_owned(),
-                chords: vec![chord(held, "f")],
+                chords: vec![chord(held, "q")],
             }],
             false,
         )
         .unwrap();
         assert_eq!(
-            keys.pressed(&Key::Character("f".into()), held),
+            keys.pressed(&Key::Character("q".into()), held),
             Some(Shortcut::Fetch)
         );
         let (default_held, default_key) = Shortcut::Fetch.default_chord(Modifiers::CTRL);
         assert_eq!(keys.pressed(&default_key, default_held), None);
         let expected = if cfg!(target_os = "macos") {
-            "\u{2303}\u{2325}F"
+            "\u{2303}\u{2325}Q"
         } else {
-            "Ctrl+Alt+F"
+            "Ctrl+Alt+Q"
         };
         assert_eq!(Shortcut::Fetch.label(&keys), expected);
     }
@@ -277,11 +296,11 @@ mod tests {
         let keys = ReposKeys::defaults_for(false);
         let down = Key::Named(Named::ArrowDown);
         assert!(matches!(
-            repos_key(&keys, &down, Modifiers::empty(), false, false),
+            repos_key(&keys, &down, Modifiers::empty(), false, false, None),
             Some(Message::Down)
         ));
         assert!(matches!(
-            repos_key(&keys, &down, Modifiers::SHIFT, false, false),
+            repos_key(&keys, &down, Modifiers::SHIFT, false, false, None),
             Some(Message::ExtendDown)
         ));
     }
@@ -289,17 +308,18 @@ mod tests {
     #[test]
     fn the_keys_open_and_walk_the_menu() {
         let keys = ReposKeys::defaults_for(false);
-        let press = |key: Named, menu_open| repos_key(&keys, &Key::Named(key), Modifiers::empty(), false, menu_open);
-        assert_eq!(press(Named::ContextMenu, false), Some(Message::OpenMenuKey));
+        let press = |key: Named, menu_open| {
+            repos_key(&keys, &Key::Named(key), Modifiers::empty(), false, menu_open, None)
+        };
+        let menu_key = Some(AppKey::ContextMenu);
+        let f10 = Key::Named(Named::F10);
         assert_eq!(
-            repos_key(&keys, &Key::Named(Named::F10), Modifiers::SHIFT, false, false),
+            repos_key(&keys, &f10, Modifiers::SHIFT, false, false, menu_key),
             Some(Message::OpenMenuKey)
         );
-        let mac = ReposKeys::defaults_for(true);
-        assert_eq!(
-            repos_key(&mac, &Key::Named(Named::Enter), Modifiers::CTRL, false, false),
-            Some(Message::OpenMenuKey)
-        );
+        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, false, false, None), None);
+        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, true, false, menu_key), None);
+        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, false, true, menu_key), None);
         assert_eq!(press(Named::ArrowDown, true), Some(Message::MenuDown));
         assert_eq!(press(Named::ArrowUp, true), Some(Message::MenuUp));
         assert_eq!(press(Named::Enter, true), Some(Message::MenuEnter));
@@ -311,9 +331,9 @@ mod tests {
     fn the_filter_takes_the_letters() {
         let keys = ReposKeys::defaults_for(false);
         let space = Key::Named(Named::Space);
-        assert!(repos_key(&keys, &space, Modifiers::empty(), true, false).is_none());
+        assert!(repos_key(&keys, &space, Modifiers::empty(), true, false, None).is_none());
         assert!(matches!(
-            repos_key(&keys, &space, Modifiers::empty(), false, false),
+            repos_key(&keys, &space, Modifiers::empty(), false, false, None),
             Some(Message::Mark)
         ));
     }

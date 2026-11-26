@@ -181,6 +181,28 @@ impl App {
         self.run_panel_actions(actions)
     }
 
+    /// "Open terminal here" for `folder`, whatever the panels show.
+    pub(in crate::app) fn open_terminal_in(&mut self, folder: &Path) -> Task<Message> {
+        let actions = ncrs_files::open_flow::open_terminal_in(folder, &self.open_ctx());
+        self.run_panel_actions(actions)
+    }
+
+    /// Puts `path` on the clipboard the way "Copy path" does in the panels.
+    pub(in crate::app) fn copy_path_of(&mut self, path: &Path) -> Task<Message> {
+        let Some(copied) =
+            ncrs_ops::clipboard_text_of_files(&[path.to_path_buf()], ClipboardKind::Path)
+        else {
+            return Task::none();
+        };
+        self.job_error = None;
+        let shown = self.show_notice(ncrs_ops::copied_notice(
+            self.lang,
+            ClipboardKind::Path,
+            copied.count,
+        ));
+        Task::batch([iced::clipboard::write(copied.text), shown])
+    }
+
     /// Hands `path` to the system's own opener, never to a configured program.
     pub(in crate::app) fn open_with_system(&mut self, path: &Path) {
         let actions = ncrs_files::open_flow::open_with_system(path, &self.open_ctx());

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use iced::Size;
+use ncrs_config::keymap::Keymap;
 use ncrs_config::repos::ReposSettings;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::palette::Palette;
@@ -54,6 +55,8 @@ pub struct ViewCtx<'a> {
     pub window: Size,
     /// The keys of the actions, `[keys.repos]` applied.
     pub keys: &'a ReposKeys,
+    /// The keymap of the app: the menu shows the keys it has for opening, the terminal and copying the path.
+    pub keymap: &'a Keymap,
     /// What a leading `~` shortens in a place.
     pub home: Option<&'a Path>,
     /// The clock, for the relative times.

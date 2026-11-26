@@ -24,6 +24,7 @@ mod wip_pane;
 
 use iced::widget::{column, container, row, stack};
 use iced::{Element, Length, Padding};
+use ncrs_config::keymap::KeyAction;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::action_rows::BANNER_HEIGHT;
 use ncrs_ui_kit::git_rows::drag_capture;
@@ -377,6 +378,10 @@ fn drag_label<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Message
 /// The keys of the focus; with the actions on, the keys of the actions too.
 fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
     let key = |shortcut: Shortcut| shortcut.label(ctx.keys);
+    let menu_key = ctx
+        .keymap
+        .shortcut_label_of(KeyAction::ContextMenu)
+        .unwrap_or_default();
     if matches!(state.actions.dialog, Some(Dialog::Cleanup(_))) {
         return ctx.lang.text(Msg::GitViewStatusCleanup).to_owned();
     }
@@ -422,7 +427,7 @@ fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
                 ("{both}", &key(Shortcut::TakeBoth)),
                 ("{editor}", &key(Shortcut::OpenEditor)),
                 ("{resolved}", &key(Shortcut::MarkResolved)),
-                ("{menu}", &key(Shortcut::OpenMenu)),
+                ("{menu}", &menu_key),
             ],
         );
     }
@@ -459,7 +464,7 @@ fn hint_line(state: &State, ctx: ViewCtx<'_>) -> String {
         return fill_template(
             ctx.lang.text(Msg::GitViewStatusSidebarActions),
             &[
-                ("{menu}", &key(Shortcut::OpenMenu)),
+                ("{menu}", &menu_key),
                 ("{new_branch}", &key(Shortcut::NewBranch)),
             ],
         );

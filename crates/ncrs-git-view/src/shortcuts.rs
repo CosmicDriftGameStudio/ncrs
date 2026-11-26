@@ -46,7 +46,6 @@ pub enum Shortcut {
     Rebase,
     StashApply,
     StashPop,
-    OpenMenu,
     TakeMine,
     TakeTheirs,
     TakeBoth,
@@ -97,7 +96,6 @@ impl Shortcut {
         Self::Rebase,
         Self::StashApply,
         Self::StashPop,
-        Self::OpenMenu,
         Self::TakeMine,
         Self::TakeTheirs,
         Self::TakeBoth,
@@ -149,7 +147,6 @@ impl Shortcut {
             Self::Rebase => "rebase",
             Self::StashApply => "stash_apply",
             Self::StashPop => "stash_pop",
-            Self::OpenMenu => "open_menu",
             Self::TakeMine => "take_mine",
             Self::TakeTheirs => "take_theirs",
             Self::TakeBoth => "take_both",
@@ -193,7 +190,6 @@ impl Shortcut {
         matches!(
             self,
             Self::OpenEditor
-                | Self::OpenMenu
                 | Self::Rename
                 | Self::CopySha
                 | Self::GoParent
@@ -241,7 +237,6 @@ impl Shortcut {
             Self::Rebase => letter(shifted, "x"),
             Self::StashApply => named(shifted, Named::Enter),
             Self::StashPop => letter(shifted, "w"),
-            Self::OpenMenu => named(Modifiers::SHIFT, Named::F10),
             Self::TakeMine => named(shifted, Named::ArrowLeft),
             Self::TakeTheirs => named(shifted, Named::ArrowRight),
             Self::TakeBoth => named(shifted, Named::ArrowDown),
@@ -309,7 +304,6 @@ impl Shortcut {
             Self::Rebase => Msg::GitViewCommandRebase,
             Self::StashApply => Msg::GitViewCommandStashApply,
             Self::StashPop => Msg::GitViewCommandStashPop,
-            Self::OpenMenu => return None,
             Self::TakeMine => Msg::GitViewConflictTakeMine,
             Self::TakeTheirs => Msg::GitViewConflictTakeTheirs,
             Self::TakeBoth => Msg::GitViewConflictTakeBoth,
@@ -362,7 +356,6 @@ impl Shortcut {
             Self::Rebase => Message::MenuPressed(MenuAction::RebaseOnto),
             Self::StashApply => Message::MenuPressed(MenuAction::StashApply),
             Self::StashPop => Message::MenuPressed(MenuAction::StashApplyAndDrop),
-            Self::OpenMenu => Message::OpenMenuKey,
             Self::TakeMine => Message::ConflictShortcut(ConflictAction::Take(Side::Mine)),
             Self::TakeTheirs => Message::ConflictShortcut(ConflictAction::Take(Side::Theirs)),
             Self::TakeBoth => Message::ConflictShortcut(ConflictAction::Take(Side::Both)),

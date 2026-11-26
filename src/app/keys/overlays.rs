@@ -499,12 +499,18 @@ pub(in crate::app) fn git_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if let Some(message) =
-        ncrs_git_view::git_view_key(&prompt.git_keys, key, key_modifiers, prompt.git_context)
-    {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let menu_pressed = bound.as_ref() == Some(&KeyAction::ContextMenu.message());
+    if let Some(message) = ncrs_git_view::git_view_key(
+        &prompt.git_keys,
+        key,
+        key_modifiers,
+        prompt.git_context,
+        menu_pressed,
+    ) {
         return Some(Message::GitView(git, message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+    bound.filter(is_page_spanning)
 }
 
 /// The Repos tab is up: it takes its own keys; of the bindings only the ones
@@ -515,16 +521,26 @@ pub(in crate::app) fn repos_page_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let app_key = match bound.as_ref() {
+        Some(message) if *message == KeyAction::ContextMenu.message() => {
+            Some(ncrs_repos::AppKey::ContextMenu)
+        }
+        Some(Message::OpenTerminal) => Some(ncrs_repos::AppKey::OpenTerminal),
+        Some(Message::CopyToClipboard(ClipboardKind::Path)) => Some(ncrs_repos::AppKey::CopyPath),
+        _ => None,
+    };
     if let Some(message) = ncrs_repos::repos_key(
         &prompt.repos_keys,
         key,
         key_modifiers,
         prompt.repos_text,
         prompt.repos_menu,
+        app_key,
     ) {
         return Some(Message::Repos(message));
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(is_page_spanning)
+    bound.filter(is_page_spanning)
 }
 
 pub(in crate::app) fn viewer_or_monitor_key(

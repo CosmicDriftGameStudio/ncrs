@@ -3,7 +3,7 @@
 //! and the tooltips read them.
 
 use iced::keyboard::{Key, Modifiers};
-use ncrs_config::keymap::{mac_menu_chord, ChordTable, ChordTableError, TabActions};
+use ncrs_config::keymap::{ChordTable, ChordTableError, TabActions};
 
 pub use ncrs_config::keymap::chord_label;
 pub use ncrs_config::keymap::{Chord, KeyOverride};
@@ -40,10 +40,7 @@ impl GitKeys {
             table: ChordTable::new(
                 Shortcut::ALL
                     .iter()
-                    .map(|&shortcut| {
-                        let mac_menu = (mac && shortcut == Shortcut::OpenMenu).then(mac_menu_chord);
-                        mac_menu.into_iter().chain(shortcut.default_chord(command)).collect()
-                    })
+                    .map(|&shortcut| shortcut.default_chord(command).into_iter().collect())
                     .collect(),
             ),
         }
@@ -235,14 +232,5 @@ mod tests {
         )
         .unwrap_err();
         assert!(refused.reason.contains("teleport"));
-    }
-
-    #[test]
-    fn ctrl_enter_opens_the_menu_on_a_mac_only() {
-        let enter = Key::Named(iced::keyboard::key::Named::Enter);
-        let mac = GitKeys::defaults_for(true);
-        assert_eq!(mac.pressed(&enter, Modifiers::CTRL), Some(Shortcut::OpenMenu));
-        let other = GitKeys::defaults_for(false);
-        assert_eq!(other.pressed(&enter, Modifiers::CTRL), Some(Shortcut::Commit));
     }
 }

@@ -97,7 +97,11 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let (scope, targets) = state.targets();
     let busy = state.run().is_some_and(|run| !run.is_finished()) || state.cleanup.is_some();
     let can_run = ctx.actions_available && !busy && !targets.is_empty();
-    let git_button = |git_action: GitAction, what: Msg, shortcut: Shortcut, message: Message| {
+    let git_button = |git_action: GitAction,
+                      beside: Option<String>,
+                      what: Msg,
+                      shortcut: Shortcut,
+                      message: Message| {
         let key = ctx.keys.label(shortcut);
         let tip = if key.is_empty() {
             ctx.lang.text(what).to_owned()
@@ -106,7 +110,7 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         };
         kit::icon_button(
             git_action.icon(),
-            None,
+            beside,
             &tip,
             can_run.then_some(message),
             Tone::Secondary,
@@ -120,7 +124,7 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             BulkAction::PullFastForward => (GitAction::Pull, Msg::ReposActionPullFf),
             BulkAction::Both => (GitAction::SwitchAndPull, Msg::ReposActionBoth),
         };
-        git_button(git_action, what, shortcut, Message::Bulk(action))
+        git_button(git_action, None, what, shortcut, Message::Bulk(action))
     };
     let marked = state.marked_repos().len();
     let mut line = row![]
@@ -138,6 +142,11 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .push(bulk(BulkAction::Both, Shortcut::Both))
         .push(git_button(
             GitAction::CleanUp,
+            Some(format!(
+                "{} {}",
+                ctx.lang.text(Msg::ReposToolbarCleanup).trim_end_matches('\u{2026}'),
+                targets.len()
+            )),
             Msg::ReposToolbarCleanup,
             Shortcut::CleanUp,
             Message::Cleanup(CleanupMessage::Open),

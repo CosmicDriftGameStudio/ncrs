@@ -35,6 +35,7 @@ pub fn git_view_key(
     key: &Key,
     modifiers: Modifiers,
     context: KeyContext,
+    menu_pressed: bool,
 ) -> Option<Message> {
     if context.cleanup_open {
         return cleanup_key(key, modifiers);
@@ -53,6 +54,9 @@ pub fn git_view_key(
     }
     if context.filter_focused {
         return None;
+    }
+    if menu_pressed {
+        return Some(Message::OpenMenuKey);
     }
     if let Some(shortcut) = Shortcut::pressed(keys, key, modifiers) {
         let in_commit_list =
@@ -91,7 +95,6 @@ pub fn git_view_key(
         Key::Named(Named::ArrowRight) => Some(Message::Right),
         Key::Named(Named::Enter) => Some(Message::Enter),
         Key::Named(Named::Tab) => Some(Message::NextArea),
-        Key::Named(Named::ContextMenu) => Some(Message::OpenMenuKey),
         Key::Named(Named::F3) if context.in_diff => Some(Message::ViewFile),
         Key::Character("n") if context.in_diff => Some(Message::NextHunk),
         Key::Character("p") if context.in_diff => Some(Message::PreviousHunk),

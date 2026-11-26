@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use iced::Size;
+use ncrs_config::keymap::Keymap;
 use ncrs_git::PullStrategy;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::format::DateFormat;
@@ -60,6 +61,8 @@ pub struct ViewCtx<'a> {
     pub home: &'a Path,
     /// The keys of the Git actions, `[keys.git]` applied.
     pub keys: &'a GitKeys,
+    /// The keymap of the app: the status line shows the key that opens the menu.
+    pub keymap: &'a Keymap,
     /// The way the Pull button takes, marked in the Pull menu.
     pub pull_default: PullStrategy,
 }

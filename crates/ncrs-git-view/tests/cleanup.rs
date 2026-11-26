@@ -267,7 +267,7 @@ fn while_the_dialog_is_open_its_keys_apply() {
         ..KeyContext::default()
     };
     let press = |named: Named, modifiers: Modifiers| {
-        git_view_key(&keys, &Key::Named(named), modifiers, open)
+        git_view_key(&keys, &Key::Named(named), modifiers, open, false)
     };
     let none = Modifiers::empty();
     assert_eq!(

@@ -7,14 +7,30 @@ use crate::message::MenuEntry;
 use crate::shortcuts::Shortcut;
 use crate::state::State;
 
-pub(crate) struct MenuItem {
-    pub(crate) label: Msg,
-    pub(crate) key: Option<Shortcut>,
-    pub(crate) entry: MenuEntry,
-    pub(crate) enabled: bool,
+/// Where the key shown at the right of an entry comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuKey {
+    /// The key of the tab for this action.
+    Own(Shortcut),
+    /// The app's key that opens the thing under the cursor, Enter by default.
+    AppOpen,
+    AppTerminal,
+    AppCopyPath,
 }
 
-/// What the menu of the cursor row offers; `run` is whether the write actions run.
+pub(crate) struct MenuItem {
+    pub(crate) label: Msg,
+    pub(crate) key: MenuKey,
+    pub(crate) entry: MenuEntry,
+    pub(crate) enabled: bool,
+    /// A line is drawn above: the entry starts a group.
+    pub(crate) starts_group: bool,
+    /// It destroys something: drawn in the error color.
+    pub(crate) is_danger: bool,
+}
+
+/// What the menu of the cursor row offers, in groups like the menu of the file
+/// panels; `run` is whether the write actions run.
 pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
     let unreachable = state
         .cursor()
@@ -26,52 +42,89 @@ pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
         key,
         entry,
         enabled,
+        starts_group: false,
+        is_danger: false,
     };
-    let mut items = vec![
-        item(Msg::ReposOpen, None, MenuEntry::Open, !unreachable),
-        item(
-            Msg::ReposToggleFavourite,
-            Some(Shortcut::Favourite),
-            MenuEntry::Favourite,
-            true,
-        ),
+    let bulk = |label, key, action| item(label, MenuKey::Own(key), MenuEntry::Bulk(action), run);
+    let own = |shortcut: Shortcut, label, entry, enabled| {
+        item(label, MenuKey::Own(shortcut), entry, enabled)
+    };
+    let mut groups = vec![
+        vec![item(
+            Msg::ReposOpen,
+            MenuKey::AppOpen,
+            MenuEntry::Open,
+            !unreachable,
+        )],
+        vec![
+            bulk(Msg::GitViewToolbarFetch, Shortcut::Fetch, BulkAction::Fetch),
+            bulk(
+                Msg::ReposActionSwitchDefault,
+                Shortcut::SwitchToDefault,
+                BulkAction::SwitchToDefault,
+            ),
+            bulk(
+                Msg::ReposActionPullFf,
+                Shortcut::PullFastForward,
+                BulkAction::PullFastForward,
+            ),
+            bulk(Msg::ReposActionBoth, Shortcut::Both, BulkAction::Both),
+            own(Shortcut::CleanUp, Msg::ReposToolbarCleanup, MenuEntry::Cleanup, run),
+        ],
+        vec![
+            own(
+                Shortcut::ShowInFiles,
+                Msg::ReposShowInFiles,
+                MenuEntry::ShowInFiles,
+                !unreachable,
+            ),
+            item(
+                Msg::ContextMenuOpenTerminal,
+                MenuKey::AppTerminal,
+                MenuEntry::OpenTerminal,
+                !unreachable,
+            ),
+            item(
+                Msg::ContextMenuCopyPath,
+                MenuKey::AppCopyPath,
+                MenuEntry::CopyPath,
+                true,
+            ),
+        ],
+        vec![
+            own(
+                Shortcut::Favourite,
+                Msg::ReposToggleFavourite,
+                MenuEntry::Favourite,
+                true,
+            ),
+            own(
+                Shortcut::OpenInTabs,
+                Msg::ReposOpenInTabs,
+                MenuEntry::OpenInTabs,
+                true,
+            ),
+        ],
     ];
     if unreachable {
-        items.push(item(
-            Msg::ReposRemove,
-            Some(Shortcut::Remove),
-            MenuEntry::Remove,
-            true,
-        ));
+        let mut remove = own(Shortcut::Remove, Msg::ReposRemove, MenuEntry::Remove, true);
+        remove.is_danger = true;
+        groups.push(vec![remove]);
     }
-    let bulk = |label, key, action| item(label, Some(key), MenuEntry::Bulk(action), run);
-    items.extend([
-        bulk(Msg::GitViewToolbarFetch, Shortcut::Fetch, BulkAction::Fetch),
-        bulk(
-            Msg::ReposActionSwitchDefault,
-            Shortcut::SwitchToDefault,
-            BulkAction::SwitchToDefault,
-        ),
-        bulk(
-            Msg::ReposActionPullFf,
-            Shortcut::PullFastForward,
-            BulkAction::PullFastForward,
-        ),
-        bulk(Msg::ReposActionBoth, Shortcut::Both, BulkAction::Both),
-        item(
-            Msg::ReposToolbarCleanup,
-            Some(Shortcut::CleanUp),
-            MenuEntry::Cleanup,
-            run,
-        ),
-        item(
-            Msg::ReposOpenInTabs,
-            Some(Shortcut::OpenInTabs),
-            MenuEntry::OpenInTabs,
-            true,
-        ),
-    ]);
-    items
+    groups
+        .into_iter()
+        .flat_map(|group| {
+            group.into_iter().enumerate().map(|(place, mut entry)| {
+                entry.starts_group = place == 0;
+                entry
+            })
+        })
+        .enumerate()
+        .map(|(place, mut entry)| {
+            entry.starts_group &= place > 0;
+            entry
+        })
+        .collect()
 }
 
 /// The next entry that can be picked from `from` in `step` direction, round
@@ -94,9 +147,11 @@ mod tests {
             .into_iter()
             .map(|enabled| MenuItem {
                 label: Msg::ReposOpen,
-                key: None,
+                key: MenuKey::AppOpen,
                 entry: MenuEntry::Open,
                 enabled,
+                starts_group: false,
+                is_danger: false,
             })
             .collect();
         assert_eq!(next_enabled(&items, 1, 1), 3);

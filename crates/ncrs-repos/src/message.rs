@@ -15,6 +15,9 @@ pub enum MenuEntry {
     Bulk(BulkAction),
     OpenInTabs,
     Cleanup,
+    ShowInFiles,
+    OpenTerminal,
+    CopyPath,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +43,9 @@ pub enum Message {
     FocusFilter,
     Escape,
     OpenMenuKey,
+    ShowInFilesAtCursor,
+    OpenTerminalAtCursor,
+    CopyPathAtCursor,
     // Mouse.
     RowPressed(PathBuf),
     RowToggled(PathBuf),

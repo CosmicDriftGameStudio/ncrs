@@ -11,11 +11,15 @@ use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
-use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, popup_menu_height, PopupEntry, RightPress};
+use ncrs_config::keymap::KeyAction;
+use ncrs_ui_kit::popup_menu::{
+    menu_rows_height, popup_layer, popup_menu_rows, MenuRow, PopupEntry, RightPress, POPUP_MENU_WIDTH,
+};
 use ncrs_ui_kit::theme::{self, size};
 
 use crate::cleanup::Phase;
 use crate::ctx::ViewCtx;
+use crate::menu::{menu_items, MenuKey};
 use crate::message::Message;
 use crate::state::State;
 
@@ -31,18 +35,42 @@ pub fn tab_title(ctx: ViewCtx<'_>) -> String {
     ctx.lang.text(Msg::ReposTitle).to_owned()
 }
 
-fn menu_entries(state: &State, ctx: ViewCtx<'_>) -> Vec<PopupEntry<Message>> {
-    crate::menu::menu_items(state, ctx.actions_available)
+fn menu_key_label(key: MenuKey, ctx: ViewCtx<'_>) -> Option<String> {
+    let app_key = |action| ctx.keymap.shortcut_label_of(action);
+    match key {
+        MenuKey::Own(shortcut) => Some(ctx.keys.label(shortcut)),
+        MenuKey::AppOpen => app_key(KeyAction::Open),
+        MenuKey::AppTerminal => app_key(KeyAction::OpenTerminal),
+        MenuKey::AppCopyPath => app_key(KeyAction::CopyPath),
+    }
+    .filter(|label| !label.is_empty())
+}
+
+/// The menu of the cursor row as the menu of the file panels draws it: groups
+/// with a line between them, what destroys something last.
+fn menu_rows(state: &State, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
+    let mut rows = Vec::new();
+    for (index, item) in menu_items(state, ctx.actions_available)
         .into_iter()
         .enumerate()
-        .map(|(index, item)| PopupEntry {
+    {
+        if item.starts_group {
+            rows.push(MenuRow::Separator);
+        }
+        let entry = PopupEntry {
             label: ctx.lang.text(item.label).to_owned(),
-            key: item.key.map(|shortcut| ctx.keys.label(shortcut)),
+            key: menu_key_label(item.key, ctx),
             is_selected: index == state.menu_cursor,
             on_press: item.enabled.then_some(Message::MenuPicked(item.entry)),
             on_hover: item.enabled.then_some(Message::MenuCursor(index)),
-        })
-        .collect()
+        };
+        rows.push(if item.is_danger {
+            MenuRow::Danger(entry)
+        } else {
+            MenuRow::Entry(entry)
+        });
+    }
+    rows
 }
 
 fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -117,9 +145,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(draft) = state.clone_draft() {
         layers = layers.push(scrim(clone::dialog(draft, ctx)));
     } else if state.menu_open() {
-        let entries = menu_entries(state, ctx);
-        let origin = menu_origin(state, ctx, entries.len());
-        let menu = popup_menu(entries, origin, palette);
+        let rows = menu_rows(state, ctx);
+        let origin = menu_origin(state, ctx, menu_rows_height(&rows));
+        let menu = popup_menu_rows(rows, POPUP_MENU_WIDTH, origin, palette);
         layers = layers.push(popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss));
     }
     layers.into()
@@ -128,7 +156,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 /// would run past the bottom of the window. The row is placed from the scroll
 /// of the list; a scroll the keyboard made is not reported, so the row is
 /// taken to be kept in view the way `row_into_view` does it.
-fn menu_origin(state: &State, ctx: ViewCtx<'_>, entries: usize) -> Point {
+fn menu_origin(state: &State, ctx: ViewCtx<'_>, height: f32) -> Point {
     let cursor = state.cursor();
     let mut content_top = 0.0;
     'found: for group in state.groups() {
@@ -143,7 +171,6 @@ fn menu_origin(state: &State, ctx: ViewCtx<'_>, entries: usize) -> Point {
     let viewport = (ctx.window.height - LIST_TOP - BELOW_LIST).max(size::REPO_ROW);
     let in_view = (content_top - state.list_scroll).clamp(0.0, viewport - size::REPO_ROW);
     let row_top = LIST_TOP + in_view;
-    let height = popup_menu_height(entries);
     let below = row_top + size::REPO_ROW;
     let y = if below + height > ctx.window.height {
         (row_top - height).max(0.0)

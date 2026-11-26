@@ -133,19 +133,24 @@ pub fn launch_external(
 /// one found, started in the folder under the cursor or the panel's folder.
 /// Where the panel has no local folder the update refuses before this runs.
 pub fn open_terminal(panels: &Panels, search_is_open: bool, ctx: &OpenCtx<'_>) -> Vec<Action> {
-    let mut actions = vec![Action::ClearMessages];
-    if search_is_open {
-        return actions;
+    let folder = panels
+        .local_folder_target()
+        .filter(|_| !search_is_open);
+    match folder {
+        Some(folder) => open_terminal_in(&folder, ctx),
+        None => vec![Action::ClearMessages],
     }
-    let Some(folder) = panels.local_folder_target() else {
-        return actions;
-    };
+}
+
+/// The terminal started in `folder`, as [`open_terminal`] does it.
+pub fn open_terminal_in(folder: &Path, ctx: &OpenCtx<'_>) -> Vec<Action> {
+    let mut actions = vec![Action::ClearMessages];
     // Only needed when no terminal is set.
     let detected = match ctx.programs.terminal {
         Some(_) => &[],
         None => ncrs_fs::detected_terminals(),
     };
-    let command = match ncrs_fs::terminal_command(ctx.programs.terminal.as_ref(), detected, &folder)
+    let command = match ncrs_fs::terminal_command(ctx.programs.terminal.as_ref(), detected, folder)
     {
         Ok(command) => command,
         Err(ncrs_fs::NoTerminal) => {

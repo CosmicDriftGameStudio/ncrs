@@ -379,7 +379,20 @@ fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
             let targets = state.targets_of_row(&path);
             cleanup::open(state, targets, ctx)
         }
+        MenuEntry::ShowInFiles => (Task::none(), vec![Action::ShowInFiles(path)]),
+        MenuEntry::OpenTerminal => (Task::none(), vec![Action::OpenTerminal(path)]),
+        MenuEntry::CopyPath => (Task::none(), vec![Action::CopyPath(path)]),
     }
+}
+
+/// The repository under the cursor, when its folder can be read.
+fn reachable_cursor(state: &State) -> Option<PathBuf> {
+    state.cursor().filter(|path| {
+        is_repo_row(state, path)
+            && !state
+                .reading(path)
+                .is_some_and(crate::summary::Reading::is_unreachable)
+    })
 }
 
 pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
@@ -457,6 +470,23 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             open_menu(state, state.cursor(), ctx);
             quiet(Task::none())
         }
+        Message::ShowInFilesAtCursor => (
+            Task::none(),
+            reachable_cursor(state).map(Action::ShowInFiles).into_iter().collect(),
+        ),
+        Message::OpenTerminalAtCursor => (
+            Task::none(),
+            reachable_cursor(state).map(Action::OpenTerminal).into_iter().collect(),
+        ),
+        Message::CopyPathAtCursor => (
+            Task::none(),
+            state
+                .cursor()
+                .filter(|path| is_repo_row(state, path))
+                .map(Action::CopyPath)
+                .into_iter()
+                .collect(),
+        ),
         Message::OpenMenuAt(path) => {
             state.marks.move_to(path.clone());
             open_menu(state, Some(path), ctx);
