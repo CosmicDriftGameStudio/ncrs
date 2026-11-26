@@ -10,7 +10,7 @@
 
 # Same list as `[licenses] allow` in deny.toml. BSL-1.0 is accepted
 # additionally because deny.toml makes a per-crate exception for
-# clipboard-win and error-code, which are shipped in the Windows build, and
+# clipboard-win and error-code (Windows build) and xxhash-rust (notify), and
 # CDLA-Permissive-2.0 for webpki-roots, the root certificates of the theme
 # download.
 accepted = [
