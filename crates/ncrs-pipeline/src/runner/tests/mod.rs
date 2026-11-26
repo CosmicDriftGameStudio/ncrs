@@ -867,8 +867,12 @@ fn a_watch_report_before_the_watcher_is_stored_is_left_to_the_scan() {
     runner.shared.on_watch_event(WatchEvent::File(path.clone()));
 
     assert!(runner.shared.update(|state| state.first_step.is_empty()));
-    runner.shared.update(|state| state.watcher = watcher);
-    runner.shared.update(|state| state.queue_scan(&location));
+    // One step, as at start: the real watcher may still report the file, and
+    // between two steps that report would be taken before the scan forgets it.
+    runner.shared.update(|state| {
+        state.watcher = watcher;
+        state.queue_scan(&location);
+    });
     runner.shared.work_ready.notify_all();
     let report = runner.wait_for("the scan took the file once", |snapshot| {
         is_idle(snapshot) && snapshot.steps[0].done == 3
