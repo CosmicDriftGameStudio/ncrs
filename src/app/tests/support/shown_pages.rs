@@ -22,6 +22,18 @@ impl App {
         self
     }
 
+    pub fn showing_repos_for_test(mut self, repos: ncrs_repos::State) -> Self {
+        self.repos = Some(repos);
+        self.shown_tab = ShownTab::Repos;
+        self
+    }
+
+    /// The Repos tab as the Mac App Store build offers it: no write action.
+    pub fn in_sandbox_build_for_test(mut self) -> Self {
+        self.repos_read_only = true;
+        self
+    }
+
     pub fn showing_filing_for_test(mut self, filing: ncrs_filing_view::State) -> Self {
         self.filing_view = filing;
         self.shown_tab = ShownTab::Filing;

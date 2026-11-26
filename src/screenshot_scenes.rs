@@ -74,7 +74,11 @@ impl Scenes {
             drop(ncrs_git_view::update(state, message, &ctx));
         };
 
-        let overview = ncrs_git::refs(root, &stop).expect("the refs");
+        let mut overview = ncrs_git::refs(root, &stop).expect("the refs");
+        for worktree in &mut overview.worktrees {
+            let folder = worktree.path.file_name().expect("a worktree folder");
+            worktree.path = Path::new("/Users/alex/Projects").join(folder);
+        }
         let generation = generation_of(|at| state.loads.refs.is_current(at));
         feed(
             &mut state,
@@ -102,6 +106,13 @@ impl Scenes {
             GitMessage::DetailLoaded(generation, Box::new(Ok(detail))),
         );
 
+        state
+    }
+
+    /// The same tab as the Mac App Store build shows it: no write action.
+    pub fn git_read_only(&self) -> GitState {
+        let mut state = self.git();
+        state.actions.unavailable = Some(ncrs_git_view::actions::Unavailable::Sandbox);
         state
     }
 

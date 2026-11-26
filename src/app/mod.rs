@@ -397,6 +397,9 @@ pub struct App {
     /// The commands run from the command list this session, most recent
     /// first. Not kept across runs.
     recent_commands: Vec<KeyAction>,
+    /// The Repos tab offers no write action although this build could: set by
+    /// the picture generators to show the sandbox build.
+    repos_read_only: bool,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
     /// When the open Index or Hermes page last asked for its facts.
