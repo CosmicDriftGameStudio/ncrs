@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use git_cli::{repo, write};
-use ncrs_git::{compare_diff, compare_files};
+use ncrs_git::compare_diff;
 
 fn go() -> Arc<AtomicBool> {
     Arc::new(AtomicBool::new(false))
@@ -51,7 +51,7 @@ fn a_path_through_a_linked_folder_has_no_content() {
     write(elsewhere.path(), "x.txt", "secret\n");
     std::os::unix::fs::symlink(elsewhere.path(), repo.path().join("linked")).unwrap();
 
-    let files = compare_files(repo.path(), &head, None, &go()).unwrap();
+    let files = ncrs_git::compare_files(repo.path(), &head, None, &go()).unwrap();
     assert!(
         files.iter().all(|file| !file.path.starts_with("linked/")),
         "files behind a linked folder are not listed"
