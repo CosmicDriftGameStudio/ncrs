@@ -78,7 +78,13 @@ pub fn repo_summary(
         let Ok(linked) = proxy.into_repo_with_possibly_inaccessible_worktree() else {
             continue;
         };
-        let Some(path) = linked.workdir().map(Path::to_path_buf) else {
+        // Git keeps a worktree whose folder was deleted until it is pruned;
+        // there is nothing to open.
+        let Some(path) = linked
+            .workdir()
+            .filter(|folder| folder.is_dir())
+            .map(Path::to_path_buf)
+        else {
             continue;
         };
         let linked_branch = linked

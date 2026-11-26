@@ -101,6 +101,27 @@ fn repo_with_master() -> git_cli::Repo {
 }
 
 #[test]
+fn a_worktree_whose_folder_was_deleted_is_left_out() {
+    let repo = repo();
+    let linked = tempfile::TempDir::new().unwrap();
+    let folder = linked.path().join("wt");
+    repo.sh(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "gone",
+        folder.to_str().unwrap(),
+    ]);
+    std::fs::remove_dir_all(&folder).unwrap();
+
+    assert!(repo_summary(repo.path(), &go())
+        .unwrap()
+        .worktrees
+        .is_empty());
+}
+
+#[test]
 fn a_linked_worktree_belongs_to_its_repository() {
     let repo = repo();
     let linked = tempfile::TempDir::new().unwrap();
