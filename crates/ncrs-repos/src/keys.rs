@@ -103,7 +103,15 @@ pub fn repos_key(
     menu_open: bool,
 ) -> Option<Message> {
     if menu_open {
-        return None;
+        if !modifiers.is_empty() {
+            return None;
+        }
+        return match key.as_ref() {
+            Key::Named(Named::ArrowUp) => Some(Message::MenuUp),
+            Key::Named(Named::ArrowDown) => Some(Message::MenuDown),
+            Key::Named(Named::Enter | Named::Space) => Some(Message::MenuEnter),
+            _ => None,
+        };
     }
     if filter_focused {
         return match (modifiers.is_empty(), key.as_ref()) {
@@ -145,6 +153,7 @@ pub fn repos_key(
         Key::Named(Named::End) => Some(Message::Last),
         Key::Named(Named::Space) => Some(Message::Mark),
         Key::Named(Named::Enter) => Some(Message::Enter),
+        Key::Named(Named::ContextMenu) => Some(Message::OpenMenuKey),
         _ => None,
     }
 }
@@ -272,7 +281,22 @@ mod tests {
             repos_key(&keys, &down, Modifiers::SHIFT, false, false),
             Some(Message::ExtendDown)
         ));
-        assert!(repos_key(&keys, &down, Modifiers::empty(), false, true).is_none());
+    }
+
+    #[test]
+    fn the_keys_open_and_walk_the_menu() {
+        let keys = ReposKeys::defaults_for(false);
+        let press = |key: Named, menu_open| repos_key(&keys, &Key::Named(key), Modifiers::empty(), false, menu_open);
+        assert_eq!(press(Named::ContextMenu, false), Some(Message::OpenMenuKey));
+        assert_eq!(
+            repos_key(&keys, &Key::Named(Named::F10), Modifiers::SHIFT, false, false),
+            Some(Message::OpenMenuKey)
+        );
+        assert_eq!(press(Named::ArrowDown, true), Some(Message::MenuDown));
+        assert_eq!(press(Named::ArrowUp, true), Some(Message::MenuUp));
+        assert_eq!(press(Named::Enter, true), Some(Message::MenuEnter));
+        assert_eq!(press(Named::Space, true), Some(Message::MenuEnter));
+        assert_eq!(press(Named::Delete, true), None);
     }
 
     #[test]

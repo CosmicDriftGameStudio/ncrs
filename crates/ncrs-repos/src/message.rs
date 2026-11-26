@@ -51,6 +51,10 @@ pub enum Message {
     GroupToggled(GroupKey),
     OpenMenuAt(PathBuf),
     CloseMenu,
+    MenuCursor(usize),
+    MenuUp,
+    MenuDown,
+    MenuEnter,
     MenuPicked(MenuEntry),
     // The filter.
     FilterChanged(String),

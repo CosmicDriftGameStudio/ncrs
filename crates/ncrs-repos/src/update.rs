@@ -10,6 +10,8 @@ use iced::widget::operation;
 use iced::Task;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
+
+use crate::menu::{menu_items, next_enabled};
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
 
 use crate::action::Action;
@@ -349,6 +351,13 @@ fn escape(state: &mut State) -> Outcome {
     quiet(Task::none())
 }
 
+/// Opens the menu of `path` on its first entry that can be picked.
+fn open_menu(state: &mut State, path: Option<PathBuf>, ctx: &Ctx) {
+    state.menu = path;
+    let items = menu_items(state, ctx.actions_available);
+    state.menu_cursor = next_enabled(&items, items.len().saturating_sub(1), 1);
+}
+
 fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
     let Some(path) = state.menu.take() else {
         return quiet(Task::none());
@@ -445,13 +454,34 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Escape => escape(state),
         Message::OpenMenuKey => {
-            state.menu = state.cursor();
+            open_menu(state, state.cursor(), ctx);
             quiet(Task::none())
         }
         Message::OpenMenuAt(path) => {
             state.marks.move_to(path.clone());
-            state.menu = Some(path);
+            open_menu(state, Some(path), ctx);
             quiet(Task::none())
+        }
+        Message::MenuCursor(index) => {
+            state.menu_cursor = index;
+            quiet(Task::none())
+        }
+        Message::MenuUp => {
+            let items = menu_items(state, ctx.actions_available);
+            state.menu_cursor = next_enabled(&items, state.menu_cursor, -1);
+            quiet(Task::none())
+        }
+        Message::MenuDown => {
+            let items = menu_items(state, ctx.actions_available);
+            state.menu_cursor = next_enabled(&items, state.menu_cursor, 1);
+            quiet(Task::none())
+        }
+        Message::MenuEnter => {
+            let items = menu_items(state, ctx.actions_available);
+            match items.get(state.menu_cursor).filter(|item| item.enabled) {
+                Some(item) => menu_picked(state, item.entry, ctx),
+                None => quiet(Task::none()),
+            }
         }
         Message::CloseMenu => {
             state.menu = None;

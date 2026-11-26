@@ -137,6 +137,8 @@ pub struct State {
     pub run: Option<Run>,
     /// The menu is open for this row; for the bar when `None` inside.
     pub menu: Option<PathBuf>,
+    /// The entry of the open menu the keys are on.
+    pub menu_cursor: usize,
     pub failure: Option<String>,
     pub clone: Option<crate::clone::CloneDraft>,
     pub cleanup: Option<crate::cleanup::Cleanup>,
@@ -169,6 +171,7 @@ impl State {
             refreshed_at: None,
             run: None,
             menu: None,
+            menu_cursor: 0,
             failure: None,
             clone: None,
             cleanup: None,

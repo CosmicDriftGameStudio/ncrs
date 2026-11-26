@@ -14,11 +14,9 @@ use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLin
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, popup_menu_height, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, size};
 
-use crate::bulk::BulkAction;
 use crate::cleanup::Phase;
 use crate::ctx::ViewCtx;
-use crate::message::{MenuEntry, Message};
-use crate::shortcuts::Shortcut;
+use crate::message::Message;
 use crate::state::State;
 
 /// Where the menu opens horizontally; its height follows the row of the cursor.
@@ -34,75 +32,17 @@ pub fn tab_title(ctx: ViewCtx<'_>) -> String {
 }
 
 fn menu_entries(state: &State, ctx: ViewCtx<'_>) -> Vec<PopupEntry<Message>> {
-    let target = state.cursor();
-    let unreachable = target
-        .as_deref()
-        .and_then(|path| state.reading(path))
-        .is_some_and(crate::summary::Reading::is_unreachable);
-    let entry = |label: Msg, key: Option<Shortcut>, pick: MenuEntry, enabled: bool| PopupEntry {
-        label: ctx.lang.text(label).to_owned(),
-        key: key.map(|shortcut| ctx.keys.label(shortcut)),
-        is_selected: false,
-        on_press: enabled.then_some(Message::MenuPicked(pick)),
-        on_hover: None,
-    };
-    let run = ctx.actions_available;
-    let mut entries = vec![
-        entry(Msg::ReposOpen, None, MenuEntry::Open, !unreachable),
-        entry(
-            Msg::ReposToggleFavourite,
-            Some(Shortcut::Favourite),
-            MenuEntry::Favourite,
-            true,
-        ),
-    ];
-    if unreachable {
-        entries.push(entry(
-            Msg::ReposRemove,
-            Some(Shortcut::Remove),
-            MenuEntry::Remove,
-            true,
-        ));
-    }
-    entries.extend([
-        entry(
-            Msg::GitViewToolbarFetch,
-            Some(Shortcut::Fetch),
-            MenuEntry::Bulk(BulkAction::Fetch),
-            run,
-        ),
-        entry(
-            Msg::ReposActionSwitchDefault,
-            Some(Shortcut::SwitchToDefault),
-            MenuEntry::Bulk(BulkAction::SwitchToDefault),
-            run,
-        ),
-        entry(
-            Msg::ReposActionPullFf,
-            Some(Shortcut::PullFastForward),
-            MenuEntry::Bulk(BulkAction::PullFastForward),
-            run,
-        ),
-        entry(
-            Msg::ReposActionBoth,
-            Some(Shortcut::Both),
-            MenuEntry::Bulk(BulkAction::Both),
-            run,
-        ),
-        entry(
-            Msg::ReposCommandCleanup,
-            Some(Shortcut::CleanUp),
-            MenuEntry::Cleanup,
-            run,
-        ),
-        entry(
-            Msg::ReposOpenInTabs,
-            Some(Shortcut::OpenInTabs),
-            MenuEntry::OpenInTabs,
-            true,
-        ),
-    ]);
-    entries
+    crate::menu::menu_items(state, ctx.actions_available)
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| PopupEntry {
+            label: ctx.lang.text(item.label).to_owned(),
+            key: item.key.map(|shortcut| ctx.keys.label(shortcut)),
+            is_selected: index == state.menu_cursor,
+            on_press: item.enabled.then_some(Message::MenuPicked(item.entry)),
+            on_hover: item.enabled.then_some(Message::MenuCursor(index)),
+        })
+        .collect()
 }
 
 fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -171,20 +111,18 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     let filled_page = page.width(Length::Fill).height(Length::Fill);
     let full_page = column![filled_page, status_bar(state, ctx)].height(Length::Fill);
+    // The page stays the first layer whatever lies over it, so the list keeps
+    // its scroll when a menu or a dialog opens.
+    let mut layers = stack![full_page];
     if let Some(draft) = state.clone_draft() {
-        stack![full_page, scrim(clone::dialog(draft, ctx))].into()
+        layers = layers.push(scrim(clone::dialog(draft, ctx)));
     } else if state.menu_open() {
         let entries = menu_entries(state, ctx);
         let origin = menu_origin(state, ctx, entries.len());
         let menu = popup_menu(entries, origin, palette);
-        stack![
-            full_page,
-            popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss)
-        ]
-        .into()
-    } else {
-        full_page.into()
+        layers = layers.push(popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss));
     }
+    layers.into()
 }
 /// The menu opens under the visible row of the cursor, and above it where it
 /// would run past the bottom of the window. The row is placed from the scroll

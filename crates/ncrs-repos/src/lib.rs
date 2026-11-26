@@ -10,6 +10,7 @@ mod clone;
 mod ctx;
 mod keys;
 mod log;
+mod menu;
 mod message;
 mod rows;
 mod run;
