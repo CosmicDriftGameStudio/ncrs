@@ -57,9 +57,11 @@ async fn the_menu_of_a_row_opens_and_runs_from_the_keyboard() {
     let repos = app.repos.as_ref().unwrap();
     assert_eq!(repos.menu.as_deref(), Some(root.path()));
     assert_eq!(repos.menu_cursor, 0);
+    // The App Store build greys out the writing entries, so ↓ may skip some.
     press(&mut app, Named::ArrowDown, Modifiers::empty());
-    assert_eq!(app.repos.as_ref().unwrap().menu_cursor, 1);
+    assert_ne!(app.repos.as_ref().unwrap().menu_cursor, 0);
     press(&mut app, Named::ArrowUp, Modifiers::empty());
+    assert_eq!(app.repos.as_ref().unwrap().menu_cursor, 0);
     press(&mut app, Named::Enter, Modifiers::empty());
     assert!(app.repos.as_ref().unwrap().menu.is_none());
     assert!(matches!(app.shown_tab, ShownTab::Git(_)));
