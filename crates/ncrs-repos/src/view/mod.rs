@@ -2,19 +2,21 @@
 
 mod cleanup_pane;
 mod clone;
+mod credential;
 mod head;
 mod list;
 mod log;
 
 use iced::widget::{column, row, stack};
 use iced::{Element, Length, Point};
+use ncrs_config::keymap::KeyAction;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::git_rows::drag_capture;
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
-use ncrs_config::keymap::KeyAction;
 use ncrs_ui_kit::popup_menu::{
-    menu_rows_height, popup_layer, popup_menu_rows, MenuRow, PopupEntry, RightPress, POPUP_MENU_WIDTH,
+    menu_rows_height, popup_layer, popup_menu_rows, MenuRow, PopupEntry, RightPress,
+    POPUP_MENU_WIDTH,
 };
 use ncrs_ui_kit::theme::{self, size};
 
@@ -146,13 +148,19 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if state.column_drag.is_some() {
         layers = layers.push(drag_capture(Message::ResizeMoved, Message::ResizeReleased));
     }
-    if let Some(draft) = state.clone_draft() {
+    if let Some(ask) = &state.credential {
+        layers = layers.push(scrim(credential::dialog(ask, ctx)));
+    } else if let Some(draft) = state.clone_draft() {
         layers = layers.push(scrim(clone::dialog(draft, ctx)));
     } else if state.menu_open() {
         let rows = menu_rows(state, ctx);
         let origin = menu_origin(state, ctx, menu_rows_height(&rows));
         let menu = popup_menu_rows(rows, POPUP_MENU_WIDTH, origin, palette);
-        layers = layers.push(popup_layer(menu, Some(Message::CloseMenu), RightPress::Dismiss));
+        layers = layers.push(popup_layer(
+            menu,
+            Some(Message::CloseMenu),
+            RightPress::Dismiss,
+        ));
     }
     layers.into()
 }

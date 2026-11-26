@@ -29,6 +29,14 @@ const REPLY_LIMIT: Duration = Duration::from_secs(660);
 /// The longest line a helper may send.
 const LINE_LIMIT: u64 = 8 * 1024;
 
+static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
+
+/// A job number no other owner of interactive jobs in this process has: the
+/// questions of a job come back with it, so the app finds who asked.
+pub fn next_job() -> u64 {
+    NEXT_JOB.fetch_add(1, Ordering::Relaxed)
+}
+
 /// What git wants to know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptKind {

@@ -97,7 +97,7 @@ mod ui_tests {
         fixture
     }
 
-    fn matches_picture(state: &State, reference: &str) -> bool {
+    fn with_simulator<R>(state: &State, ask: impl FnOnce(&mut Simulator<'_, Message>) -> R) -> R {
         let palette = ThemePreset::Cosmic.palette();
         let keys = ReposKeys::defaults_for(true);
         let ctx = ViewCtx {
@@ -119,11 +119,21 @@ mod ui_tests {
             WINDOW,
             view(state, ctx).map(|message: Message| message),
         );
-        simulator
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_reference_image(reference)
-            .unwrap()
+        ask(&mut simulator)
+    }
+
+    fn matches_picture(state: &State, reference: &str) -> bool {
+        with_simulator(state, |simulator| {
+            simulator
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_reference_image(reference)
+                .unwrap()
+        })
+    }
+
+    fn shows_text(state: &State, text: &str) -> bool {
+        with_simulator(state, |simulator| simulator.find(text).is_ok())
     }
 
     #[test]
@@ -196,6 +206,28 @@ mod ui_tests {
             &fixture.state,
             "tests/snapshots/repos-run-result"
         ));
+    }
+
+    #[test]
+    fn a_row_outside_the_run_shows_no_cleanable_number_while_a_result_is_open() {
+        let mut fixture = crowded();
+        fixture.send(Message::CleanableRead(repo("ncrs-web"), Some(4242)));
+        assert!(shows_text(&fixture.state, "4242"));
+
+        fixture.send(Message::RowToggled(repo("ncrs")));
+        fixture.send(Message::Bulk(BulkAction::Fetch));
+        fixture.send(Message::StepDone(
+            repo("ncrs"),
+            Box::new(Executed {
+                outcome: Outcome::AlreadyCurrent,
+                ran: Vec::new(),
+                after: None,
+            }),
+        ));
+        assert!(!shows_text(&fixture.state, "4242"));
+
+        fixture.send(Message::CloseResult);
+        assert!(shows_text(&fixture.state, "4242"));
     }
 
     #[test]

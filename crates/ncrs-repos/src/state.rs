@@ -143,6 +143,12 @@ pub struct State {
     pub menu_cursor: usize,
     pub failure: Option<String>,
     pub clone: Option<crate::clone::CloneDraft>,
+    /// The job number of this tab: the login questions of its pushes come back with it.
+    pub job: u64,
+    /// The login question git asks, shown as a dialog.
+    pub credential: Option<crate::credential::Credential>,
+    /// Questions that came while another one was shown.
+    pub waiting_credentials: Vec<ncrs_git::askpass::AskRequest>,
     pub cleanup: Option<crate::cleanup::Cleanup>,
     /// How far down the list is scrolled, for placing the menu.
     pub list_scroll: f32,
@@ -179,6 +185,9 @@ impl State {
             menu_cursor: 0,
             failure: None,
             clone: None,
+            job: ncrs_git::askpass::next_job(),
+            credential: None,
+            waiting_credentials: Vec::new(),
             cleanup: None,
             cleanup_generation: 0,
             list_scroll: 0.0,

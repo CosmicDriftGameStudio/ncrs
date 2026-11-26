@@ -47,12 +47,22 @@ pub fn start(
     pump(state, ctx)
 }
 
+/// A push runs the hooks of its repository, which can run a test suite, and may
+/// ask for a login: one at a time, whatever the setting says.
+fn concurrency_of(action: BulkAction, ctx: &Ctx) -> usize {
+    if action == BulkAction::Push {
+        1
+    } else {
+        usize::from(ctx.settings.concurrency).max(1)
+    }
+}
+
 /// Starts as many waiting repos as there are free places.
 pub fn pump(state: &mut State, ctx: &Ctx) -> Task<Message> {
-    let limit = usize::from(ctx.settings.concurrency).max(1);
+    let job = state.job;
     let mut started = Vec::new();
     while let Some(run) = state.run.as_mut() {
-        if run.running >= limit {
+        if run.running >= concurrency_of(run.action, ctx) {
             break;
         }
         let Some(path) = run.queue.pop_front() else {
@@ -71,6 +81,7 @@ pub fn pump(state: &mut State, ctx: &Ctx) -> Task<Message> {
                     path,
                     (**summary).clone(),
                     is_worktree,
+                    job,
                     Arc::clone(&state.stop),
                 ));
             }

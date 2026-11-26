@@ -2,11 +2,7 @@
 //! dialog's draft. The answer never leaves the app as anything but a
 //! [`Secret`], which prints as `***`.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ncrs_git::askpass::{AskRequest, PromptKind, Secret};
-
-static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// The number a tab's interactive jobs carry; the question of a job comes
 /// back with it so the app can find the tab.
@@ -15,7 +11,7 @@ pub struct JobToken(pub u64);
 
 impl Default for JobToken {
     fn default() -> Self {
-        Self(NEXT_TOKEN.fetch_add(1, Ordering::Relaxed))
+        Self(ncrs_git::askpass::next_job())
     }
 }
 

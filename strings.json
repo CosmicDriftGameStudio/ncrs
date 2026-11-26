@@ -13747,6 +13747,12 @@
       "de": "{n} Commits übernommen"
     },
     {
+      "key": "repos.result_pushed",
+      "context": "Result column of the Push bulk action in the Repos tab: the repository's branch was pushed, this many commits went to the remote (0 for a branch that had no remote branch yet).",
+      "en": "{n} commits pushed",
+      "de": "{n} Commits hochgeladen"
+    },
+    {
       "key": "repos.result_current",
       "context": "Result column of a bulk action in the Repos tab: there was nothing to update.",
       "en": "already up to date",

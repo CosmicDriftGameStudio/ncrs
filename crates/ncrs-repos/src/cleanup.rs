@@ -506,11 +506,7 @@ fn limit(ctx: &Ctx) -> usize {
     usize::from(ctx.settings.concurrency).max(1)
 }
 
-pub fn open(
-    state: &mut State,
-    (scope, mut targets): (Scope, Vec<PathBuf>),
-    ctx: &Ctx,
-) -> Outcome {
+pub fn open(state: &mut State, (scope, mut targets): (Scope, Vec<PathBuf>), ctx: &Ctx) -> Outcome {
     let busy = state.run.as_ref().is_some_and(|run| !run.is_finished());
     if !ctx.actions_available || busy || state.cleanup.is_some() || state.clone.is_some() {
         return quiet(Task::none());

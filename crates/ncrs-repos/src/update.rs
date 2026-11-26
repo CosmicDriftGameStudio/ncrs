@@ -372,9 +372,7 @@ fn menu_picked(state: &mut State, entry: MenuEntry, ctx: &Ctx) -> Outcome {
             let targets = state.targets_of_row(&path);
             quiet(run::start(state, action, targets, ctx))
         }
-        MenuEntry::OpenInTabs if state.is_marked(&path) => {
-            update(state, Message::OpenInTabs, ctx)
-        }
+        MenuEntry::OpenInTabs if state.is_marked(&path) => update(state, Message::OpenInTabs, ctx),
         MenuEntry::OpenInTabs => (Task::none(), open_tabs(state, vec![path])),
         MenuEntry::Cleanup => {
             let targets = state.targets_of_row(&path);
@@ -399,6 +397,10 @@ fn reachable_cursor(state: &State) -> Option<PathBuf> {
 pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
     state.open_roots.clone_from(&ctx.open_roots);
     let message = match cleanup::update(state, incoming, ctx) {
+        Ok(outcome) => return outcome,
+        Err(other) => other,
+    };
+    let message = match crate::credential::update(state, message) {
         Ok(outcome) => return outcome,
         Err(other) => other,
     };
@@ -488,11 +490,17 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         }
         Message::ShowInFilesAtCursor => (
             Task::none(),
-            reachable_cursor(state).map(Action::ShowInFiles).into_iter().collect(),
+            reachable_cursor(state)
+                .map(Action::ShowInFiles)
+                .into_iter()
+                .collect(),
         ),
         Message::OpenTerminalAtCursor => (
             Task::none(),
-            reachable_cursor(state).map(Action::OpenTerminal).into_iter().collect(),
+            reachable_cursor(state)
+                .map(Action::OpenTerminal)
+                .into_iter()
+                .collect(),
         ),
         Message::CopyPathAtCursor => (
             Task::none(),
@@ -671,6 +679,11 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
         Message::Left | Message::Right | Message::SwitchFocus | Message::Cleanup(_) => {
             quiet(Task::none())
         }
+        // Taken by `credential::update` above.
+        Message::CredentialAsked(_)
+        | Message::CredentialTyped(..)
+        | Message::CredentialSend(_)
+        | Message::CredentialCancel(_) => quiet(Task::none()),
         // Taken by `clone::update` above.
         Message::CloneOpen
         | Message::CloneUrlChanged(_)

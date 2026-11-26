@@ -68,6 +68,9 @@ impl App {
 
     pub(in crate::app) fn close_repos(&mut self) {
         let was_open = self.open_pages();
+        if let Some(tab) = &self.repos {
+            ncrs_git::askpass::cancel_job(tab.job);
+        }
         self.repos = None;
         self.follow_opened_pages(was_open);
     }

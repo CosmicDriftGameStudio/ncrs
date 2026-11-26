@@ -102,6 +102,11 @@ pub enum Message {
     ShowInGitTab(PathBuf),
     ShowDetails(PathBuf),
     ClearDetails,
+    // The login dialog of a push.
+    CredentialAsked(ncrs_git::askpass::AskRequest),
+    CredentialTyped(u64, ncrs_git::askpass::Secret),
+    CredentialSend(u64),
+    CredentialCancel(u64),
     // The clone dialog.
     CloneOpen,
     CloneUrlChanged(String),

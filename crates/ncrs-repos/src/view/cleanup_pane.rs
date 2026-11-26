@@ -14,10 +14,10 @@ use ncrs_ui_kit::check_rows::{
 };
 use ncrs_ui_kit::format::time;
 use ncrs_ui_kit::git_state::RunOutcome;
-use ncrs_ui_kit::repo_row::result_strip;
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
 use ncrs_ui_kit::page_text::{page_heading, page_line};
+use ncrs_ui_kit::repo_row::result_strip;
 use ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID;
 use ncrs_ui_kit::section_head::{section_head, SectionHead};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
@@ -486,7 +486,10 @@ pub fn view<'a>(cleanup: &'a Cleanup, ctx: ViewCtx<'a>) -> Element<'a, Message> 
     let pane = column![
         row![
             page_heading(&title, palette),
-            dim(super::head::scope_text(cleanup.scope, &cleanup.order, ctx), ctx),
+            dim(
+                super::head::scope_text(cleanup.scope, &cleanup.order, ctx),
+                ctx
+            ),
             Space::new().width(Length::Fill),
             close_cross(
                 (cleanup.phase != Phase::Deleting)

@@ -69,7 +69,13 @@ pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
                 BulkAction::PullFastForward,
             ),
             bulk(Msg::ReposActionBoth, Shortcut::Both, BulkAction::Both),
-            own(Shortcut::CleanUp, Msg::ReposToolbarCleanup, MenuEntry::Cleanup, run),
+            bulk(Msg::GitViewToolbarPush, Shortcut::Push, BulkAction::Push),
+            own(
+                Shortcut::CleanUp,
+                Msg::ReposToolbarCleanup,
+                MenuEntry::Cleanup,
+                run,
+            ),
         ],
         vec![
             own(
@@ -132,7 +138,9 @@ pub(crate) fn menu_items(state: &State, run: bool) -> Vec<MenuItem> {
 pub(crate) fn next_enabled(items: &[MenuItem], from: usize, step: isize) -> usize {
     let count = items.len();
     (1..=count)
-        .map(|distance| (from as isize + step * distance as isize).rem_euclid(count.max(1) as isize) as usize)
+        .map(|distance| {
+            (from as isize + step * distance as isize).rem_euclid(count.max(1) as isize) as usize
+        })
         .find(|&index| items.get(index).is_some_and(|item| item.enabled))
         .unwrap_or(from)
 }

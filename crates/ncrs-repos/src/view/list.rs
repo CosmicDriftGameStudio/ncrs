@@ -151,7 +151,7 @@ fn one_row<'a>(
     let actions = if result.is_some() {
         result
     } else if let Some(count) =
-        cleanable_count(state, &path).filter(|_| !is_worktree && !unreachable)
+        cleanable_count(state, &path).filter(|_| !is_run && !is_worktree && !unreachable)
     {
         Some(page_line(count.to_string(), font_size::BODY, note_ink))
     } else if unreachable {

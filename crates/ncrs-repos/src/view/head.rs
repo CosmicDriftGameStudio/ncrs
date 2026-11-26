@@ -120,9 +120,12 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let bulk = |action: BulkAction, shortcut: Shortcut| {
         let (git_action, what) = match action {
             BulkAction::Fetch => (GitAction::Fetch, Msg::GitViewToolbarFetch),
-            BulkAction::SwitchToDefault => (GitAction::SwitchToDefault, Msg::ReposActionSwitchDefault),
+            BulkAction::SwitchToDefault => {
+                (GitAction::SwitchToDefault, Msg::ReposActionSwitchDefault)
+            }
             BulkAction::PullFastForward => (GitAction::Pull, Msg::ReposActionPullFf),
             BulkAction::Both => (GitAction::SwitchAndPull, Msg::ReposActionBoth),
+            BulkAction::Push => (GitAction::Push, Msg::GitViewToolbarPush),
         };
         git_button(git_action, None, what, shortcut, Message::Bulk(action))
     };
@@ -140,11 +143,14 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .push(bulk(BulkAction::SwitchToDefault, Shortcut::SwitchToDefault))
         .push(bulk(BulkAction::PullFastForward, Shortcut::PullFastForward))
         .push(bulk(BulkAction::Both, Shortcut::Both))
+        .push(bulk(BulkAction::Push, Shortcut::Push))
         .push(git_button(
             GitAction::CleanUp,
             Some(format!(
                 "{} {}",
-                ctx.lang.text(Msg::ReposToolbarCleanup).trim_end_matches('\u{2026}'),
+                ctx.lang
+                    .text(Msg::ReposToolbarCleanup)
+                    .trim_end_matches('\u{2026}'),
                 targets.len()
             )),
             Msg::ReposToolbarCleanup,

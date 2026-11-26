@@ -349,6 +349,9 @@ mod tests {
         assert_eq!(dropped.len(), 2);
         let left: Vec<&PathBuf> = store.repos.iter().map(|entry| &entry.path).collect();
         assert_eq!(left.len(), 5);
-        assert!(kept.iter().chain([&unplugged]).all(|path| left.contains(&path)));
+        assert!(kept
+            .iter()
+            .chain([&unplugged])
+            .all(|path| left.contains(&path)));
     }
 }

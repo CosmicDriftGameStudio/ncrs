@@ -19,14 +19,17 @@ pub enum BulkAction {
     SwitchToDefault,
     PullFastForward,
     Both,
+    /// Runs with the hooks and may ask for a login, so never beside another repo.
+    Push,
 }
 
 impl BulkAction {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Fetch,
         Self::SwitchToDefault,
         Self::PullFastForward,
         Self::Both,
+        Self::Push,
     ];
 
     /// The command as the log shows it.
@@ -36,6 +39,7 @@ impl BulkAction {
             Self::SwitchToDefault => "git checkout <default>",
             Self::PullFastForward => "git pull --ff-only",
             Self::Both => "git checkout <default> && git pull --ff-only",
+            Self::Push => "git push",
         }
     }
 }
@@ -51,6 +55,7 @@ pub struct Facts {
     pub default_branch: Option<String>,
     pub ahead: u32,
     pub behind: u32,
+    pub has_upstream: bool,
 }
 
 impl Facts {
@@ -62,6 +67,7 @@ impl Facts {
             default_branch: summary.default_branch.clone(),
             ahead: summary.ahead,
             behind: summary.behind,
+            has_upstream: summary.has_upstream,
         }
     }
 
@@ -98,6 +104,9 @@ pub enum Plan {
 /// The decision before the first command. A fetch changes no file of the
 /// working copy, so changes do not stop it; switching and pulling do.
 pub fn plan_for(action: BulkAction, facts: &Facts) -> Plan {
+    if action == BulkAction::Push {
+        return plan_push(facts);
+    }
     if facts.is_worktree {
         return Plan::Skip(SkipReason::Worktree);
     }
@@ -109,6 +118,20 @@ pub fn plan_for(action: BulkAction, facts: &Facts) -> Plan {
     }
     match action {
         BulkAction::SwitchToDefault if !facts.off_default() => Plan::Nothing,
+        _ => Plan::Run,
+    }
+}
+
+/// A push touches no file of the working copy, so changes and linked
+/// worktrees (a branch of their own) do not stop it. A branch without an
+/// upstream is always pushed: `push_branch` sets the upstream itself.
+fn plan_push(facts: &Facts) -> Plan {
+    match (facts.branch.is_some(), facts.ahead, facts.behind) {
+        (false, ..) => Plan::Skip(SkipReason::DetachedHead),
+        (true, ahead, behind) if ahead > 0 && behind > 0 => {
+            Plan::Skip(SkipReason::Diverged { ahead })
+        }
+        (true, 0, _) if facts.has_upstream => Plan::Nothing,
         _ => Plan::Run,
     }
 }
@@ -130,6 +153,10 @@ pub enum Outcome {
         behind: u32,
     },
     AlreadyCurrent,
+    /// A push went through; `ahead` commits (0 for a branch that had no upstream).
+    Pushed {
+        ahead: u32,
+    },
     Switched {
         from: String,
         to: String,
@@ -149,7 +176,9 @@ impl Outcome {
     pub fn kind(&self) -> RunOutcome {
         match self {
             Self::Running => RunOutcome::Running,
-            Self::Updated { .. } | Self::Switched { .. } => RunOutcome::Updated,
+            Self::Updated { .. } | Self::Switched { .. } | Self::Pushed { .. } => {
+                RunOutcome::Updated
+            }
             Self::AlreadyCurrent => RunOutcome::AlreadyCurrent,
             Self::Skipped(_) => RunOutcome::Skipped,
             Self::NoAccess { .. } | Self::Failed { .. } => RunOutcome::Failed,
@@ -225,14 +254,19 @@ pub fn error_line(error: &ActionError) -> String {
     }
 }
 
-/// Runs `action` on the repository at `path`; blocks. Never asks for a login.
+/// Runs `action` on the repository at `path`; blocks. Never asks for a login,
+/// except a push, which asks through `job` (see `push::execute`).
 pub fn execute(
     action: BulkAction,
     path: &Path,
     before: &RepoSummary,
     is_worktree: bool,
+    job: u64,
     stop: &Arc<AtomicBool>,
 ) -> Executed {
+    if action == BulkAction::Push {
+        return crate::push::execute(path, before, is_worktree, job, stop);
+    }
     let mut facts = Facts::of(before, is_worktree);
     let mut ran: Vec<Ran> = Vec::new();
     let finish = |outcome: Outcome, steps: Vec<Ran>| Executed {
@@ -310,7 +344,8 @@ pub fn execute(
     let after = summary::read(path, stop);
     let behind_now = after.summary().map_or(0, |read| read.behind);
     let outcome = match action {
-        BulkAction::Fetch => {
+        // A push never gets here: it returned above.
+        BulkAction::Fetch | BulkAction::Push => {
             if behind_now > before.behind {
                 Outcome::Updated { behind: behind_now }
             } else {
@@ -391,6 +426,7 @@ mod tests {
             default_branch: Some("main".to_owned()),
             ahead: 0,
             behind: 0,
+            has_upstream: true,
         }
     }
 
@@ -400,7 +436,10 @@ mod tests {
             is_worktree: true,
             ..facts()
         };
-        for action in BulkAction::ALL {
+        for action in BulkAction::ALL
+            .into_iter()
+            .filter(|action| *action != BulkAction::Push)
+        {
             assert_eq!(
                 plan_for(action, &worktree),
                 Plan::Skip(SkipReason::Worktree)
@@ -510,6 +549,7 @@ mod tests {
             root,
             before,
             false,
+            0,
             &Arc::default(),
         )
         .outcome
@@ -556,6 +596,68 @@ mod tests {
         ] {
             assert_eq!(plan_for(action, &facts()), Plan::Run);
         }
+    }
+
+    fn pushing(facts: Facts) -> Plan {
+        plan_for(BulkAction::Push, &facts)
+    }
+
+    #[test]
+    fn a_push_ignores_worktrees_and_local_changes() {
+        let worktree = Facts {
+            is_worktree: true,
+            changed: 5,
+            ahead: 1,
+            ..facts()
+        };
+        assert_eq!(pushing(worktree), Plan::Run);
+    }
+
+    #[test]
+    fn a_push_never_moves_a_detached_head() {
+        let detached = Facts {
+            branch: None,
+            ahead: 1,
+            ..facts()
+        };
+        assert_eq!(pushing(detached), Plan::Skip(SkipReason::DetachedHead));
+    }
+
+    #[test]
+    fn a_push_waits_for_a_pull_when_the_branches_diverged() {
+        let diverged = Facts {
+            ahead: 2,
+            behind: 1,
+            ..facts()
+        };
+        assert_eq!(
+            pushing(diverged),
+            Plan::Skip(SkipReason::Diverged { ahead: 2 })
+        );
+    }
+
+    #[test]
+    fn a_push_has_nothing_to_do_when_the_upstream_has_every_commit() {
+        assert_eq!(pushing(facts()), Plan::Nothing);
+        let only_behind = Facts {
+            behind: 3,
+            ..facts()
+        };
+        assert_eq!(pushing(only_behind), Plan::Nothing);
+    }
+
+    #[test]
+    fn a_push_runs_for_new_commits_and_for_a_branch_without_upstream() {
+        let ahead = Facts {
+            ahead: 1,
+            ..facts()
+        };
+        assert_eq!(pushing(ahead), Plan::Run);
+        let no_upstream = Facts {
+            has_upstream: false,
+            ..facts()
+        };
+        assert_eq!(pushing(no_upstream), Plan::Run);
     }
 
     #[test]

@@ -43,13 +43,14 @@ pub fn step(
     path: PathBuf,
     before: RepoSummary,
     is_worktree: bool,
+    job: u64,
     stop: Arc<AtomicBool>,
 ) -> Task<Message> {
     Task::perform(
         async move {
             let to_run = path.clone();
             let executed = tokio::task::spawn_blocking(move || {
-                bulk::execute(action, &to_run, &before, is_worktree, &stop)
+                bulk::execute(action, &to_run, &before, is_worktree, job, &stop)
             })
             .await
             .unwrap_or_else(|error| Executed {

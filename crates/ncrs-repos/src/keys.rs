@@ -309,7 +309,14 @@ mod tests {
     fn the_keys_open_and_walk_the_menu() {
         let keys = ReposKeys::defaults_for(false);
         let press = |key: Named, menu_open| {
-            repos_key(&keys, &Key::Named(key), Modifiers::empty(), false, menu_open, None)
+            repos_key(
+                &keys,
+                &Key::Named(key),
+                Modifiers::empty(),
+                false,
+                menu_open,
+                None,
+            )
         };
         let menu_key = Some(AppKey::ContextMenu);
         let f10 = Key::Named(Named::F10);
@@ -317,9 +324,18 @@ mod tests {
             repos_key(&keys, &f10, Modifiers::SHIFT, false, false, menu_key),
             Some(Message::OpenMenuKey)
         );
-        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, false, false, None), None);
-        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, true, false, menu_key), None);
-        assert_eq!(repos_key(&keys, &f10, Modifiers::SHIFT, false, true, menu_key), None);
+        assert_eq!(
+            repos_key(&keys, &f10, Modifiers::SHIFT, false, false, None),
+            None
+        );
+        assert_eq!(
+            repos_key(&keys, &f10, Modifiers::SHIFT, true, false, menu_key),
+            None
+        );
+        assert_eq!(
+            repos_key(&keys, &f10, Modifiers::SHIFT, false, true, menu_key),
+            None
+        );
         assert_eq!(press(Named::ArrowDown, true), Some(Message::MenuDown));
         assert_eq!(press(Named::ArrowUp, true), Some(Message::MenuUp));
         assert_eq!(press(Named::Enter, true), Some(Message::MenuEnter));

@@ -11,7 +11,9 @@
 mod common;
 
 use common::{fixture, read, repo, summary, ROOT};
-use ncrs_repos::{open, Action, GroupKey, Message, Origin, Reading, ScanResult, Store, REFRESH_EVERY};
+use ncrs_repos::{
+    open, Action, GroupKey, Message, Origin, Reading, ScanResult, Store, REFRESH_EVERY,
+};
 use std::path::PathBuf;
 
 const NAMES: [&str; 5] = ["alpha", "bravo", "charlie", "delta", "echo"];

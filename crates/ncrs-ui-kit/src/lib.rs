@@ -34,6 +34,7 @@ pub mod blame_rows;
 pub mod check_rows;
 pub mod choice_rows;
 pub mod column_header;
+pub mod credential_dialog;
 pub mod commit_graph;
 pub mod compare_bar;
 pub mod compare_cell;

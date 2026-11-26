@@ -12,6 +12,7 @@ pub fn outcome_text(outcome: &Outcome, lang: Language) -> String {
         Outcome::Running => lang.text(Msg::ReposResultRunning).to_owned(),
         Outcome::Updated { behind } => number(Msg::ReposResultUpdated, &behind.to_string()),
         Outcome::AlreadyCurrent => lang.text(Msg::ReposResultCurrent).to_owned(),
+        Outcome::Pushed { ahead } => number(Msg::ReposResultPushed, &ahead.to_string()),
         Outcome::Switched { from, to, behind } => fill_template(
             lang.text(Msg::ReposResultSwitched),
             &[("{from}", from), ("{to}", to), ("{n}", &behind.to_string())],
@@ -67,6 +68,7 @@ mod tests {
             Outcome::Running,
             Outcome::Updated { behind: 3 },
             Outcome::AlreadyCurrent,
+            Outcome::Pushed { ahead: 2 },
             Outcome::Switched {
                 from: "dev".to_owned(),
                 to: "main".to_owned(),

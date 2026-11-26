@@ -21,6 +21,8 @@ pub struct RepoSummary {
     /// Distance of the checked-out branch to its upstream (G8).
     pub ahead: u32,
     pub behind: u32,
+    /// The checked-out branch has an upstream whose remote branch is known here.
+    pub has_upstream: bool,
     /// Changed and untracked paths, ignored ones left out.
     pub changed: usize,
     /// The last fetch, from the time of `FETCH_HEAD`.
@@ -67,6 +69,12 @@ pub fn repo_summary(
         (Some(name), Some(id)) => distance_to_upstream(&repository, name, id, stop)?,
         _ => (0, 0),
     };
+    let has_upstream = head.referent_name().is_some_and(|name| {
+        repository
+            .branch_remote_tracking_ref_name(name, gix::remote::Direction::Fetch)
+            .and_then(Result::ok)
+            .is_some_and(|tracking| repository.find_reference(&tracking).is_ok())
+    });
     let changed = crate::status(root, stop)?
         .entries
         .values()
@@ -103,6 +111,7 @@ pub fn repo_summary(
         default_branch: default_branch(&repository).map(|found| found.name),
         ahead,
         behind,
+        has_upstream,
         changed,
         fetched_at: last_fetch(root),
         worktrees,
