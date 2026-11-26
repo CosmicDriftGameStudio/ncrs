@@ -22,6 +22,7 @@ use ncrs_ui_kit::theme::{font_size, spacing};
 use crate::bulk::Outcome;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
+use crate::resize::remembered;
 use crate::rows::{name_of, Group, GroupKey, Row, RowKind};
 use crate::state::State;
 use crate::summary::Reading;
@@ -33,23 +34,24 @@ const LOCATION_CHARS: usize = 52;
 /// The last column of a run holds the result and needs more room.
 const RESULT_WIDTH: f32 = 440.0;
 
-/// The chips of "3 behind origin/main" and "11 local changes" and the time "yesterday 17:01"
-/// need more than the standard widths.
+/// The remembered widths, or those of the drag that runs.
 /// Beside the clean-up there is only room for the branch and the standing.
-fn columns(state: &State) -> RepoColumns {
+fn columns(state: &State, ctx: ViewCtx<'_>) -> RepoColumns {
     let is_run = state.run().is_some();
     let beside_cleanup = state.cleanup.is_some();
+    let base = state
+        .column_drag
+        .map_or_else(|| remembered(ctx.settings), |drag| drag.current);
     RepoColumns {
         location: !beside_cleanup,
-        standing: 250.0,
-        changes: if beside_cleanup { 0.0 } else { 160.0 },
-        fetched: if beside_cleanup { 0.0 } else { 122.0 },
+        changes: if beside_cleanup { 0.0 } else { base.changes },
+        fetched: if beside_cleanup { 0.0 } else { base.fetched },
         actions: if is_run {
             RESULT_WIDTH
         } else {
             RepoColumns::STANDARD.actions
         },
-        ..RepoColumns::STANDARD
+        ..base
     }
 }
 
@@ -205,7 +207,7 @@ fn one_row<'a>(
         on_standing: is_run.then(|| Message::ShowDetails(path.clone())),
         actions,
     };
-    let built = repo_row(item, columns(state), ctx.lang, ctx.palette);
+    let built = repo_row(item, columns(state, ctx), ctx.lang, ctx.palette);
     let framed = if is_cursor {
         container(built).id(FOCUSED_ROW_ID).into()
     } else {
@@ -262,12 +264,13 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let is_run = state.run().is_some();
     let cleanable_title = (!is_run).then(|| ctx.lang.text(Msg::ReposColumnCleanable));
     let header = container(repo_header_titled(
-        columns(state),
+        columns(state, ctx),
         ctx.lang,
         ctx.palette,
         all_checked(state),
         Some(Message::AllToggled),
         cleanable_title,
+        Some(Box::new(Message::ResizePressed)),
     ))
     .padding(Padding::from([0.0, spacing::XXL]));
     let cursor = state.cursor();

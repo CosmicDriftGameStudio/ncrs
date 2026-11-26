@@ -144,6 +144,8 @@ pub struct State {
     pub cleanup: Option<crate::cleanup::Cleanup>,
     /// How far down the list is scrolled, for placing the menu.
     pub list_scroll: f32,
+    /// The column whose width is being dragged.
+    pub column_drag: Option<crate::resize::ColumnDrag>,
     /// Counts the openings of the clean-up pane.
     pub cleanup_generation: u64,
     /// Branches and worktrees each repository could lose, as of the last read.
@@ -177,6 +179,7 @@ impl State {
             cleanup: None,
             cleanup_generation: 0,
             list_scroll: 0.0,
+            column_drag: None,
             cleanable: BTreeMap::new(),
             stop: Arc::new(AtomicBool::new(false)),
         }

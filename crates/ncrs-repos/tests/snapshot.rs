@@ -109,6 +109,7 @@ mod ui_tests {
             home: Some(Path::new(HOME)),
             now: now(),
             actions_available: true,
+            settings: &ncrs_config::repos::ReposSettings::default(),
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {

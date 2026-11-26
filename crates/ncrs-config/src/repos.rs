@@ -40,6 +40,27 @@ pub struct ReposSection {
     /// Checked by `resolve_repos`: outside 1 to [`MAX_CONCURRENCY`] is the default.
     #[serde(default)]
     pub concurrency: Option<i64>,
+    /// Checked by `resolve_repos`: a width that is no pixel count is dropped.
+    #[serde(default)]
+    pub name_width: Option<i64>,
+    #[serde(default)]
+    pub branch_width: Option<i64>,
+    #[serde(default)]
+    pub standing_width: Option<i64>,
+    #[serde(default)]
+    pub changes_width: Option<i64>,
+    #[serde(default)]
+    pub fetched_width: Option<i64>,
+}
+
+/// The widths of the list columns the user dragged; none is the standard.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReposColumnWidths {
+    pub name: Option<u16>,
+    pub branch: Option<u16>,
+    pub standing: Option<u16>,
+    pub changes: Option<u16>,
+    pub fetched: Option<u16>,
 }
 
 /// What the repo manager reads from `[repos]`.
@@ -56,6 +77,7 @@ pub struct ReposSettings {
     /// Every repo opened in a file panel joins the list.
     pub learn_from_panel: bool,
     pub concurrency: u8,
+    pub columns: ReposColumnWidths,
 }
 
 impl ReposSettings {
@@ -64,6 +86,7 @@ impl ReposSettings {
         let same_search = Self {
             learn_from_panel: self.learn_from_panel,
             concurrency: self.concurrency,
+            columns: self.columns,
             ..other.clone()
         };
         *self == same_search
@@ -93,6 +116,7 @@ impl Default for ReposSettings {
             skip_network: true,
             learn_from_panel: true,
             concurrency: DEFAULT_CONCURRENCY,
+            columns: ReposColumnWidths::default(),
         }
     }
 }
@@ -113,6 +137,11 @@ pub fn resolve_repos(section: &ReposSection) -> ReposSettings {
             .filter(|number| (1..=max).contains(number))
             .unwrap_or(fallback)
     };
+    let pixels = |width: Option<i64>| {
+        width
+            .and_then(|pixels| u16::try_from(pixels).ok())
+            .filter(|pixels| *pixels > 0)
+    };
     ReposSettings {
         sources: section.sources.clone().unwrap_or(defaults.sources),
         scan_home: section.scan_home.unwrap_or(defaults.scan_home),
@@ -130,6 +159,13 @@ pub fn resolve_repos(section: &ReposSection) -> ReposSettings {
             .learn_from_panel
             .unwrap_or(defaults.learn_from_panel),
         concurrency: within(section.concurrency, MAX_CONCURRENCY, defaults.concurrency),
+        columns: ReposColumnWidths {
+            name: pixels(section.name_width),
+            branch: pixels(section.branch_width),
+            standing: pixels(section.standing_width),
+            changes: pixels(section.changes_width),
+            fetched: pixels(section.fetched_width),
+        },
     }
 }
 
@@ -155,6 +191,27 @@ mod tests {
         let settings = resolve_repos(&section);
         assert_eq!(settings.depth, DEFAULT_DEPTH);
         assert_eq!(settings.concurrency, DEFAULT_CONCURRENCY);
+    }
+
+    #[test]
+    fn a_column_width_that_is_no_pixel_count_is_dropped() {
+        let section = ReposSection {
+            name_width: Some(-4),
+            branch_width: Some(0),
+            standing_width: Some(300),
+            ..ReposSection::default()
+        };
+        let columns = resolve_repos(&section).columns;
+        assert_eq!(columns.name, None);
+        assert_eq!(columns.branch, None);
+        assert_eq!(columns.standing, Some(300));
+    }
+
+    #[test]
+    fn dragging_a_column_does_not_start_a_search() {
+        let mut dragged = ReposSettings::default();
+        dragged.columns.name = Some(200);
+        assert!(ReposSettings::default().searches_like(&dragged));
     }
 
     #[test]

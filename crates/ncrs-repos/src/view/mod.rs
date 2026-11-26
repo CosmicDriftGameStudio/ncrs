@@ -9,6 +9,7 @@ mod log;
 use iced::widget::{column, row, stack};
 use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_ui_kit::git_rows::drag_capture;
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_config::keymap::KeyAction;
@@ -142,6 +143,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     // The page stays the first layer whatever lies over it, so the list keeps
     // its scroll when a menu or a dialog opens.
     let mut layers = stack![full_page];
+    if state.column_drag.is_some() {
+        layers = layers.push(drag_capture(Message::ResizeMoved, Message::ResizeReleased));
+    }
     if let Some(draft) = state.clone_draft() {
         layers = layers.push(scrim(clone::dialog(draft, ctx)));
     } else if state.menu_open() {

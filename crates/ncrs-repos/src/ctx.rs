@@ -63,4 +63,6 @@ pub struct ViewCtx<'a> {
     pub now: SystemTime,
     /// The write actions run, see [`Ctx::actions_available`].
     pub actions_available: bool,
+    /// `[repos]` of the config: the column widths.
+    pub settings: &'a ReposSettings,
 }

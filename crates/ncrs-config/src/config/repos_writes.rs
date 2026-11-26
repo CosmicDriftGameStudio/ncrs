@@ -15,6 +15,11 @@ pub fn repos_settings(settings: &ReposSettings) -> Vec<Setting> {
         key,
         value: Some(value),
     };
+    let width = |key: &'static str, pixels: Option<u16>| Setting {
+        tables: &[REPOS_TABLE],
+        key,
+        value: pixels.map(|width| i64::from(width).into()),
+    };
     vec![
         setting(
             "sources",
@@ -33,6 +38,11 @@ pub fn repos_settings(settings: &ReposSettings) -> Vec<Setting> {
         setting("skip_network", settings.skip_network.into()),
         setting("learn_from_panel", settings.learn_from_panel.into()),
         setting("concurrency", i64::from(settings.concurrency).into()),
+        width("name_width", settings.columns.name),
+        width("branch_width", settings.columns.branch),
+        width("standing_width", settings.columns.standing),
+        width("changes_width", settings.columns.changes),
+        width("fetched_width", settings.columns.fetched),
     ]
 }
 
@@ -59,6 +69,11 @@ mod tests {
             skip_network: true,
             learn_from_panel: false,
             concurrency: 8,
+            columns: crate::repos::ReposColumnWidths {
+                name: Some(300),
+                standing: Some(180),
+                ..Default::default()
+            },
         };
         let read_back = write_repos(&path, &settings).unwrap().repos;
         assert_eq!(read_back, settings);

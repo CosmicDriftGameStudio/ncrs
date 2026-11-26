@@ -12,6 +12,7 @@ mod keys;
 mod log;
 mod menu;
 mod message;
+mod resize;
 mod rows;
 mod run;
 mod scan;

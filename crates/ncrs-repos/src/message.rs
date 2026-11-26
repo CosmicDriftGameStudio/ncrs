@@ -81,6 +81,11 @@ pub enum Message {
     CleanableRead(PathBuf, Option<usize>),
     /// The list was scrolled by the pointer; how far down, in pixels.
     ListScrolled(f32),
+    /// The handle of a column head was pressed.
+    ResizePressed(ncrs_ui_kit::repo_row::RepoColumn),
+    /// The pointer moved while a column is dragged; its x.
+    ResizeMoved(f32),
+    ResizeReleased,
     /// Every minute while the tab is in view: reads every repo again.
     Tick,
     /// The tab came into view: reads every repo again when the last read is old.

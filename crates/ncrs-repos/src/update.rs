@@ -581,6 +581,20 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             state.list_scroll = offset;
             quiet(Task::none())
         }
+        Message::ResizePressed(column) => {
+            crate::resize::press(state, column, &ctx.settings);
+            quiet(Task::none())
+        }
+        Message::ResizeMoved(x) => {
+            crate::resize::moved(state, x);
+            quiet(Task::none())
+        }
+        Message::ResizeReleased => (
+            Task::none(),
+            crate::resize::release(state, &ctx.settings)
+                .into_iter()
+                .collect(),
+        ),
         Message::CleanableRead(path, count) => {
             match count {
                 Some(branches) => state.cleanable.insert(path, branches),

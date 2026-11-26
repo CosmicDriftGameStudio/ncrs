@@ -42,6 +42,7 @@ impl App {
                     home: Some(&self.home),
                     now: std::time::SystemTime::now(),
                     actions_available: ncrs_git::write_actions_available(),
+                    settings: &self.repos_settings,
                 };
                 ncrs_repos::view(state, ctx).map(Message::Repos)
             }
@@ -121,6 +122,13 @@ impl App {
                 self.shown_tab = ShownTab::Panels;
                 self.show_folder_in_active_panel(folder, None)
             }
+            Ask::ColumnsResized(columns) => {
+                let changed = ncrs_config::repos::ReposSettings {
+                    columns,
+                    ..self.repos_settings.clone()
+                };
+                self.save_repos_settings(changed)
+            }
             Ask::OpenTerminal(folder) => self.open_terminal_in(&folder),
             Ask::CopyPath(path) => self.copy_path_of(&path),
             Ask::WorktreeRemoved(folder) => {
@@ -139,6 +147,21 @@ impl App {
                 task.map(move |message| Message::GitView(id, message))
             }
         }
+    }
+
+    /// Takes `settings` at once and writes them to the config, one write after
+    /// the other with the other settings.
+    fn save_repos_settings(&mut self, settings: ncrs_config::repos::ReposSettings) -> Task<Message> {
+        if settings == self.repos_settings {
+            return Task::none();
+        }
+        self.repos_settings = settings.clone();
+        if self.config_path.is_none() {
+            return Task::none();
+        }
+        self.update_settings(ncrs_settings::message::SettingsMessage::Change(
+            ncrs_settings::message::SettingChange::Repos(settings),
+        ))
     }
 
     /// A worktree folder is gone: the Git tab that showed it goes too.

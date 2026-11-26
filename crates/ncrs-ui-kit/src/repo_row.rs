@@ -2,7 +2,8 @@
 //! and the bar that sums up what a fetch or pull did.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{container, row, text, Row, Space};
+use iced::mouse::Interaction;
+use iced::widget::{container, mouse_area, row, stack, text, Row, Space};
 use iced::{alignment, Color, Element, Length};
 use ncrs_i18n::{fill_template, Language, Msg};
 
@@ -17,6 +18,9 @@ use crate::theme::{self, font_size, size, spacing};
 const BANNER_HEIGHT: f32 = 36.0;
 /// The width of the rule at the left of the result bar.
 const BANNER_RULE: f32 = 3.0;
+/// A column dragged narrower stops at the room its title needs, a wider one at the max.
+pub const REPO_COLUMN_MIN: f32 = 80.0;
+pub const REPO_COLUMN_MAX: f32 = 800.0;
 
 /// The widths of the columns in pixels; the location takes what is left.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,6 +49,63 @@ impl RepoColumns {
         fetched: 110.0,
         actions: 150.0,
     };
+
+    pub fn of(self, column: RepoColumn) -> f32 {
+        match column {
+            RepoColumn::Name => self.name,
+            RepoColumn::Branch => self.branch,
+            RepoColumn::Standing => self.standing,
+            RepoColumn::Changes => self.changes,
+            RepoColumn::Fetched => self.fetched,
+        }
+    }
+
+    pub fn with(self, column: RepoColumn, wanted: f32) -> Self {
+        let width = wanted.round().clamp(REPO_COLUMN_MIN, REPO_COLUMN_MAX);
+        match column {
+            RepoColumn::Name => Self { name: width, ..self },
+            RepoColumn::Branch => Self {
+                branch: width,
+                ..self
+            },
+            RepoColumn::Standing => Self {
+                standing: width,
+                ..self
+            },
+            RepoColumn::Changes => Self {
+                changes: width,
+                ..self
+            },
+            RepoColumn::Fetched => Self {
+                fetched: width,
+                ..self
+            },
+        }
+    }
+
+    /// `column` after its handle was dragged `delta` pixels to the right. The
+    /// name has its handle at the right edge and grows with the pointer; the
+    /// columns behind the location have it at the left edge, where the pointer
+    /// moving right makes them narrower.
+    pub fn dragged(self, column: RepoColumn, delta: f32) -> Self {
+        let signed = if column == RepoColumn::Name {
+            delta
+        } else {
+            -delta
+        };
+        self.with(column, self.of(column) + signed)
+    }
+}
+
+/// The columns of the repository list whose width can be dragged; the
+/// location takes the rest and has no handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoColumn {
+    Name,
+    Branch,
+    Standing,
+    Changes,
+    Fetched,
 }
 
 /// The branch of a row.
@@ -161,11 +222,13 @@ pub fn repo_header<'a, M: Clone + 'a>(
     all: Check,
     on_toggle_all: Option<M>,
 ) -> Element<'a, M> {
-    repo_header_titled(columns, lang, palette, all, on_toggle_all, None)
+    repo_header_titled(columns, lang, palette, all, on_toggle_all, None, None)
 }
 
 /// [`repo_header`] with a title over the last column, which holds what the
-/// caller puts in `RepoRow::actions`.
+/// caller puts in `RepoRow::actions`. With `on_resize` the edge of each
+/// column that can be dragged (see [`RepoColumns::dragged`]) is a handle: a
+/// press on it gives the message for that column.
 pub fn repo_header_titled<'a, M: Clone + 'a>(
     columns: RepoColumns,
     lang: Language,
@@ -173,14 +236,42 @@ pub fn repo_header_titled<'a, M: Clone + 'a>(
     all: Check,
     on_toggle_all: Option<M>,
     actions_title: Option<&str>,
+    on_resize: Option<Box<dyn Fn(RepoColumn) -> M + 'a>>,
 ) -> Element<'a, M> {
     let title = |msg: Msg| label(lang.text(msg).to_owned(), palette.dim_text);
     let fixed = |width: f32, content: Element<'a, M>| cell(Length::Fixed(width), content);
+    // The handle is invisible and lies over the edge, so the head looks the same with and without it.
+    let draggable = |column: RepoColumn, content: Element<'a, M>| -> Element<'a, M> {
+        let width = columns.of(column);
+        let Some(pressed) = on_resize.as_ref().filter(|_| width > 0.0) else {
+            return fixed(width, content);
+        };
+        let edge = if column == RepoColumn::Name {
+            alignment::Horizontal::Right
+        } else {
+            alignment::Horizontal::Left
+        };
+        let handle = mouse_area(
+            Space::new()
+                .width(size::COLUMN_GAP)
+                .height(Length::Fill),
+        )
+        .on_press(pressed(column))
+        .interaction(Interaction::ResizingHorizontally);
+        stack![
+            fixed(width, content),
+            container(handle)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(edge)
+        ]
+        .into()
+    };
     container(
         row![
             fixed(columns.checkbox, kit::checkbox(all, on_toggle_all, palette)),
             fixed(columns.star, Space::new().into()),
-            fixed(columns.name, title(Msg::RepoRowColumnName)),
+            draggable(RepoColumn::Name, title(Msg::RepoRowColumnName)),
             cell(
                 Length::Fill,
                 if columns.location {
@@ -189,10 +280,10 @@ pub fn repo_header_titled<'a, M: Clone + 'a>(
                     Space::new().into()
                 },
             ),
-            fixed(columns.branch, title(Msg::RepoRowColumnBranch)),
-            fixed(columns.standing, title(Msg::RepoRowColumnStanding)),
-            fixed(columns.changes, title(Msg::RepoRowColumnChanges)),
-            fixed(columns.fetched, title(Msg::RepoRowColumnFetched)),
+            draggable(RepoColumn::Branch, title(Msg::RepoRowColumnBranch)),
+            draggable(RepoColumn::Standing, title(Msg::RepoRowColumnStanding)),
+            draggable(RepoColumn::Changes, title(Msg::RepoRowColumnChanges)),
+            draggable(RepoColumn::Fetched, title(Msg::RepoRowColumnFetched)),
             fixed(
                 columns.actions,
                 actions_title.map_or_else(
