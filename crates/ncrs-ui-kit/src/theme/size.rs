@@ -61,6 +61,6 @@ pub const SIZE_BAR_WIDTH: f32 = 120.0;
 /// A row of a list of sizes: name and folder on two lines.
 pub const SIZE_ROW: f32 = 40.0;
 /// The room of the reason or the result at the right of a size row.
-pub const SIZE_REASON_WIDTH: f32 = 220.0;
+pub const SIZE_REASON_WIDTH: f32 = 340.0;
 /// The height of the bar that shows how a drive is filled.
 pub const STACKED_BAR: f32 = 14.0;

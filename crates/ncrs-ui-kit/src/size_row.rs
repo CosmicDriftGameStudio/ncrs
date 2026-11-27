@@ -38,7 +38,9 @@ pub struct SizeRow<M> {
 
 impl<M> std::fmt::Debug for SizeRow<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SizeRow").field("name", &self.name).finish_non_exhaustive()
+        f.debug_struct("SizeRow")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
     }
 }
 
@@ -63,7 +65,10 @@ fn size_bar<'a, M: 'a>(fraction: f32, color: Color, palette: &Palette) -> Elemen
         bar = bar.push(part(filled, color));
     }
     if filled < BAR_PORTIONS {
-        bar = bar.push(part(BAR_PORTIONS - filled, palette.border_inactive.scale_alpha(0.4)));
+        bar = bar.push(part(
+            BAR_PORTIONS - filled,
+            palette.border_inactive.scale_alpha(0.4),
+        ));
     }
     container(bar).width(size::SIZE_BAR_WIDTH).into()
 }
@@ -83,7 +88,7 @@ pub fn size_row<'a, M: Clone + 'a>(item: SizeRow<M>, palette: &Palette) -> Eleme
         (palette.text, palette.dim_text)
     };
     let tick: Element<'a, M> = match item.check {
-        Some(state) => kit::checkbox(state, None, palette),
+        Some(state) => kit::checkbox(state, item.on_toggle, palette),
         None => Space::new().into(),
     };
     let names = column![

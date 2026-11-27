@@ -807,6 +807,56 @@ mod ui_tests {
         let _ = update(&mut state, MonitorMessage::ToggleGroups, &ctx());
         matches_image(&state, "system-page-grouped");
     }
+
+    /// The home drive past the threshold: orange bar and the button.
+    #[test]
+    fn page_with_the_home_drive_in_warning() {
+        let mut mac = snapshot();
+        mac.host = Some(host("macOS 15.4", "Darwin 24.4.0", "arm64"));
+        let mut state = open_state(mac);
+        let mut nearly_full = drive("Macintosh HD", "/", "apfs");
+        nearly_full.available = 40 << 30;
+        state.test_put_drives(vec![nearly_full, drive("Archiv", "/Volumes/Archiv", "apfs")]);
+        state.set_space_facts(SpaceFacts {
+            warn_from_percent: 90,
+            home: Some(PathBuf::from("/Users/marc")),
+            key: "\u{2318}\u{2325}P".to_owned(),
+        });
+        matches_image(&state, "system-page-drive-warning");
+    }
+}
+
+#[test]
+fn a_drive_is_in_warning_from_the_threshold_of_the_settings() {
+    use crate::view::drive_level;
+    use ncrs_ui_kit::meter::MeterLevel;
+    assert_eq!(drive_level(89.9, 90), MeterLevel::Normal);
+    assert_eq!(drive_level(90.0, 90), MeterLevel::Warning);
+    assert_eq!(drive_level(70.0, 70), MeterLevel::Warning);
+    assert_eq!(drive_level(70.0, 80), MeterLevel::Normal);
+}
+
+#[test]
+fn the_home_folder_belongs_to_the_deepest_mount_that_holds_it() {
+    let mut state = open_state(snapshot());
+    state.test_put_drives(vec![
+        drive("root", "/", "apfs"),
+        drive("home", "/Users", "apfs"),
+        drive("stick", "/Volumes/stick", "apfs"),
+    ]);
+    assert_eq!(state.home_drive_position(), None);
+    state.set_space_facts(SpaceFacts {
+        home: Some(PathBuf::from("/Users/marc")),
+        ..SpaceFacts::default()
+    });
+    assert_eq!(state.home_drive_position(), Some(1));
+}
+
+#[test]
+fn make_space_asks_the_app_to_open_the_platz_tab() {
+    let mut state = open_state(snapshot());
+    let (_, action) = update(&mut state, MonitorMessage::OpenSpace, &ctx());
+    assert_eq!(action, Some(Action::OpenSpace));
 }
 
 #[tokio::test]

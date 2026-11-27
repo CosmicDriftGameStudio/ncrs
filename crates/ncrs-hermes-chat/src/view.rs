@@ -4,7 +4,7 @@ use iced::widget::{column, operation, Row};
 use iced::{Element, Length, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
-    areas_card, chat_chip, chat_header, chat_input, chat_list, chat_page, chat_text, chip_row,
+    areas_card, chat_chip_keyed, chat_header, chat_input, chat_list, chat_page, chat_text, chip_row,
     folder_mention, hermes_bubble, levels_card, user_bubble, user_folder_bubble, working_bubble,
     AreaLine, ChatInput,
 };
@@ -14,7 +14,7 @@ use ncrs_ui_kit::panel_footer::panel_footer;
 use crate::chat_store::{Line, Speaker};
 use crate::list_view::list_props;
 use crate::message::Message;
-use crate::state::{AreasCard, CountRow, Entry, Part, State};
+use crate::state::{AreasCard, ChipReply, CountRow, Entry, Part, State};
 use crate::texts::documents_label;
 
 pub const INPUT_ID: &str = "hermes-chat-input";
@@ -77,6 +77,7 @@ fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
             ctx.palette,
         ),
         Part::Folder(mention) => folder_mention(&mention.name, &mention.path, ctx.palette),
+        Part::Space(card) => crate::space_card::view(card, ctx.palette),
     }
 }
 
@@ -92,6 +93,17 @@ fn entry<'a>(entry: &Entry, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     }
 }
 
+/// The key that presses a button of the Platz card, as the platform writes it.
+fn key_label(reply: &ChipReply) -> Option<&'static str> {
+    let (mac, other) = match reply {
+        ChipReply::SpaceDeleteSafe => ("\u{2318}\u{23ce}", "Ctrl+Enter"),
+        ChipReply::SpaceRemoveWorktrees => ("\u{2318}\u{21e7}\u{23ce}", "Ctrl+Shift+Enter"),
+        ChipReply::SpaceOverview => ("\u{2318}O", "Ctrl+O"),
+        _ => return None,
+    };
+    Some(if cfg!(target_os = "macos") { mac } else { other })
+}
+
 fn chips_of<'a>(state: &State, ctx: ViewCtx<'_>) -> Option<Element<'a, Message>> {
     let chips = state.chips();
     (!chips.is_empty()).then(|| {
@@ -99,9 +111,10 @@ fn chips_of<'a>(state: &State, ctx: ViewCtx<'_>) -> Option<Element<'a, Message>>
             chips
                 .iter()
                 .map(|chip| {
-                    chat_chip(
+                    chat_chip_keyed(
                         &chip.label,
                         chip.primary,
+                        key_label(&chip.reply),
                         Message::ChipPressed {
                             label: chip.label.clone(),
                             reply: chip.reply.clone(),

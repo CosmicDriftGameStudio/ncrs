@@ -6,7 +6,8 @@ use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
 use ncrs_index::Currency;
 
 use super::intent::{
-    ChatIntent, NameBlock, NameSpec, Order, QuestionKind, Schedule, Transfer, NAME_SEPARATORS,
+    ChatIntent, NameBlock, NameSpec, Order, QuestionKind, Schedule, SpaceAsk, Transfer,
+    NAME_SEPARATORS,
 };
 use super::turn::{ChatTurn, SearchQuery};
 use crate::contract::{clean_value, text_has_minor_units};
@@ -87,6 +88,11 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
                 .map(|index| ChatIntent::Answer { choice: index })
                 .ok_or(AiError::BadReply("the choice is not one of the options"))
         }
+        "space" => reply
+            .get_string("ask")
+            .and_then(|word| space_ask_of(word))
+            .map(ChatIntent::Space)
+            .ok_or(AiError::BadReply("no space request")),
         "smalltalk" => Ok(ChatIntent::SmallTalk),
         "leave_as_is" => Ok(ChatIntent::LeaveAsIs),
         "other" => Ok(ChatIntent::Other),
@@ -193,6 +199,16 @@ fn name_block_of(word: &str) -> Option<NameBlock> {
         "day" => Some(NameBlock::Day),
         "sender" => Some(NameBlock::Sender),
         "kind" => Some(NameBlock::Kind),
+        _ => None,
+    }
+}
+
+fn space_ask_of(word: &str) -> Option<SpaceAsk> {
+    match word {
+        "why" => Some(SpaceAsk::Why),
+        "delete_safe" => Some(SpaceAsk::DeleteSafe),
+        "remove_worktrees" => Some(SpaceAsk::RemoveWorktrees),
+        "overview" => Some(SpaceAsk::Overview),
         _ => None,
     }
 }

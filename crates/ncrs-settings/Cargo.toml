@@ -33,6 +33,8 @@ ncrs-handoff = { path = "../ncrs-handoff", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+# The names of the catalog entries the Platz page switches on and off.
+ncrs-space = { path = "../ncrs-space", version = "0.0.0" }
 # The state of the trial and the purchase the Full version page shows.
 ncrs-store = { path = "../ncrs-store", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
@@ -46,6 +48,10 @@ local-ai = ["ncrs-ai/llama"]
 [dev-dependencies]
 tempfile = "3.27"
 sha2 = "0.11"
+# The snapshot of the Platz page.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
+iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 # `config::from_text`, to build a config from a text.
 ncrs-config = { path = "../ncrs-config", version = "0.0.0", features = ["test-support"] }

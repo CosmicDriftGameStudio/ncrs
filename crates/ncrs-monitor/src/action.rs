@@ -15,4 +15,6 @@ pub enum Action {
         file: Option<String>,
     },
     CopyToClipboard(String),
+    /// The app shows the Platz tab.
+    OpenSpace,
 }

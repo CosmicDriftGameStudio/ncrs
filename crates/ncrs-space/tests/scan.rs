@@ -68,10 +68,27 @@ fn a_running_tool_or_an_unknown_answer_moves_it_to_in_use() {
     assert_eq!(bun_entry(&running).group, Group::InUse);
     assert_eq!(bun_entry(&running).held_by.len(), 1);
 
-    let blind = Fake { processes: None, ..Fake::quiet() };
-    let unknown = scan(&request(&home, settings()), &blind, &AtomicBool::new(false), |_| {}).unwrap();
+    let no_look = Fake {
+        folder: ncrs_space::FolderUse::Unknown(ncrs_space::UnknownWhy::TimedOut),
+        ..Fake::quiet()
+    };
+    let unknown = scan(&request(&home, settings()), &no_look, &AtomicBool::new(false), |_| {}).unwrap();
     assert_eq!(bun_entry(&unknown).group, Group::InUse);
     assert!(bun_entry(&unknown).held_by.is_empty());
+}
+
+#[test]
+fn without_a_process_list_the_catalog_stays_safe_and_the_scan_says_so() {
+    let home = TempDir::new().unwrap();
+    bun_cache(&home);
+    let blind = Fake { processes: None, ..Fake::quiet() };
+
+    let found = scan(&request(&home, SpaceSettings::default()), &blind, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(!found.processes_known);
+    assert_eq!(bun_entry(&found).group, Group::Safe);
+
+    let known = scan(&request(&home, SpaceSettings::default()), &Fake::quiet(), &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(known.processes_known);
 }
 
 #[test]

@@ -22,6 +22,14 @@ pub enum ChatKey {
     MarkChat,
     /// Del: deletes the marked chats; only when the input is empty.
     DeleteChat,
+    /// Cmd+Enter: the button of the Platz card that deletes all safe ones.
+    SpaceDeleteSafe,
+    /// Cmd+Shift+Enter: the button of the Platz card that removes worktrees.
+    SpaceRemoveWorktrees,
+    /// Cmd+O: the button of the Platz card that opens the overview.
+    SpaceOverview,
+    /// Cmd+L: back to the input.
+    FocusInput,
 }
 
 const FUNCTION_KEYS: [Named; 12] = [
@@ -41,7 +49,12 @@ const FUNCTION_KEYS: [Named; 12] = [
 
 pub fn chat_key(key: &Key, modifiers: Modifiers) -> ChatKey {
     let command_only = modifiers.command() && !modifiers.shift() && !modifiers.alt();
+    let command_shift = modifiers.command() && modifiers.shift() && !modifiers.alt();
     match key.as_ref() {
+        Key::Named(Named::Enter) if command_only => ChatKey::SpaceDeleteSafe,
+        Key::Named(Named::Enter) if command_shift => ChatKey::SpaceRemoveWorktrees,
+        Key::Character("o") if command_only => ChatKey::SpaceOverview,
+        Key::Character("l") if command_only => ChatKey::FocusInput,
         Key::Character("n") if command_only => ChatKey::NewChat,
         Key::Named(Named::ArrowUp) if command_only => ChatKey::PreviousChat,
         Key::Named(Named::ArrowDown) if command_only => ChatKey::NextChat,
@@ -89,6 +102,28 @@ mod tests {
             ChatKey::DeleteChat
         );
         assert_eq!(named(Named::ArrowUp, Modifiers::empty()), ChatKey::Type);
+    }
+
+    #[test]
+    fn the_space_card_has_its_keys_before_the_input_submits() {
+        let command = Modifiers::COMMAND;
+        assert_eq!(
+            named(Named::Enter, command),
+            ChatKey::SpaceDeleteSafe
+        );
+        assert_eq!(
+            named(Named::Enter, command | Modifiers::SHIFT),
+            ChatKey::SpaceRemoveWorktrees
+        );
+        assert_eq!(
+            chat_key(&Key::Character("o".into()), command),
+            ChatKey::SpaceOverview
+        );
+        assert_eq!(
+            chat_key(&Key::Character("l".into()), command),
+            ChatKey::FocusInput
+        );
+        assert_eq!(named(Named::Enter, Modifiers::empty()), ChatKey::Type);
     }
 
     #[test]

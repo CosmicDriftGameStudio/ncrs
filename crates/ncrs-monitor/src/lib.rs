@@ -12,6 +12,7 @@ mod layout;
 mod message;
 mod sampler;
 mod snapshot;
+mod space_hint;
 mod state;
 mod status;
 mod tasks;
@@ -30,7 +31,10 @@ pub use snapshot::{
     CpuInfo, DriveRow, HostInfo, LoadInfo, NetworkRow, SensorRow, Snapshot, TaskCounts, TaskRow,
     TaskStatus, Usage,
 };
-pub use state::{State, KILL_OFFERED};
+pub use space_hint::{
+    disk_hint, load_stamp, measure_home, save_stamp, stamp_file_beside, DiskHint, HintStamp,
+};
+pub use state::{SpaceFacts, State, KILL_OFFERED};
 pub use status::status_text;
 pub use tasks::TaskColumn;
 pub use update::{tick_every, update};

@@ -8,6 +8,7 @@ mod groups;
 mod index_page;
 mod notes_page;
 mod page;
+mod space_page;
 mod system_page;
 mod type_rows;
 mod usage_page;
@@ -23,6 +24,7 @@ use index_page::index_groups;
 use notes_page::notes_groups;
 pub use page::focus_facts;
 use page::*;
+use space_page::space_groups;
 use system_page::system_groups;
 use type_rows::by_type_group;
 use usage_page::usage_sections;
@@ -177,6 +179,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Favourites => Msg::SettingsFeatureFavourites,
         SettingsFeature::Notes => Msg::SettingsFeatureNotes,
         SettingsFeature::Git => Msg::SettingsFeatureGit,
+        SettingsFeature::Space => Msg::SettingsSpaceTitle,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersion,
@@ -204,6 +207,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
         | SettingsFeature::Git
+        | SettingsFeature::Space
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -238,6 +242,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
         | SettingsFeature::Git
+        | SettingsFeature::Space
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -261,6 +266,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Favourites => Msg::SettingsFeatureFavouritesIntro,
         SettingsFeature::Notes => Msg::SettingsFeatureNotesIntro,
         SettingsFeature::Git => Msg::SettingsFeatureGitIntro,
+        SettingsFeature::Space => Msg::SettingsSpaceIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersionIntro,
@@ -288,6 +294,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Favourites => None,
         SettingsFeature::Notes => Some(NOTES_SECTION),
         SettingsFeature::Git => Some(REPOS_SECTION),
+        SettingsFeature::Space => Some(SPACE_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index => Some(FILING_SECTION),
         SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
@@ -362,6 +369,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::Notes => notes_groups(view),
         SettingsFeature::Git => git_groups(view),
+        SettingsFeature::Space => space_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::FullVersion => full_version_groups(view),
         SettingsFeature::Index => index_groups(view),

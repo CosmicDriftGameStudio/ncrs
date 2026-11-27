@@ -43,7 +43,9 @@ pub struct Confirm<'a, M> {
 
 impl<M> std::fmt::Debug for Confirm<'_, M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Confirm").field("title", &self.title).finish_non_exhaustive()
+        f.debug_struct("Confirm")
+            .field("title", &self.title)
+            .finish_non_exhaustive()
     }
 }
 
@@ -77,7 +79,12 @@ pub fn confirm_dialog<'a, M: Clone + 'a>(
         palette,
     )
     .buttons(vec![
-        dialog_button(confirm.cancel, confirm.on_cancel.clone(), cancel_tone, palette),
+        dialog_button(
+            confirm.cancel,
+            confirm.on_cancel.clone(),
+            cancel_tone,
+            palette,
+        ),
         dialog_button(confirm.confirm, confirm.on_confirm, confirm.tone, palette),
     ])
     .on_close(confirm.on_cancel)

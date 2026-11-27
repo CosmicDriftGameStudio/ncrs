@@ -47,6 +47,7 @@ fn part_text(part: &Part) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
         Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
+        Part::Space(card) => card.title.clone(),
     }
 }
 

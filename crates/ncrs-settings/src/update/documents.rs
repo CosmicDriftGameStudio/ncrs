@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use iced::Task;
 use ncrs_config::config::FilingLocation;
 use ncrs_config::repos::ReposSettings;
+use ncrs_config::space::SpaceSettings;
 use ncrs_i18n::{fill_template, Msg};
 
 use super::models;
@@ -47,6 +48,17 @@ pub fn update(
             result: Ok(()),
         } => change_repos(settings, ctx, |current| {
             repos_with_folder(current, kind, canonical(path))
+        }),
+        SettingsMessage::FolderPicked {
+            kind: kind @ (AddAs::SpaceRegenerable | AddAs::SpaceNeverTouch),
+            path: Some(path),
+        }
+        | SettingsMessage::FolderGranted {
+            kind: kind @ (AddAs::SpaceRegenerable | AddAs::SpaceNeverTouch),
+            path,
+            result: Ok(()),
+        } => change_space(settings, ctx, |current| {
+            folders::space_with_folder(current, kind, canonical(path))
         }),
         SettingsMessage::ScanRepos => {
             actions.push(Action::ScanRepos);
@@ -191,9 +203,30 @@ fn repos_with_folder(current: &ReposSettings, kind: AddAs, path: PathBuf) -> Rep
                 .filter(|name| !next.skip.contains(name));
             next.skip.extend(name);
         }
-        AddAs::RepoSource | AddAs::Indexed | AddAs::Favourite => {}
+        AddAs::RepoSource
+        | AddAs::Indexed
+        | AddAs::Favourite
+        | AddAs::SpaceRegenerable
+        | AddAs::SpaceNeverTouch
+        | AddAs::SpaceHome => {}
     }
     next
+}
+
+fn change_space(
+    settings: &mut Settings,
+    ctx: &Ctx<'_>,
+    edit: impl FnOnce(&SpaceSettings) -> SpaceSettings,
+) -> Task<Message> {
+    let Some(current) = settings
+        .page
+        .as_ref()
+        .and_then(|state| state.config())
+        .map(|config| config.space.clone())
+    else {
+        return Task::none();
+    };
+    write_setting(settings, SettingChange::Space(edit(&current)), ctx)
 }
 
 fn confirm_removal(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {

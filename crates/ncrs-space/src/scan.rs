@@ -44,6 +44,9 @@ pub struct Scan {
     pub volume: VolumeSpace,
     pub entries: Vec<Entry>,
     pub partial: bool,
+    /// `false` when the running processes cannot be listed (App Store build): nothing
+    /// is held back as in use, and the delete asks the user to confirm that.
+    pub processes_known: bool,
     pub measured_at: SystemTime,
     pub took: Duration,
 }
@@ -58,8 +61,9 @@ pub struct ScanRequest {
 
 /// Blocking; run on a worker thread. `None` when `stop` was set.
 ///
-/// An entry whose use cannot be known (no process list, a folder that could not be
-/// checked) is listed as in use without a holder.
+/// An entry whose use cannot be known (a folder that could not be checked) is listed as
+/// in use without a holder. Without a process list no catalog entry is moved to in use;
+/// the delete then needs the user's confirm (`UnknownUse::AllowAfterConfirm`).
 pub fn scan(
     request: &ScanRequest,
     probes: &dyn ProcessSource,
@@ -74,6 +78,7 @@ pub fn scan(
         .ok()
         .and_then(|metadata| device_of(&metadata));
     let processes = probes.processes();
+    let processes_known = processes.is_some();
     let env = |name: &str| std::env::var_os(name);
     let places = catalog(request.os, &request.home, &env, &request.repos, settings);
 
@@ -90,7 +95,11 @@ pub fn scan(
         if measured.size.bytes == 0 {
             continue;
         }
-        let (group, held_by) = use_of(&place.path, place.tools, processes.as_deref(), probes, Group::Safe);
+        let (group, held_by) = if processes.is_some() {
+            use_of(&place.path, place.tools, processes.as_deref(), probes, Group::Safe)
+        } else {
+            (Group::Safe, Vec::new())
+        };
         entries.push(Entry {
             path: place.path,
             group,
@@ -140,6 +149,7 @@ pub fn scan(
         volume: volume.unwrap_or(VolumeSpace { total: 0, available: 0 }),
         entries,
         partial,
+        processes_known,
         measured_at: SystemTime::now(),
         took: started.elapsed(),
     })

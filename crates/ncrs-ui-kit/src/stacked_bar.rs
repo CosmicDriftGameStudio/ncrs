@@ -60,7 +60,6 @@ pub fn stacked_bar<'a, M: 'a>(segments: &[BarSegment], palette: &Palette) -> Ele
         .into()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,6 +14,8 @@ pub use crate::fallback::{
     search_not_yet, sort_hint,
 };
 mod chips;
+mod space;
+pub use space::{ask_measure, card_key_message};
 use crate::message::Message;
 use crate::state::{Asked, ChipReply, Entry, Part, Retry, State, Step, Unsent};
 use crate::texts::{fill, folder_name, text};
@@ -204,6 +206,22 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             crate::working::tick(state, ctx);
             None
         }
+        Message::SpaceMeasured(scan) => {
+            space::measured(state, ctx, &scan);
+            None
+        }
+        Message::SpaceMeasureFailed(reason) => {
+            space::measure_failed(state, ctx, &reason);
+            None
+        }
+        Message::SpaceDescribed(result) => {
+            space::described(state, ctx, result);
+            None
+        }
+        Message::SpaceRunDone(log) => {
+            space::run_done(state, ctx, &log);
+            None
+        }
     }
 }
 
@@ -287,6 +305,7 @@ pub fn is_busy(state: &State) -> bool {
         || state.rule_ask.is_some()
         || state.resolving.is_some()
         || state.naming.is_some()
+        || state.session.measuring_space
 }
 
 pub fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
@@ -300,6 +319,7 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         rule_flow::launch(state, ctx),
         launch_resolve(state, ctx),
         named_folders::launch(state, ctx),
+        space::launch(state, ctx),
     ])
 }
 
@@ -665,6 +685,9 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::OpenSearch | ChipReply::IntentSearch => return Some(Action::OpenSearch),
         ChipReply::IntentTidy => sort_hint(state, ctx, None),
         ChipReply::IntentStructure => ask_read_folder(state, ctx),
+        ChipReply::SpaceDeleteSafe | ChipReply::SpaceRemoveWorktrees | ChipReply::SpaceOverview => {
+            return space::reply(ctx, &reply);
+        }
     }
     None
 }

@@ -213,6 +213,7 @@ pub fn update(state: &mut State, message: MonitorMessage, ctx: &Ctx) -> Outcome 
             (check_filter_focus(), None)
         }
         M::OpenDrive(folder) => open_drive(state, folder),
+        M::OpenSpace => (Task::none(), Some(Action::OpenSpace)),
         M::DriveFocus => {
             state.drive_focus = match state.drive_focus {
                 Some(_) => None,

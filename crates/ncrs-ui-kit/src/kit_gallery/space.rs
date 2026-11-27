@@ -46,7 +46,9 @@ fn the_bar_of_the_drive_and_its_chips_look_the_same() {
     ]
     .spacing(spacing::XS)
     .into();
-    let content = column![bar, chips].spacing(spacing::L).padding(spacing::XXL);
+    let content = column![bar, chips]
+        .spacing(spacing::L)
+        .padding(spacing::XXL);
     matches_picture("space-bar", Size::new(900.0, 120.0), content.into());
 }
 
@@ -72,7 +74,13 @@ fn the_size_rows_look_the_same() {
         )
     };
     let content = column![
-        item("Rust builds of old worktrees", 1.0, Some(Check::On), false, None),
+        item(
+            "Rust builds of old worktrees",
+            1.0,
+            Some(Check::On),
+            false,
+            None
+        ),
         item("Yarn cache", 0.4, Some(Check::Off), false, None),
         item("DerivedData", 0.02, Some(Check::On), true, None),
         item("npm cache", 0.1, None, false, None),
@@ -153,4 +161,66 @@ fn the_meter_by_level_and_the_keyed_chips_look_the_same() {
         .spacing(spacing::L)
         .padding(spacing::XXL);
     matches_picture("space-meter-chips", Size::new(700.0, 220.0), content.into());
+}
+
+#[test]
+fn the_space_card_looks_the_same() {
+    use crate::hermes_kit::{space_card, SpaceCardRow, SpaceCardView};
+
+    let p = palette();
+    let segment = |portion: u64, color| BarSegment { portion, color };
+    let row = |name: &str, path: &str, size: &str, group: &str, color, hint: &str| SpaceCardRow {
+        name: name.to_owned(),
+        path: path.to_owned(),
+        size: size.to_owned(),
+        group: group.to_owned(),
+        group_color: color,
+        hint: hint.to_owned(),
+    };
+    let view = SpaceCardView {
+        title: "Where the space is".to_owned(),
+        drive: "Macintosh HD · 926 GB".to_owned(),
+        bar: vec![
+            segment(134, theme::space::safe(&p)),
+            segment(22, theme::space::worktrees()),
+            segment(139, theme::space::decide()),
+            segment(5, theme::space::in_use(&p)),
+            segment(514, theme::space::rest(&p)),
+            segment(78, theme::space::free(&p)),
+        ],
+        legend: vec![
+            ("safe 134 GB".to_owned(), theme::space::safe(&p)),
+            ("worktrees 22 GB".to_owned(), theme::space::worktrees()),
+            ("you decide 139 GB".to_owned(), theme::space::decide()),
+        ],
+        after: Some("After \"all safe ones\": 213 GB free, 77 % used".to_owned()),
+        columns: [
+            "WHAT".to_owned(),
+            "SIZE".to_owned(),
+            "GROUP".to_owned(),
+            "HINT".to_owned(),
+        ],
+        rows: vec![
+            row(
+                "Rust builds of old worktrees",
+                "~/.cargo-target",
+                "44 GB",
+                "Safe",
+                theme::space::safe(&p),
+                "Rust build, worktrees merged",
+            ),
+            row(
+                "Backups",
+                "~/Backups",
+                "46 GB",
+                "You decide",
+                theme::space::decide(),
+                "Old backups; only you know if you still need them",
+            ),
+        ],
+        also: Some("Also: 3 more Rust builds 11 GB (safe)".to_owned()),
+        footer: "Safe means: made again when needed. Nothing is deleted before your OK.".to_owned(),
+    };
+    let card: Cell<'_> = space_card(&view, &p);
+    matches_picture("space-card", Size::new(900.0, 360.0), card);
 }

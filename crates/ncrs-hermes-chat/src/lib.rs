@@ -20,12 +20,13 @@ mod fallback;
 mod learn;
 mod named_folders;
 mod rule_flow;
+mod space_card;
 mod texts;
 mod understand;
 mod undo;
 mod working;
 
-pub use action::Action;
+pub use action::{Action, SpaceRunKind};
 pub use chat_list::{day_group, ChatList, DayGroup, ListGroup, ListRow};
 pub use chat_list_update::ListMessage;
 pub use chat_store::{ChatId, ChatStatus};
@@ -37,6 +38,7 @@ pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FolderMention, LevelsCard, Part, State,
     Step,
 };
+pub use space_card::{SpaceBand, SpaceCard, SpaceRow};
 pub use texts::problem_text;
-pub use update::update;
+pub use update::{card_key_message, update};
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

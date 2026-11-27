@@ -15979,6 +15979,12 @@
       "de": "Diese {count} Ordner werden bei Bedarf neu erzeugt. Sie gehen nicht in den Papierkorb, weil der keinen Platz frei macht. Rückgängig gibt es dafür nicht."
     },
     {
+      "key": "space.confirm_body_one",
+      "context": "Text of the question before exactly one safe folder is deleted. Pairs with space.confirm_body.",
+      "en": "This folder is made again when needed. It does not go to the trash, because the trash frees no space. There is no undo for this.",
+      "de": "Dieser Ordner wird bei Bedarf neu erzeugt. Er geht nicht in den Papierkorb, weil der keinen Platz frei macht. Rückgängig gibt es dafür nicht."
+    },
+    {
       "key": "space.confirm_total",
       "context": "Line under the list in the question before deleting. {size} is the total size.",
       "en": "Total  {size}",
@@ -16033,6 +16039,12 @@
       "de": "{count} Worktrees entfernen?"
     },
     {
+      "key": "space.confirm_worktrees_title_one",
+      "context": "Title of the question before exactly one merged worktree is removed. Pairs with space.confirm_worktrees_title.",
+      "en": "Remove 1 worktree?",
+      "de": "1 Worktree entfernen?"
+    },
+    {
       "key": "space.confirm_worktrees_body",
       "context": "Text of the question before merged worktrees are removed. {size} is their size. Each has no local changes and its branch is merged.",
       "en": "Folder and branch of each merged, clean worktree are removed ({size}). Git refuses a folder with local changes.",
@@ -16046,9 +16058,9 @@
     },
     {
       "key": "space.result_title",
-      "context": "Heading of the result of the Platz tab after all safe folders were deleted.",
-      "en": "All safe ones deleted",
-      "de": "Alle sicheren gelöscht"
+      "context": "Heading of the result of the Platz tab after a delete or remove run; the counts below say what was deleted and what was skipped.",
+      "en": "Done",
+      "de": "Fertig"
     },
     {
       "key": "space.result_freed",
@@ -16489,6 +16501,12 @@
       "de": "{count} Dateien in den Papierkorb · {size}"
     },
     {
+      "key": "space.decide_trash_button_one",
+      "context": "Button of the Decide pane when exactly one file is chosen. {size} is its size. Pairs with space.decide_trash_button.",
+      "en": "1 file to the trash · {size}",
+      "de": "1 Datei in den Papierkorb · {size}"
+    },
+    {
       "key": "space.decide_detail_size",
       "context": "Label in the detail pane of a file in the Decide pane. Noun.",
       "en": "Size",
@@ -16597,6 +16615,12 @@
       "de": "{count} Dateien · {size}"
     },
     {
+      "key": "space.decide_selection_chosen_value_one",
+      "context": "Value in the detail pane when exactly one file is chosen. {size} is its size. Pairs with space.decide_selection_chosen_value.",
+      "en": "1 file · {size}",
+      "de": "1 Datei · {size}"
+    },
+    {
       "key": "space.decide_selection_where",
       "context": "Label in the detail pane: where the files go.",
       "en": "Where to",
@@ -16627,6 +16651,12 @@
       "de": "{count} Dateien in den Papierkorb gelegt · {size}. Platz wird frei, wenn der Papierkorb geleert ist."
     },
     {
+      "key": "space.decide_trashed_one",
+      "context": "Message after exactly one file was moved to the trash. {size} is its size. Pairs with space.decide_trashed.",
+      "en": "1 file moved to the trash · {size}. Space is freed when the trash is emptied.",
+      "de": "1 Datei in den Papierkorb gelegt · {size}. Platz wird frei, wenn der Papierkorb geleert ist."
+    },
+    {
       "key": "space.decide_trashed_emptied",
       "context": "Message after files were moved to the trash and the trash was emptied. {count} is the number, {size} the freed space.",
       "en": "{count} files deleted · {size} freed",
@@ -16637,6 +16667,12 @@
       "context": "Message after undo. {count} is the number of files put back.",
       "en": "{count} files put back",
       "de": "{count} Dateien zurückgelegt"
+    },
+    {
+      "key": "space.decide_undone_one",
+      "context": "Message after undo when exactly one file was put back. Pairs with space.decide_undone.",
+      "en": "1 file put back",
+      "de": "1 Datei zurückgelegt"
     },
     {
       "key": "space.decide_changed",
@@ -16985,6 +17021,12 @@
       "context": "Switch on the Platz page: whether other drives are measured too.",
       "en": "Measure other drives too",
       "de": "Andere Laufwerke mitmessen"
+    },
+    {
+      "key": "settings.space.other_drives_note",
+      "context": "Hint under a switch on the Platz settings page: whether the size search also covers drives other than the one holding the home folder.",
+      "en": "Also measure other connected drives, not only the one with your home folder.",
+      "de": "Auch andere angeschlossene Laufwerke durchsuchen, nicht nur das mit deinem Benutzerordner."
     },
     {
       "key": "settings.space.store_note",

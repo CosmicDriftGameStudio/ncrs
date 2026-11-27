@@ -95,7 +95,7 @@ fn the_grammar_without_options_has_no_answer() {
     let grammar = chat_grammar(&turn("x"));
 
     assert!(grammar
-        .starts_with("root ::= tidy | change | undo | search | ask | explain | open | bulk | smalltalk | leave | other\n"));
+        .starts_with("root ::= tidy | change | undo | search | ask | explain | open | bulk | space | smalltalk | leave | other\n"));
     assert!(!grammar.contains("answer"));
     assert!(grammar.contains("other ::="));
 }
@@ -110,7 +110,7 @@ fn the_grammar_with_options_has_an_answer_of_exactly_those() {
     let grammar = chat_grammar(&asked);
 
     assert!(grammar.starts_with(
-        "root ::= tidy | change | undo | search | ask | explain | open | bulk | smalltalk | leave | other | answer\n\
+        "root ::= tidy | change | undo | search | ask | explain | open | bulk | space | smalltalk | leave | other | answer\n\
          choice ::= \"\\\"ja\\\"\" | \"\\\"nein\\\"\"\n\
          answer ::= \"{\\\"intent\\\":\\\"answer\\\",\\\"choice\\\":\" choice \"}\"\n"
     ));
@@ -415,4 +415,40 @@ fn a_scripted_model_replies_through_the_real_parser_and_runs_dry() {
     assert_eq!(model.turns().len(), 3);
     model.refresh();
     assert_eq!(model.refresh_count(), 1);
+}
+
+#[test]
+fn the_four_space_sentences_parse_to_their_request() {
+    use super::intent::SpaceAsk;
+
+    for (word, ask) in [
+        ("why", SpaceAsk::Why),
+        ("delete_safe", SpaceAsk::DeleteSafe),
+        ("remove_worktrees", SpaceAsk::RemoveWorktrees),
+        ("overview", SpaceAsk::Overview),
+    ] {
+        let raw = format!(r#"{{"intent":"space","ask":"{word}"}}"#);
+        assert_eq!(
+            parse_chat_reply(&raw, &turn("sentence")),
+            Ok(ChatIntent::Space(ask)),
+            "{word}"
+        );
+    }
+}
+
+#[test]
+fn a_space_reply_without_a_known_request_is_refused() {
+    for raw in [
+        r#"{"intent":"space"}"#,
+        r#"{"intent":"space","ask":"format_disk"}"#,
+    ] {
+        assert!(parse_chat_reply(raw, &turn("sentence")).is_err(), "{raw}");
+    }
+}
+
+#[test]
+fn the_grammar_knows_the_space_intent() {
+    let grammar = chat_grammar(&turn("sentence"));
+    assert!(grammar.contains("| space |"));
+    assert!(grammar.contains("space ::="));
 }

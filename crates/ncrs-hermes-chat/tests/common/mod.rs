@@ -111,6 +111,8 @@ impl Talk {
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
             ai_on: true,
             changes_allowed: true,
+            store_build: false,
+            drive_name: "Macintosh HD".to_owned(),
             model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
             resolve_folder,
         };
@@ -228,6 +230,13 @@ impl Talk {
         }
         if let Some(ask) = self.state.pending_rule_ask().cloned() {
             return Some(Message::RuleAnswered(ask.run(self.model_answering())));
+        }
+        if let Some(folders) = self.state.pending_describe() {
+            return Some(Message::SpaceDescribed(
+                self.model_answering()
+                    .describe_folders(folders)
+                    .map_err(|error| error.to_string()),
+            ));
         }
         let turn = self.state.pending_turn().cloned()?;
         Some(Message::Understood(

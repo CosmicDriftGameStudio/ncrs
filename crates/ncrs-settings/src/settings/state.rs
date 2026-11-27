@@ -36,6 +36,8 @@ pub const SYSTEM_SECTION: &str = "[system]";
 pub const NOTES_SECTION: &str = "[notes]";
 /// Where the Git page keeps its values.
 pub const REPOS_SECTION: &str = "[repos]";
+/// Where the Platz page keeps its values.
+pub const SPACE_SECTION: &str = "[space]";
 pub const COLUMNS_SECTION: &str = "[columns]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
@@ -614,6 +616,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::FavouritesBar(_)
         | SettingChange::Notes(_)
         | SettingChange::Repos(_)
+        | SettingChange::Space(_)
         | SettingChange::Git(_)
         | SettingChange::Load(_)
         | SettingChange::HermesSwitch(_)

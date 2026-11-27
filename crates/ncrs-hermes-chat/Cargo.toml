@@ -20,11 +20,14 @@ ncrs-filing = { path = "../ncrs-filing", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-os-probe = { path = "../ncrs-os-probe", version = "0.0.0" }
+ncrs-space = { path = "../ncrs-space", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 
 [dev-dependencies]
 tempfile = "3.27"
 sha2 = "0.11"
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0", features = ["testing"] }
 ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }

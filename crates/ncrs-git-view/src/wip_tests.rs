@@ -103,6 +103,20 @@ fn the_arrows_walk_the_unstaged_files_then_the_staged_ones() {
 }
 
 #[test]
+fn a_click_on_a_changed_file_opens_its_diff() {
+    use crate::actions::{ChangeSide, WipFocus};
+    let mut state = with_local_changes(&["a.txt"], &["c.txt"]);
+    state.area = Area::Commits;
+    send(&mut state, Message::SelectChange(ChangeSide::Staged, 0));
+    let local = state.actions.local.as_ref().unwrap();
+    assert_eq!(local.selected, Some((ChangeSide::Staged, 0)));
+    assert!(local.diff_open);
+    assert_eq!(local.focus, WipFocus::Staged);
+    assert_eq!(state.area, Area::Detail);
+    assert_eq!(crate::file_views::middle(&state), crate::file_views::Middle::LocalDiff);
+}
+
+#[test]
 fn tab_walks_the_stops_of_the_pane_before_it_leaves() {
     use crate::actions::WipFocus;
     let mut state = with_local_changes(&["a.txt"], &["b.txt"]);

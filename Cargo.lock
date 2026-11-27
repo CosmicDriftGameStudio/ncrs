@@ -4633,12 +4633,15 @@ dependencies = [
  "iced",
  "jsonc-parser",
  "ncrs-ai",
+ "ncrs-core",
  "ncrs-filing",
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-os-probe",
  "ncrs-pipeline",
+ "ncrs-space",
  "ncrs-ui-kit",
  "sha2 0.11.1",
  "tempfile",
@@ -4747,8 +4750,10 @@ dependencies = [
  "iced_test",
  "ncrs-config",
  "ncrs-i18n",
+ "ncrs-os-probe",
  "ncrs-ui-kit",
  "sysinfo",
+ "tempfile",
  "tokio",
 ]
 
@@ -4911,6 +4916,7 @@ name = "ncrs-settings"
 version = "0.0.0"
 dependencies = [
  "iced",
+ "iced_test",
  "jsonc-parser",
  "ncrs-ai",
  "ncrs-config",
@@ -4921,6 +4927,7 @@ dependencies = [
  "ncrs-index",
  "ncrs-intake",
  "ncrs-pipeline",
+ "ncrs-space",
  "ncrs-store",
  "ncrs-ui-kit",
  "serde_spanned 1.1.3",
@@ -4942,6 +4949,24 @@ dependencies = [
  "ncrs-intake",
  "ncrs-os-probe",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-space-view"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "iced_test",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-filing",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-os-probe",
+ "ncrs-space",
+ "ncrs-ui-kit",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

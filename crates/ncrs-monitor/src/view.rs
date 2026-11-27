@@ -8,7 +8,9 @@ use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::data_table::{data_table, SortMark, TableCell, TableColumn, TableRow};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::meter::{level_text_color, meter, meter_level, Meter};
+use ncrs_ui_kit::meter::{
+    level_text_color, meter, meter_by_level, meter_level, meter_level_from, Meter, MeterLevel,
+};
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_band, page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
@@ -21,7 +23,7 @@ use crate::layout::{
     visible_rows, PAGE_PADDING, TASKS_HEAD_GAP, TASKS_HEAD_HEIGHT, TOP_BAND_HEIGHT,
 };
 use crate::message::MonitorMessage;
-use crate::snapshot::{HostInfo, Snapshot};
+use crate::snapshot::{DriveRow, HostInfo, Snapshot};
 use crate::state::{Failure, MenuEntry, State};
 use crate::tasks::TaskColumn;
 use crate::units::{
@@ -214,11 +216,11 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
         right(Msg::MonitorDriveWritten),
     ];
     let rows = drives
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(position, drive)| {
             let shown = if free { drive.available } else { drive.used() };
-            let color = level_text_color(meter_level(drive.used_percent()), palette);
+            let color = level_text_color(drive_level(drive.used_percent(), state.space.warn_from_percent), palette);
             TableRow {
                 cells: vec![
                     TableCell::plain(if drive.name.is_empty() {
@@ -240,13 +242,87 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
             }
         })
         .collect();
-    Some(
-        column![
-            heading(lang.text(Msg::MonitorDrives), palette),
-            data_table(&columns, rows, palette)
-        ]
-        .into(),
-    )
+    let home_at = state.home_drive_position();
+    let mut block = column![
+        heading(lang.text(Msg::MonitorDrives), palette),
+        data_table(&columns, rows, palette)
+    ]
+    .spacing(spacing::M);
+    for (position, drive) in drives.iter().enumerate() {
+        block = block.push(drive_meter(
+            drive,
+            home_at == Some(position),
+            state,
+            lang,
+            palette,
+        ));
+    }
+    let note = fill_template(
+        lang.text(Msg::MonitorSpaceNote),
+        &[("{percent}", &state.space.warn_from_percent.to_string())],
+    );
+    Some(block.push(kit::dim(note, palette)).into())
+}
+
+/// The level a drive that is `used_percent` full is drawn in when the
+/// warning starts at `warn_from_percent`.
+pub(crate) fn drive_level(used_percent: f32, warn_from_percent: u8) -> MeterLevel {
+    meter_level_from(used_percent, f32::from(warn_from_percent))
+}
+
+/// The bar of one drive; the home drive also offers "Make space…".
+fn drive_meter<'a>(
+    drive: &DriveRow,
+    is_home: bool,
+    state: &State,
+    lang: Language,
+    palette: &Palette,
+) -> Page<'a> {
+    let percent = drive.used_percent();
+    let value = fill_template(
+        lang.text(Msg::MonitorSpacePercent),
+        &[("{percent}", &format!("{percent:.0}"))],
+    );
+    let detail = fill_template(
+        lang.text(Msg::MonitorSpaceUsedOf),
+        &[
+            ("{used}", &short_size(drive.used())),
+            ("{total}", &short_size(drive.total)),
+            ("{free}", &short_size(drive.available)),
+        ],
+    );
+    let title = if drive.name.is_empty() {
+        drive.mount.display().to_string()
+    } else {
+        drive.name.clone()
+    };
+    let bar = meter_by_level(
+        Meter {
+            title: &title,
+            value: &value,
+            fraction: percent / 100.0,
+            level: drive_level(percent, state.space.warn_from_percent),
+            detail: &detail,
+        },
+        palette,
+    );
+    if !is_home {
+        return bar;
+    }
+    let button_label = lang.text(Msg::MonitorSpaceButton);
+    let press = Some(MonitorMessage::OpenSpace);
+    let button = if state.space.key.is_empty() {
+        kit::button(button_label, press, Tone::Secondary, palette)
+    } else {
+        kit::key_button(
+            button_label,
+            &state.space.key,
+            press,
+            Tone::Secondary,
+            palette,
+        )
+    };
+    column![bar, button].spacing(spacing::M).into()
 }
 
 fn sensors_block<'a>(snapshot: &Snapshot, lang: Language, palette: &Palette) -> Option<Page<'a>> {

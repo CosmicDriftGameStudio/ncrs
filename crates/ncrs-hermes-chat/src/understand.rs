@@ -3,7 +3,8 @@
 
 use iced::Task;
 use ncrs_ai::{
-    ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, ModelProblem, EVERY_AREA, LOCAL_MODEL,
+    ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, ModelProblem, SpaceAsk, EVERY_AREA,
+    LOCAL_MODEL,
 };
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::format;
@@ -16,7 +17,7 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Thinking, Unsent}
 use crate::texts::{fill, problem_text, text};
 use crate::undo;
 use crate::update::{
-    ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
+    ask_measure, ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
     handle_reply, open_thread, say, say_failed, say_model_failed, say_off, search_not_yet,
     sort_hint,
 };
@@ -43,6 +44,9 @@ pub fn asked(state: &State) -> Asked {
                 | ChipReply::PickFolder
                 | ChipReply::OpenSort(_)
                 | ChipReply::OpenRuleForm
+                | ChipReply::SpaceDeleteSafe
+                | ChipReply::SpaceRemoveWorktrees
+                | ChipReply::SpaceOverview
         )
     });
     match last_text {
@@ -345,6 +349,8 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             sort_hint(state, ctx, None);
             None
         }
+        ChatIntent::Space(SpaceAsk::Overview) => Some(Action::OpenSpace),
+        ChatIntent::Space(_) => ask_measure(state, ctx),
         ChatIntent::SmallTalk => {
             say(
                 state,
