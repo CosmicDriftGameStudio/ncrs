@@ -230,15 +230,34 @@ pub fn chat_chip<'a, M: Clone + 'a>(
     on_press: M,
     palette: &Palette,
 ) -> Element<'a, M> {
-    button(
-        text(label.to_owned())
-            .size(CHAT_TEXT)
-            .wrapping(Wrapping::None),
-    )
-    .padding([CHIP_PAD_Y, CHIP_PAD_X])
-    .on_press(on_press)
-    .style(chip_style(palette, primary))
-    .into()
+    chat_chip_keyed(label, primary, None, on_press, palette)
+}
+
+/// [`chat_chip`] with the key that presses it shown after the label.
+pub fn chat_chip_keyed<'a, M: Clone + 'a>(
+    label: &str,
+    primary: bool,
+    key: Option<&str>,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let words = text(label.to_owned())
+        .size(CHAT_TEXT)
+        .wrapping(Wrapping::None);
+    let content: Element<'a, M> = match key {
+        Some(key) => Row::new()
+            .push(words)
+            .push(crate::kit::key_cap(key, palette))
+            .spacing(spacing::XS)
+            .align_y(alignment::Vertical::Center)
+            .into(),
+        None => words.into(),
+    };
+    button(content)
+        .padding([CHIP_PAD_Y, CHIP_PAD_X])
+        .on_press(on_press)
+        .style(chip_style(palette, primary))
+        .into()
 }
 
 /// Chips side by side that move to the next line where the row is full.

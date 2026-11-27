@@ -5,6 +5,7 @@
 mod lists;
 mod panes;
 mod repos;
+mod space;
 
 use crate::snapshot_support::ReferenceSnapshot as _;
 use crate::theme;

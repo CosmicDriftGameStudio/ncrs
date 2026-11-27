@@ -1,0 +1,27 @@
+[package]
+name = "ncrs-space"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Finds what takes the space on a drive, sorts it into safe, worktrees, decide and in use, and frees it after the checks"
+license = "MIT"
+publish = false
+
+[dependencies]
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-git = { path = "../ncrs-git", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-os-probe = { path = "../ncrs-os-probe", version = "0.0.0" }
+
+[features]
+# The App Store build: no process list, no worktree removal, no simulators.
+sandbox = ["ncrs-os-probe/sandbox"]
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[lints]
+workspace = true

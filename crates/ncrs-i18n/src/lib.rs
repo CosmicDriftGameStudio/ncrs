@@ -437,6 +437,23 @@ mod tests {
                 | Msg::GitViewWorktreeWip
                 | Msg::GitViewDiffSides
                 | Msg::GitViewStatusDiffRight
+                // Tool names and folder names of the Platz tab, the same in every language.
+                | Msg::SpaceCatalogSccache
+                | Msg::SpaceCatalogDerivedData
+                // Names that German writes like English: Backups, Downloads, Hermes, Worktrees, Auto.
+                | Msg::SpaceDecideBackups
+                | Msg::SpaceDecideDownloads
+                | Msg::SpaceRulesHermesHead
+                | Msg::SettingsSpaceWorktreesLabel
+                | Msg::SettingsSpaceDepthAuto
+                // Only placeholders and the punctuation between them.
+                | Msg::SpaceLegendEntry
+                | Msg::SpaceDecideOther
+                | Msg::SpaceConfirmWithWorktreesCount
+                | Msg::SpaceLogSpan
+                | Msg::MonitorSpacePercent
+                | Msg::HermesChatSpaceCardDrive
+                | Msg::HermesChatSpaceWhyHead
                 // A number and a unit, the same in every language.
                 | Msg::SplitterWidth
                 | Msg::SettingsHermesSectionChats

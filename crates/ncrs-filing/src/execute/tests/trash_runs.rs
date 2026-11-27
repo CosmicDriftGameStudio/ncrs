@@ -322,3 +322,68 @@ fn reconcile_takes_a_trashed_item_as_done_and_an_untouched_one_as_interrupted() 
     assert_eq!(items[1].state, JournalState::Skipped);
     assert!(kept.path.exists());
 }
+
+fn own_item(path: &Path) -> crate::execute::trash::OwnTrashItem {
+    let meta = fs::metadata(path).unwrap();
+    crate::execute::trash::OwnTrashItem {
+        path: path.to_path_buf(),
+        size: meta.len(),
+        modified: meta.modified().ok(),
+    }
+}
+
+#[test]
+fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/old.dmg", "installer");
+    let item = own_item(&file);
+
+    let report =
+        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
+            .unwrap();
+
+    assert_eq!(report, TrashReport { trashed: 1, skipped: 0 });
+    assert!(!file.exists());
+    let undone = undo_with_trash(
+        &setup.index,
+        last_batch(&setup),
+        std::slice::from_ref(&setup.root),
+        Some(&bin.trash),
+    )
+    .unwrap();
+    assert_eq!(undone, UndoReport { undone: 1, left: 0 });
+    assert_eq!(fs::read_to_string(&file).unwrap(), "installer");
+}
+
+#[test]
+fn an_own_file_that_changed_since_it_was_shown_stays() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/notes.txt", "short");
+    let item = own_item(&file);
+    fs::write(&file, "much longer than before").unwrap();
+
+    let report =
+        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
+            .unwrap();
+
+    assert_eq!(report, TrashReport { trashed: 0, skipped: 1 });
+    assert_eq!(fs::read_to_string(&file).unwrap(), "much longer than before");
+}
+
+#[test]
+fn an_own_item_outside_the_root_stays() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let outside = setup._dir.path().join("elsewhere.txt");
+    fs::write(&outside, "x").unwrap();
+    let item = own_item(&outside);
+
+    let report =
+        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
+            .unwrap();
+
+    assert_eq!(report, TrashReport { trashed: 0, skipped: 1 });
+    assert!(outside.exists());
+}

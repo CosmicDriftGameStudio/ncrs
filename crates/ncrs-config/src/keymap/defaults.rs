@@ -330,6 +330,11 @@ pub fn default_bindings_for(mac: bool) -> Vec<(KeyAction, Binding)> {
             A::Repos,
             Binding::with_modifiers(Character("k".into()), command | Modifiers::SHIFT),
         ),
+        // The Platz tab, P for the place that is freed; Cmd+Alt+P, Ctrl+Alt+P elsewhere.
+        (
+            A::Space,
+            Binding::with_modifiers(Character("p".into()), Modifiers::ALT | command),
+        ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.
         (

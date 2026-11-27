@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-backend_crates="ncrs-fs ncrs-index ncrs-index-types ncrs-intake ncrs-pipeline ncrs-ai ncrs-filing ncrs-config ncrs-jobs ncrs-ocr-vision ncrs-priority ncrs-sandbox ncrs-console ncrs-user-verify"
+backend_crates="ncrs-fs ncrs-index ncrs-index-types ncrs-intake ncrs-pipeline ncrs-ai ncrs-filing ncrs-config ncrs-jobs ncrs-ocr-vision ncrs-priority ncrs-sandbox ncrs-console ncrs-user-verify ncrs-os-probe ncrs-space"
 kit_allowance="ncrs-filing"
 
 oversized_allowance="

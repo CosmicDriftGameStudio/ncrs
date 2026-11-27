@@ -1,0 +1,233 @@
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime};
+
+use ncrs_config::space::SpaceSettings;
+use ncrs_core::FolderSize;
+use ncrs_fs::{measure_folder_depth, RUNNING_REPORT_INTERVAL};
+use ncrs_os_probe::{FolderUse, Holder, VolumeSpace};
+
+use crate::catalog::{catalog, is_under_any, CatalogId, Os};
+use crate::checks::{device_of, runs_tool, ProcessSource, FOLDER_USE_LIMIT};
+use crate::decide::DecideKind;
+use crate::worktrees::{merged_worktrees, WorktreeSpace};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Group {
+    Safe,
+    Worktrees,
+    Decide,
+    InUse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryKind {
+    Catalog(CatalogId),
+    Worktree(WorktreeSpace),
+    Decide(DecideKind),
+}
+
+/// One measured folder. `size`, `modified` and `device` are what the check before the delete compares against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub path: PathBuf,
+    pub group: Group,
+    pub kind: EntryKind,
+    pub size: FolderSize,
+    pub modified: Option<SystemTime>,
+    pub device: Option<u64>,
+    pub held_by: Vec<Holder>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scan {
+    pub volume: VolumeSpace,
+    pub entries: Vec<Entry>,
+    pub partial: bool,
+    pub measured_at: SystemTime,
+    pub took: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScanRequest {
+    pub os: Os,
+    pub home: PathBuf,
+    pub repos: Vec<PathBuf>,
+    pub settings: SpaceSettings,
+}
+
+/// Blocking; run on a worker thread. `None` when `stop` was set.
+///
+/// An entry whose use cannot be known (no process list, a folder that could not be
+/// checked) is listed as in use without a holder.
+pub fn scan(
+    request: &ScanRequest,
+    probes: &dyn ProcessSource,
+    stop: &AtomicBool,
+    mut on_running: impl FnMut(u64),
+) -> Option<Scan> {
+    let started = Instant::now();
+    let settings = &request.settings;
+    let volume = ncrs_os_probe::volume_space(&request.home).ok();
+    let mut partial = volume.is_none();
+    let home_device = std::fs::symlink_metadata(&request.home)
+        .ok()
+        .and_then(|metadata| device_of(&metadata));
+    let processes = probes.processes();
+    let env = |name: &str| std::env::var_os(name);
+    let places = catalog(request.os, &request.home, &env, &request.repos, settings);
+
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut counted: u64 = 0;
+    for place in places {
+        if stop.load(Ordering::Relaxed) {
+            return None;
+        }
+        let Some(measured) = measure(&place.path, place.id, stop, counted, &mut on_running)? else {
+            continue;
+        };
+        counted = counted.saturating_add(measured.size.bytes);
+        if measured.size.bytes == 0 {
+            continue;
+        }
+        let (group, held_by) = use_of(&place.path, place.tools, processes.as_deref(), probes, Group::Safe);
+        entries.push(Entry {
+            path: place.path,
+            group,
+            kind: EntryKind::Catalog(place.id),
+            size: measured.size,
+            modified: measured.modified,
+            device: measured.device,
+            held_by,
+        });
+    }
+
+    if settings.show_worktrees {
+        for worktree in merged_worktrees(&request.repos, stop) {
+            if stop.load(Ordering::Relaxed) {
+                return None;
+            }
+            let device = std::fs::symlink_metadata(&worktree.path)
+                .ok()
+                .and_then(|metadata| device_of(&metadata));
+            let (group, held_by) =
+                use_of(&worktree.path, &[], processes.as_deref(), probes, Group::Worktrees);
+            entries.push(Entry {
+                path: worktree.path.clone(),
+                group,
+                size: worktree.size,
+                modified: worktree.modified,
+                device,
+                held_by,
+                kind: EntryKind::Worktree(worktree),
+            });
+        }
+    }
+
+    entries.extend(crate::decide::decide_entries(&request.home, settings, stop));
+    if stop.load(Ordering::Relaxed) {
+        return None;
+    }
+
+    entries.retain(|entry| !is_under_any(&entry.path, &settings.never_touch));
+    if !settings.other_drives && home_device.is_some() {
+        entries.retain(|entry| entry.device.is_none() || entry.device == home_device);
+    }
+    partial |= entries.iter().any(|entry| entry.size.partial);
+    entries.sort_by(|left, right| right.size.bytes.cmp(&left.size.bytes));
+
+    Some(Scan {
+        volume: volume.unwrap_or(VolumeSpace { total: 0, available: 0 }),
+        entries,
+        partial,
+        measured_at: SystemTime::now(),
+        took: started.elapsed(),
+    })
+}
+
+struct Measured {
+    size: FolderSize,
+    modified: Option<SystemTime>,
+    device: Option<u64>,
+}
+
+/// `None` when stopped; `Some(None)` when the path is gone or is a symlink.
+fn measure(
+    path: &Path,
+    id: CatalogId,
+    stop: &AtomicBool,
+    counted: u64,
+    on_running: &mut impl FnMut(u64),
+) -> Option<Option<Measured>> {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return Some(None);
+    };
+    if metadata.file_type().is_symlink() {
+        return Some(None);
+    }
+    let size = if id == CatalogId::UnavailableSimulators {
+        FolderSize { bytes: unavailable_simulator_bytes(path, stop)?, partial: false }
+    } else if metadata.is_dir() {
+        let tree = measure_folder_depth(path, stop, 0, RUNNING_REPORT_INTERVAL, |bytes| {
+            on_running(counted.saturating_add(bytes));
+        })?;
+        tree.total
+    } else {
+        FolderSize { bytes: metadata.len(), partial: false }
+    };
+    Some(Some(Measured { size, modified: metadata.modified().ok(), device: device_of(&metadata) }))
+}
+
+/// The group the entry is in and who holds it: a running tool or an open file moves it
+/// to `InUse`; an answer that cannot be had does too, with no holder.
+fn use_of(
+    path: &Path,
+    tools: &[&str],
+    processes: Option<&[Holder]>,
+    probes: &dyn ProcessSource,
+    group: Group,
+) -> (Group, Vec<Holder>) {
+    let Some(running) = processes else {
+        return (Group::InUse, Vec::new());
+    };
+    let tool_holders: Vec<Holder> =
+        running.iter().filter(|holder| runs_tool(holder, tools)).cloned().collect();
+    if !tool_holders.is_empty() {
+        return (Group::InUse, tool_holders);
+    }
+    match probes.folder_use(path, FOLDER_USE_LIMIT) {
+        FolderUse::Free => (group, Vec::new()),
+        FolderUse::Held(holders) => (Group::InUse, holders),
+        FolderUse::Unknown(_) => (Group::InUse, Vec::new()),
+    }
+}
+
+/// Only the simulators `simctl` lists as unavailable, not the whole devices folder.
+#[cfg(all(target_os = "macos", not(feature = "sandbox")))]
+fn unavailable_simulator_bytes(devices: &Path, stop: &AtomicBool) -> Option<u64> {
+    let listed = std::process::Command::new("xcrun")
+        .args(["simctl", "list", "devices", "unavailable"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+        .unwrap_or_default();
+    let mut total: u64 = 0;
+    for id in listed.lines().filter_map(device_id_of) {
+        total = total.saturating_add(ncrs_fs::measure_folder(&devices.join(id), stop)?.bytes);
+    }
+    Some(total)
+}
+
+#[cfg(not(all(target_os = "macos", not(feature = "sandbox"))))]
+fn unavailable_simulator_bytes(_devices: &Path, _stop: &AtomicBool) -> Option<u64> {
+    Some(0)
+}
+
+/// The UUID in parentheses of a `simctl list` line.
+#[cfg(all(target_os = "macos", not(feature = "sandbox")))]
+fn device_id_of(line: &str) -> Option<&str> {
+    line.split(['(', ')']).map(str::trim).find(|part| {
+        part.len() == 36 && part.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+    })
+}

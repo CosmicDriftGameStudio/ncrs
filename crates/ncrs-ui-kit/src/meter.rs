@@ -54,8 +54,42 @@ pub struct Meter<'a> {
     pub detail: &'a str,
 }
 
+/// The level of a drive that counts as full from `warn_from` percent on.
+pub fn meter_level_from(percent: f32, warn_from: f32) -> MeterLevel {
+    if percent >= warn_from {
+        MeterLevel::Warning
+    } else {
+        MeterLevel::Normal
+    }
+}
+
+/// How a bar is filled: always in the "on" role, or in the color of its level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fill {
+    Role,
+    ByLevel,
+}
+
+fn fill_color(fill: Fill, level: MeterLevel, palette: &Palette) -> Color {
+    match (fill, level) {
+        (Fill::ByLevel, MeterLevel::Warning) => theme::git::orange(),
+        (Fill::ByLevel, MeterLevel::Critical) => palette.error,
+        _ => level_color(palette),
+    }
+}
+
 pub fn meter<'a, M: 'a>(meter: Meter<'_>, palette: &Palette) -> Element<'a, M> {
-    let fill_color = level_color(palette);
+    draw(meter, Fill::Role, palette)
+}
+
+/// [`meter`] with the fill in the color of its level: orange from the warning
+/// level on, so a drive about to be full does not look like a calm one.
+pub fn meter_by_level<'a, M: 'a>(meter: Meter<'_>, palette: &Palette) -> Element<'a, M> {
+    draw(meter, Fill::ByLevel, palette)
+}
+
+fn draw<'a, M: 'a>(meter: Meter<'_>, fill: Fill, palette: &Palette) -> Element<'a, M> {
+    let fill_color = fill_color(fill, meter.level, palette);
     let value_color = level_text_color(meter.level, palette);
     let filled = (meter.fraction.clamp(0.0, 1.0) * PORTIONS).round() as u16;
     let empty = PORTIONS as u16 - filled;
@@ -103,5 +137,22 @@ mod tests {
         assert_eq!(meter_level(89.9), MeterLevel::Warning);
         assert_eq!(meter_level(90.0), MeterLevel::Critical);
         assert_eq!(meter_level(250.0), MeterLevel::Critical);
+    }
+
+    #[test]
+    fn the_warning_starts_where_the_settings_say() {
+        assert_eq!(meter_level_from(79.9, 80.0), MeterLevel::Normal);
+        assert_eq!(meter_level_from(80.0, 80.0), MeterLevel::Warning);
+    }
+
+    #[test]
+    fn only_the_by_level_fill_turns_orange() {
+        let palette = crate::palette::ThemePreset::Dracula.palette();
+        let calm = fill_color(Fill::ByLevel, MeterLevel::Normal, &palette);
+        assert_eq!(fill_color(Fill::Role, MeterLevel::Warning, &palette), calm);
+        assert_eq!(
+            fill_color(Fill::ByLevel, MeterLevel::Warning, &palette),
+            theme::git::orange()
+        );
     }
 }

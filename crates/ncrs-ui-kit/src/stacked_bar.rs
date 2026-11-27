@@ -1,0 +1,92 @@
+//! One horizontal bar cut into colored parts, like the fill of a drive.
+
+use iced::widget::{container, row};
+use iced::{Color, Element, Length};
+
+use crate::palette::Palette;
+use crate::theme::{self, size};
+
+const PORTIONS: u64 = 10_000;
+
+/// One part of the bar: its share is `portion` of the sum of all parts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BarSegment {
+    pub portion: u64,
+    pub color: Color,
+}
+
+/// The widths of the parts in `FillPortion`s, in the order given. A part that
+/// is not empty keeps at least one portion so it stays visible.
+pub fn segment_portions(segments: &[BarSegment]) -> Vec<u16> {
+    let total: u64 = segments.iter().map(|segment| segment.portion).sum();
+    if total == 0 {
+        return vec![0; segments.len()];
+    }
+    segments
+        .iter()
+        .map(|segment| match segment.portion {
+            0 => 0,
+            share => u16::try_from(share.saturating_mul(PORTIONS) / total)
+                .unwrap_or(u16::MAX)
+                .max(1),
+        })
+        .collect()
+}
+
+pub fn stacked_bar<'a, M: 'a>(segments: &[BarSegment], palette: &Palette) -> Element<'a, M> {
+    let mut bar = row![];
+    for (segment, portion) in segments.iter().zip(segment_portions(segments)) {
+        if portion > 0 {
+            bar = bar.push(
+                container("")
+                    .width(Length::FillPortion(portion))
+                    .height(size::STACKED_BAR)
+                    .style(theme::line(segment.color)),
+            );
+        }
+    }
+    let edge = palette.border_inactive;
+    container(bar)
+        .width(Length::Fill)
+        .style(move |_theme: &iced::Theme| container::Style {
+            border: iced::Border {
+                color: edge,
+                width: theme::spacing::BORDER_WIDTH,
+                radius: theme::radius::CORNER.into(),
+            },
+            ..container::Style::default()
+        })
+        .clip(true)
+        .into()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn segment(portion: u64) -> BarSegment {
+        BarSegment {
+            portion,
+            color: Color::WHITE,
+        }
+    }
+
+    #[test]
+    fn the_portions_follow_the_shares() {
+        let portions = segment_portions(&[segment(1), segment(3)]);
+        assert_eq!(portions, vec![2500, 7500]);
+    }
+
+    #[test]
+    fn a_tiny_part_stays_visible_and_an_empty_one_is_left_out() {
+        let portions = segment_portions(&[segment(1), segment(0), segment(1_000_000_000)]);
+        assert_eq!(portions[0], 1);
+        assert_eq!(portions[1], 0);
+    }
+
+    #[test]
+    fn nothing_to_show_is_no_portion() {
+        assert_eq!(segment_portions(&[segment(0), segment(0)]), vec![0, 0]);
+    }
+}

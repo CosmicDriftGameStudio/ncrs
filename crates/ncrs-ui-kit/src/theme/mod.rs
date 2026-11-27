@@ -8,6 +8,7 @@ use crate::hermes_state::{FolderRole, HermesFileState};
 use crate::palette::{contrast_ratio, Palette};
 
 pub mod git;
+pub mod space;
 mod links;
 mod settings;
 pub use links::{link_button, named_link_button};

@@ -3,6 +3,8 @@
 //! exactly that entry.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::time::SystemTime;
 
 use ncrs_fs::{RestoreError, Trash, TrashReach, TrashedItem};
 use ncrs_index::{
@@ -36,11 +38,18 @@ pub fn trash_can_restore(trash: &dyn Trash) -> bool {
     trash.reach() != TrashReach::FinderOnly
 }
 
-fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) -> NewJournalItem {
+/// An item after its checks: what the journal records and whether it may go.
+struct Planned {
+    path: PathBuf,
+    hash: ContentHash,
+    check: Option<SkipReason>,
+}
+
+fn journal_entry(item: &Planned, state: JournalState, reason: Option<String>) -> NewJournalItem {
     NewJournalItem {
         from: item.path.clone(),
         to: item.path.clone(),
-        hash: item.expected_hash,
+        hash: item.hash,
         document_id: None,
         duplicate: false,
         state,
@@ -51,7 +60,7 @@ fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) 
 fn skip(
     index: &Index,
     batch: BatchId,
-    item: &TrashItem,
+    item: &Planned,
     reason: SkipReason,
 ) -> Result<(), ExecuteError> {
     index.add_journal_item(
@@ -59,6 +68,85 @@ fn skip(
         &journal_entry(item, JournalState::Skipped, Some(reason.text())),
     )?;
     Ok(())
+}
+
+/// A file or folder of the user's own to put in the trash, as it was shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnTrashItem {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+}
+
+/// Why this own item must not be trashed, if there is a reason. A folder has
+/// no content hash; its journal entry carries the all-zero hash, and its undo
+/// trusts the key the trash gave.
+fn refusal_own(root: &Path, item: &OwnTrashItem) -> Result<ContentHash, SkipReason> {
+    if !is_below(root, &item.path) {
+        return Err(SkipReason::OutsideLocation);
+    }
+    match has_symlink_ancestor_under(root, &item.path) {
+        Ok(false) => {}
+        Ok(true) => return Err(SkipReason::LeavesLocation),
+        Err(err) => return Err(SkipReason::Failed(err.to_string())),
+    }
+    let meta = match std::fs::symlink_metadata(&item.path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(SkipReason::SourceMissing)
+        }
+        Err(err) => return Err(SkipReason::Failed(err.to_string())),
+    };
+    if meta.file_type().is_symlink() {
+        return Err(SkipReason::LeavesLocation);
+    }
+    if meta.modified().ok() != item.modified {
+        return Err(SkipReason::SourceChanged);
+    }
+    if meta.is_dir() {
+        let never_stopped = AtomicBool::new(false);
+        return match ncrs_fs::measure_folder(&item.path, &never_stopped) {
+            Some(size) if size.bytes == item.size => Ok(ContentHash([0; 32])),
+            Some(_) => Err(SkipReason::SourceChanged),
+            None => Err(SkipReason::Cancelled),
+        };
+    }
+    if meta.len() != item.size {
+        return Err(SkipReason::SourceChanged);
+    }
+    match hash_path(&item.path) {
+        Ok(hash) => Ok(hash),
+        Err(err) if is_not_found(&err) => Err(SkipReason::SourceMissing),
+        Err(err) => Err(SkipReason::Failed(err.to_string())),
+    }
+}
+
+/// Puts your own files and folders in the trash, each only while it is still
+/// as it was shown (size and change time). Journaled as a `Hermes` batch of
+/// the trash kind, so the same undo puts them back.
+pub fn trash_run_own(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: &[OwnTrashItem],
+    trash: &dyn Trash,
+) -> Result<TrashReport, ExecuteError> {
+    let planned: Vec<Planned> = items
+        .iter()
+        .map(|item| match refusal_own(root, item) {
+            Ok(hash) => Planned {
+                path: item.path.clone(),
+                hash,
+                check: None,
+            },
+            Err(reason) => Planned {
+                path: item.path.clone(),
+                hash: ContentHash([0; 32]),
+                check: Some(reason),
+            },
+        })
+        .collect();
+    run_planned(index, name, root, planned, trash)
 }
 
 /// Why this item must not be trashed, if there is a reason.
@@ -91,19 +179,37 @@ pub fn trash_run(
     items: &[TrashItem],
     trash: &dyn Trash,
 ) -> Result<TrashReport, ExecuteError> {
+    let planned: Vec<Planned> = items
+        .iter()
+        .map(|item| Planned {
+            path: item.path.clone(),
+            hash: item.expected_hash,
+            check: refusal(root, item),
+        })
+        .collect();
+    run_planned(index, name, root, planned, trash)
+}
+
+fn run_planned(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: Vec<Planned>,
+    trash: &dyn Trash,
+) -> Result<TrashReport, ExecuteError> {
     let source = remember_source_root(root)?;
     let batch = index.begin_named_batch(BatchKind::Hermes, name, Transfer::Trash)?;
     index.set_batch_source_root(batch, &source)?;
     let mut report = TrashReport::default();
     let mut trashed = Vec::new();
     for item in items {
-        if let Some(reason) = refusal(root, item) {
-            skip(index, batch, item, reason)?;
+        if let Some(reason) = item.check {
+            skip(index, batch, &Planned { check: None, ..item }, reason)?;
             report.skipped += 1;
             continue;
         }
         let seq =
-            index.add_journal_item(batch, &journal_entry(item, JournalState::Pending, None))?;
+            index.add_journal_item(batch, &journal_entry(&item, JournalState::Pending, None))?;
         if let Err(err) = trash.trash(&item.path) {
             let reason = SkipReason::Failed(err);
             index.set_journal_state(batch, seq, JournalState::Skipped, Some(&reason.text()))?;
@@ -111,12 +217,12 @@ pub fn trash_run(
             continue;
         }
         index.set_journal_state(batch, seq, JournalState::Moved, None)?;
-        trashed.push((seq, &item.path));
+        trashed.push((seq, item.path));
         report.trashed += 1;
     }
     if let Ok(listed) = trash.list() {
         for (seq, original) in trashed {
-            if let Some(entry) = newest_listed(&listed, |entry| entry.original == *original) {
+            if let Some(entry) = newest_listed(&listed, |entry| entry.original == original) {
                 // A key that is not text cannot be journaled; the undo then
                 // finds the entry by its old place.
                 let _best_effort = index.set_journal_target(batch, seq, &PathBuf::from(&entry.key));

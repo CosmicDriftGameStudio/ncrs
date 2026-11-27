@@ -56,3 +56,11 @@ pub const SECTION_HEAD: f32 = 26.0;
 pub const FACT_LABEL: f32 = 90.0;
 /// A row of a list with ticks (Git clean-up, Repos clean-up).
 pub const CHECK_ROW: f32 = 28.0;
+/// The width of the bar that shows how big a row is against the biggest one.
+pub const SIZE_BAR_WIDTH: f32 = 120.0;
+/// A row of a list of sizes: name and folder on two lines.
+pub const SIZE_ROW: f32 = 40.0;
+/// The room of the reason or the result at the right of a size row.
+pub const SIZE_REASON_WIDTH: f32 = 220.0;
+/// The height of the bar that shows how a drive is filled.
+pub const STACKED_BAR: f32 = 14.0;

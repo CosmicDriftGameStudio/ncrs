@@ -33,7 +33,9 @@ pub mod badge_dot;
 pub mod blame_rows;
 pub mod check_rows;
 pub mod choice_rows;
+pub mod color_chip;
 pub mod column_header;
+pub mod confirm;
 pub mod commit_graph;
 pub mod compare_bar;
 pub mod compare_cell;
@@ -86,6 +88,8 @@ pub mod rename_row;
 pub mod repo_row;
 pub mod row_scroll;
 pub mod section_head;
+pub mod size_row;
+pub mod stacked_bar;
 pub mod setting_rows;
 #[cfg(any(test, feature = "test-support"))]
 pub mod snapshot_support;

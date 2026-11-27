@@ -41,6 +41,7 @@ use crate::panel_columns::{
     columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
 };
 use crate::repos::{ReposSection, ReposSettings};
+use crate::space::{SpaceSection, SpaceSettings};
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
 use ncrs_ai::ConsentedOrigins;
@@ -155,6 +156,15 @@ pub struct Config {
     /// Where the repo manager looks and how its bulk actions run.
     #[serde(skip)]
     pub repos: ReposSettings,
+    /// The `[keys.space]` table, read for its keys; the Platz tab says which names are actions.
+    #[serde(skip)]
+    pub space_keys: TabKeys,
+    /// The `[space]` section as written; `load` checks it into `space`.
+    #[serde(default, rename = "space")]
+    pub space_section: SpaceSection,
+    /// What "Platz schaffen" treats as safe and what it leaves alone.
+    #[serde(skip)]
+    pub space: SpaceSettings,
     /// The `[theme]` section as written; `load` turns it into `palette`.
     #[serde(default)]
     pub theme: ThemeSection,
@@ -269,6 +279,7 @@ mod loading;
 mod paths;
 mod repos_writes;
 mod resolving;
+mod space_writes;
 mod sections;
 mod setting_writes;
 mod sorting;
@@ -292,6 +303,7 @@ pub use self::paths::{
 pub use self::repos_writes::{repos_settings, write_repos};
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
+pub use self::space_writes::{space_settings, write_space};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
     ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,

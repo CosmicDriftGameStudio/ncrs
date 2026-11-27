@@ -41,7 +41,8 @@ pub use delete::{
 };
 pub use entry_read::{entry_from_dir_entry, entry_from_path};
 pub use folder_size::{
-    measure_folder, measure_folder_tree, measure_folder_tree_reporting, MeasuredTree,
+    measure_folder, measure_folder_depth, measure_folder_tree, measure_folder_tree_reporting,
+    MeasuredTree,
     RUNNING_REPORT_INTERVAL,
 };
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};

@@ -114,7 +114,7 @@ fn a_worktree_counts_its_changes_and_its_distance_to_main() {
     assert_eq!(feature.branch.as_deref(), Some("feature"));
     assert_eq!(feature.wip, 1);
     assert_eq!((feature.ahead, feature.behind), (0, 1));
-    assert!(feature.merged);
+    assert!(!feature.merged, "a worktree with a change is not merged yet");
 }
 
 #[test]

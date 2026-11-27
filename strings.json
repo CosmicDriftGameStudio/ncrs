@@ -15161,6 +15161,1998 @@
       "context": "Git tab, question before a worktree folder is deleted; {name} is the folder. Git refuses a folder with local changes; the branch stays.",
       "en": "The folder {name} is deleted. The branch stays. Git refuses if the folder has local changes.",
       "de": "Der Ordner {name} wird gelöscht. Der Branch bleibt. Git lehnt ab, wenn der Ordner lokale Änderungen hat."
+    },
+    {
+      "key": "action.space",
+      "context": "Entry of the command list that runs the key action space: it opens the Platz tab, where the user measures the drive and frees space. Ends with an ellipsis because it opens a view that measures first. Verb phrase.",
+      "en": "Free up space…",
+      "de": "Platz schaffen…"
+    },
+    {
+      "key": "space.tab_title",
+      "context": "Title of the Platz tab in the tab strip and heading of the tab. Noun, one word. The tab shows what fills the drive and lets the user delete what a tool makes again.",
+      "en": "Space",
+      "de": "Platz"
+    },
+    {
+      "key": "space.tab_title_drive",
+      "context": "Title of the Platz tab with the drive it measured. {drive} is the name of the drive, e.g. Macintosh HD.",
+      "en": "Space · {drive}",
+      "de": "Platz · {drive}"
+    },
+    {
+      "key": "space.heading",
+      "context": "Heading of the Platz tab and of the Hermes card about the drive. Imperative: free up disk space.",
+      "en": "Free up space",
+      "de": "Platz schaffen"
+    },
+    {
+      "key": "space.drive_label",
+      "context": "Small label in front of the drive name in the header of the Platz tab. Noun: the disk or volume.",
+      "en": "Drive",
+      "de": "Platte"
+    },
+    {
+      "key": "space.used_of",
+      "context": "Line under the drive name in the Platz tab. {used}, {total} and {free} are sizes such as 814 GB.",
+      "en": "{used} of {total} used · {free} free",
+      "de": "{used} von {total} belegt · {free} frei"
+    },
+    {
+      "key": "space.free_now",
+      "context": "Chip in the header of the Platz tab: how much of the drive is free now. {size} is a size such as 78 GB.",
+      "en": "{size} free",
+      "de": "{size} frei"
+    },
+    {
+      "key": "space.free_after",
+      "context": "Chip in the header of the Platz tab: how much would be free if everything safe were deleted. {size} is a size such as 213 GB.",
+      "en": "{size} free after cleanup",
+      "de": "nach Aufräumen {size} frei"
+    },
+    {
+      "key": "space.measured",
+      "context": "Status bar line of the Platz tab. {ago} is a short time span such as 2 min, {took} how long the measuring took such as 1 min 12 s.",
+      "en": "measured {ago} ago · {took}",
+      "de": "gemessen vor {ago} · {took}"
+    },
+    {
+      "key": "space.measuring",
+      "context": "Status bar line of the Platz tab while it measures the big folders. {size} is what has been found so far.",
+      "en": "Measuring… {size} so far",
+      "de": "Misst … bisher {size}"
+    },
+    {
+      "key": "space.measured_partly",
+      "context": "Status bar line of the Platz tab when some folders could not be read, so the figures may be too low.",
+      "en": "Measured in part: some folders could not be read",
+      "de": "Nur zum Teil gemessen: einige Ordner waren nicht lesbar"
+    },
+    {
+      "key": "space.rescan",
+      "context": "Button in the Platz tab that measures the drive again. Verb phrase.",
+      "en": "Measure again",
+      "de": "Neu messen"
+    },
+    {
+      "key": "space.ask",
+      "context": "Button in the Platz tab that opens Hermes to ask about the drive. Ends with an ellipsis because it opens the chat.",
+      "en": "Ask…",
+      "de": "Fragen…"
+    },
+    {
+      "key": "space.delete_all_safe",
+      "context": "Primary button of the Platz tab. Deletes every safe folder for good, after a question. {size} is the total size such as 134 GB.",
+      "en": "Delete all safe ones · {size}",
+      "de": "Alle sicheren löschen · {size}"
+    },
+    {
+      "key": "space.delete_all_safe_plain",
+      "context": "Same button as space.delete_all_safe without the size, for the command list and a chat card.",
+      "en": "Delete all safe ones",
+      "de": "Alle sicheren löschen"
+    },
+    {
+      "key": "space.remove_worktrees",
+      "context": "Button of the Platz tab and of a Hermes card: removes the merged Git worktrees. {size} is their total size.",
+      "en": "Remove merged worktrees · {size}",
+      "de": "Gemergte Worktrees entfernen · {size}"
+    },
+    {
+      "key": "space.remove_worktrees_also",
+      "context": "Button on the result of the Platz tab: removes the merged worktrees as well, after the safe folders were deleted. {size} is their size.",
+      "en": "Remove worktrees as well · {size}",
+      "de": "Worktrees auch entfernen · {size}"
+    },
+    {
+      "key": "space.open_overview",
+      "context": "Button on a Hermes card that opens the Platz tab. Verb phrase.",
+      "en": "Open overview",
+      "de": "Übersicht öffnen"
+    },
+    {
+      "key": "space.show_in_panel",
+      "context": "Button and command in the Platz tab: shows the folder in a file panel. Verb phrase.",
+      "en": "Show in panel",
+      "de": "Im Panel zeigen"
+    },
+    {
+      "key": "space.delete_only_this",
+      "context": "Button and command in the Platz tab: deletes only the selected folder for good, not all safe ones. Verb phrase.",
+      "en": "Delete only this one",
+      "de": "Nur diesen löschen"
+    },
+    {
+      "key": "space.filter_placeholder",
+      "context": "Placeholder of the filter field of the Platz tab. The user types part of a name or a path.",
+      "en": "Filter: name or path",
+      "de": "Filter: Name oder Pfad"
+    },
+    {
+      "key": "space.retry",
+      "context": "Button on a skipped row of the result in the Platz tab: tries that folder again.",
+      "en": "Try again",
+      "de": "Nochmal versuchen"
+    },
+    {
+      "key": "space.retry_skipped",
+      "context": "Command and button in the Platz tab: tries every skipped folder of the last run again.",
+      "en": "Try skipped ones again",
+      "de": "Übersprungene nochmal versuchen"
+    },
+    {
+      "key": "space.close_result",
+      "context": "Button on the result of the Platz tab that closes the result and shows the list again.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "space.view_details",
+      "context": "Button on a row of the group \"You decide\" in the Platz tab; opens the list of what is inside the folder.",
+      "en": "View",
+      "de": "Ansehen"
+    },
+    {
+      "key": "space.column_size",
+      "context": "Column header over the size bar in the lists of the Platz tab. Noun.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "space.column_folder",
+      "context": "Column header over the folder name in the lists of the Platz tab. Noun.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "space.column_what",
+      "context": "Column header over what a folder is, for example \"Compiler cache\", in the Platz tab.",
+      "en": "What it is",
+      "de": "Was es ist"
+    },
+    {
+      "key": "space.column_check",
+      "context": "Column header over the check made before deleting, for example \"no build is running\".",
+      "en": "Check",
+      "de": "Prüfung"
+    },
+    {
+      "key": "space.column_used",
+      "context": "Column header over the share of the drive a folder takes in the Platz tab. Noun.",
+      "en": "Used",
+      "de": "Belegt"
+    },
+    {
+      "key": "space.column_name",
+      "context": "Column header over the name in the result list of the Platz tab. Noun, one word.",
+      "en": "What",
+      "de": "Was"
+    },
+    {
+      "key": "space.column_place",
+      "context": "Column header over the place of a folder in the result list of the Platz tab. Noun.",
+      "en": "Place",
+      "de": "Ort"
+    },
+    {
+      "key": "space.column_result",
+      "context": "Column header over what became of a folder in the result list of the Platz tab. Noun.",
+      "en": "Result",
+      "de": "Ergebnis"
+    },
+    {
+      "key": "space.column_reason",
+      "context": "Column header over the reason a file was suggested in the Downloads list of the Platz tab. Noun.",
+      "en": "Reason",
+      "de": "Grund"
+    },
+    {
+      "key": "space.group_safe",
+      "context": "Heading of the group of folders that tools make again, in the Platz tab. Deleting them is safe. Shown in capitals.",
+      "en": "Safe · made again",
+      "de": "Sicher · neu erzeugbar"
+    },
+    {
+      "key": "space.group_worktrees",
+      "context": "Heading of the group of merged Git worktrees in the Platz tab. Shown in capitals.",
+      "en": "Merged worktrees",
+      "de": "Gemergte Worktrees"
+    },
+    {
+      "key": "space.group_decide",
+      "context": "Heading of the group of the user's own files in the Platz tab. The user decides; Hermes only explains. Shown in capitals.",
+      "en": "You decide",
+      "de": "Du entscheidest"
+    },
+    {
+      "key": "space.group_in_use",
+      "context": "Heading of the group of folders a running program holds open, in the Platz tab. They are skipped. Shown in capitals.",
+      "en": "In use",
+      "de": "In Benutzung"
+    },
+    {
+      "key": "space.group_safe_result",
+      "context": "Heading of the safe group on the result of the Platz tab. Shown in capitals.",
+      "en": "Safe",
+      "de": "Sicher"
+    },
+    {
+      "key": "space.group_safe_result_hint",
+      "context": "Dimmed text after the heading of the safe group on the result: what happened to it.",
+      "en": "can be rebuilt, deleted for good",
+      "de": "neu baubar, endgültig gelöscht"
+    },
+    {
+      "key": "space.group_decide_hint",
+      "context": "Dimmed text after the heading \"You decide\" in the Platz tab. Hermes explains but never deletes by itself.",
+      "en": "Hermes explains, never deletes here by itself",
+      "de": "Hermes erklärt, löscht hier nie von selbst"
+    },
+    {
+      "key": "space.group_decide_result_hint",
+      "context": "Dimmed text after the heading \"You decide\" on the result of the Platz tab.",
+      "en": "Hermes explains, deletes nothing",
+      "de": "Hermes erklärt, löscht nichts"
+    },
+    {
+      "key": "space.group_in_use_hint",
+      "context": "Dimmed text after the heading \"In use\" on the result of the Platz tab: those folders were skipped.",
+      "en": "running right now, skipped",
+      "de": "läuft gerade, übersprungen"
+    },
+    {
+      "key": "space.group_worktrees_hint",
+      "context": "Dimmed text after the heading of the merged worktrees. {folder} is the folder of the worktrees, {total} how many worktrees there are, {size} their size, {kept} how many stay.",
+      "en": "{folder} · {total} worktrees, {size} · {kept} stay (open, unsaved, in use)",
+      "de": "{folder} · {total} Worktrees, {size} · {kept} bleiben (offen, ungesichert, in Benutzung)"
+    },
+    {
+      "key": "space.group_more_worktrees",
+      "context": "Folded row below the list of merged worktrees. {count} is the number not shown, {size} their size.",
+      "en": "{count} more merged worktrees · {size}",
+      "de": "{count} weitere gemergte Worktrees · {size}"
+    },
+    {
+      "key": "space.group_expand",
+      "context": "Word after a folded row in the Platz tab: pressing the arrow key opens it.",
+      "en": "expand",
+      "de": "aufklappen"
+    },
+    {
+      "key": "space.worktree_check",
+      "context": "Check column of a merged worktree row in the Platz tab: it has no changes and its branch is merged.",
+      "en": "merged, clean",
+      "de": "gemergt, sauber"
+    },
+    {
+      "key": "space.worktree_removal",
+      "context": "Reason column of a merged worktree row in the Platz tab: what removing does.",
+      "en": "Folder and branch are removed",
+      "de": "Ordner und Branch werden entfernt"
+    },
+    {
+      "key": "space.legend_safe",
+      "context": "Legend word under the bar of the drive: the part that is safe to delete. Lower case, short.",
+      "en": "safe",
+      "de": "sicher"
+    },
+    {
+      "key": "space.legend_worktrees",
+      "context": "Legend word under the bar of the drive: the part in merged worktrees. Lower case, short.",
+      "en": "worktrees",
+      "de": "Worktrees"
+    },
+    {
+      "key": "space.legend_decide",
+      "context": "Legend word under the bar of the drive: the part the user decides about. Lower case, short.",
+      "en": "you decide",
+      "de": "du entscheidest"
+    },
+    {
+      "key": "space.legend_in_use",
+      "context": "Legend word under the bar of the drive: the part a running program holds. Lower case, short.",
+      "en": "in use",
+      "de": "in Benutzung"
+    },
+    {
+      "key": "space.legend_rest",
+      "context": "Legend word under the bar of the drive: everything else that fills the drive. Lower case, short.",
+      "en": "other",
+      "de": "sonst belegt"
+    },
+    {
+      "key": "space.legend_free",
+      "context": "Legend word under the bar of the drive: the free part. Lower case, short.",
+      "en": "free",
+      "de": "frei"
+    },
+    {
+      "key": "space.legend_other",
+      "context": "Legend word on the result bar: everything not in the other parts. Noun.",
+      "en": "Other",
+      "de": "Sonstiges"
+    },
+    {
+      "key": "space.legend_safe_left",
+      "context": "Legend word on the result bar: safe folders that are still there because they were skipped.",
+      "en": "Safe, still there",
+      "de": "Sicher, noch da"
+    },
+    {
+      "key": "space.legend_freed",
+      "context": "Legend word on the result bar: the space that was just freed.",
+      "en": "just freed",
+      "de": "gerade frei gemacht"
+    },
+    {
+      "key": "space.legend_was_free",
+      "context": "Legend word on the result bar: the space that was free before the run.",
+      "en": "was already free",
+      "de": "war schon frei"
+    },
+    {
+      "key": "space.legend_entry",
+      "context": "One entry of the legend with its size. {label} is a legend word, {size} a size.",
+      "en": "{label} {size}",
+      "de": "{label} {size}"
+    },
+    {
+      "key": "space.selected_summary",
+      "context": "Line at the bottom of the list in the Platz tab. {safe} is the number of safe folders ticked, {worktrees} the number of worktrees ticked, {size} the total size.",
+      "en": "Chosen: {safe} safe + {worktrees} worktrees = {size}",
+      "de": "Gewählt: {safe} sicher + {worktrees} Worktrees = {size}"
+    },
+    {
+      "key": "space.selected_summary_safe",
+      "context": "Line at the bottom of the list in the Platz tab when no worktrees are ticked. {safe} is the number of safe folders ticked, {size} the total size.",
+      "en": "Chosen: {safe} safe = {size}",
+      "de": "Gewählt: {safe} sicher = {size}"
+    },
+    {
+      "key": "space.permanent_note",
+      "context": "Note at the bottom of the Platz tab: safe folders are deleted for good, not moved to the trash.",
+      "en": "Safe things are deleted for good, not moved to the trash: the trash frees no space.",
+      "de": "Sichere Dinge werden endgültig gelöscht, nicht in den Papierkorb: der Papierkorb gibt keinen Platz frei."
+    },
+    {
+      "key": "space.detail_share",
+      "context": "Line in the detail pane of the Platz tab. {size} is the size of the folder, {percent} the share of the drive.",
+      "en": "{size}  {percent} % of the drive",
+      "de": "{size}  {percent} % der Platte"
+    },
+    {
+      "key": "space.detail_group",
+      "context": "Label in the detail pane of the Platz tab: which group the folder is in. Noun.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "space.detail_last_used",
+      "context": "Label in the detail pane of the Platz tab: when the folder was last used.",
+      "en": "Last used",
+      "de": "Zuletzt benutzt"
+    },
+    {
+      "key": "space.detail_made_by",
+      "context": "Label in the detail pane of the Platz tab: which tool makes the folder again.",
+      "en": "Made again by",
+      "de": "Neu erzeugt durch"
+    },
+    {
+      "key": "space.detail_afterwards",
+      "context": "Label in the detail pane of the Platz tab: what the user notices after the folder is gone.",
+      "en": "Afterwards",
+      "de": "Danach"
+    },
+    {
+      "key": "space.detail_checks",
+      "context": "Heading in the detail pane of the Platz tab over the checks made before deleting. Shown in capitals.",
+      "en": "Checks",
+      "de": "Prüfung"
+    },
+    {
+      "key": "space.detail_permanent",
+      "context": "Note in the detail pane of the Platz tab: the folder is deleted for good because a tool makes it again.",
+      "en": "Deleted for good (not to the trash) because it is made again.",
+      "de": "Wird endgültig gelöscht (nicht Papierkorb), weil es sich neu erzeugt."
+    },
+    {
+      "key": "space.check_no_tool",
+      "context": "A check that passed: no tool is running. {tool} is the program, e.g. cargo or yarn.",
+      "en": "no {tool} is running",
+      "de": "kein {tool} läuft"
+    },
+    {
+      "key": "space.check_no_build",
+      "context": "A check that passed: no build is running.",
+      "en": "no build is running",
+      "de": "kein Build läuft"
+    },
+    {
+      "key": "space.check_no_open_folder",
+      "context": "A check that passed: no program has the folder open.",
+      "en": "no folder open",
+      "de": "kein offener Ordner"
+    },
+    {
+      "key": "space.check_reported_unavailable",
+      "context": "A check that passed: Xcode itself says the simulators are no longer available.",
+      "en": "reported unavailable by Xcode",
+      "de": "von Xcode als nicht verfügbar gemeldet"
+    },
+    {
+      "key": "space.check_tool_running",
+      "context": "Reason a folder is in use. {tool} is the running program, e.g. Chrome.",
+      "en": "{tool} is running – measure again after quitting",
+      "de": "{tool} läuft – nach dem Beenden neu messen"
+    },
+    {
+      "key": "space.check_unknown_use",
+      "context": "Reason a folder is in use when the app cannot tell whether a program uses it.",
+      "en": "cannot check whether it is in use",
+      "de": "Benutzung nicht prüfbar"
+    },
+    {
+      "key": "space.catalog.cargo_target",
+      "context": "Name of a safe folder in the Platz tab: the Rust build folder of a project.",
+      "en": "Rust build",
+      "de": "Rust-Build"
+    },
+    {
+      "key": "space.catalog.cargo_target_why",
+      "context": "What the Rust build folder is and what happens after it is deleted.",
+      "en": "Rust build · building again takes longer",
+      "de": "Rust-Build · neu bauen dauert länger"
+    },
+    {
+      "key": "space.catalog.cargo_target_home",
+      "context": "Name of a safe folder in the Platz tab: the Rust build folders in the shared target folder, of worktrees that are merged.",
+      "en": "Rust builds of old worktrees",
+      "de": "Rust-Builds alter Worktrees"
+    },
+    {
+      "key": "space.catalog.cargo_target_home_why",
+      "context": "What the build folders of old worktrees are.",
+      "en": "Rust build · worktrees merged",
+      "de": "Rust-Build · Worktrees gemergt"
+    },
+    {
+      "key": "space.catalog.sccache",
+      "context": "Name of a safe folder in the Platz tab: the cache of the tool sccache. The tool name stays the same in every language.",
+      "en": "sccache",
+      "de": "sccache"
+    },
+    {
+      "key": "space.catalog.sccache_why",
+      "context": "What the sccache folder is.",
+      "en": "Compiler cache · fills again",
+      "de": "Compiler-Cache · füllt sich neu"
+    },
+    {
+      "key": "space.catalog.yarn",
+      "context": "Name of a safe folder in the Platz tab: the download cache of Yarn.",
+      "en": "Yarn cache",
+      "de": "Yarn-Cache"
+    },
+    {
+      "key": "space.catalog.yarn_why",
+      "context": "What the Yarn cache is.",
+      "en": "Package cache · downloads again",
+      "de": "Paket-Cache · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.npm",
+      "context": "Name of a safe folder in the Platz tab: the download cache of npm.",
+      "en": "npm cache",
+      "de": "npm-Cache"
+    },
+    {
+      "key": "space.catalog.npm_why",
+      "context": "What the npm cache is.",
+      "en": "Package cache · downloads again",
+      "de": "Paket-Cache · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.bun",
+      "context": "Name of a safe folder in the Platz tab: the download cache of Bun.",
+      "en": "Bun cache",
+      "de": "Bun-Cache"
+    },
+    {
+      "key": "space.catalog.bun_why",
+      "context": "What the Bun cache is.",
+      "en": "Package cache · downloads again",
+      "de": "Paket-Cache · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.pnpm",
+      "context": "Name of a safe folder in the Platz tab: the package store of pnpm.",
+      "en": "pnpm store",
+      "de": "pnpm-Speicher"
+    },
+    {
+      "key": "space.catalog.pnpm_why",
+      "context": "What the pnpm store is.",
+      "en": "Package store · downloads again",
+      "de": "Paket-Speicher · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.pip",
+      "context": "Name of a safe folder in the Platz tab: the download cache of pip.",
+      "en": "pip cache",
+      "de": "pip-Cache"
+    },
+    {
+      "key": "space.catalog.pip_why",
+      "context": "What the pip cache is.",
+      "en": "Package cache · downloads again",
+      "de": "Paket-Cache · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.homebrew",
+      "context": "Name of a safe folder in the Platz tab: the downloads of Homebrew.",
+      "en": "Homebrew cache",
+      "de": "Homebrew-Cache"
+    },
+    {
+      "key": "space.catalog.homebrew_why",
+      "context": "What the Homebrew cache is.",
+      "en": "old downloads of brew",
+      "de": "alte Downloads von brew"
+    },
+    {
+      "key": "space.catalog.derived_data",
+      "context": "Name of a safe folder in the Platz tab: the build products of Xcode. DerivedData is the name of the folder and stays the same in every language.",
+      "en": "Xcode DerivedData",
+      "de": "Xcode DerivedData"
+    },
+    {
+      "key": "space.catalog.derived_data_why",
+      "context": "What the DerivedData folder of Xcode is.",
+      "en": "Xcode build products · built again",
+      "de": "Xcode-Zwischenstände · werden neu gebaut"
+    },
+    {
+      "key": "space.catalog.unavailable_simulators",
+      "context": "Name of a safe entry in the Platz tab: iOS simulators that Xcode reports as unavailable.",
+      "en": "Unavailable iOS simulators",
+      "de": "Nicht mehr verfügbare iOS-Simulatoren"
+    },
+    {
+      "key": "space.catalog.unavailable_simulators_why",
+      "context": "What the unavailable simulators are.",
+      "en": "Simulators of old Xcode versions",
+      "de": "Simulatoren alter Xcode-Versionen"
+    },
+    {
+      "key": "space.catalog.gradle",
+      "context": "Name of a safe folder in the Platz tab: the download cache of Gradle.",
+      "en": "Gradle cache",
+      "de": "Gradle-Cache"
+    },
+    {
+      "key": "space.catalog.gradle_why",
+      "context": "What the Gradle cache is.",
+      "en": "Build cache · downloads again",
+      "de": "Build-Cache · lädt sich neu"
+    },
+    {
+      "key": "space.catalog.cargo_registry_cache",
+      "context": "Name of a safe folder in the Platz tab: the downloaded Rust packages of Cargo.",
+      "en": "Cargo package cache",
+      "de": "Cargo-Paket-Cache"
+    },
+    {
+      "key": "space.catalog.cargo_registry_cache_why",
+      "context": "What the Cargo package cache is.",
+      "en": "Downloaded crates · downloads again",
+      "de": "Geladene Crates · laden sich neu"
+    },
+    {
+      "key": "space.catalog.node_modules_stale",
+      "context": "Name of a safe folder in the Platz tab: node_modules folders of projects that have not been touched for a long time.",
+      "en": "Old node_modules",
+      "de": "Alte node_modules"
+    },
+    {
+      "key": "space.catalog.node_modules_stale_why",
+      "context": "What the old node_modules folders are.",
+      "en": "Not used for a long time · installed again",
+      "de": "Lange nicht benutzt · werden neu installiert"
+    },
+    {
+      "key": "space.catalog.xdg_cache",
+      "context": "Name of a safe folder in the Platz tab on Linux: the cache folder of a program. {name} is the folder name.",
+      "en": "Cache of {name}",
+      "de": "Cache von {name}"
+    },
+    {
+      "key": "space.catalog.xdg_cache_why",
+      "context": "What a cache folder of a program on Linux is.",
+      "en": "Program cache · fills again",
+      "de": "Programm-Cache · füllt sich neu"
+    },
+    {
+      "key": "space.catalog.win_temp_old",
+      "context": "Name of a safe folder in the Platz tab on Windows: old temporary files.",
+      "en": "Old temporary files",
+      "de": "Alte temporäre Dateien"
+    },
+    {
+      "key": "space.catalog.win_temp_old_why",
+      "context": "What the old temporary files on Windows are.",
+      "en": "Left behind by programs · not needed",
+      "de": "Von Programmen liegen gelassen · nicht nötig"
+    },
+    {
+      "key": "space.decide_backups",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: the user's backup copies.",
+      "en": "Backups",
+      "de": "Backups"
+    },
+    {
+      "key": "space.decide_backups_why",
+      "context": "What the backups folder is.",
+      "en": "own copies",
+      "de": "eigene Kopien"
+    },
+    {
+      "key": "space.decide_backups_check",
+      "context": "What to think of before deleting backups.",
+      "en": "cannot be made again",
+      "de": "nicht neu erzeugbar"
+    },
+    {
+      "key": "space.decide_downloads",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: the Downloads folder.",
+      "en": "Downloads",
+      "de": "Downloads"
+    },
+    {
+      "key": "space.decide_downloads_why",
+      "context": "What the Downloads folder is.",
+      "en": "own files",
+      "de": "eigene Dateien"
+    },
+    {
+      "key": "space.decide_downloads_check",
+      "context": "What to think of before deleting from Downloads.",
+      "en": "mixed, check one by one",
+      "de": "gemischt, einzeln prüfen"
+    },
+    {
+      "key": "space.decide_session_logs",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: the saved histories of coding assistant sessions.",
+      "en": "Session logs",
+      "de": "Session-Logs"
+    },
+    {
+      "key": "space.decide_session_logs_why",
+      "context": "What the session logs are.",
+      "en": "logs",
+      "de": "Protokolle"
+    },
+    {
+      "key": "space.decide_session_logs_check",
+      "context": "What is lost when the session logs are deleted.",
+      "en": "history is lost",
+      "de": "Verlauf geht verloren"
+    },
+    {
+      "key": "space.decide_simulators",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: iOS simulators that are still available.",
+      "en": "Other iOS simulators",
+      "de": "Übrige iOS-Simulatoren"
+    },
+    {
+      "key": "space.decide_simulators_why",
+      "context": "What the remaining simulators are.",
+      "en": "simulators",
+      "de": "Simulatoren"
+    },
+    {
+      "key": "space.decide_simulators_check",
+      "context": "What to think of before deleting the simulators that still work.",
+      "en": "still usable",
+      "de": "noch nutzbar"
+    },
+    {
+      "key": "space.decide_model_cache",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: downloaded AI model files.",
+      "en": "Model files",
+      "de": "Modell-Dateien"
+    },
+    {
+      "key": "space.decide_model_cache_why",
+      "context": "What the model files are.",
+      "en": "model files",
+      "de": "Modell-Dateien"
+    },
+    {
+      "key": "space.decide_model_cache_check",
+      "context": "What to think of before deleting model files.",
+      "en": "download takes long",
+      "de": "Download dauert lange"
+    },
+    {
+      "key": "space.decide_other",
+      "context": "Name of an entry of the group \"You decide\" in the Platz tab: a big folder of the user's own that is none of the known kinds. {name} is the folder name.",
+      "en": "{name}",
+      "de": "{name}"
+    },
+    {
+      "key": "space.decide_other_why",
+      "context": "What an unknown big folder is.",
+      "en": "own files",
+      "de": "eigene Dateien"
+    },
+    {
+      "key": "space.decide_other_check",
+      "context": "What to think of before deleting an unknown big folder.",
+      "en": "check what is inside",
+      "de": "Inhalt prüfen"
+    },
+    {
+      "key": "space.skip.tool_running",
+      "context": "Result of a skipped folder in the Platz tab. {tool} is the running program, e.g. brew.",
+      "en": "skipped: {tool} is running right now",
+      "de": "übersprungen: {tool} läuft gerade"
+    },
+    {
+      "key": "space.skip.folder_open",
+      "context": "Result of a skipped folder in the Platz tab. {holder} is the program that has the folder open.",
+      "en": "skipped: the folder is open in {holder}",
+      "de": "übersprungen: der Ordner ist in {holder} geöffnet"
+    },
+    {
+      "key": "space.skip.use_unknown",
+      "context": "Result of a skipped folder in the Platz tab when the app cannot tell whether a program uses the folder.",
+      "en": "skipped: cannot check whether it is in use",
+      "de": "übersprungen: Benutzung nicht prüfbar"
+    },
+    {
+      "key": "space.skip.symlink",
+      "context": "Result of a skipped folder in the Platz tab: the path is a link, not a folder. Links are never followed.",
+      "en": "skipped: it is a link, not a folder",
+      "de": "übersprungen: ist eine Verknüpfung, kein Ordner"
+    },
+    {
+      "key": "space.skip.other_drive",
+      "context": "Result of a skipped folder in the Platz tab: it lies on another drive than the one measured.",
+      "en": "skipped: it is on another drive",
+      "de": "übersprungen: liegt auf einem anderen Laufwerk"
+    },
+    {
+      "key": "space.skip.changed",
+      "context": "Result of a skipped folder in the Platz tab: it changed after it was measured.",
+      "en": "skipped: changed since it was measured",
+      "de": "übersprungen: seit dem Messen geändert"
+    },
+    {
+      "key": "space.skip.gone",
+      "context": "Result of a folder in the Platz tab that was already gone when the run reached it.",
+      "en": "already gone",
+      "de": "schon weg"
+    },
+    {
+      "key": "space.skip.not_granted",
+      "context": "Result of a skipped folder in the Platz tab (App Store build): the user has not granted access to it.",
+      "en": "skipped: no access granted for this folder",
+      "de": "übersprungen: für diesen Ordner ist kein Zugriff freigegeben"
+    },
+    {
+      "key": "space.skip.failed",
+      "context": "Result of a folder in the Platz tab that could not be deleted. {reason} is the system's own sentence.",
+      "en": "failed: {reason}",
+      "de": "fehlgeschlagen: {reason}"
+    },
+    {
+      "key": "space.confirm_title",
+      "context": "Title of the question before the safe folders are deleted. {size} is the total size such as 134 GB.",
+      "en": "Delete {size} for good?",
+      "de": "{size} endgültig löschen?"
+    },
+    {
+      "key": "space.confirm_body",
+      "context": "Text of the question before the safe folders are deleted. {count} is the number of folders.",
+      "en": "These {count} folders are made again when needed. They do not go to the trash, because the trash frees no space. There is no undo for this.",
+      "de": "Diese {count} Ordner werden bei Bedarf neu erzeugt. Sie gehen nicht in den Papierkorb, weil der keinen Platz frei macht. Rückgängig gibt es dafür nicht."
+    },
+    {
+      "key": "space.confirm_total",
+      "context": "Line under the list in the question before deleting. {size} is the total size.",
+      "en": "Total  {size}",
+      "de": "Zusammen  {size}"
+    },
+    {
+      "key": "space.confirm_recheck",
+      "context": "Note in the question before deleting: each folder is checked again right before it is deleted.",
+      "en": "Right before deleting I check once more whether a build or simulator is running; if so, the folder stays.",
+      "de": "Kurz vor dem Löschen prüfe ich noch einmal, ob ein Build oder Simulator läuft; dann bleibt der Ordner stehen."
+    },
+    {
+      "key": "space.confirm_with_worktrees",
+      "context": "Tick box in the question before deleting: also remove the merged worktrees.",
+      "en": "Also remove merged worktrees",
+      "de": "Gemergte Worktrees auch entfernen"
+    },
+    {
+      "key": "space.confirm_with_worktrees_count",
+      "context": "Dimmed text after the tick box. {count} is the number of worktrees, {size} their size.",
+      "en": "({count}, {size})",
+      "de": "({count}, {size})"
+    },
+    {
+      "key": "space.confirm_button",
+      "context": "Delete button in the question before deleting. {size} is the total size.",
+      "en": "Delete {size}",
+      "de": "{size} löschen"
+    },
+    {
+      "key": "space.confirm_hint",
+      "context": "Line at the bottom of the question before deleting: which keys cancel and go to the delete button.",
+      "en": "Esc cancels · Tab to the delete button",
+      "de": "Esc bricht ab · Tab zum Löschen-Knopf"
+    },
+    {
+      "key": "space.confirm_unknown_use",
+      "context": "Sentence in the question before deleting when the app cannot see which programs run (App Store build). The user is asked to confirm that nothing is running.",
+      "en": "ncrs cannot check here whether a build is running right now.",
+      "de": "ncrs kann hier nicht prüfen, ob gerade ein Build läuft."
+    },
+    {
+      "key": "space.confirm_unknown_use_button",
+      "context": "Delete button in the question before deleting when the app cannot see which programs run.",
+      "en": "Delete anyway · {size}",
+      "de": "Trotzdem löschen · {size}"
+    },
+    {
+      "key": "space.confirm_worktrees_title",
+      "context": "Title of the question before merged worktrees are removed. {count} is the number of worktrees.",
+      "en": "Remove {count} worktrees?",
+      "de": "{count} Worktrees entfernen?"
+    },
+    {
+      "key": "space.confirm_worktrees_body",
+      "context": "Text of the question before merged worktrees are removed. {size} is their size. Each has no local changes and its branch is merged.",
+      "en": "Folder and branch of each merged, clean worktree are removed ({size}). Git refuses a folder with local changes.",
+      "de": "Ordner und Branch jedes gemergten, sauberen Worktrees werden entfernt ({size}). Git lehnt einen Ordner mit lokalen Änderungen ab."
+    },
+    {
+      "key": "space.confirm_worktrees_button",
+      "context": "Remove button in the question before merged worktrees are removed. {count} is the number of worktrees.",
+      "en": "Remove {count}",
+      "de": "{count} entfernen"
+    },
+    {
+      "key": "space.result_title",
+      "context": "Heading of the result of the Platz tab after all safe folders were deleted.",
+      "en": "All safe ones deleted",
+      "de": "Alle sicheren gelöscht"
+    },
+    {
+      "key": "space.result_freed",
+      "context": "Fact on the result of the Platz tab. {size} is the freed space.",
+      "en": "{size} freed",
+      "de": "{size} frei gemacht"
+    },
+    {
+      "key": "space.result_deleted",
+      "context": "Fact on the result of the Platz tab. {count} is the number of folders deleted.",
+      "en": "{count} deleted",
+      "de": "{count} gelöscht"
+    },
+    {
+      "key": "space.result_skipped",
+      "context": "Fact on the result of the Platz tab. {count} is the number of folders skipped.",
+      "en": "{count} skipped",
+      "de": "{count} übersprungen"
+    },
+    {
+      "key": "space.result_permanent",
+      "context": "Fact on the result of the Platz tab: how the folders were deleted.",
+      "en": "deleted for good, not to the trash",
+      "de": "endgültig gelöscht, nicht im Papierkorb"
+    },
+    {
+      "key": "space.result_free_now",
+      "context": "Big figure on the result: the free space now. {size} is a size.",
+      "en": "{size} free",
+      "de": "{size} frei"
+    },
+    {
+      "key": "space.result_before",
+      "context": "Dimmed text next to the big figure on the result. {size} is the free space before the run.",
+      "en": "before {size}",
+      "de": "vorher {size}"
+    },
+    {
+      "key": "space.result_percent_used",
+      "context": "Text next to the big figure on the result. {percent} is the used share of the drive.",
+      "en": "{percent} % used",
+      "de": "{percent} % belegt"
+    },
+    {
+      "key": "space.result_measured_again",
+      "context": "Line under the result bar. {total} is the size of the drive, {time} the time of measuring again.",
+      "en": "{total} · measured again {time}",
+      "de": "{total} · neu gemessen {time}"
+    },
+    {
+      "key": "space.result_row_deleted",
+      "context": "Result of a folder in the list of the Platz tab. {size} is the size that was deleted.",
+      "en": "deleted {size}",
+      "de": "gelöscht {size}"
+    },
+    {
+      "key": "space.result_row_still_there",
+      "context": "Result of the merged worktrees after the run: they are still there. {key} is the key that removes them.",
+      "en": "still there · folder and branch gone with {key}",
+      "de": "noch da · Ordner und Branch weg mit {key}"
+    },
+    {
+      "key": "space.result_row_stay",
+      "context": "Result of worktrees that stay: nothing happens to them.",
+      "en": "stay",
+      "de": "bleiben"
+    },
+    {
+      "key": "space.result_row_untouched",
+      "context": "Result of a folder of the group \"You decide\" on the result: nothing was touched.",
+      "en": "not touched",
+      "de": "nicht angefasst"
+    },
+    {
+      "key": "space.result_row_untouched_models",
+      "context": "Result of the model cache on the result: not touched, and what it probably is.",
+      "en": "not touched · probably downloaded models",
+      "de": "nicht angefasst · vermutlich geladene Modelle"
+    },
+    {
+      "key": "space.result_worktrees_clean",
+      "context": "Row on the result: merged and clean worktrees. {count} is the number.",
+      "en": "{count} merged and clean",
+      "de": "{count} zusammengeführt und sauber"
+    },
+    {
+      "key": "space.result_worktrees_stay",
+      "context": "Row on the result: worktrees that stay. {count} is the number.",
+      "en": "{count} stay",
+      "de": "{count} bleiben"
+    },
+    {
+      "key": "space.result_worktrees_stay_why",
+      "context": "Folder column of the row of worktrees that stay: the reasons.",
+      "en": "open, changed, in use, not merged",
+      "de": "offen, geändert, in Benutzung, nicht zusammengeführt"
+    },
+    {
+      "key": "space.result_note",
+      "context": "Note at the bottom of the result of the Platz tab.",
+      "en": "Safe means: can be built or downloaded again. What you decide, \"Delete all safe ones\" never touches.",
+      "de": "Sicher heißt: lässt sich neu bauen oder neu laden. Was du entscheidest, fasst „Alle sicheren löschen“ nie an."
+    },
+    {
+      "key": "space.result_worktrees_done",
+      "context": "Result of the worktree removal. {count} is the number removed, {size} the space freed.",
+      "en": "{count} worktrees removed · {size} freed",
+      "de": "{count} Worktrees entfernt · {size} frei gemacht"
+    },
+    {
+      "key": "space.log_title",
+      "context": "Heading of the folded log on the result of the Platz tab. Noun. Shown in capitals.",
+      "en": "Log",
+      "de": "Protokoll"
+    },
+    {
+      "key": "space.log_span",
+      "context": "Dimmed time span after the log heading. {from} and {to} are times such as 15:02:11.",
+      "en": "{from} – {to}",
+      "de": "{from} – {to}"
+    },
+    {
+      "key": "space.log_deleted",
+      "context": "Log line of a folder that was deleted.",
+      "en": "deleted",
+      "de": "gelöscht"
+    },
+    {
+      "key": "space.log_deleted_checked",
+      "context": "Log line of a folder that was deleted after the check. {date} is the day it was last used.",
+      "en": "deleted · no build was running, last used {date}",
+      "de": "gelöscht · kein Build lief, zuletzt benutzt {date}"
+    },
+    {
+      "key": "space.log_done",
+      "context": "Last word of the log: the run is over.",
+      "en": "done",
+      "de": "fertig"
+    },
+    {
+      "key": "space.log_done_freed",
+      "context": "Text of the last log line. {freed} is the space freed, {free} the free space now.",
+      "en": "{freed} · freed · now {free} free",
+      "de": "{freed} · frei gemacht · jetzt {free} frei"
+    },
+    {
+      "key": "space.empty",
+      "context": "Text of the Platz tab when the measuring found nothing worth listing.",
+      "en": "Nothing big found.",
+      "de": "Nichts Großes gefunden."
+    },
+    {
+      "key": "space.failed",
+      "context": "Text of the Platz tab when the measuring could not be done. {reason} is the system's own sentence.",
+      "en": "The drive could not be measured: {reason}",
+      "de": "Die Platte konnte nicht gemessen werden: {reason}"
+    },
+    {
+      "key": "space.status_free",
+      "context": "Status bar text of the Platz tab. {free} is the free space, {percent} the used share.",
+      "en": "{free} free · {percent} % used",
+      "de": "{free} frei · {percent} % belegt"
+    },
+    {
+      "key": "space.status_selected",
+      "context": "Status bar text of the Platz tab. {size} is the size of what is ticked.",
+      "en": "{size} chosen",
+      "de": "{size} gewählt"
+    },
+    {
+      "key": "space.key_choose",
+      "context": "Verb after a key in the status bar of the Platz tab: arrow keys move the cursor.",
+      "en": "choose",
+      "de": "wählen"
+    },
+    {
+      "key": "space.key_toggle",
+      "context": "Verb after a key in the status bar of the Platz tab: Space ticks or unticks.",
+      "en": "on/off",
+      "de": "an/aus"
+    },
+    {
+      "key": "space.key_fold",
+      "context": "Verb after a key in the status bar of the Platz tab: left and right close and open a group.",
+      "en": "group closed/open",
+      "de": "Gruppe zu/auf"
+    },
+    {
+      "key": "space.key_details",
+      "context": "Verb after a key in the status bar of the Platz tab: Enter shows details.",
+      "en": "details",
+      "de": "Details"
+    },
+    {
+      "key": "space.key_delete_safe",
+      "context": "Verb after a key in the status bar of the Platz tab: deletes all safe folders.",
+      "en": "delete all safe ones",
+      "de": "alle sicheren löschen"
+    },
+    {
+      "key": "space.key_search",
+      "context": "Verb after a key in the status bar of the Platz tab: the slash key filters.",
+      "en": "search",
+      "de": "suchen"
+    },
+    {
+      "key": "space.key_show_in_panel",
+      "context": "Verb after a key in the status bar of the Platz tab: Enter shows the folder in a panel.",
+      "en": "show in panel",
+      "de": "im Panel zeigen"
+    },
+    {
+      "key": "space.key_retry",
+      "context": "Verb after a key in the status bar of the Platz tab: tries a skipped folder again.",
+      "en": "try again",
+      "de": "nochmal versuchen"
+    },
+    {
+      "key": "space.key_remove_worktrees",
+      "context": "Verb after a key in the status bar of the Platz tab: removes merged worktrees.",
+      "en": "remove worktrees",
+      "de": "Worktrees entfernen"
+    },
+    {
+      "key": "space.key_hermes",
+      "context": "Verb after a key in the status bar of the Platz tab: moves the focus to the Hermes chat.",
+      "en": "to Hermes",
+      "de": "zu Hermes"
+    },
+    {
+      "key": "space.key_close_result",
+      "context": "Verb after a key in the status bar of the Platz tab: Esc closes the result.",
+      "en": "close result",
+      "de": "Ergebnis schließen"
+    },
+    {
+      "key": "space.key_trash",
+      "context": "Verb after a key in the status bar of the Platz tab: moves the ticked files to the trash.",
+      "en": "to the trash",
+      "de": "in den Papierkorb"
+    },
+    {
+      "key": "space.key_next_area",
+      "context": "Verb after a key in the status bar of the Platz tab: Tab moves on.",
+      "en": "next area",
+      "de": "nächster Bereich"
+    },
+    {
+      "key": "space.key_back",
+      "context": "Verb after a key in the status bar of the Platz tab: Esc goes back.",
+      "en": "back",
+      "de": "zurück"
+    },
+    {
+      "key": "space.command.rescan",
+      "context": "Entry of the command list while the Platz tab is open: measures the drive again.",
+      "en": "Space: Measure again",
+      "de": "Platz: Neu messen"
+    },
+    {
+      "key": "space.command.delete_safe",
+      "context": "Entry of the command list while the Platz tab is open: deletes all safe folders, after a question.",
+      "en": "Space: Delete all safe ones",
+      "de": "Platz: Alle sicheren löschen"
+    },
+    {
+      "key": "space.command.remove_worktrees",
+      "context": "Entry of the command list while the Platz tab is open: removes merged worktrees, after a question.",
+      "en": "Space: Remove merged worktrees",
+      "de": "Platz: Gemergte Worktrees entfernen"
+    },
+    {
+      "key": "space.command.retry",
+      "context": "Entry of the command list while the Platz tab is open: tries skipped folders again.",
+      "en": "Space: Try skipped ones again",
+      "de": "Platz: Übersprungene nochmal versuchen"
+    },
+    {
+      "key": "space.command.ask",
+      "context": "Entry of the command list while the Platz tab is open: asks Hermes about the drive.",
+      "en": "Space: Ask Hermes",
+      "de": "Platz: Hermes fragen"
+    },
+    {
+      "key": "space.command.show_in_panel",
+      "context": "Entry of the command list while the Platz tab is open: shows the folder in a file panel.",
+      "en": "Space: Show in panel",
+      "de": "Platz: Im Panel zeigen"
+    },
+    {
+      "key": "space.command.delete_one",
+      "context": "Entry of the command list while the Platz tab is open: deletes only the selected folder.",
+      "en": "Space: Delete only this one",
+      "de": "Platz: Nur diesen löschen"
+    },
+    {
+      "key": "space.command.filter",
+      "context": "Entry of the command list while the Platz tab is open: filters the list.",
+      "en": "Space: Filter",
+      "de": "Platz: Filtern"
+    },
+    {
+      "key": "space.command.trash",
+      "context": "Entry of the command list while the Decide pane of the Platz tab is open: moves the ticked files to the trash.",
+      "en": "Space: Move ticked files to the trash",
+      "de": "Platz: Gewählte Dateien in den Papierkorb"
+    },
+    {
+      "key": "space.command.empty_trash",
+      "context": "Entry of the command list while the Decide pane of the Platz tab is open: switches whether the trash is emptied afterwards.",
+      "en": "Space: Empty the trash afterwards on/off",
+      "de": "Platz: Danach Papierkorb leeren an/aus"
+    },
+    {
+      "key": "space.decide_title",
+      "context": "Heading of the pane where the user decides about a folder. {name} is the folder name such as Downloads.",
+      "en": "You decide: {name}",
+      "de": "Du entscheidest: {name}"
+    },
+    {
+      "key": "space.decide_breadcrumb_group",
+      "context": "Small label in front of the group name above the Decide pane.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "space.decide_breadcrumb_folder",
+      "context": "Small label in front of the folder name above the Decide pane.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "space.decide_note",
+      "context": "Note in the Decide pane: Hermes does not delete here by itself, and \"Delete all safe ones\" skips the group.",
+      "en": "Hermes deletes nothing here by itself. \"Delete all safe ones\" leaves this group out.",
+      "de": "Hier löscht Hermes nichts von selbst. „Alle sicheren löschen“ lässt diese Gruppe aus."
+    },
+    {
+      "key": "space.decide_measured",
+      "context": "Line over the Decide list. {folder} is the folder, {size} its size, {time} when it was measured.",
+      "en": "{folder}  {size}  measured {time}",
+      "de": "{folder}  {size}  gemessen {time}"
+    },
+    {
+      "key": "space.decide_hermes_downloads",
+      "context": "Hermes bubble in the Decide pane for Downloads: how the files were sorted.",
+      "en": "I sorted your Downloads by reason. Only what exists elsewhere already is ticked: installed programs, unpacked archives and duplicates. What you have not opened for a long time, you choose yourself.",
+      "de": "Ich habe deine Downloads nach Grund sortiert. Vorgewählt ist nur, was es woanders schon gibt: installierte Programme, entpackte Archive und Doppelte. Was du lange nicht geöffnet hast, wählst du selbst."
+    },
+    {
+      "key": "space.decide_chosen",
+      "context": "Figure in the Decide pane. {size} is the size of the ticked files.",
+      "en": "chosen {size}",
+      "de": "gewählt {size}"
+    },
+    {
+      "key": "space.decide_not_chosen",
+      "context": "Figure in the Decide pane. {size} is the size of the files not ticked.",
+      "en": "not chosen {size}",
+      "de": "nicht gewählt {size}"
+    },
+    {
+      "key": "space.decide_group_installed",
+      "context": "Name of a group of downloaded files: installers of programs that are installed already.",
+      "en": "Installers, already installed",
+      "de": "Installer, schon installiert"
+    },
+    {
+      "key": "space.decide_group_unpacked",
+      "context": "Name of a group of downloaded files: archives that are already unpacked next to them.",
+      "en": "Archives, already unpacked",
+      "de": "Archive, schon entpackt"
+    },
+    {
+      "key": "space.decide_group_duplicates",
+      "context": "Name of a group of downloaded files: copies of a file that exists elsewhere with the same content.",
+      "en": "Duplicates",
+      "de": "Doppelte"
+    },
+    {
+      "key": "space.decide_group_untouched_year",
+      "context": "Name of a group of downloaded files: not opened for more than a year. Not ticked.",
+      "en": "Not opened for over a year",
+      "de": "Seit über einem Jahr nicht geöffnet"
+    },
+    {
+      "key": "space.decide_group_rest",
+      "context": "Name of a group of downloaded files: everything else. Not ticked.",
+      "en": "Everything else",
+      "de": "Alles andere"
+    },
+    {
+      "key": "space.decide_group_reason_installed",
+      "context": "Reason column of a file in the group of installers that are installed already.",
+      "en": "already installed",
+      "de": "schon installiert"
+    },
+    {
+      "key": "space.decide_group_reason_unpacked",
+      "context": "Reason column of a file in the group of archives that are unpacked already.",
+      "en": "already unpacked",
+      "de": "schon entpackt"
+    },
+    {
+      "key": "space.decide_group_reason_duplicate",
+      "context": "Reason column of a file that is a duplicate. {name} is the file the same content is in.",
+      "en": "same as {name}",
+      "de": "gleich wie {name}"
+    },
+    {
+      "key": "space.decide_group_reason_untouched",
+      "context": "Reason column of a file not opened for a long time.",
+      "en": "not opened for a year",
+      "de": "seit einem Jahr nicht geöffnet"
+    },
+    {
+      "key": "space.decide_trash_note",
+      "context": "Note in the Decide pane: own files go to the trash and can be put back.",
+      "en": "Your own files go to the trash, with undo. Space is only freed when the trash is emptied.",
+      "de": "Eigene Dateien gehen in den Papierkorb, mit Rückgängig. Platz wird erst frei, wenn der Papierkorb geleert ist."
+    },
+    {
+      "key": "space.decide_empty_trash",
+      "context": "Tick box in the Decide pane: empties the trash afterwards, but only the files just put there.",
+      "en": "Empty the trash afterwards (only these files)",
+      "de": "Danach Papierkorb leeren (nur diese Dateien)"
+    },
+    {
+      "key": "space.decide_summary",
+      "context": "Line at the bottom of the Decide pane. {groups} is how many groups are ticked, {total} how many there are, {free} the free space after the trash is emptied.",
+      "en": "{groups} of {total} groups chosen · {free} free afterwards, once the trash is emptied",
+      "de": "{groups} von {total} Gruppen gewählt · danach {free} frei, wenn der Papierkorb geleert ist"
+    },
+    {
+      "key": "space.decide_trash_button",
+      "context": "Button of the Decide pane. {count} is the number of files, {size} their size.",
+      "en": "{count} files to the trash · {size}",
+      "de": "{count} Dateien in den Papierkorb · {size}"
+    },
+    {
+      "key": "space.decide_detail_size",
+      "context": "Label in the detail pane of a file in the Decide pane. Noun.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "space.decide_detail_loaded",
+      "context": "Label in the detail pane of a file: when it was downloaded.",
+      "en": "Downloaded",
+      "de": "Geladen"
+    },
+    {
+      "key": "space.decide_detail_opened",
+      "context": "Label in the detail pane of a file: when it was last opened.",
+      "en": "Opened",
+      "de": "Geöffnet"
+    },
+    {
+      "key": "space.decide_detail_opened_once",
+      "context": "Value in the detail pane of a file: opened once. {date} is the day.",
+      "en": "{date}, once",
+      "de": "{date}, einmal"
+    },
+    {
+      "key": "space.decide_detail_opened_times",
+      "context": "Value in the detail pane of a file: opened several times. {date} is the last day, {count} how often.",
+      "en": "{date}, {count} times",
+      "de": "{date}, {count} Mal"
+    },
+    {
+      "key": "space.decide_detail_opened_never",
+      "context": "Value in the detail pane of a file that was never opened.",
+      "en": "never",
+      "de": "nie"
+    },
+    {
+      "key": "space.decide_detail_kind",
+      "context": "Label in the detail pane of a file: what kind of file it is.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "space.decide_detail_group",
+      "context": "Label in the detail pane of a file: which group it is in.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "space.decide_why_head",
+      "context": "Heading in the detail pane of a file. Shown in capitals: the reasons Hermes suggested it.",
+      "en": "Why Hermes suggests it",
+      "de": "Warum Hermes es vorschlägt"
+    },
+    {
+      "key": "space.decide_check_installed",
+      "context": "A reason in the detail pane of an installer. {app} is the program, {path} where it is, {version} its version.",
+      "en": "{app} is installed: {path}, version {version}",
+      "de": "{app} ist installiert: {path}, Version {version}"
+    },
+    {
+      "key": "space.decide_check_same_version",
+      "context": "A reason in the detail pane of an installer: the installed version is the same as in the installer.",
+      "en": "same version as in the installer",
+      "de": "gleiche Version wie im Installer"
+    },
+    {
+      "key": "space.decide_check_reload",
+      "context": "A reason in the detail pane of an installer: it can be downloaded again. {source} is the web address.",
+      "en": "You can download it again any time from {source}",
+      "de": "Neu laden geht jederzeit über {source}"
+    },
+    {
+      "key": "space.decide_check_unpacked",
+      "context": "A reason in the detail pane of an archive. {folder} is the folder it was unpacked to.",
+      "en": "already unpacked to {folder}",
+      "de": "schon entpackt nach {folder}"
+    },
+    {
+      "key": "space.decide_check_duplicate",
+      "context": "A reason in the detail pane of a duplicate. {path} is where the same file is.",
+      "en": "same content as {path}",
+      "de": "gleicher Inhalt wie {path}"
+    },
+    {
+      "key": "space.decide_keep_hint",
+      "context": "Note in the detail pane: how to keep the file. {key} is the key name.",
+      "en": "If you want to keep it: {key} takes it out of the selection.",
+      "de": "Wenn du es behalten willst: {key} nimmt es aus der Auswahl."
+    },
+    {
+      "key": "space.decide_selection_head",
+      "context": "Heading in the detail pane over what is ticked. Shown in capitals.",
+      "en": "Selection",
+      "de": "Auswahl"
+    },
+    {
+      "key": "space.decide_selection_chosen",
+      "context": "Label in the detail pane over the ticked files. Value is count and size.",
+      "en": "Chosen",
+      "de": "Gewählt"
+    },
+    {
+      "key": "space.decide_selection_chosen_value",
+      "context": "Value in the detail pane. {count} is the number of files, {size} their size.",
+      "en": "{count} files · {size}",
+      "de": "{count} Dateien · {size}"
+    },
+    {
+      "key": "space.decide_selection_where",
+      "context": "Label in the detail pane: where the files go.",
+      "en": "Where to",
+      "de": "Wohin"
+    },
+    {
+      "key": "space.decide_selection_trash",
+      "context": "Value in the detail pane: the files go to the trash.",
+      "en": "Trash",
+      "de": "Papierkorb"
+    },
+    {
+      "key": "space.decide_selection_back",
+      "context": "Label in the detail pane: how to get the files back.",
+      "en": "Back",
+      "de": "Zurück"
+    },
+    {
+      "key": "space.decide_selection_undo",
+      "context": "Value in the detail pane: undo puts the files back.",
+      "en": "Undo",
+      "de": "Rückgängig"
+    },
+    {
+      "key": "space.decide_trashed",
+      "context": "Message after files were moved to the trash. {count} is the number, {size} their size.",
+      "en": "{count} files moved to the trash · {size}. Space is freed when the trash is emptied.",
+      "de": "{count} Dateien in den Papierkorb gelegt · {size}. Platz wird frei, wenn der Papierkorb geleert ist."
+    },
+    {
+      "key": "space.decide_trashed_emptied",
+      "context": "Message after files were moved to the trash and the trash was emptied. {count} is the number, {size} the freed space.",
+      "en": "{count} files deleted · {size} freed",
+      "de": "{count} Dateien gelöscht · {size} frei gemacht"
+    },
+    {
+      "key": "space.decide_undone",
+      "context": "Message after undo. {count} is the number of files put back.",
+      "en": "{count} files put back",
+      "de": "{count} Dateien zurückgelegt"
+    },
+    {
+      "key": "space.decide_changed",
+      "context": "Reason a file was not moved to the trash: it changed since it was measured.",
+      "en": "changed since it was measured",
+      "de": "seit dem Messen geändert"
+    },
+    {
+      "key": "space.rules_title",
+      "context": "Heading of the page that explains what counts as safe.",
+      "en": "What counts as safe",
+      "de": "Was gilt als sicher"
+    },
+    {
+      "key": "space.rules_subtitle",
+      "context": "Dimmed text after the heading of the rules page.",
+      "en": "Free up space · the rules behind \"Delete all safe ones\"",
+      "de": "Platz schaffen · Regeln hinter „Alle sicheren löschen“"
+    },
+    {
+      "key": "space.rules_colors",
+      "context": "Label over the colour legend on the rules page.",
+      "en": "Colours of the bars:",
+      "de": "Farben der Balken:"
+    },
+    {
+      "key": "space.rules_color_blocked",
+      "context": "Legend word on the rules page: folders that are blocked because a program uses them.",
+      "en": "blocked, in use",
+      "de": "gesperrt, in Benutzung"
+    },
+    {
+      "key": "space.rules_safe_head",
+      "context": "Heading on the rules page. Describes the group of safe folders.",
+      "en": "Safe (deleted by \"Delete all safe ones\")",
+      "de": "Sicher (löscht „Alle sicheren“)"
+    },
+    {
+      "key": "space.rules_safe_text",
+      "context": "Paragraph on the rules page: what safe means.",
+      "en": "Safe means: a tool makes it again. If it is missing, the tool builds it up again on its next run.",
+      "de": "Sicher heißt: wird von einem Werkzeug neu erzeugt. Fehlt es, baut das Werkzeug es beim nächsten Lauf wieder auf."
+    },
+    {
+      "key": "space.rules_exact_paths",
+      "context": "Paragraph on the rules page: the list of safe places is made of exact paths.",
+      "en": "Exact paths, no patterns across the whole home folder. What is not in the catalog is never safe.",
+      "de": "Exakte Pfade, keine Muster über den ganzen Benutzerordner. Was nicht im Katalog steht, ist nie sicher."
+    },
+    {
+      "key": "space.rules_checks_head",
+      "context": "Heading on the rules page over the checks made before deleting.",
+      "en": "Checks before deleting",
+      "de": "Prüfungen vor dem Löschen"
+    },
+    {
+      "key": "space.rules_checks_text",
+      "context": "Paragraph on the rules page: the checks are made right before deleting, for each folder.",
+      "en": "Each check runs right before deleting, per folder. If one fails, the folder stays.",
+      "de": "Jede Prüfung direkt vor dem Löschen, je Ordner. Fällt eine durch, bleibt der Ordner stehen."
+    },
+    {
+      "key": "space.rules_how_head",
+      "context": "Heading on the rules page over how things are deleted.",
+      "en": "How things are deleted",
+      "de": "Wie gelöscht wird"
+    },
+    {
+      "key": "space.rules_how_safe",
+      "context": "Bullet on the rules page: safe folders are deleted for good and logged.",
+      "en": "Safe things for good. The trash frees no space. Every deleted folder is in the log with size and time.",
+      "de": "Sicheres endgültig. Der Papierkorb gibt keinen Platz frei. Jeder gelöschte Ordner steht mit Größe und Zeit im Protokoll."
+    },
+    {
+      "key": "space.rules_how_own",
+      "context": "Bullet on the rules page: own files go to the trash with undo.",
+      "en": "Your own files to the trash, with undo. Afterwards, if you like, empty exactly these files for good, not the whole trash.",
+      "de": "Eigenes in den Papierkorb, mit Rückgängig. Danach auf Wunsch nur genau diese Dateien endgültig leeren, nicht den ganzen Papierkorb."
+    },
+    {
+      "key": "space.rules_hermes_head",
+      "context": "Heading on the rules page over what Hermes does. Hermes is the name of the assistant.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "space.rules_hermes_text",
+      "context": "Paragraph on the rules page: the model proposes groups and explains them but does not decide what is safe.",
+      "en": "The model proposes groups and explains them, but does not decide what is safe. The fixed catalog and the checks do.",
+      "de": "Das Modell schlägt Gruppen vor und erklärt sie, entscheidet aber nicht, was sicher ist. Das tun der feste Katalog und die Prüfungen."
+    },
+    {
+      "key": "space.rules_hermes_sees",
+      "context": "Bullet on the rules page: what Hermes gets to see.",
+      "en": "Hermes sees only paths, sizes and dates, no contents.",
+      "de": "Hermes sieht nur Pfade, Größen und Datum, keine Inhalte."
+    },
+    {
+      "key": "space.rules_hermes_cannot",
+      "context": "Bullet on the rules page: a proposal never lands in the safe group.",
+      "en": "Hermes cannot move anything to \"safe\"; a proposal always lands in \"You decide\".",
+      "de": "Hermes kann nichts in „sicher“ verschieben; ein Vorschlag landet immer bei „Du entscheidest“."
+    },
+    {
+      "key": "space.rules_never_head",
+      "context": "Heading on the rules page over what is never deleted automatically.",
+      "en": "Never automatic",
+      "de": "Nie automatisch"
+    },
+    {
+      "key": "space.rules_never_own",
+      "context": "Bullet on the rules page: kinds of files that are never deleted automatically.",
+      "en": "Your own files, backups, downloads, logs, models, cloud folders",
+      "de": "Eigene Dateien, Backups, Downloads, Logs, Modelle, Cloud-Ordner"
+    },
+    {
+      "key": "space.rules_never_protected",
+      "context": "Bullet on the rules page: everything under the protected folders.",
+      "en": "Everything under \"Never touch\"",
+      "de": "Alles unter „Nie anfassen“"
+    },
+    {
+      "key": "space.rules_never_decide",
+      "context": "Bullet on the rules page: what happens with those files instead.",
+      "en": "Group \"You decide\": Hermes explains what is inside, you choose. Deleting goes to the trash, with undo.",
+      "de": "Gruppe „Du entscheidest“: Hermes erklärt, was drin ist, du wählst. Löschen geht in den Papierkorb, mit Rückgängig."
+    },
+    {
+      "key": "space.rules_keys_head",
+      "context": "Heading on the rules page over the keys.",
+      "en": "Keyboard",
+      "de": "Tastatur"
+    },
+    {
+      "key": "space.rules_keys_text",
+      "context": "Paragraph on the rules page about the keys.",
+      "en": "Every action has a key; the status bar shows the keys of the area that has the focus.",
+      "de": "Jede Aktion hat eine Taste; die Statusleiste zeigt die Tasten des Bereichs mit Fokus."
+    },
+    {
+      "key": "space.rules_open",
+      "context": "Button or link in the Platz tab that opens the rules page.",
+      "en": "What counts as safe…",
+      "de": "Was gilt als sicher…"
+    },
+    {
+      "key": "monitor.space_button",
+      "context": "Button next to a drive in the System monitor that opens the Platz tab. Ends with an ellipsis.",
+      "en": "Free up space…",
+      "de": "Platz schaffen…"
+    },
+    {
+      "key": "monitor.space_note",
+      "context": "Note under the drives in the System monitor. {percent} is the warning level from the settings.",
+      "en": "From {percent} % the bar turns orange, with \"Free up space…\". Hermes measures first and deletes nothing without your OK.",
+      "de": "Ab {percent} % orange, mit „Platz schaffen…“. Hermes misst erst, löscht nichts ohne OK."
+    },
+    {
+      "key": "monitor.space_used_of",
+      "context": "Line in the drive row of the System monitor. {used} and {total} are sizes, {free} the free space.",
+      "en": "{used} of {total} · {free} free",
+      "de": "{used} von {total} · {free} frei"
+    },
+    {
+      "key": "monitor.space_percent",
+      "context": "Share of the drive that is used, in the drive row of the System monitor. {percent} is a number.",
+      "en": "{percent} %",
+      "de": "{percent} %"
+    },
+    {
+      "key": "status.disk_hint",
+      "context": "Hint in the status bar of every tab: the drive is nearly full. {percent} is the used share. Clicking it opens the Platz tab.",
+      "en": "Drive {percent} % full · free up space",
+      "de": "Platte zu {percent} % voll · Platz schaffen"
+    },
+    {
+      "key": "status.disk_hint_key",
+      "context": "Hint in the status bar of every tab: the drive is nearly full, with the key that opens the Platz tab. {percent} is the used share, {key} the key.",
+      "en": "Drive {percent} % full · free up space  {key}",
+      "de": "Platte zu {percent} % voll · Platz schaffen  {key}"
+    },
+    {
+      "key": "status.disk_hint_tooltip",
+      "context": "Tooltip of the disk hint in the status bar.",
+      "en": "Opens Hermes with \"Why is my drive so full?\"",
+      "de": "Öffnet Hermes mit „Warum ist meine Platte so voll?“"
+    },
+    {
+      "key": "settings.space.title",
+      "context": "Name of the Platz page in the settings list. Noun, one word.",
+      "en": "Space",
+      "de": "Platz"
+    },
+    {
+      "key": "settings.space.intro",
+      "context": "Intro line under the heading of the Platz page in the settings.",
+      "en": "Measure the drive and delete what is safe",
+      "de": "Platte messen und Sicheres löschen"
+    },
+    {
+      "key": "settings.space.warning_group",
+      "context": "Heading of a block of the Platz page: the warning that the drive is nearly full. Shown in capitals.",
+      "en": "Warning",
+      "de": "Warnung"
+    },
+    {
+      "key": "settings.space.warn_from",
+      "context": "Label of a setting on the Platz page: the used share from which Hermes gives a hint. A number box follows.",
+      "en": "Hint from",
+      "de": "Hinweis ab"
+    },
+    {
+      "key": "settings.space.warn_suffix",
+      "context": "Text after the number box of the warning setting: percent sign and what happens.",
+      "en": "% used – then Hermes lets you know",
+      "de": "% belegt – dann sagt Hermes Bescheid"
+    },
+    {
+      "key": "settings.space.drives",
+      "context": "Label of a list on the Platz page: the drives that are measured. Noun, plural.",
+      "en": "Drives",
+      "de": "Laufwerke"
+    },
+    {
+      "key": "settings.space.drive_row",
+      "context": "Row in the list of drives. {name} is the drive, {total} its size, {used} how much is used.",
+      "en": "{name}  {total} · {used} used",
+      "de": "{name}  {total} · {used} belegt"
+    },
+    {
+      "key": "settings.space.drive_absent",
+      "context": "Dimmed text of a drive row for an external drive that is not connected.",
+      "en": "only when connected",
+      "de": "nur wenn angeschlossen"
+    },
+    {
+      "key": "settings.space.safe_group",
+      "context": "Heading of a block of the Platz page: the safe places. Shown in capitals.",
+      "en": "Safe places",
+      "de": "Sichere Orte"
+    },
+    {
+      "key": "settings.space.safe_count",
+      "context": "Dimmed count after the heading of the safe places. {on} is how many are on, {total} how many there are.",
+      "en": "{on} of {total} on",
+      "de": "{on} von {total} an"
+    },
+    {
+      "key": "settings.space.regenerable",
+      "context": "Label of the list of safe places the app knows. Adjective.",
+      "en": "Made again",
+      "de": "Neu erzeugbar"
+    },
+    {
+      "key": "settings.space.regenerable_intro",
+      "context": "Intro of the list of safe places the app knows: the user can switch some off.",
+      "en": "Folders that a tool makes again. ncrs knows them itself; you can switch some off.",
+      "de": "Ordner, die sich neu erzeugen. ncrs kennt sie selbst; du kannst welche ausschalten."
+    },
+    {
+      "key": "settings.space.own_regenerable",
+      "context": "Label of the list of folders of the user's own that a tool makes again.",
+      "en": "Your own folders that are made again",
+      "de": "Eigene Ordner, die sich neu erzeugen"
+    },
+    {
+      "key": "settings.space.add_folder",
+      "context": "Button under a list of folders on the Platz page. Ends with an ellipsis because it opens a folder picker.",
+      "en": "Add folder…",
+      "de": "Ordner hinzufügen…"
+    },
+    {
+      "key": "settings.space.remove",
+      "context": "Button on the Platz page that removes the chosen folder from a list. Verb.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.space.never_group",
+      "context": "Heading of a block of the Platz page: folders never touched. Shown in capitals.",
+      "en": "Never touch",
+      "de": "Nie anfassen"
+    },
+    {
+      "key": "settings.space.protected",
+      "context": "Label of the list of protected folders.",
+      "en": "Protected",
+      "de": "Geschützt"
+    },
+    {
+      "key": "settings.space.protected_intro",
+      "context": "Intro of the list of protected folders.",
+      "en": "Hermes measures them but never suggests deleting them.",
+      "de": "Hermes misst sie, schlägt sie aber nie zum Löschen vor."
+    },
+    {
+      "key": "settings.space.worktrees_group",
+      "context": "Heading of a block of the Platz page: merged Git worktrees. Shown in capitals.",
+      "en": "Merged worktrees",
+      "de": "Gemergte Worktrees"
+    },
+    {
+      "key": "settings.space.worktrees_label",
+      "context": "Label of a setting on the Platz page. Noun.",
+      "en": "Worktrees",
+      "de": "Worktrees"
+    },
+    {
+      "key": "settings.space.show_worktrees",
+      "context": "Switch on the Platz page: whether the merged worktrees are listed in the Platz tab.",
+      "en": "Show in Free up space",
+      "de": "In Platz schaffen zeigen"
+    },
+    {
+      "key": "settings.space.worktrees_note",
+      "context": "Note under the worktrees switch: the rules are those of the clean-up in the Git tab.",
+      "en": "Same rules as Git › Clean up.",
+      "de": "Gleiche Regeln wie Git › Aufräumen."
+    },
+    {
+      "key": "settings.space.measure_group",
+      "context": "Heading of a block of the Platz page: how deep the measuring goes. Shown in capitals.",
+      "en": "Measuring",
+      "de": "Messen"
+    },
+    {
+      "key": "settings.space.depth",
+      "context": "Label of a setting on the Platz page: how many folder levels below home are searched. Noun.",
+      "en": "Depth",
+      "de": "Tiefe"
+    },
+    {
+      "key": "settings.space.depth_auto",
+      "context": "Choice of the depth setting: the app decides.",
+      "en": "Auto",
+      "de": "Auto"
+    },
+    {
+      "key": "settings.space.depth_note",
+      "context": "Note under the depth setting.",
+      "en": "Auto goes deeper where a lot lies",
+      "de": "Auto geht tiefer, wo viel liegt"
+    },
+    {
+      "key": "settings.space.other_drives",
+      "context": "Switch on the Platz page: whether other drives are measured too.",
+      "en": "Measure other drives too",
+      "de": "Andere Laufwerke mitmessen"
+    },
+    {
+      "key": "settings.space.store_note",
+      "context": "Note on the Platz page of the App Store version: access must be granted to folders.",
+      "en": "App Store version: measures and deletes only in folders you have granted access to. One click on \"Grant home folder\" covers everything under ~.",
+      "de": "App-Store-Version: misst und löscht nur in Ordnern, die du freigegeben hast. Ein Klick auf „Benutzerordner freigeben“ reicht für alles unter ~."
+    },
+    {
+      "key": "settings.space.grant_home",
+      "context": "Button on the Platz page of the App Store version. Ends with an ellipsis because it opens a dialog.",
+      "en": "Grant home folder…",
+      "de": "Benutzerordner freigeben…"
+    },
+    {
+      "key": "hermes_chat.space_question",
+      "context": "The sentence the Monitor sends to Hermes when the user clicks \"Free up space…\". It is shown as the user's message.",
+      "en": "Why is my drive so full?",
+      "de": "Warum ist meine Platte so voll?"
+    },
+    {
+      "key": "hermes_chat.space_title",
+      "context": "Title of a chat that was started from the Platz tab.",
+      "en": "Why is the drive so full?",
+      "de": "Warum ist die Platte so voll?"
+    },
+    {
+      "key": "hermes_chat.space_measuring",
+      "context": "Hermes bubble while the Platz measuring runs.",
+      "en": "I am measuring the big folders…",
+      "de": "Ich messe die großen Ordner …"
+    },
+    {
+      "key": "hermes_chat.space_intro",
+      "context": "Hermes bubble with the result of the measuring. {used} and {total} and {free} are sizes, {percent} the used share, {took} how long measuring took.",
+      "en": "{used} of {total} are used, {free} free ({percent} %). I measured the big folders ({took}).",
+      "de": "Belegt sind {used} von {total}, frei {free} ({percent} %). Ich habe die großen Ordner gemessen ({took})."
+    },
+    {
+      "key": "hermes_chat.space_card_title",
+      "context": "Heading of the card in the chat: where the space went.",
+      "en": "Where the space is",
+      "de": "Wo der Platz steckt"
+    },
+    {
+      "key": "hermes_chat.space_card_drive",
+      "context": "Subheading of the card in the chat. {drive} is the drive name, {total} its size.",
+      "en": "{drive} · {total}",
+      "de": "{drive} · {total}"
+    },
+    {
+      "key": "hermes_chat.space_card_after",
+      "context": "Line on the card in the chat. {free} is the free space and {percent} the used share after deleting all safe folders.",
+      "en": "After \"all safe ones\": free {free}, {percent} % used",
+      "de": "Nach „Alle sicheren“: frei {free}, belegt {percent} %"
+    },
+    {
+      "key": "hermes_chat.space_card_column_what",
+      "context": "Column header on the card in the chat. Noun.",
+      "en": "What",
+      "de": "Was"
+    },
+    {
+      "key": "hermes_chat.space_card_column_size",
+      "context": "Column header on the card in the chat. Noun.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "hermes_chat.space_card_column_group",
+      "context": "Column header on the card in the chat. Noun.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "hermes_chat.space_card_column_hint",
+      "context": "Column header on the card in the chat. Noun.",
+      "en": "Note",
+      "de": "Hinweis"
+    },
+    {
+      "key": "hermes_chat.space_card_also",
+      "context": "Line under the card in the chat. {rest} lists the smaller entries.",
+      "en": "Also: {rest}",
+      "de": "Außerdem: {rest}"
+    },
+    {
+      "key": "hermes_chat.space_card_footer",
+      "context": "Note under the card in the chat.",
+      "en": "Safe means: made again when needed. Nothing is deleted before you say OK.",
+      "de": "Sicher heißt: wird bei Bedarf neu erzeugt. Gelöscht wird erst nach deinem OK."
+    },
+    {
+      "key": "hermes_chat.space_freed",
+      "context": "Hermes bubble after the safe folders were deleted. {freed} is the freed space, {free} the free space now, {percent} the used share.",
+      "en": "I freed {freed}. Now {free} are free ({percent} %).",
+      "de": "Ich habe {freed} frei gemacht. Jetzt sind {free} frei ({percent} %)."
+    },
+    {
+      "key": "hermes_chat.space_left_standing",
+      "context": "Hermes bubble: a folder was skipped. {name} is the folder, {reason} why it was skipped.",
+      "en": "I left {name} alone: {reason}.",
+      "de": "{name} habe ich stehen lassen: {reason}."
+    },
+    {
+      "key": "hermes_chat.space_untouched",
+      "context": "Hermes bubble before the list of folders the user decides about.",
+      "en": "Not touched, that is for you to decide:",
+      "de": "Nicht angefasst, das entscheidest du:"
+    },
+    {
+      "key": "hermes_chat.space_show_downloads",
+      "context": "Button on the Hermes card after the run: shows the Downloads decision.",
+      "en": "View Downloads",
+      "de": "Downloads ansehen"
+    },
+    {
+      "key": "hermes_chat.space_show_old_logs",
+      "context": "Button on the Hermes card after the run: shows old session logs.",
+      "en": "Show session logs older than 30 days",
+      "de": "Session-Logs älter als 30 Tage zeigen"
+    },
+    {
+      "key": "hermes_chat.space_nothing_safe",
+      "context": "Hermes bubble when nothing safe was found to delete.",
+      "en": "There is nothing safe to delete right now.",
+      "de": "Im Moment gibt es nichts Sicheres zu löschen."
+    },
+    {
+      "key": "hermes_chat.space_no_worktrees",
+      "context": "Hermes bubble when there are no merged worktrees to remove.",
+      "en": "There are no merged worktrees to remove.",
+      "de": "Es gibt keine gemergten Worktrees zu entfernen."
+    },
+    {
+      "key": "hermes_chat.space_failed",
+      "context": "Hermes bubble when measuring failed. {reason} is the system's own sentence.",
+      "en": "I could not measure the drive: {reason}",
+      "de": "Ich konnte die Platte nicht messen: {reason}"
+    },
+    {
+      "key": "hermes_chat.space_why_head",
+      "context": "Hermes bubble that explains one folder. {name} is the folder, {size} its size.",
+      "en": "{name} ({size}):",
+      "de": "{name} ({size}):"
+    },
+    {
+      "key": "hermes_chat.space_describe_failed",
+      "context": "Hermes bubble when the model could not describe the folders; the figures are shown anyway.",
+      "en": "I cannot explain the folders right now, but here are the figures.",
+      "de": "Ich kann die Ordner gerade nicht erklären, hier sind die Zahlen."
+    },
+    {
+      "key": "hermes_chat.space_key_delete_safe",
+      "context": "Verb after a key in the Hermes chat footer: deletes all safe folders.",
+      "en": "delete all safe ones",
+      "de": "alle sicheren löschen"
+    },
+    {
+      "key": "hermes_chat.space_key_remove_worktrees",
+      "context": "Verb after a key in the Hermes chat footer: removes merged worktrees.",
+      "en": "remove worktrees",
+      "de": "Worktrees entfernen"
+    },
+    {
+      "key": "hermes_chat.space_key_overview",
+      "context": "Verb after a key in the Hermes chat footer: opens the Platz tab.",
+      "en": "overview",
+      "de": "Übersicht"
     }
   ]
 }

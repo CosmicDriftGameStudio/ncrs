@@ -12,6 +12,7 @@ pub mod palette;
 pub mod panel_columns;
 pub mod repos;
 pub mod settings_page;
+pub mod space;
 pub mod system_monitor;
 pub mod vscode_theme;
 

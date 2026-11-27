@@ -4808,6 +4808,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncrs-os-probe"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "sysinfo",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ncrs-palette"
 version = "0.0.0"
 dependencies = [
@@ -4919,6 +4929,19 @@ dependencies = [
  "tokio",
  "ureq",
  "zip",
+]
+
+[[package]]
+name = "ncrs-space"
+version = "0.0.0"
+dependencies = [
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-git",
+ "ncrs-intake",
+ "ncrs-os-probe",
+ "tempfile",
 ]
 
 [[package]]
