@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `labeled` starts the full run when the `full-ci` label is added.
+    # ponytail: any other label restarts the run too (the concurrency group
+    # cancels the one going); rare enough here to not filter it.
+    types: [opened, synchronize, reopened, labeled]
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,12 +27,18 @@ jobs:
   # takes over what `targets` built on the push to main for the tagged commit.
   # So `targets` (and with it linux-packages and aur) always runs on main, and
   # on a pull request only when something that goes into the build or the
-  # packages changed. `check` always runs; it is a required check.
+  # packages changed. `check` always runs.
+  #
+  # `full` decides whether macOS and Windows run in full. On main they always
+  # do, the release needs them. A pull request runs Linux, plus macOS for the
+  # snapshot pixel verdict only, unless it carries the `full-ci` label or
+  # touches code that differs per operating system.
   changes:
     name: Changed files
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.filter.outputs.build }}
+      full: ${{ steps.filter.outputs.full }}
       homebrew: ${{ steps.filter.outputs.homebrew }}
       winget: ${{ steps.filter.outputs.winget }}
     steps:
@@ -42,6 +52,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
+          FULL_CI_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = pull_request ]; then base=$PULL_REQUEST_BASE; else base=$PUSH_BEFORE; fi
@@ -72,6 +83,19 @@ jobs:
           fi
           emit homebrew touched "$homebrew_paths"
           emit winget touched "$winget_paths"
+
+          # Crates with the most per-OS code (file identities, watchers, paths,
+          # git, the sandbox, OCR, the key store), vendored and build inputs
+          # (every manifest: per-target dependencies live there), and this
+          # workflow.
+          # ponytail: src/ has per-OS code too but is in almost every pull
+          # request; the `full-ci` label covers it.
+          platform_paths='^(crates/ncrs-(fs|filing|pipeline|git|handoff|index|config|sandbox|ocr-vision|user-verify)/|vendor/|\.cargo/|rust-toolchain|Cargo\.lock$|\.github/workflows/ci\.yml$)|(^|/)(Cargo\.toml|build\.rs)$'
+          if [ "$EVENT" = push ] || [ "$FULL_CI_LABEL" = true ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          else
+            emit full touched "$platform_paths"
+          fi
 
   # Commit messages are public text. The three shapes of a tool's attribution
   # (a co-author trailer, a session link, a session trailer) are written out
@@ -145,17 +169,21 @@ jobs:
           retention-days: ${{ github.event_name == 'push' && 90 || 1 }}
 
   check:
+    needs: changes
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(needs.changes.outputs.full == 'true' && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     # Line tables are enough for backtraces and keep target/ (and the cache)
     # much smaller than full debug info. Set here and not workflow-wide: the
     # variables are part of the rust-cache key, and `targets` must keep the
     # key of the `targets` build.
     env:
+      # macOS on a pull request without `full`: only the tests, for the pixel
+      # verdict of the snapshots, and the snapshot guard.
+      PIXELS_ONLY: ${{ matrix.os == 'macos-latest' && needs.changes.outputs.full != 'true' }}
       RUST_BACKTRACE: 1
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
@@ -297,19 +325,21 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
+        if: env.PIXELS_ONLY != 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       # The App Store build. Only macOS has the sandbox code to lint and run;
       # elsewhere the feature must still compile and change nothing.
       - name: Clippy, App Store build (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.PIXELS_ONLY != 'true'
         run: cargo clippy --workspace --all-targets --features sandbox -- -D warnings
 
       - name: Check, App Store feature (Linux, Windows)
         if: runner.os != 'macOS'
         run: cargo check --workspace --all-targets --features sandbox
 
-      # Every test runs on every operating system. Only the pixel verdict of the
+      # Every test runs on every operating system on main, and on a pull request
+      # with `full`; otherwise on Linux and macOS. Only the pixel verdict of the
       # snapshot tests is left to macOS, where the reference images were made:
       # font rasterisation differs per operating system, so a comparison
       # elsewhere would assert nothing (`ncrs_ui_kit::snapshot_support`).
@@ -323,7 +353,7 @@ jobs:
       # Below 13 the StoreKit bridge links Swift Concurrency through @rpath and
       # the test binaries would not start.
       - name: Tests, App Store build (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.PIXELS_ONLY != 'true'
         env:
           MACOSX_DEPLOYMENT_TARGET: "13.0"
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
@@ -331,7 +361,7 @@ jobs:
       # The two tests that use the real operating system credential store are
       # ignored by default; these runners have one.
       - name: Key store tests (macOS and Windows)
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && env.PIXELS_ONLY != 'true'
         run: cargo test -p ncrs-index key_store -- --ignored
 
       # The picture generators are left out of the normal test build; this
@@ -385,17 +415,16 @@ jobs:
   # The shipped targets that `check` does not run on, and the release profile.
   # The file and filing code is what differs per architecture and optimisation
   # (file identities, metadata, the path rules); the app's views do not.
+  # Intel macOS only with `full`, see `changes`.
   platform-tests:
+    needs: changes
     name: file and filing tests, ${{ matrix.os }}${{ matrix.release && ', release' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: ${{ fromJSON(needs.changes.outputs.full == 'true' && '["macos-15-intel","ubuntu-24.04-arm","ubuntu-latest"]' || '["ubuntu-24.04-arm","ubuntu-latest"]') }}
         include:
-          - os: macos-15-intel
-            release: false
-          - os: ubuntu-24.04-arm
-            release: false
           - os: ubuntu-latest
             release: true
     env:
@@ -440,7 +469,11 @@ jobs:
     needs: [changes, licenses]
     if: needs.changes.outputs.build == 'true'
     name: build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    # The build image's glibc is the oldest one the binary runs on; 24.04
+    # keeps it at 2.39, `ubuntu-latest` would raise it. `macos-latest` is
+    # arm64; Intel has its own label. Not a matrix `include`: that would add
+    # back the targets a pull request leaves out.
+    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-24.04","aarch64-unknown-linux-gnu":"ubuntu-24.04","x86_64-apple-darwin":"macos-15-intel","aarch64-apple-darwin":"macos-latest","x86_64-pc-windows-msvc":"windows-latest"}')[matrix.target] }}
     # Only a push run builds what is shipped. The release tag does not exist
     # yet at that point, so the build is told; without it every binary would
     # carry a commit hash after its version and read as a development build.
@@ -452,20 +485,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # The build image's glibc is the oldest one the binary runs on;
-          # 24.04 keeps it at 2.39, `ubuntu-latest` would raise it.
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-24.04
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04
-          - target: x86_64-apple-darwin
-            # `macos-latest` is arm64; Intel has its own label.
-            os: macos-15-intel
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
+        # A pull request without `full` builds the Linux targets only.
+        target: ${{ fromJSON(needs.changes.outputs.full == 'true' && '["x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-msvc"]' || '["x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -1126,3 +1147,22 @@ jobs:
           # A data folder would make ncrs portable, and winget would delete it
           # on the next upgrade.
           if (Test-Path (Join-Path $folder 'data')) { throw "unexpected data folder next to $exe" }
+
+  # The one required check. A job left out of a run (macOS and Windows on a
+  # pull request, the build when nothing of it changed) reports nothing, and a
+  # required check that reports nothing never turns green; this job always
+  # reports. Skipped counts as passed, a failed or cancelled job does not.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [changes, commit-texts, licenses, check, platform-tests, targets, linux-packages, package-repos, aur, homebrew, winget]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac
