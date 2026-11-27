@@ -83,10 +83,9 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     // The path takes what the pickers, chips, buttons and filter leave: cut in
     // the middle to fit, and left out where nothing useful fits. The widths of
     // the fixed parts are estimates; the clip is the safety net.
-    let room_chars = ((ctx.window.width
-        - HEADER_FIXED_WIDTH
-        - HEADER_CHIP_WIDTH * chip_count as f32)
-        / (font_size::SMALL * MONOSPACE_EM)) as usize;
+    let room_chars =
+        ((ctx.window.width - HEADER_FIXED_WIDTH - HEADER_CHIP_WIDTH * chip_count as f32)
+            / (font_size::SMALL * MONOSPACE_EM)) as usize;
     let worktree_path: Element<'a, Message> = match state
         .current_worktree()
         .map(|worktree| worktree.path.as_path())
