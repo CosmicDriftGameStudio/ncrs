@@ -4,6 +4,9 @@
 [![Release](https://img.shields.io/github/v/release/CosmicDriftGameStudio/ncrs?label=release)](https://github.com/CosmicDriftGameStudio/ncrs/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](rust-toolchain.toml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=CosmicDriftGameStudio_ncrs&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=CosmicDriftGameStudio_ncrs)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=CosmicDriftGameStudio_ncrs&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=CosmicDriftGameStudio_ncrs)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=CosmicDriftGameStudio_ncrs&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=CosmicDriftGameStudio_ncrs)
 
 A fast, keyboard-first **dual-panel file manager**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
