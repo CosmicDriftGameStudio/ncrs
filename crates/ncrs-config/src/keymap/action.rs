@@ -647,7 +647,11 @@ mod tests {
     #[test]
     fn the_platz_tab_opens_on_command_alt_p_and_no_other_action_has_that_key() {
         for mac in [true, false] {
-            let command = if mac { Modifiers::LOGO } else { Modifiers::CTRL };
+            let command = if mac {
+                Modifiers::LOGO
+            } else {
+                Modifiers::CTRL
+            };
             let taken: Vec<KeyAction> = default_bindings_for(mac)
                 .into_iter()
                 .filter(|(_, binding)| {

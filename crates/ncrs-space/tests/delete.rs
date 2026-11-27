@@ -134,3 +134,156 @@ fn a_raised_stop_flag_ends_the_run_between_entries() {
     assert!(log.rows.is_empty());
     assert!(folder.exists());
 }
+
+#[test]
+fn a_freed_row_records_the_last_use_and_that_the_check_answered() {
+    let home = TempDir::new().unwrap();
+    let folder = home.path().join("cache");
+    write(&folder.join("a"), 100);
+    let mut entry = entry_for(&folder, CatalogId::Bun);
+    let used = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    entry.facts.last_used = Some(used);
+
+    let log = delete_safe(&[entry], &Fake::quiet(), UnknownUse::Skip, &stop(), |_| {});
+
+    assert_eq!(log.rows[0].last_used, Some(used));
+    assert!(log.rows[0].use_checked);
+}
+
+#[test]
+fn a_row_let_through_after_the_confirm_says_the_check_did_not_answer() {
+    let home = TempDir::new().unwrap();
+    let folder = home.path().join("cache");
+    write(&folder.join("a"), 100);
+    let entry = entry_for(&folder, CatalogId::Bun);
+    let blind = Fake {
+        processes: None,
+        ..Fake::quiet()
+    };
+
+    let log = delete_safe(
+        &[entry],
+        &blind,
+        UnknownUse::AllowAfterConfirm,
+        &stop(),
+        |_| {},
+    );
+
+    assert!(log.rows[0].outcome.is_ok());
+    assert!(!log.rows[0].use_checked);
+}
+
+#[test]
+fn a_written_log_is_read_back_with_its_runs_rows_and_reasons() {
+    let dir = TempDir::new().unwrap();
+    let home = TempDir::new().unwrap();
+    let freed_folder = home.path().join("a");
+    write(&freed_folder.join("x"), 100);
+    let kept_folder = home.path().join("b");
+    write(&kept_folder.join("x"), 50);
+    let mut freed = entry_for(&freed_folder, CatalogId::Bun);
+    freed.facts.last_used =
+        Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000));
+    let kept = entry_for(&kept_folder, CatalogId::Bun);
+    let log = delete_safe(
+        &[freed, kept],
+        &ChromeThenFree(std::sync::atomic::AtomicBool::new(false)),
+        UnknownUse::Skip,
+        &stop(),
+        |_| {},
+    );
+    append_log(dir.path(), &log).unwrap();
+
+    let file = std::fs::read_dir(dir.path())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let runs = ncrs_space::parse_log(&std::fs::read_to_string(file).unwrap());
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].freed, log.freed_bytes());
+    assert_eq!(runs[0].rows.len(), 2);
+    let outcomes: Vec<_> = runs[0].rows.iter().map(|row| row.outcome.clone()).collect();
+    assert!(outcomes.iter().any(Result::is_ok));
+    assert!(outcomes.iter().any(
+        |outcome| matches!(outcome, Err(Skip::ToolRunning(holder)) if holder.name == "bun" && holder.pid == 42)
+    ));
+    let done = runs[0].rows.iter().find(|row| row.outcome.is_ok()).unwrap();
+    assert!(done.use_checked);
+    assert_eq!(
+        done.last_used,
+        Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000))
+    );
+}
+
+/// The first folder is free, the second has a running "bun".
+struct ChromeThenFree(std::sync::atomic::AtomicBool);
+
+impl ncrs_space::ProcessSource for ChromeThenFree {
+    fn processes(&self) -> Option<Vec<ncrs_space::Holder>> {
+        let second = self.0.swap(true, std::sync::atomic::Ordering::Relaxed);
+        Some(if second {
+            vec![ncrs_space::Holder {
+                pid: 42,
+                name: "bun".to_owned(),
+            }]
+        } else {
+            Vec::new()
+        })
+    }
+
+    fn folder_use(
+        &self,
+        _folder: &std::path::Path,
+        _limit: std::time::Duration,
+    ) -> ncrs_space::FolderUse {
+        ncrs_space::FolderUse::Free
+    }
+}
+
+#[test]
+fn the_words_of_a_skipped_row_are_read_back_into_a_skip() {
+    for skip in [
+        Skip::UseUnknown,
+        Skip::Symlink,
+        Skip::OtherDrive,
+        Skip::Changed,
+        Skip::Gone,
+        Skip::NotGranted,
+        Skip::Failed("disk full".to_owned()),
+        Skip::ToolRunning(ncrs_space::Holder {
+            pid: 9,
+            name: "Google Chrome".to_owned(),
+        }),
+        Skip::FolderOpen(ncrs_space::Holder {
+            pid: 3,
+            name: "editor".to_owned(),
+        }),
+    ] {
+        let dir = TempDir::new().unwrap();
+        let now = std::time::SystemTime::now();
+        let mut log = ncrs_space::RunLog {
+            started: now,
+            finished: now,
+            rows: Vec::new(),
+        };
+        log.rows.push(ncrs_space::LogRow {
+            path: "/x".into(),
+            size: 1,
+            outcome: Err(skip.clone()),
+            last_used: None,
+            use_checked: false,
+        });
+        append_log(dir.path(), &log).unwrap();
+        let file = std::fs::read_dir(dir.path())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let runs = ncrs_space::parse_log(&std::fs::read_to_string(file).unwrap());
+        assert_eq!(runs[0].rows[0].outcome, Err(skip));
+    }
+}

@@ -179,6 +179,8 @@ fn children_of(folder: &Path, stop: &AtomicBool) -> DownloadGroups {
                 size,
                 modified,
                 touched: modified,
+                last_opened: None,
+                open_count: None,
                 is_folder: metadata.is_dir(),
             })
         })

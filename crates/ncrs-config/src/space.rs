@@ -1,10 +1,14 @@
 //! The `[space]` section: what "Platz schaffen" treats as safe and what it never touches.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 pub const DEFAULT_WARN_FROM_PERCENT: u8 = 90;
+
+/// The catalog name (`ncrs_space::CatalogId::name`) of the node_modules of projects not
+/// changed for a long time. Off until the user switches it on.
+pub const NODE_MODULES_STALE: &str = "node-modules-stale";
 
 /// How deep the search for big folders of your own goes below home.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -19,6 +23,8 @@ pub enum Depth {
 pub struct SpaceSettings {
     /// The drive counts as full from this used share on.
     pub warn_from_percent: u8,
+    /// Names (volume labels) of the drives the warning is for. Empty: the drive of the home folder only.
+    pub warn_drives: Vec<String>,
     /// Catalog entries switched off, by their name in the catalog (`ncrs_space::CatalogId::name`).
     pub catalog_off: Vec<String>,
     /// Folders of the user's own that a tool regenerates; treated as safe.
@@ -33,7 +39,8 @@ impl Default for SpaceSettings {
     fn default() -> Self {
         Self {
             warn_from_percent: DEFAULT_WARN_FROM_PERCENT,
-            catalog_off: Vec::new(),
+            warn_drives: Vec::new(),
+            catalog_off: vec![NODE_MODULES_STALE.to_owned()],
             own_regenerable: Vec::new(),
             never_touch: Vec::new(),
             show_worktrees: true,
@@ -55,6 +62,8 @@ pub struct SpaceSection {
     /// Checked by `resolve_space`: outside [`WARN_FROM_RANGE`] is the default.
     #[serde(default)]
     pub warn_from_percent: Option<i64>,
+    #[serde(default)]
+    pub warn_drives: Option<Vec<String>>,
     #[serde(default)]
     pub catalog_off: Option<Vec<String>>,
     #[serde(default)]
@@ -78,9 +87,50 @@ pub enum DepthValue {
     Levels(i64),
 }
 
+/// The folders "Platz schaffen" leaves alone until the user says otherwise: backups,
+/// documents and the cloud folders.
+pub fn default_never_touch(home: &Path) -> Vec<PathBuf> {
+    let mut folders = vec![home.join("Backups"), home.join("Documents")];
+    folders.extend(cloud_folders(home));
+    folders
+}
+
+/// Where iCloud, Dropbox and OneDrive keep their files, whether or not the service is installed.
+pub fn cloud_folders(home: &Path) -> Vec<PathBuf> {
+    let mut folders = Vec::new();
+    if cfg!(target_os = "macos") {
+        folders.push(home.join("Library/Mobile Documents"));
+        folders.push(home.join("Library/CloudStorage"));
+    }
+    if cfg!(windows) {
+        folders.push(home.join("iCloudDrive"));
+    }
+    folders.push(home.join("Dropbox"));
+    folders.push(home.join("OneDrive"));
+    folders
+}
+
+/// Whether `folder` is one of [`cloud_folders`], so a list can show them as one entry.
+pub fn is_cloud_folder(folder: &Path, home: &Path) -> bool {
+    cloud_folders(home).iter().any(|cloud| cloud == folder)
+}
+
+/// Whether the drive-full warning is for the drive called `name`.
+pub fn warns_for_drive(settings: &SpaceSettings, name: &str, is_home_drive: bool) -> bool {
+    if settings.warn_drives.is_empty() {
+        is_home_drive
+    } else {
+        settings.warn_drives.iter().any(|listed| listed == name)
+    }
+}
+
 /// Checks `section`: a value out of range is the default, empty list entries are dropped.
-pub fn resolve_space(section: &SpaceSection) -> SpaceSettings {
-    let defaults = SpaceSettings::default();
+/// A `never_touch` that is not written is [`default_never_touch`] of `home`.
+pub fn resolve_space_at(section: &SpaceSection, home: Option<&Path>) -> SpaceSettings {
+    let defaults = SpaceSettings {
+        never_touch: home.map(default_never_touch).unwrap_or_default(),
+        ..SpaceSettings::default()
+    };
     let warn_from_percent = section
         .warn_from_percent
         .and_then(|percent| u8::try_from(percent).ok())
@@ -104,6 +154,16 @@ pub fn resolve_space(section: &SpaceSection) -> SpaceSettings {
     };
     SpaceSettings {
         warn_from_percent,
+        warn_drives: section
+            .warn_drives
+            .as_ref()
+            .map_or(defaults.warn_drives, |listed| {
+                listed
+                    .iter()
+                    .map(|name| name.trim().to_owned())
+                    .filter(|name| !name.is_empty())
+                    .collect()
+            }),
         catalog_off: section
             .catalog_off
             .as_ref()
@@ -129,8 +189,71 @@ mod tests {
     #[test]
     fn nothing_written_is_the_defaults() {
         assert_eq!(
-            resolve_space(&SpaceSection::default()),
+            resolve_space_at(&SpaceSection::default(), None),
             SpaceSettings::default()
+        );
+    }
+
+    #[test]
+    fn the_stale_node_modules_are_off_by_default() {
+        assert_eq!(
+            SpaceSettings::default().catalog_off,
+            vec![NODE_MODULES_STALE.to_owned()]
+        );
+    }
+
+    #[test]
+    fn never_touch_defaults_to_backups_documents_and_the_cloud_folders() {
+        let home = Path::new("/home/a");
+        let settings = resolve_space_at(&SpaceSection::default(), Some(home));
+        assert!(settings.never_touch.contains(&home.join("Backups")));
+        assert!(settings.never_touch.contains(&home.join("Documents")));
+        assert!(settings.never_touch.contains(&home.join("Dropbox")));
+        assert!(settings.never_touch.contains(&home.join("OneDrive")));
+        assert!(settings
+            .never_touch
+            .iter()
+            .all(|folder| folder.starts_with(home)));
+    }
+
+    #[test]
+    fn a_written_never_touch_replaces_the_defaults_even_when_empty() {
+        let home = Path::new("/home/a");
+        let section = SpaceSection {
+            never_touch: Some(Vec::new()),
+            ..SpaceSection::default()
+        };
+        assert!(resolve_space_at(&section, Some(home))
+            .never_touch
+            .is_empty());
+    }
+
+    #[test]
+    fn a_cloud_folder_is_recognised() {
+        let home = Path::new("/home/a");
+        assert!(is_cloud_folder(&home.join("Dropbox"), home));
+        assert!(!is_cloud_folder(&home.join("Documents"), home));
+    }
+
+    #[test]
+    fn the_warning_is_for_the_home_drive_unless_drives_are_listed() {
+        let mut settings = SpaceSettings::default();
+        assert!(warns_for_drive(&settings, "Macintosh HD", true));
+        assert!(!warns_for_drive(&settings, "Archiv", false));
+        settings.warn_drives = vec!["Archiv".to_owned()];
+        assert!(!warns_for_drive(&settings, "Macintosh HD", true));
+        assert!(warns_for_drive(&settings, "Archiv", false));
+    }
+
+    #[test]
+    fn listed_drives_are_trimmed_and_empty_names_dropped() {
+        let section = SpaceSection {
+            warn_drives: Some(vec![" Archiv ".to_owned(), String::new()]),
+            ..SpaceSection::default()
+        };
+        assert_eq!(
+            resolve_space_at(&section, None).warn_drives,
+            vec!["Archiv".to_owned()]
         );
     }
 
@@ -142,7 +265,7 @@ mod tests {
                 ..SpaceSection::default()
             };
             assert_eq!(
-                resolve_space(&section).warn_from_percent,
+                resolve_space_at(&section, None).warn_from_percent,
                 DEFAULT_WARN_FROM_PERCENT
             );
         }
@@ -151,17 +274,20 @@ mod tests {
                 warn_from_percent: Some(i64::from(written)),
                 ..SpaceSection::default()
             };
-            assert_eq!(resolve_space(&section).warn_from_percent, written);
+            assert_eq!(resolve_space_at(&section, None).warn_from_percent, written);
         }
     }
 
     #[test]
     fn depth_is_auto_or_two_to_four() {
         let depth_of = |value: Option<DepthValue>| {
-            resolve_space(&SpaceSection {
-                depth: value,
-                ..SpaceSection::default()
-            })
+            resolve_space_at(
+                &SpaceSection {
+                    depth: value,
+                    ..SpaceSection::default()
+                },
+                None,
+            )
             .depth
         };
         assert_eq!(depth_of(None), Depth::Auto);
@@ -178,7 +304,7 @@ mod tests {
             never_touch: Some(vec![PathBuf::new(), PathBuf::from("/keep")]),
             ..SpaceSection::default()
         };
-        let settings = resolve_space(&section);
+        let settings = resolve_space_at(&section, None);
         assert_eq!(settings.catalog_off, vec!["Yarn".to_owned()]);
         assert_eq!(settings.never_touch, vec![PathBuf::from("/keep")]);
     }

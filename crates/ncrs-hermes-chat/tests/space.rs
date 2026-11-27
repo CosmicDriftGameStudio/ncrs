@@ -46,6 +46,7 @@ mod tests {
             modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
             device: None,
             held_by: Vec::new(),
+            facts: Default::default(),
         };
         Arc::new(Scan {
             volume: VolumeSpace {
@@ -80,6 +81,8 @@ mod tests {
             ],
             partial: false,
             processes_known: true,
+            volume_name: String::new(),
+            worktree_roots: Vec::new(),
             measured_at: SystemTime::UNIX_EPOCH,
             took: Duration::from_secs(9),
         })
@@ -277,11 +280,15 @@ mod tests {
                     path: talk.ctx.home.join("target"),
                     size: 40 * GB,
                     outcome: Ok(40 * GB),
+                    last_used: None,
+                    use_checked: false,
                 },
                 LogRow {
                     path: talk.ctx.home.join("wt"),
                     size: 20 * GB,
                     outcome: Err(Skip::Changed),
+                    last_used: None,
+                    use_checked: false,
                 },
             ],
         };

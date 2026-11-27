@@ -4,7 +4,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use ncrs_core::FolderSize;
-use ncrs_space::{CatalogId, Entry, EntryKind, FolderUse, Group, Holder, ProcessSource};
+use ncrs_space::{
+    CatalogId, Entry, EntryFacts, EntryKind, FolderUse, Group, Holder, ProcessSource,
+};
 
 /// Answers about running processes from a fixed script.
 pub struct Fake {
@@ -63,6 +65,7 @@ pub fn entry_for(path: &Path, id: CatalogId) -> Entry {
         modified: metadata.modified().ok(),
         device: device(&metadata),
         held_by: Vec::new(),
+        facts: EntryFacts::default(),
     }
 }
 

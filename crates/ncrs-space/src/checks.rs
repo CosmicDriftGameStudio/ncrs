@@ -65,6 +65,33 @@ impl Skip {
     }
 }
 
+impl Skip {
+    /// Reads back what the run log wrote for a skipped row (`tool-running brew 1234`).
+    pub fn from_log_words(words: &str) -> Option<Self> {
+        let words = words.trim();
+        let holder = |rest: &str| {
+            let (name, pid) = rest.trim().rsplit_once(' ')?;
+            Some(Holder {
+                pid: pid.parse().ok()?,
+                name: name.to_owned(),
+            })
+        };
+        let (code, rest) = words.split_once(' ').unwrap_or((words, ""));
+        match code {
+            "tool-running" => holder(rest).map(Self::ToolRunning),
+            "folder-open" => holder(rest).map(Self::FolderOpen),
+            "use-unknown" => Some(Self::UseUnknown),
+            "symlink" => Some(Self::Symlink),
+            "other-drive" => Some(Self::OtherDrive),
+            "changed" => Some(Self::Changed),
+            "gone" => Some(Self::Gone),
+            "not-granted" => Some(Self::NotGranted),
+            "failed" => Some(Self::Failed(rest.to_owned())),
+            _ => None,
+        }
+    }
+}
+
 /// What a check compares the folder on the disk against.
 pub(crate) struct Subject<'a> {
     pub path: &'a Path,
@@ -80,6 +107,16 @@ pub fn check_before_delete(
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
 ) -> Result<(), Skip> {
+    check_entry(entry, probes, unknown).map(drop)
+}
+
+/// [`check_before_delete`] that also says whether the in-use check got a real answer
+/// (`true`), or was let through because it could not tell and the user allowed that.
+pub(crate) fn check_entry(
+    entry: &Entry,
+    probes: &dyn ProcessSource,
+    unknown: UnknownUse,
+) -> Result<bool, Skip> {
     let tools = match &entry.kind {
         EntryKind::Catalog(id) => id.tools(),
         EntryKind::Worktree(_) | EntryKind::Decide(_) => &[],
@@ -105,7 +142,8 @@ pub(crate) fn check_subject(
     subject: &Subject<'_>,
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
-) -> Result<(), Skip> {
+) -> Result<bool, Skip> {
+    let mut answered = true;
     let metadata =
         std::fs::symlink_metadata(subject.path).map_err(|error| Skip::from_io(&error))?;
     if metadata.file_type().is_symlink() {
@@ -124,7 +162,7 @@ pub(crate) fn check_subject(
             }
         }
         None if unknown == UnknownUse::Skip => return Err(Skip::UseUnknown),
-        None => {}
+        None => answered = false,
     }
     match probes.folder_use(subject.path, FOLDER_USE_LIMIT) {
         FolderUse::Free => {}
@@ -135,7 +173,7 @@ pub(crate) fn check_subject(
                 .map_or(Skip::UseUnknown, Skip::FolderOpen));
         }
         FolderUse::Unknown(_) if unknown == UnknownUse::Skip => return Err(Skip::UseUnknown),
-        FolderUse::Unknown(_) => {}
+        FolderUse::Unknown(_) => answered = false,
     }
     if subject.modified.is_some() && metadata.modified().ok() != subject.modified {
         return Err(Skip::Changed);
@@ -146,7 +184,7 @@ pub(crate) fn check_subject(
             return Err(Skip::Changed);
         }
     }
-    Ok(())
+    Ok(answered)
 }
 
 pub(crate) fn measured_bytes(path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {

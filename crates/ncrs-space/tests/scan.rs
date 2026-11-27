@@ -156,3 +156,85 @@ fn a_raised_stop_flag_gives_no_result() {
     );
     assert!(found.is_none());
 }
+
+#[test]
+fn each_entry_carries_the_answer_of_the_in_use_check_and_its_last_use() {
+    let home = TempDir::new().unwrap();
+    bun_cache(&home);
+    let held = Fake {
+        folder: ncrs_space::FolderUse::Held(vec![ncrs_space::Holder {
+            pid: 7,
+            name: "editor".to_owned(),
+        }]),
+        ..Fake::quiet()
+    };
+    let no_look = Fake {
+        folder: ncrs_space::FolderUse::Unknown(ncrs_space::UnknownWhy::TimedOut),
+        ..Fake::quiet()
+    };
+    let blind = Fake {
+        processes: None,
+        ..Fake::quiet()
+    };
+    let facts_with = |probes: &Fake| {
+        let found = scan(
+            &request(&home, SpaceSettings::default()),
+            probes,
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .unwrap();
+        bun_entry(&found).facts.clone()
+    };
+
+    let free = facts_with(&Fake::quiet());
+    assert_eq!(free.use_check, ncrs_space::UseCheck::Free);
+    assert!(free.last_used.is_some());
+
+    let tool = facts_with(&Fake::running("bun"));
+    assert!(
+        matches!(&tool.use_check, ncrs_space::UseCheck::Held(holders) if holders[0].name == "bun")
+    );
+
+    assert!(matches!(
+        facts_with(&held).use_check,
+        ncrs_space::UseCheck::Held(_)
+    ));
+    assert!(matches!(
+        facts_with(&no_look).use_check,
+        ncrs_space::UseCheck::Unknown(ncrs_space::UnknownWhy::TimedOut)
+    ));
+    assert_eq!(
+        facts_with(&blind).use_check,
+        ncrs_space::UseCheck::NotChecked
+    );
+}
+
+#[test]
+fn the_scan_lists_the_named_folders_of_your_own_as_decide_entries() {
+    let home = TempDir::new().unwrap();
+    write(&home.path().join(".claude-work/projects/p/log.jsonl"), 300);
+    write(&home.path().join("Backups/disk/a"), 400);
+    let mut settings = SpaceSettings::default();
+    settings.never_touch.clear();
+
+    let found = scan(
+        &request(&home, settings),
+        &Fake::quiet(),
+        &AtomicBool::new(false),
+        |_| {},
+    )
+    .unwrap();
+
+    let kinds: Vec<_> = found
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            EntryKind::Decide(kind) => Some(kind.clone()),
+            EntryKind::Catalog(_) | EntryKind::Worktree(_) => None,
+        })
+        .collect();
+    assert!(kinds.contains(&ncrs_space::decide::DecideKind::SessionLogs));
+    assert!(kinds.contains(&ncrs_space::decide::DecideKind::Backups));
+    assert!(found.worktree_roots.is_empty());
+}

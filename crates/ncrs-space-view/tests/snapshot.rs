@@ -122,6 +122,8 @@ mod ui_tests {
                 } else {
                     Ok((place + 2) * GIB / 3)
                 },
+                last_used: None,
+                use_checked: false,
             })
             .collect();
         send(
@@ -157,12 +159,15 @@ mod ui_tests {
             size: gib * GIB,
             modified: Some(now()),
             touched: None,
+            last_opened: None,
+            open_count: None,
             is_folder: false,
         };
         let groups = DownloadGroups {
             installed: vec![Matched {
                 item: item("Setup.dmg", 3),
                 with: path("/Applications/Setup.app"),
+                installed: None,
             }],
             rest: (0..30)
                 .map(|place| item(&format!("file-{place}.pdf"), 1))

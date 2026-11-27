@@ -77,7 +77,10 @@ fn holders_of(files: &[PathBuf]) -> Result<Vec<Holder>, u32> {
 }
 
 fn name_of(units: &[u16]) -> String {
-    let length = units.iter().position(|unit| *unit == 0).unwrap_or(units.len());
+    let length = units
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(units.len());
     String::from_utf16_lossy(units.get(..length).unwrap_or_default())
 }
 
@@ -131,7 +134,13 @@ impl Session {
         // SAFETY: with a null array and `have` 0 the call only reports the
         // count it needs; the out pointers point to live `u32`s.
         let code = unsafe {
-            RmGetList(self.0, &mut needed, &mut have, std::ptr::null_mut(), &mut reasons)
+            RmGetList(
+                self.0,
+                &mut needed,
+                &mut have,
+                std::ptr::null_mut(),
+                &mut reasons,
+            )
         };
         if code == ERROR_SUCCESS {
             return Ok(Vec::new());
@@ -145,7 +154,13 @@ impl Session {
         // SAFETY: `infos` has `have` elements, which the call fills in part
         // and reports how many in `have`; the other pointers are live `u32`s.
         let code = unsafe {
-            RmGetList(self.0, &mut needed, &mut have, infos.as_mut_ptr(), &mut reasons)
+            RmGetList(
+                self.0,
+                &mut needed,
+                &mut have,
+                infos.as_mut_ptr(),
+                &mut reasons,
+            )
         };
         if code != ERROR_SUCCESS {
             return Err(code);

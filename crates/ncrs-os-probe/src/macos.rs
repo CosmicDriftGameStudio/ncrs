@@ -133,7 +133,8 @@ fn pid_info(pid: c_int, flavor: c_int, buffer: &mut [u8]) -> Option<usize> {
     let size = c_int::try_from(buffer.len()).ok()?;
     // SAFETY: `buffer` is `size` writable bytes that outlive the call; the
     // kernel writes at most `size` bytes and reports failure as a value <= 0.
-    let got = unsafe { libc::proc_pidinfo(pid, flavor, 0, buffer.as_mut_ptr().cast::<c_void>(), size) };
+    let got =
+        unsafe { libc::proc_pidinfo(pid, flavor, 0, buffer.as_mut_ptr().cast::<c_void>(), size) };
     usize::try_from(got).ok().filter(|got| *got > 0)
 }
 

@@ -279,11 +279,11 @@ mod loading;
 mod paths;
 mod repos_writes;
 mod resolving;
-mod space_writes;
 mod sections;
 mod setting_writes;
 mod sorting;
 mod sorting_writes;
+mod space_writes;
 mod write_support;
 mod writing;
 
@@ -303,7 +303,6 @@ pub use self::paths::{
 pub use self::repos_writes::{repos_settings, write_repos};
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
-pub use self::space_writes::{space_settings, write_space};
 pub use self::sections::{
     merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
     ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, GitViewSection,
@@ -328,6 +327,7 @@ pub use self::sorting_writes::{
     remove_sort_target, remove_sort_target_with_home, upsert_sort_source,
     upsert_sort_source_with_home, upsert_sort_target, upsert_sort_target_with_home, BACKUP_SUFFIX,
 };
+pub use self::space_writes::{space_settings, write_space};
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{

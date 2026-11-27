@@ -51,7 +51,12 @@ fn platform_volume_space(path: &Path) -> io::Result<VolumeSpace> {
     // SAFETY: `wide` is NUL-terminated and alive for the call; the two out
     // pointers point to live `u64`s and the third (total free) may be null.
     let ok = unsafe {
-        GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, &mut total, std::ptr::null_mut())
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut available,
+            &mut total,
+            std::ptr::null_mut(),
+        )
     };
     if ok == 0 {
         return Err(io::Error::last_os_error());
@@ -61,5 +66,8 @@ fn platform_volume_space(path: &Path) -> io::Result<VolumeSpace> {
 
 #[cfg(not(any(unix, windows)))]
 fn platform_volume_space(_path: &Path) -> io::Result<VolumeSpace> {
-    Err(io::Error::new(io::ErrorKind::Unsupported, "no volume space on this platform"))
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "no volume space on this platform",
+    ))
 }

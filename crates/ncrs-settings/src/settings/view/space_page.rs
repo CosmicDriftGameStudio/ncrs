@@ -76,7 +76,9 @@ pub fn space_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 Msg::SettingsSpaceShowWorktrees,
                 Msg::SettingsSpaceWorktreesNote,
                 current.show_worktrees,
-                changed(&current, |next| next.show_worktrees = !current.show_worktrees),
+                changed(&current, |next| {
+                    next.show_worktrees = !current.show_worktrees
+                }),
                 view,
             )],
         });
@@ -142,7 +144,18 @@ pub(crate) fn listed_catalog(os: Os, sandboxed: bool) -> Vec<CatalogId> {
 
 fn catalog_texts(id: CatalogId) -> Option<(Msg, Msg)> {
     Some(match id {
-        CatalogId::CargoTarget => (Msg::SpaceCatalogCargoTarget, Msg::SpaceCatalogCargoTargetWhy),
+        CatalogId::CargoTarget => (
+            Msg::SpaceCatalogCargoTarget,
+            Msg::SpaceCatalogCargoTargetWhy,
+        ),
+        CatalogId::CargoTargetHome => (
+            Msg::SpaceCatalogCargoTargetHome,
+            Msg::SpaceCatalogCargoTargetHomeWhy,
+        ),
+        CatalogId::NodeModulesStale => (
+            Msg::SpaceCatalogNodeModulesStale,
+            Msg::SpaceCatalogNodeModulesStaleWhy,
+        ),
         CatalogId::Sccache => (Msg::SpaceCatalogSccache, Msg::SpaceCatalogSccacheWhy),
         CatalogId::CargoRegistryCache => (
             Msg::SpaceCatalogCargoRegistryCache,
@@ -265,12 +278,7 @@ fn depth_row<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> SettingRow
     let options: Vec<(&str, Message)> = labels
         .into_iter()
         .zip(&depths)
-        .map(|(label, depth)| {
-            (
-                label,
-                change(changed(current, |next| next.depth = *depth)),
-            )
-        })
+        .map(|(label, depth)| (label, change(changed(current, |next| next.depth = *depth))))
         .collect();
     let at = depths
         .iter()
@@ -321,7 +329,10 @@ mod tests {
     fn switching_an_entry_twice_gives_the_settings_back() {
         let on = SpaceSettings::default();
         let off = with_catalog_toggled(&on, CatalogId::Yarn);
-        assert_eq!(off.catalog_off, vec!["yarn".to_owned()]);
+        assert_eq!(
+            off.catalog_off,
+            vec!["node-modules-stale".to_owned(), "yarn".to_owned()]
+        );
         assert_eq!(with_catalog_toggled(&off, CatalogId::Yarn), on);
     }
 

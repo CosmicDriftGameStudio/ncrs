@@ -233,11 +233,15 @@ fn finished_run(state: &mut ncrs_space_view::State, ctx: &ncrs_space_view::Ctx) 
             path: path(CACHE_ROW),
             size: 40 * GIB,
             outcome: Ok(40 * GIB),
+            last_used: None,
+            use_checked: false,
         },
         LogRow {
             path: path("/Users/marc/.yarn/cache"),
             size: 6 * GIB,
             outcome: Err(Skip::UseUnknown),
+            last_used: None,
+            use_checked: false,
         },
     ]);
     send(
@@ -425,6 +429,8 @@ fn item(name: &str, bytes: u64) -> DownloadItem {
         size: bytes,
         modified: None,
         touched: None,
+        last_opened: None,
+        open_count: None,
         is_folder: false,
     }
 }
@@ -434,6 +440,7 @@ fn downloads() -> DownloadGroups {
         installed: vec![Matched {
             item: item("Setup.dmg", 3 * GIB),
             with: path("/Applications/Setup.app"),
+            installed: None,
         }],
         rest: vec![item("notes.pdf", GIB)],
         ..DownloadGroups::default()

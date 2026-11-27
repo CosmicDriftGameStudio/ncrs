@@ -31,6 +31,7 @@ pub fn space_settings(settings: &SpaceSettings) -> Vec<Setting> {
             "warn_from_percent",
             i64::from(settings.warn_from_percent).into(),
         ),
+        setting("warn_drives", strings(settings.warn_drives.clone())),
         setting("catalog_off", strings(settings.catalog_off.clone())),
         setting("own_regenerable", folders(&settings.own_regenerable)),
         setting("never_touch", folders(&settings.never_touch)),
@@ -55,6 +56,7 @@ mod tests {
         let path = directory.path().join("config.toml");
         let settings = SpaceSettings {
             warn_from_percent: 80,
+            warn_drives: vec!["Archiv".to_owned()],
             catalog_off: vec!["Yarn".to_owned()],
             own_regenerable: vec![PathBuf::from("/work/build-cache")],
             never_touch: vec![PathBuf::from("/work/keep")],

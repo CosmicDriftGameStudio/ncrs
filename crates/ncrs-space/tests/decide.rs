@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 use ncrs_space::decide::{
     app_name_of_installer, decide_entries, sort_downloads, DecideKind, InstalledApps,
 };
-use ncrs_space::{EntryKind, Group, SpaceSettings};
+use ncrs_space::{DecideReason, EntryKind, Group, SpaceSettings, VersionRelation};
 
 struct FakeApps(HashMap<String, PathBuf>);
 
@@ -189,4 +189,235 @@ fn the_app_name_stops_at_the_version_a_platform_word_or_a_copy_marker() {
     ] {
         assert_eq!(app_name_of_installer(file).as_deref(), name, "{file}");
     }
+}
+
+struct VersionedApps;
+
+impl InstalledApps for VersionedApps {
+    fn find(&self, name: &str) -> Option<PathBuf> {
+        (name == "Xcode").then(|| PathBuf::from("/Applications/Xcode.app"))
+    }
+
+    fn version(&self, _app: &Path) -> Option<String> {
+        Some("17.0".to_owned())
+    }
+}
+
+#[test]
+fn an_installer_knows_the_app_its_version_and_how_it_compares() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Xcode_17.xip", "installer");
+    write(dir.path(), "Xcode_16.2.xip", "older installer");
+
+    let groups = sort_downloads(dir.path(), &VersionedApps, &AtomicBool::new(false));
+
+    assert_eq!(groups.installed.len(), 2);
+    let check_of = |name: &str| {
+        groups
+            .installed
+            .iter()
+            .find(|matched| matched.item.path.ends_with(name))
+            .and_then(|matched| matched.installed.clone())
+            .unwrap()
+    };
+    let same = check_of("Xcode_17.xip");
+    assert_eq!(same.path, PathBuf::from("/Applications/Xcode.app"));
+    assert_eq!(same.version.as_deref(), Some("17.0"));
+    assert_eq!(same.installer_version.as_deref(), Some("17"));
+    assert_eq!(same.relation, VersionRelation::Same);
+    assert_eq!(
+        check_of("Xcode_16.2.xip").relation,
+        VersionRelation::InstalledNewer
+    );
+}
+
+#[test]
+fn a_copy_outside_downloads_makes_the_download_redundant() {
+    let home = tempfile::tempdir().unwrap();
+    let downloads = home.path().join("Downloads");
+    let documents = home.path().join("Documents/Taxes/2025");
+    fs::create_dir_all(&downloads).unwrap();
+    fs::create_dir_all(&documents).unwrap();
+    let content = "x".repeat(5000);
+    write(&downloads, "invoice.pdf", &content);
+    write(&downloads, "other.pdf", &"y".repeat(5000));
+    let kept = write(&documents, "invoice-final.pdf", &content);
+
+    let groups = ncrs_space::decide::sort_downloads_with(
+        &downloads,
+        &FakeApps::with(&[]),
+        &AtomicBool::new(false),
+        SystemTime::now(),
+        &[home.path().join("Documents")],
+    );
+
+    assert_eq!(groups.elsewhere.len(), 1);
+    assert!(groups.elsewhere[0].item.path.ends_with("invoice.pdf"));
+    assert_eq!(groups.elsewhere[0].with, kept);
+    assert_eq!(names(&groups.rest), ["other.pdf"]);
+}
+
+#[test]
+fn a_decide_entry_for_a_copy_elsewhere_names_the_place_of_the_copy() {
+    let home = tempfile::tempdir().unwrap();
+    let downloads = home.path().join("Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    fs::create_dir_all(home.path().join("Documents")).unwrap();
+    let content = "z".repeat(6000);
+    write(&downloads, "a.bin", &content);
+    let copy = write(&home.path().join("Documents"), "a-copy.bin", &content);
+
+    let entries = decide_entries(
+        home.path(),
+        &SpaceSettings::default(),
+        &AtomicBool::new(false),
+    );
+
+    let entry = entries
+        .iter()
+        .find(|entry| entry.path.ends_with("a.bin"))
+        .unwrap();
+    assert_eq!(entry.kind, EntryKind::Decide(DecideKind::Duplicate));
+    assert_eq!(
+        entry.facts.reason,
+        Some(DecideReason::Duplicate {
+            copy,
+            in_downloads: false
+        })
+    );
+    assert!(entry.facts.last_used.is_some());
+}
+
+#[test]
+fn a_duplicate_inside_downloads_names_the_kept_file() {
+    let home = tempfile::tempdir().unwrap();
+    let downloads = home.path().join("Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    let first = write(&downloads, "a.txt", "same content");
+    age(&first, Duration::from_secs(3600));
+    write(&downloads, "a (1).txt", "same content");
+
+    let entries = decide_entries(
+        home.path(),
+        &SpaceSettings::default(),
+        &AtomicBool::new(false),
+    );
+
+    let extra = entries
+        .iter()
+        .find(|entry| entry.kind == EntryKind::Decide(DecideKind::Duplicate))
+        .unwrap();
+    assert!(extra.path.ends_with("a (1).txt"));
+    assert_eq!(
+        extra.facts.reason,
+        Some(DecideReason::Duplicate {
+            copy: first,
+            in_downloads: true
+        })
+    );
+}
+
+fn kinds_of(entries: &[ncrs_space::Entry]) -> Vec<(DecideKind, PathBuf)> {
+    entries
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            EntryKind::Decide(kind) => Some((kind.clone(), entry.path.clone())),
+            EntryKind::Catalog(_) | EntryKind::Worktree(_) => None,
+        })
+        .collect()
+}
+
+fn fill(path: &Path, len: usize) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, vec![b'x'; len]).unwrap();
+}
+
+#[test]
+fn session_logs_backups_and_models_are_named_kinds_at_their_exact_places() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path();
+    fill(&root.join(".claude-cosmic/projects/p/a.jsonl"), 100);
+    fill(&root.join(".claude/projects/q/b.jsonl"), 100);
+    fill(&root.join("Backups/disk/a"), 100);
+    fill(
+        &root.join("Library/Application Support/MobileSync/Backup/id/a"),
+        100,
+    );
+    fill(&root.join(".cache/huggingface/hub/m.bin"), 100);
+    fill(&root.join(".cache/ncrs-model-test/m.bin"), 100);
+    fill(&root.join(".cache/other-tool/x"), 100);
+    let settings = SpaceSettings {
+        never_touch: Vec::new(),
+        ..SpaceSettings::default()
+    };
+
+    let entries = decide_entries(root, &settings, &AtomicBool::new(false));
+    let found = kinds_of(&entries);
+
+    let of = |kind: DecideKind| -> Vec<PathBuf> {
+        found
+            .iter()
+            .filter(|(found, _)| *found == kind)
+            .map(|(_, path)| path.strip_prefix(root).unwrap().to_path_buf())
+            .collect()
+    };
+    let mut logs = of(DecideKind::SessionLogs);
+    logs.sort();
+    assert_eq!(
+        logs,
+        [
+            PathBuf::from(".claude/projects"),
+            PathBuf::from(".claude-cosmic/projects")
+        ]
+    );
+    let mut backups = of(DecideKind::Backups);
+    backups.sort();
+    assert_eq!(
+        backups,
+        [
+            PathBuf::from("Backups"),
+            PathBuf::from("Library/Application Support/MobileSync/Backup")
+        ]
+    );
+    let mut models = of(DecideKind::ModelCache);
+    models.sort();
+    assert_eq!(
+        models,
+        [
+            PathBuf::from(".cache/huggingface"),
+            PathBuf::from(".cache/ncrs-model-test")
+        ]
+    );
+    assert!(found
+        .iter()
+        .all(|(kind, _)| *kind != DecideKind::BigFolder && *kind != DecideKind::Simulators));
+}
+
+#[test]
+fn a_never_touch_folder_hides_the_named_kind_below_it() {
+    let home = tempfile::tempdir().unwrap();
+    fill(&home.path().join("Backups/disk/a"), 100);
+    fill(&home.path().join(".claude/projects/q/b.jsonl"), 100);
+    let settings = SpaceSettings {
+        never_touch: vec![home.path().join("Backups")],
+        ..SpaceSettings::default()
+    };
+
+    let found = kinds_of(&decide_entries(
+        home.path(),
+        &settings,
+        &AtomicBool::new(false),
+    ));
+
+    assert!(found.iter().all(|(kind, _)| *kind != DecideKind::Backups));
+    assert!(found
+        .iter()
+        .any(|(kind, _)| *kind == DecideKind::SessionLogs));
+}
+
+#[test]
+fn the_simulator_entry_may_not_go_to_the_trash_as_a_whole() {
+    assert!(!DecideKind::Simulators.can_trash());
+    assert!(DecideKind::Backups.can_trash());
+    assert!(DecideKind::SessionLogs.can_trash());
 }

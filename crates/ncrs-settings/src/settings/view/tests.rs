@@ -752,8 +752,16 @@ fn the_index_page_promises_background_work_only_while_there_is_some_left() {
 fn the_platz_page_lists_its_rows_and_the_store_build_swaps_two_of_them() {
     let state = state_of("");
     let words = rows_of(SettingsFeature::Space, &state, Language::English);
-    assert!(words.contains(&Language::English.text(Msg::SettingsSpaceWarnFrom).to_owned()));
-    assert!(words.contains(&Language::English.text(Msg::SettingsSpaceShowWorktrees).to_owned()));
+    assert!(words.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceWarnFrom)
+            .to_owned()
+    ));
+    assert!(words.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceShowWorktrees)
+            .to_owned()
+    ));
 
     let store = SettingsState::new(
         false,
@@ -761,7 +769,11 @@ fn the_platz_page_lists_its_rows_and_the_store_build_swaps_two_of_them() {
         true,
     );
     let in_store = rows_of(SettingsFeature::Space, &store, Language::English);
-    assert!(!in_store.contains(&Language::English.text(Msg::SettingsSpaceShowWorktrees).to_owned()));
+    assert!(!in_store.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceShowWorktrees)
+            .to_owned()
+    ));
 }
 
 /// Named for CI, which compares pixels only on macOS.

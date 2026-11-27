@@ -1,7 +1,7 @@
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::checks::Skip;
 
@@ -11,6 +11,10 @@ pub struct LogRow {
     pub size: u64,
     /// The bytes freed, or why the entry was skipped.
     pub outcome: Result<u64, Skip>,
+    /// When the folder was last used, as the scan saw it.
+    pub last_used: Option<SystemTime>,
+    /// The in-use check got a real answer: no tool of the folder ran and nothing had it open.
+    pub use_checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,8 +73,124 @@ pub fn append_log(dir: &Path, log: &RunLog) -> io::Result<()> {
             row.path.display(),
             row.size
         )?;
+        if row.outcome.is_ok() {
+            let last_used = row
+                .last_used
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map_or_else(|| "-".to_owned(), |since| since.as_secs().to_string());
+            let checked = if row.use_checked {
+                "use-checked"
+            } else {
+                "use-unchecked"
+            };
+            writeln!(
+                out,
+                "# detail\t{}\t{checked}\t{last_used}",
+                row.path.display()
+            )?;
+        }
     }
     Ok(())
+}
+
+/// One run read back from a log file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoggedRun {
+    pub started: SystemTime,
+    pub finished: SystemTime,
+    pub freed: u64,
+    pub rows: Vec<LoggedRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoggedRow {
+    pub when: SystemTime,
+    pub path: PathBuf,
+    pub size: u64,
+    /// The bytes freed, or why it was skipped; a reason the log words do not match is `Failed`.
+    pub outcome: Result<u64, Skip>,
+    pub use_checked: bool,
+    pub last_used: Option<SystemTime>,
+}
+
+/// The runs of a log file in file order, each with its rows in the order they were written.
+/// Lines of another shape are ignored; rows before the first run header make a run with
+/// unknown times.
+pub fn parse_log(text: &str) -> Vec<LoggedRun> {
+    let from_seconds = |seconds: u64| UNIX_EPOCH + Duration::from_secs(seconds);
+    let mut runs: Vec<LoggedRun> = Vec::new();
+    for line in text.lines() {
+        let mut parts = line.split('\t');
+        let first = parts.next().unwrap_or_default();
+        if first == "# run" {
+            let value = |key: &str, field: Option<&str>| -> u64 {
+                field
+                    .and_then(|field| field.strip_prefix(key))
+                    .and_then(|number| number.parse().ok())
+                    .unwrap_or(0)
+            };
+            let started = value("started=", parts.next());
+            let finished = value("finished=", parts.next());
+            let freed = value("freed=", parts.next());
+            runs.push(LoggedRun {
+                started: from_seconds(started),
+                finished: from_seconds(finished),
+                freed,
+                rows: Vec::new(),
+            });
+        } else if first == "# detail" {
+            let path = parts.next().map(PathBuf::from);
+            let checked = parts.next() == Some("use-checked");
+            let last_used = parts
+                .next()
+                .and_then(|seconds| seconds.parse().ok())
+                .map(from_seconds);
+            let row = runs.last_mut().and_then(|run| {
+                run.rows
+                    .iter_mut()
+                    .rev()
+                    .find(|row| Some(&row.path) == path.as_ref())
+            });
+            if let Some(row) = row {
+                row.use_checked = checked;
+                row.last_used = last_used;
+            }
+        } else if let Some(row) = parse_row(line, from_seconds) {
+            match runs.last_mut() {
+                Some(run) => run.rows.push(row),
+                None => runs.push(LoggedRun {
+                    started: row.when,
+                    finished: row.when,
+                    freed: 0,
+                    rows: vec![row],
+                }),
+            }
+        }
+    }
+    runs
+}
+
+fn parse_row(line: &str, from_seconds: impl Fn(u64) -> SystemTime) -> Option<LoggedRow> {
+    let mut parts = line.splitn(5, '\t');
+    let seconds: u64 = parts.next()?.parse().ok()?;
+    let path = PathBuf::from(parts.next()?);
+    let size: u64 = parts.next()?.parse().ok()?;
+    let outcome = match parts.next()? {
+        "freed" => Ok(parts.next()?.trim().parse().ok()?),
+        "skipped" => {
+            let words = parts.next()?;
+            Err(Skip::from_log_words(words).unwrap_or_else(|| Skip::Failed(words.to_owned())))
+        }
+        _ => return None,
+    };
+    Some(LoggedRow {
+        when: from_seconds(seconds),
+        path,
+        size,
+        outcome,
+        use_checked: false,
+        last_used: None,
+    })
 }
 
 fn describe(skip: &Skip) -> String {

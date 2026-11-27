@@ -14,7 +14,11 @@ use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
 use common::Fake;
-use ncrs_space::{merged_worktrees, remove_worktrees, Skip, UnknownUse};
+use std::collections::HashSet;
+
+use ncrs_space::{
+    merged_worktrees, remove_worktrees, scan_worktrees, worktree_roots, KeptWhy, Skip, UnknownUse,
+};
 use tempfile::TempDir;
 
 fn git(folder: &Path, args: &[&str]) {
@@ -147,4 +151,58 @@ fn a_worktree_in_use_stays() {
 
     assert!(matches!(log.rows[0].outcome, Err(Skip::FolderOpen(_))));
     assert!(linked.exists());
+}
+
+#[test]
+fn an_unmerged_worktree_is_counted_as_open_and_a_dirty_one_as_changes() {
+    let (_dir, repo, linked) = merged();
+    std::fs::write(linked.join("c.txt"), "c\n").unwrap();
+    git(&linked, &["add", "."]);
+    git(&linked, &["commit", "-q", "-m", "more"]);
+
+    let found = scan_worktrees(&[repo.clone()], &stop());
+
+    assert!(found.merged.is_empty());
+    assert_eq!(found.kept.len(), 1);
+    assert_eq!(found.kept[0].why, KeptWhy::Open);
+    assert_eq!(found.kept[0].branch.as_deref(), Some("feat"));
+    assert!(found.kept[0].size.bytes > 0);
+
+    let (_dir2, repo2, linked2) = merged();
+    std::fs::write(linked2.join("scratch.txt"), "x\n").unwrap();
+    let dirty = scan_worktrees(&[repo2], &stop());
+    assert_eq!(dirty.kept.len(), 1);
+    assert_eq!(dirty.kept[0].why, KeptWhy::Changes);
+}
+
+#[test]
+fn the_roots_count_merged_kept_and_in_use_per_folder() {
+    let (_dir, repo, linked) = merged();
+    let found = scan_worktrees(&[repo], &stop());
+    assert_eq!(found.merged.len(), 1);
+
+    let free = worktree_roots(&found.merged, &HashSet::new(), &found.kept);
+    assert_eq!(free.len(), 1);
+    assert_eq!(free[0].folder, linked.parent().unwrap());
+    assert_eq!(free[0].total.count, 1);
+    assert_eq!(free[0].merged.count, 1);
+    assert_eq!(free[0].kept.count, 0);
+
+    let held: HashSet<PathBuf> = [found.merged[0].path.clone()].into();
+    let busy = worktree_roots(&found.merged, &held, &found.kept);
+    assert_eq!(busy[0].merged.count, 0);
+    assert_eq!(busy[0].kept.count, 1);
+    assert_eq!(busy[0].kept_because(KeptWhy::InUse).count, 1);
+    assert_eq!(busy[0].kept_because(KeptWhy::Open).count, 0);
+    assert_eq!(busy[0].total.bytes, found.merged[0].size.bytes);
+}
+
+#[test]
+fn a_removed_worktree_log_row_says_the_check_answered() {
+    let (_dir, repo, _linked) = merged();
+    let found = merged_worktrees(&[repo], &stop());
+
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip);
+
+    assert!(log.rows[0].use_checked);
 }

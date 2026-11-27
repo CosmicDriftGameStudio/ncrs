@@ -27,6 +27,11 @@ impl Os {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CatalogId {
     CargoTarget,
+    /// A build folder in the shared target folder (`~/.cargo-target/<repo>-<worktree>`) of a
+    /// worktree that is merged or gone.
+    CargoTargetHome,
+    /// `node_modules` of a project that was not touched for a long time.
+    NodeModulesStale,
     Sccache,
     CargoRegistryCache,
     Yarn,
@@ -50,6 +55,8 @@ impl CatalogId {
     pub fn name(self) -> &'static str {
         match self {
             Self::CargoTarget => "cargo-target",
+            Self::CargoTargetHome => "cargo-target-home",
+            Self::NodeModulesStale => NODE_MODULES_STALE,
             Self::Sccache => "sccache",
             Self::CargoRegistryCache => "cargo-registry-cache",
             Self::Yarn => "yarn",
@@ -70,7 +77,10 @@ impl CatalogId {
     /// Process names (without `.exe`, compared ignoring case) of the tools that write the folder.
     pub fn tools(self) -> &'static [&'static str] {
         match self {
-            Self::CargoTarget | Self::CargoRegistryCache => &["cargo", "rustc"],
+            Self::CargoTarget | Self::CargoTargetHome | Self::CargoRegistryCache => {
+                &["cargo", "rustc"]
+            }
+            Self::NodeModulesStale => &["yarn", "npm", "pnpm", "bun"],
             Self::Sccache => &["sccache"],
             Self::Yarn => &["yarn", "node"],
             Self::Npm => &["npm", "npx", "node"],
@@ -86,9 +96,31 @@ impl CatalogId {
                 "go-build" => &["go"],
                 "uv" => &["uv"],
                 "pre-commit" => &["pre-commit"],
+                "Google" | "google-chrome" => &["Google Chrome", "Google Chrome Helper", "chrome"],
                 _ => &[],
             },
             Self::WinTempOld | Self::OwnRegenerable => &[],
+        }
+    }
+}
+
+impl CatalogId {
+    /// The command that makes the folder again, as shown after a delete ("Neu erzeugt durch ...").
+    pub fn regenerated_by(self) -> &'static str {
+        match self {
+            Self::CargoTarget | Self::CargoTargetHome => "cargo build",
+            Self::Sccache => "cargo build",
+            Self::CargoRegistryCache => "cargo fetch",
+            Self::Yarn | Self::NodeModulesStale => "yarn install",
+            Self::Npm => "npm install",
+            Self::Bun => "bun install",
+            Self::Pnpm => "pnpm install",
+            Self::Pip => "pip install",
+            Self::Homebrew => "brew install",
+            Self::DerivedData => "xcodebuild",
+            Self::UnavailableSimulators => "xcrun simctl",
+            Self::Gradle => "gradle build",
+            Self::AppCache(_) | Self::WinTempOld | Self::OwnRegenerable => "",
         }
     }
 }
@@ -117,17 +149,45 @@ const KNOWN_APP_CACHES: &[&str] = &[
     "uv",
     "mypy",
     "JetBrains",
+    "Google",
+    "google-chrome",
+];
+
+pub use ncrs_config::space::NODE_MODULES_STALE;
+
+/// `node_modules` counts as stale when nothing of the project changed for this long.
+const NODE_MODULES_STALE_AFTER: Duration = Duration::from_secs(90 * 24 * 60 * 60);
+const LOCK_FILES: [&str; 5] = [
+    "package.json",
+    "yarn.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "bun.lock",
 ];
 
 const TEMP_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// Exact paths only, and only those that exist. A path under `never_touch` is dropped.
+/// Without the merged worktrees, only removed worktrees count as old ones.
 pub fn catalog(
     os: Os,
     home: &Path,
     env: &dyn Fn(&str) -> Option<OsString>,
     repos: &[PathBuf],
     settings: &SpaceSettings,
+) -> Vec<Place> {
+    catalog_for(os, home, env, repos, settings, &[])
+}
+
+/// [`catalog`] that knows which worktrees are merged (`merged`), so their build folders in the
+/// shared target folder are listed as [`CatalogId::CargoTargetHome`].
+pub fn catalog_for(
+    os: Os,
+    home: &Path,
+    env: &dyn Fn(&str) -> Option<OsString>,
+    repos: &[PathBuf],
+    settings: &SpaceSettings,
+    merged: &[PathBuf],
 ) -> Vec<Place> {
     let env_path = |name: &str| {
         env(name)
@@ -239,6 +299,7 @@ pub fn catalog(
             add(CatalogId::CargoTarget, project.join("target"), false);
         }
     }
+    let known_repos = known_repos(repos);
     for shared in [
         env_path("CARGO_TARGET_DIR"),
         Some(home.join(".cargo-target")),
@@ -246,7 +307,30 @@ pub fn catalog(
     .into_iter()
     .flatten()
     {
-        add(CatalogId::CargoTarget, shared, false);
+        if is_one_target(&shared) {
+            add(CatalogId::CargoTarget, shared, false);
+            continue;
+        }
+        for child in subfolders(&shared) {
+            let id = shared_target_id(&child, &known_repos, merged);
+            add(id, child, false);
+        }
+    }
+
+    if !settings
+        .catalog_off
+        .iter()
+        .any(|off| off == NODE_MODULES_STALE)
+    {
+        for project in project_folders(repos) {
+            if is_stale_node_modules(&project) {
+                add(
+                    CatalogId::NodeModulesStale,
+                    project.join("node_modules"),
+                    false,
+                );
+            }
+        }
     }
 
     if os == Os::Windows {
@@ -320,4 +404,123 @@ fn old_children(folder: &Path) -> Vec<PathBuf> {
         })
         .map(|entry| entry.path())
         .collect()
+}
+
+/// The project a Rust build folder belongs to: the folder holding `target`, or the folder
+/// below the shared target folder. `None` for the shared folder itself.
+pub fn cargo_project_name(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    if name == "target" {
+        return path
+            .parent()?
+            .file_name()
+            .and_then(|parent| parent.to_str())
+            .map(str::to_owned);
+    }
+    (name != ".cargo-target").then(|| name.to_owned())
+}
+
+/// A repository by its main folder, with the linked worktrees that exist.
+struct KnownRepo {
+    name: String,
+    worktrees: Vec<PathBuf>,
+}
+
+fn known_repos(repos: &[PathBuf]) -> Vec<KnownRepo> {
+    let mut known: Vec<KnownRepo> = Vec::new();
+    for repo in repos {
+        let admin = repo.join(".git/worktrees");
+        let Some(name) = repo
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|_| admin.parent().is_some_and(Path::is_dir))
+        else {
+            continue;
+        };
+        let worktrees = std::fs::read_dir(admin)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| std::fs::read_to_string(entry.path().join("gitdir")).ok())
+            .filter_map(|line| PathBuf::from(line.trim()).parent().map(Path::to_path_buf))
+            .collect();
+        if !known.iter().any(|other| other.name == name) {
+            known.push(KnownRepo {
+                name: name.to_owned(),
+                worktrees,
+            });
+        }
+    }
+    known
+}
+
+/// Whether the folder is a target folder itself, not a folder of target folders.
+fn is_one_target(folder: &Path) -> bool {
+    folder.join("debug").is_dir()
+        || folder.join("release").is_dir()
+        || folder.join("CACHEDIR.TAG").is_file()
+}
+
+fn subfolders(folder: &Path) -> Vec<PathBuf> {
+    let mut children: Vec<PathBuf> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect();
+    children.sort();
+    children
+}
+
+/// `<repo>` is the current project's; `<repo>-<worktree>` is of an old worktree when that
+/// worktree is merged or no longer exists.
+fn shared_target_id(child: &Path, repos: &[KnownRepo], merged: &[PathBuf]) -> CatalogId {
+    let Some(name) = child.file_name().and_then(|name| name.to_str()) else {
+        return CatalogId::CargoTarget;
+    };
+    if repos.iter().any(|repo| repo.name == name) {
+        return CatalogId::CargoTarget;
+    }
+    let owner = repos
+        .iter()
+        .filter_map(|repo| {
+            let worktree = name.strip_prefix(&repo.name)?.strip_prefix('-')?;
+            Some((repo, worktree))
+        })
+        .max_by_key(|(repo, _)| repo.name.len());
+    let Some((repo, worktree_name)) = owner else {
+        return CatalogId::CargoTarget;
+    };
+    let existing = repo.worktrees.iter().find(|worktree| {
+        worktree
+            .file_name()
+            .and_then(|folder| folder.to_str())
+            .is_some_and(|folder| folder == worktree_name)
+    });
+    match existing {
+        Some(worktree) if !merged.contains(worktree) => CatalogId::CargoTarget,
+        Some(_) | None => CatalogId::CargoTargetHome,
+    }
+}
+
+/// `node_modules` beside a `package.json`, with nothing of the project changed for 90 days.
+fn is_stale_node_modules(project: &Path) -> bool {
+    let modules = project.join("node_modules");
+    if !project.join("package.json").is_file() || !exists_exactly(&modules, false) {
+        return false;
+    }
+    let newest = std::iter::once(modules)
+        .chain(LOCK_FILES.iter().map(|name| project.join(name)))
+        .filter_map(|path| {
+            std::fs::metadata(path)
+                .and_then(|found| found.modified())
+                .ok()
+        })
+        .max();
+    newest.is_some_and(|newest| {
+        SystemTime::now()
+            .duration_since(newest)
+            .is_ok_and(|age| age > NODE_MODULES_STALE_AFTER)
+    })
 }

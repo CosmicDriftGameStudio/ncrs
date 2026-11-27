@@ -7,7 +7,8 @@ use std::time::{Duration, SystemTime};
 use ncrs_fs::measure_folder;
 use ncrs_intake::hash_path;
 
-use super::apps::{app_name_of_installer, InstalledApps};
+use super::apps::{app_name_of_installer, compare_versions, version_of_installer, InstalledApps};
+use crate::facts::InstalledApp;
 
 const INSTALLER_EXTENSIONS: [&str; 6] = ["dmg", "pkg", "xip", "exe", "msi", "appimage"];
 const ARCHIVE_SUFFIXES: [&str; 9] = [
@@ -15,6 +16,12 @@ const ARCHIVE_SUFFIXES: [&str; 9] = [
 ];
 /// Names of downloads that are not finished yet.
 const PARTIAL_EXTENSIONS: [&str; 4] = ["crdownload", "part", "download", "partial"];
+/// A copy elsewhere is only looked for from this size on, and in at most this many files.
+const ELSEWHERE_MIN_BYTES: u64 = 4096;
+const ELSEWHERE_MAX_FILES: usize = 200_000;
+const ELSEWHERE_MAX_DEPTH: usize = 8;
+/// Only this many items ask the system when they were opened; each question is one process.
+const USAGE_ITEMS_MAX: usize = 300;
 const YEAR: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// One thing in the Downloads folder, as it was when it was looked at.
@@ -26,6 +33,9 @@ pub struct DownloadItem {
     /// The last time it was opened or changed, whichever is later.
     pub touched: Option<SystemTime>,
     pub is_folder: bool,
+    /// When the system says it was opened last (macOS Spotlight); `None` where it does not know.
+    pub last_opened: Option<SystemTime>,
+    pub open_count: Option<u32>,
 }
 
 /// An item and the thing that makes it redundant: the installed app for an
@@ -34,6 +44,8 @@ pub struct DownloadItem {
 pub struct Matched {
     pub item: DownloadItem,
     pub with: PathBuf,
+    /// For an installer: the app, its version and how it compares. `None` for the others.
+    pub installed: Option<InstalledApp>,
 }
 
 /// Files with the same content. `keep` is the oldest; only `extra` is offered.
@@ -51,6 +63,8 @@ pub struct DownloadGroups {
     pub installed: Vec<Matched>,
     pub unpacked: Vec<Matched>,
     pub duplicates: Vec<DuplicateSet>,
+    /// Items whose content also lies outside Downloads; `with` is that copy.
+    pub elsewhere: Vec<Matched>,
     pub untouched_year: Vec<DownloadItem>,
     pub rest: Vec<DownloadItem>,
 }
@@ -72,6 +86,18 @@ pub fn sort_downloads_at(
     stop: &AtomicBool,
     now: SystemTime,
 ) -> DownloadGroups {
+    sort_downloads_with(folder, apps, stop, now, &[])
+}
+
+/// [`sort_downloads_at`] that also looks for copies of the files below `also_look_in`
+/// (for example `~/Documents`), so a copy kept outside Downloads makes the download redundant.
+pub fn sort_downloads_with(
+    folder: &Path,
+    apps: &dyn InstalledApps,
+    stop: &AtomicBool,
+    now: SystemTime,
+    also_look_in: &[PathBuf],
+) -> DownloadGroups {
     let mut groups = DownloadGroups::default();
     let mut items = list_items(folder, stop);
     let folders: HashMap<String, PathBuf> = items
@@ -84,7 +110,8 @@ pub fn sort_downloads_at(
         if let Some(app) = installed_app_of(item, apps) {
             groups.installed.push(Matched {
                 item: item.clone(),
-                with: app,
+                with: app.path.clone(),
+                installed: Some(app),
             });
             return false;
         }
@@ -92,6 +119,7 @@ pub fn sort_downloads_at(
             groups.unpacked.push(Matched {
                 item: item.clone(),
                 with: unpacked,
+                installed: None,
             });
             return false;
         }
@@ -107,6 +135,17 @@ pub fn sort_downloads_at(
     let remaining: Vec<DownloadItem> = items
         .iter()
         .filter(|item| !extras.contains(item.path.as_path()))
+        .cloned()
+        .collect();
+    groups.elsewhere = copies_elsewhere(&remaining, also_look_in, stop);
+    let copied: HashSet<&Path> = groups
+        .elsewhere
+        .iter()
+        .map(|matched| matched.item.path.as_path())
+        .collect();
+    let remaining: Vec<DownloadItem> = remaining
+        .iter()
+        .filter(|item| !copied.contains(item.path.as_path()))
         .cloned()
         .collect();
 
@@ -164,20 +203,30 @@ fn list_items(folder: &Path, stop: &AtomicBool) -> Vec<DownloadItem> {
             meta.len()
         };
         let modified = meta.modified().ok();
-        let touched = [modified, meta.accessed().ok()].into_iter().flatten().max();
+        let usage = if items.len() < USAGE_ITEMS_MAX {
+            ncrs_os_probe::file_usage(&path)
+        } else {
+            ncrs_os_probe::FileUsage::default()
+        };
+        let touched = [modified, meta.accessed().ok(), usage.last_opened]
+            .into_iter()
+            .flatten()
+            .max();
         items.push(DownloadItem {
             path,
             size,
             modified,
             touched,
             is_folder: meta.is_dir(),
+            last_opened: usage.last_opened,
+            open_count: usage.open_count,
         });
     }
     items.sort_by(|first, second| first.path.cmp(&second.path));
     items
 }
 
-fn installed_app_of(item: &DownloadItem, apps: &dyn InstalledApps) -> Option<PathBuf> {
+fn installed_app_of(item: &DownloadItem, apps: &dyn InstalledApps) -> Option<InstalledApp> {
     if item.is_folder {
         return None;
     }
@@ -185,7 +234,97 @@ fn installed_app_of(item: &DownloadItem, apps: &dyn InstalledApps) -> Option<Pat
     if !INSTALLER_EXTENSIONS.contains(&extension.as_str()) {
         return None;
     }
-    apps.find(&app_name_of_installer(&name_of(&item.path)?)?)
+    let file_name = name_of(&item.path)?;
+    let path = apps.find(&app_name_of_installer(&file_name)?)?;
+    let version = apps.version(&path);
+    let installer_version = version_of_installer(&file_name);
+    Some(InstalledApp {
+        relation: compare_versions(version.as_deref(), installer_version.as_deref()),
+        path,
+        version,
+        installer_version,
+    })
+}
+
+/// Files below `roots` with the same content as an item. Hidden folders, links and
+/// `node_modules` are not entered; the walk ends after a fixed number of files.
+fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool) -> Vec<Matched> {
+    let wanted: HashSet<u64> = items
+        .iter()
+        .filter(|item| !item.is_folder && item.size >= ELSEWHERE_MIN_BYTES)
+        .map(|item| item.size)
+        .collect();
+    if wanted.is_empty() || roots.is_empty() {
+        return Vec::new();
+    }
+    let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+    let mut seen = 0;
+    for root in roots {
+        walk_for_sizes(root, &wanted, &mut by_size, &mut seen, 0, stop);
+    }
+    let mut matched = Vec::new();
+    for item in items.iter().filter(|item| !item.is_folder) {
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        let Some(candidates) = by_size.get_mut(&item.size) else {
+            continue;
+        };
+        candidates.sort();
+        let Ok(hash) = hash_path(&item.path) else {
+            continue;
+        };
+        let copy = candidates
+            .iter()
+            .find(|candidate| hash_path(candidate).is_ok_and(|other| other == hash));
+        if let Some(copy) = copy {
+            matched.push(Matched {
+                item: item.clone(),
+                with: copy.clone(),
+                installed: None,
+            });
+        }
+    }
+    matched
+}
+
+fn walk_for_sizes(
+    folder: &Path,
+    wanted: &HashSet<u64>,
+    found: &mut HashMap<u64, Vec<PathBuf>>,
+    seen: &mut usize,
+    depth: usize,
+    stop: &AtomicBool,
+) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if stop.load(Ordering::Relaxed) || *seen >= ELSEWHERE_MAX_FILES {
+            return;
+        }
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        let hidden =
+            name_of(&path).is_none_or(|name| name.starts_with('.') || name == "node_modules");
+        if kind.is_symlink() || hidden {
+            continue;
+        }
+        if kind.is_dir() {
+            if depth < ELSEWHERE_MAX_DEPTH {
+                walk_for_sizes(&path, wanted, found, seen, depth + 1, stop);
+            }
+        } else if kind.is_file() {
+            *seen += 1;
+            if let Ok(meta) = entry.metadata() {
+                if wanted.contains(&meta.len()) {
+                    found.entry(meta.len()).or_default().push(path);
+                }
+            }
+        }
+    }
 }
 
 fn unpacked_folder_of(item: &DownloadItem, folders: &HashMap<String, PathBuf>) -> Option<PathBuf> {

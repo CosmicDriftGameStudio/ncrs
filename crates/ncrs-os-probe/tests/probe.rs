@@ -5,7 +5,11 @@ use ncrs_os_probe::{folder_in_use, running_processes, volume_space, FolderUse, U
 
 const GENEROUS: Duration = Duration::from_secs(60);
 
-#[cfg(any(all(target_os = "macos", not(feature = "sandbox")), target_os = "linux", windows))]
+#[cfg(any(
+    all(target_os = "macos", not(feature = "sandbox")),
+    target_os = "linux",
+    windows
+))]
 #[test]
 fn a_file_this_process_holds_open_makes_the_folder_held_by_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -14,13 +18,21 @@ fn a_file_this_process_holds_open_makes_the_folder_held_by_it() {
 
     match folder_in_use(dir.path(), GENEROUS) {
         FolderUse::Held(holders) => {
-            assert!(holders.iter().any(|holder| holder.pid == std::process::id()), "{holders:?}");
+            assert!(
+                holders
+                    .iter()
+                    .any(|holder| holder.pid == std::process::id()),
+                "{holders:?}"
+            );
         }
         other => panic!("expected Held, got {other:?}"),
     }
 }
 
-#[cfg(any(all(target_os = "macos", not(feature = "sandbox")), target_os = "linux"))]
+#[cfg(any(
+    all(target_os = "macos", not(feature = "sandbox")),
+    target_os = "linux"
+))]
 #[test]
 fn a_process_with_its_working_directory_in_the_folder_holds_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -36,13 +48,20 @@ fn a_process_with_its_working_directory_in_the_folder_holds_it() {
 
     match answer {
         FolderUse::Held(holders) => {
-            assert!(holders.iter().any(|holder| holder.pid == child.id()), "{holders:?}");
+            assert!(
+                holders.iter().any(|holder| holder.pid == child.id()),
+                "{holders:?}"
+            );
         }
         other => panic!("expected Held, got {other:?}"),
     }
 }
 
-#[cfg(any(all(target_os = "macos", not(feature = "sandbox")), target_os = "linux", windows))]
+#[cfg(any(
+    all(target_os = "macos", not(feature = "sandbox")),
+    target_os = "linux",
+    windows
+))]
 #[test]
 fn a_folder_nobody_uses_is_free() {
     let dir = tempfile::tempdir().unwrap();
@@ -51,7 +70,11 @@ fn a_folder_nobody_uses_is_free() {
     assert_eq!(folder_in_use(dir.path(), GENEROUS), FolderUse::Free);
 }
 
-#[cfg(any(all(target_os = "macos", not(feature = "sandbox")), target_os = "linux", windows))]
+#[cfg(any(
+    all(target_os = "macos", not(feature = "sandbox")),
+    target_os = "linux",
+    windows
+))]
 #[test]
 fn a_zero_limit_ends_as_timed_out_or_with_the_real_answer_never_as_a_failure() {
     let dir = tempfile::tempdir().unwrap();
@@ -80,7 +103,9 @@ fn the_store_build_cannot_look() {
 fn the_process_list_holds_this_process() {
     let processes = running_processes().unwrap();
 
-    assert!(processes.iter().any(|holder| holder.pid == std::process::id()));
+    assert!(processes
+        .iter()
+        .any(|holder| holder.pid == std::process::id()));
 }
 
 #[test]

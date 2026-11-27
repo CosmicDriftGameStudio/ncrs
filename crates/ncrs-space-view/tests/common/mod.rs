@@ -54,6 +54,7 @@ pub fn entry(path: &str, group: Group, kind: EntryKind, bytes: u64) -> Entry {
         modified: Some(now() - Duration::from_secs(5 * 86_400)),
         device: None,
         held_by: Vec::new(),
+        facts: Default::default(),
     }
 }
 
@@ -99,6 +100,8 @@ pub fn scan_of(entries: Vec<Entry>, processes_known: bool) -> Arc<Scan> {
         entries,
         partial: false,
         processes_known,
+        volume_name: String::new(),
+        worktree_roots: Vec::new(),
         measured_at: now() - Duration::from_secs(120),
         took: Duration::from_millis(4_200),
     })

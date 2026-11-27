@@ -26,9 +26,11 @@ mod platform;
 mod platform;
 
 mod processes;
+mod usage;
 mod volume;
 
 pub use processes::running_processes;
+pub use usage::{file_usage, FileUsage};
 pub use volume::volume_space;
 
 /// A process, by id and executable name.
@@ -79,9 +81,9 @@ pub fn folder_in_use(folder: &Path, limit: Duration) -> FolderUse {
     match receiver.recv_timeout(limit) {
         Ok(answer) => answer,
         Err(RecvTimeoutError::Timeout) => FolderUse::Unknown(UnknownWhy::TimedOut),
-        Err(RecvTimeoutError::Disconnected) => {
-            FolderUse::Unknown(UnknownWhy::Failed("the check stopped without an answer".to_owned()))
-        }
+        Err(RecvTimeoutError::Disconnected) => FolderUse::Unknown(UnknownWhy::Failed(
+            "the check stopped without an answer".to_owned(),
+        )),
     }
 }
 

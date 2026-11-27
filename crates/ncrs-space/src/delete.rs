@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 
 use crate::catalog::CatalogId;
-use crate::checks::{check_before_delete, ProcessSource, Skip, UnknownUse};
+use crate::checks::{check_entry, ProcessSource, Skip, UnknownUse};
 use crate::log::{LogRow, RunLog};
 use crate::scan::{Entry, EntryKind, Group};
 
@@ -20,11 +20,13 @@ pub fn delete_safe(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        let outcome = delete_one(entry, probes, unknown);
+        let (outcome, use_checked) = delete_one(entry, probes, unknown);
         let row = LogRow {
             path: entry.path.clone(),
             size: entry.size.bytes,
             outcome,
+            last_used: entry.facts.last_used,
+            use_checked,
         };
         on_row(&row);
         log.rows.push(row);
@@ -33,11 +35,22 @@ pub fn delete_safe(
     log
 }
 
-fn delete_one(entry: &Entry, probes: &dyn ProcessSource, unknown: UnknownUse) -> Result<u64, Skip> {
+/// The outcome, and whether the in-use check got a real answer.
+fn delete_one(
+    entry: &Entry,
+    probes: &dyn ProcessSource,
+    unknown: UnknownUse,
+) -> (Result<u64, Skip>, bool) {
     if entry.group != Group::Safe {
-        return Err(Skip::Failed("not a safe entry".to_owned()));
+        return (Err(Skip::Failed("not a safe entry".to_owned())), false);
     }
-    check_before_delete(entry, probes, unknown)?;
+    match check_entry(entry, probes, unknown) {
+        Ok(answered) => (remove(entry), answered),
+        Err(skip) => (Err(skip), false),
+    }
+}
+
+fn remove(entry: &Entry) -> Result<u64, Skip> {
     match &entry.kind {
         EntryKind::Catalog(CatalogId::UnavailableSimulators) => delete_unavailable_simulators()?,
         EntryKind::Catalog(_) => {

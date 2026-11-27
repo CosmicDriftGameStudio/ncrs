@@ -27,14 +27,16 @@ pub fn error_line(content: &str) -> (Option<usize>, String) {
 fn a_missing_file_gives_the_defaults() {
     let dir = tempfile::tempdir().unwrap();
     assert_eq!(
-        load(&dir.path().join("nope.toml")).unwrap(),
+        load_with_home(&dir.path().join("nope.toml"), None).unwrap(),
         Config::default()
     );
 }
 
 #[test]
 fn an_empty_file_gives_the_defaults() {
-    assert_eq!(load_text(""), Config::default());
+    let dir = tempfile::tempdir().unwrap();
+    let loaded = load_with_home(&write(&dir, b""), None).unwrap();
+    assert_eq!(loaded, Config::default());
 }
 
 #[test]

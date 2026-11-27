@@ -11,6 +11,14 @@ pub fn catalog_msgs(id: CatalogId) -> (Msg, Msg) {
             Msg::SpaceCatalogCargoTarget,
             Msg::SpaceCatalogCargoTargetWhy,
         ),
+        CatalogId::CargoTargetHome => (
+            Msg::SpaceCatalogCargoTargetHome,
+            Msg::SpaceCatalogCargoTargetHomeWhy,
+        ),
+        CatalogId::NodeModulesStale => (
+            Msg::SpaceCatalogNodeModulesStale,
+            Msg::SpaceCatalogNodeModulesStaleWhy,
+        ),
         CatalogId::Sccache => (Msg::SpaceCatalogSccache, Msg::SpaceCatalogSccacheWhy),
         CatalogId::CargoRegistryCache => (
             Msg::SpaceCatalogCargoRegistryCache,
