@@ -33,7 +33,9 @@ const END_MIN_SECONDS = 4;
 const CREDITS_SECONDS = 10;
 const WALL_MIN_SECONDS = 4;
 const WALL_DRIFT_PER_SECOND = 190;
-const SOCIAL_SCENES = ["f1", "copy", "search"];
+const SOCIAL_SCENES = ["f1", "filing", "git"];
+/** Seconds of crossfade where a looped track meets its second copy. */
+const MUSIC_LOOP_FADE = 3;
 const SOCIAL_STEP_LIMIT = 0.8;
 const POSTER_SCENE = "panels";
 const VOICE_DELAY = 0.15;
@@ -236,8 +238,10 @@ function finish(silent: string, target: string, length: number, items: Item[], v
   const lead = items[0].type === "ident" ? items[0].dur : 0;
   const duck = (voice?.windows ?? []).map(([from, to]) => `volume=${DUCKED_MUSIC}:enable='between(t,${from.toFixed(3)},${to.toFixed(3)})'`).join(",");
   const musicStart = Math.max(0, lead - 0.4);
-  if (hasMusic && musicStart + musicSeconds < length) {
-    throw new Error(`music.mp3 is ${musicSeconds.toFixed(1)} s, the cut needs ${(length - musicStart).toFixed(1)} s of music`);
+  // A cut longer than the track plays it twice, the second copy crossfaded in under the end of the first.
+  const loops = hasMusic && musicStart + musicSeconds < length;
+  if (loops && musicStart + 2 * musicSeconds - MUSIC_LOOP_FADE < length) {
+    throw new Error(`music.mp3 is ${musicSeconds.toFixed(1)} s, the cut needs ${(length - musicStart).toFixed(1)} s of music even looped`);
   }
   const musicChain = `adelay=${Math.round(musicStart * 1000)}:all=1,afade=t=in:st=${musicStart.toFixed(3)}:d=0.8,afade=t=out:st=${(length - 1.5).toFixed(3)}:d=1.5${duck ? "," + duck : ""},apad`;
   const inputs = ["-i", silent];
@@ -250,7 +254,13 @@ function finish(silent: string, target: string, length: number, items: Item[], v
   }
   if (hasMusic) {
     inputs.push("-i", music);
-    filters.push(`[${lastInput()}:a]${musicChain}[m]`);
+    if (loops) {
+      inputs.push("-i", music);
+      filters.push(`[${lastInput() - 1}:a][${lastInput()}:a]acrossfade=d=${MUSIC_LOOP_FADE}[loop]`);
+      filters.push(`[loop]${musicChain}[m]`);
+    } else {
+      filters.push(`[${lastInput()}:a]${musicChain}[m]`);
+    }
     mixed.push("[m]");
   }
   if (lead > 0 && existsSync(identMusic)) {

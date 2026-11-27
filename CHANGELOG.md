@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-11-26
+
 ### Added
 
 - Sorting works with sources, targets and rules: several sources and several
@@ -59,6 +61,8 @@ All notable changes to this project are documented here. The format follows
 - ncrs quits cleanly while an AI model is loaded.
 - A run that was put back only in part can be put back again.
 - The idle load of 1.7.1, where Hermes kept preparing folder suggestions.
+- A long worktree path no longer pushes the Git toolbar and filter out of the
+  window, and greyed icon buttons look greyed.
 
 ## [1.7.1] — 2026-11-25
 

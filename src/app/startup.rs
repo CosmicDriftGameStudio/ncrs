@@ -597,6 +597,7 @@ impl App {
             quick_open: None,
             command_palette: None,
             recent_commands: Vec::new(),
+            repos_read_only: false,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             facts_requested_at: None,
             system_reads_scans: crate::ocr_models::system_reads_scans(),

@@ -16,7 +16,7 @@ impl App {
             home: Some(self.home.clone()),
             file: self.repos_file(),
             now: std::time::SystemTime::now(),
-            actions_available: ncrs_git::write_actions_available(),
+            actions_available: !self.repos_read_only && ncrs_git::write_actions_available(),
             sandbox_roots: self
                 .sandbox
                 .grants_dir
@@ -41,7 +41,7 @@ impl App {
                     keymap: &self.keymap,
                     home: Some(&self.home),
                     now: std::time::SystemTime::now(),
-                    actions_available: ncrs_git::write_actions_available(),
+                    actions_available: !self.repos_read_only && ncrs_git::write_actions_available(),
                     settings: &self.repos_settings,
                 };
                 ncrs_repos::view(state, ctx).map(Message::Repos)

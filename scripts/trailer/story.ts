@@ -79,12 +79,20 @@ export const story: Record<string, SceneStory> = {
     stamps: [{ text: "YOUR COLOURS.", step: 5, left: 90, top: 760, size: 140 }],
   },
   filing: {
-    camera: { cx: 960, cy: 560, zoom: 1.1 },
+    camera: { cx: 960, cy: 540, zoom: 1 },
     say: "Hermes tidies up. Scans in, folders out.",
     stamps: [
       { text: "A MESS?", step: 1, left: 90, top: 700, size: 150 },
       { text: "HERMES FILES IT.", step: 20, left: 90, top: 860, size: 120, color: AMBER },
       { text: "READY.", step: -1, left: 1250, top: 760, size: 170, color: AMBER },
+    ],
+  },
+  git: {
+    camera: { cx: 800, cy: 540, zoom: 1.2 },
+    say: "Your repos. History, branches, changes, at a glance.",
+    stamps: [
+      { text: "GIT.", step: 0, left: 90, top: 700, size: 150 },
+      { text: "ALL REPOS.", step: 1, left: 90, top: 860, size: 120, color: AMBER },
     ],
   },
 };

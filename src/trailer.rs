@@ -29,6 +29,7 @@ use crate::trailer_data::{
 use ncrs_config::keymap::KeyAction;
 
 mod filing;
+mod git;
 
 const OUTPUT_DIRECTORY: &str = "target/trailer";
 
@@ -573,5 +574,6 @@ fn trailer_frames() {
     sftp(&mut recorder);
     themes(&mut recorder);
     filing::filing(&mut recorder);
+    git::git(&mut recorder);
     recorder.finish();
 }

@@ -13,11 +13,14 @@ use ncrs_i18n::Language;
 use crate::app::{fixed_result_entry, App};
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{
-    BatchRenameMessage, FavouritesBarMessage, MenuMessage, Message, PanelMessage, PanelSide,
-    SettingField, SettingsFeature, SettingsMessage,
+    BatchRenameMessage, CommandPaletteMessage, FavouritesBarMessage, MenuMessage, Message,
+    PanelMessage, PanelSide, SettingField, SettingsFeature, SettingsMessage,
 };
+use crate::repos_scene::repos_tab;
 use crate::screenshot_scenes::{dense_document_search, filing_tab, monitor, Scenes};
 use crate::shot_file::write_screenshot_to;
+use crate::trailer_data::dense_showcase_app;
+use ncrs_config::keymap::KeyAction;
 use ncrs_core::CompareMark;
 use ncrs_search::engine::LineMatch;
 use ncrs_settings::AiCheckResult;
@@ -432,7 +435,6 @@ mod tests {
         let page = |shown: &App, file_name: &str| {
             write_screenshot_to(shown, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, file_name);
         };
-        page(&page_app().showing_git_for_test(pages.git()), "git.png");
         page(
             &page_app().showing_notes_for_test(pages.notes()),
             "notes.png",
@@ -441,10 +443,21 @@ mod tests {
             &page_app().showing_monitor_for_test(monitor(FILING_WINDOW_SIZE)),
             "monitor.png",
         );
-        page(
-            &page_app().showing_filing_for_test(filing_tab(34, false)),
-            "filing-tab.png",
-        );
+        for (suffix, language) in [("", Language::English), ("-de", Language::German)] {
+            let in_language = || page_app().in_language(language);
+            page(
+                &in_language().showing_git_for_test(pages.git()),
+                &format!("git{suffix}.png"),
+            );
+            page(
+                &in_language().showing_filing_for_test(filing_tab(34, false)),
+                &format!("filing-tab{suffix}.png"),
+            );
+            page(
+                &in_language().showing_repos_for_test(repos_tab(language)),
+                &format!("repos{suffix}.png"),
+            );
+        }
     }
 
     #[test]
@@ -452,54 +465,62 @@ mod tests {
     fn store_screenshots() {
         let pages = Scenes::new();
         for (file_prefix, language) in [("en", Language::English), ("de", Language::German)] {
-            let showcase = || showcase_app().in_language(language);
             let paged = |app: App| {
                 app.in_language(language)
                     .with_window_size_for_test(STORE_WINDOW_SIZE)
             };
 
             type Scene<'a> = (&'static str, Box<dyn Fn() -> App + 'a>);
+            let dense = || paged(dense_showcase_app());
             let scenes: [Scene<'_>; 10] = [
-                ("1-main", Box::new(showcase)),
+                ("1-main", Box::new(&dense)),
                 (
-                    "2-git",
-                    Box::new(|| paged(showcase_app()).showing_git_for_test(pages.git())),
-                ),
-                (
-                    "3-filing",
+                    "2-filing",
                     Box::new(|| {
                         paged(showcase_app()).showing_filing_for_test(filing_tab(34, false))
                     }),
                 ),
                 (
-                    "4-document-search",
+                    "3-git",
+                    Box::new(|| paged(showcase_app()).showing_git_for_test(pages.git_read_only())),
+                ),
+                (
+                    "4-repos",
+                    Box::new(|| {
+                        dense()
+                            .showing_repos_for_test(repos_tab(language))
+                            .in_sandbox_build_for_test()
+                    }),
+                ),
+                (
+                    "5-command-list",
+                    Box::new(|| {
+                        let mut listed =
+                            paged(dense_showcase_app()).with_recent_commands_for_test(&[
+                                KeyAction::GitView,
+                                KeyAction::Repos,
+                                KeyAction::Search,
+                                KeyAction::Pack,
+                            ]);
+                        drop(listed.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+                        listed
+                    }),
+                ),
+                (
+                    "6-document-search",
                     Box::new(|| dense_document_search(showcase_app()).in_language(language)),
                 ),
                 (
-                    "5-compare",
+                    "7-compare",
                     Box::new(|| compare_app().in_language(language)),
                 ),
                 (
-                    "6-batch-rename",
+                    "8-batch-rename",
                     Box::new(|| batch_rename_app().in_language(language)),
                 ),
                 (
-                    "7-notes",
+                    "9-notes",
                     Box::new(|| paged(showcase_app()).showing_notes_for_test(pages.notes())),
-                ),
-                (
-                    "8-search",
-                    Box::new(|| {
-                        let mut search = showcase();
-                        search.show_search_results_for_test("hello", showcase_search_results());
-                        search
-                    }),
-                ),
-                (
-                    "9-monitor",
-                    Box::new(|| {
-                        paged(showcase_app()).showing_monitor_for_test(monitor(STORE_WINDOW_SIZE))
-                    }),
                 ),
                 (
                     "10-viewer",

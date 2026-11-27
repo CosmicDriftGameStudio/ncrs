@@ -328,15 +328,16 @@ pub fn icon_button<'a, M: Clone + 'a>(
     tone: Tone,
     palette: &Palette,
 ) -> Element<'a, M> {
+    let tone_ink = match tone {
+        Tone::Primary => palette.primary_button().1,
+        Tone::Secondary => palette.text,
+        Tone::DangerOutline => palette.error,
+        Tone::Danger | Tone::OnAccent => palette.cursor_text,
+    };
     let ink = if on_press.is_none() {
-        palette.dim_text
+        tone_ink.scale_alpha(DISABLED_OPACITY)
     } else {
-        match tone {
-            Tone::Primary => palette.primary_button().1,
-            Tone::Secondary => palette.text,
-            Tone::DangerOutline => palette.error,
-            Tone::Danger | Tone::OnAccent => palette.cursor_text,
-        }
+        tone_ink
     };
     let mut content = Row::new()
         .spacing(spacing::XS)
