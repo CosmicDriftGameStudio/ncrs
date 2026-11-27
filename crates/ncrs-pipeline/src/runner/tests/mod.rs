@@ -801,16 +801,10 @@ static GROWN_WHILE_NOT_READY: AtomicUsize = AtomicUsize::new(0);
 
 fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, String> {
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
-        // Replaced in one rename: fs::write truncates first, and on Windows the runner can
-        // fingerprint that empty in-between state.
-        // Beside the target, so the rename never crosses a volume. Closed before the
-        // rename: Windows can set the write time when a handle closes, and a file
-        // renamed while open would change once more after the move.
-        let folder = path.parent().ok_or("the file has no folder")?;
-        let grown = folder.join(".grown");
-        fs::write(&grown, b"a body that grew while the step was not ready")
+        // Written in place: the test drops the watcher first, so nothing reads the
+        // file until the retry, and a replace would report it as gone on Windows.
+        fs::write(path, b"a body that grew while the step was not ready")
             .map_err(|error| error.to_string())?;
-        fs::rename(&grown, path).map_err(|error| error.to_string())?;
         return Ok(StepOutcome::NotReady);
     }
     Ok(StepOutcome::Continue)
@@ -819,8 +813,16 @@ fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, Strin
 #[test]
 fn a_file_retried_after_not_ready_is_matched_against_its_state_at_the_retry() {
     let (_dir, location) = numbered_files(1);
-    let (step, _started) = probe("probe", None, not_ready_once_while_the_file_grows);
+    let gate = Arc::new(Gate::default());
+    let (step, started) = probe("probe", Some(&gate), not_ready_once_while_the_file_grows);
     let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    next_started(&started);
+    // Only the retry may take the file again: a late watch report would feed it
+    // a second time.
+    let watcher = runner.shared.update(|state| state.watcher.take());
+    assert!(watcher.is_some());
+    drop(watcher);
+    gate.release_everything();
     handled_everything(&runner, 1);
     let path = location.path.join("file-1.pdf");
 

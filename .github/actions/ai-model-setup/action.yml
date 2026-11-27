@@ -37,7 +37,10 @@ runs:
       shell: bash
       run: echo "sha=$(sed -n 's/^SHA256="\(.*\)"$/\1/p' scripts/fetch-ai-model.sh)" >> "$GITHUB_OUTPUT"
 
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    # Only main saves: a copy saved by a pull request serves no other pull
+    # request, and its 2.5 GB push the build caches out of the 10 GB budget.
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: model-cache
       with:
         path: .ai-models
         key: ai-model-${{ steps.pin.outputs.sha }}
@@ -47,3 +50,9 @@ runs:
       run: |
         bash scripts/fetch-ai-model.sh .ai-models
         echo "NCRS_AI_MODELS_DIR=$GITHUB_WORKSPACE/.ai-models" >> "$GITHUB_ENV"
+
+    - if: github.ref == 'refs/heads/main' && steps.model-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .ai-models
+        key: ai-model-${{ steps.pin.outputs.sha }}

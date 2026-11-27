@@ -356,18 +356,23 @@ jobs:
       # tests have to pass in every configuration. This is not a formality: the
       # cfg logic in src/backend.rs only compiles in the ones the default build
       # does not exercise. The default is gpu-with-fallback, which the Tests
-      # step above already covers.
+      # step above already covers. That logic depends on the features only,
+      # not on the operating system, so Linux runs it: each variant rebuilds
+      # the app, which costs minutes on macOS and Windows.
 
       # The e2e tests render the real view headless, and a runner has no GPU.
       - name: Tests, GPU only
+        if: runner.os == 'Linux'
         run: cargo test --no-default-features --features gpu-rendering -- --skip ui_tests --skip e2e_tests
 
       - name: Tests, software only
+        if: runner.os == 'Linux'
         run: cargo test --no-default-features --features software-rendering -- --skip ui_tests
 
       # A build with no backend opens an empty window. iced only rejects that
       # in release mode, so CI has to be the one that catches it.
       - name: Tests, no backend must fail
+        if: runner.os == 'Linux'
         # Bash syntax, and the default shell on windows-latest is PowerShell.
         shell: bash
         run: |
