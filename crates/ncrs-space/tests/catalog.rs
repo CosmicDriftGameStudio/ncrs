@@ -40,7 +40,13 @@ fn a_target_folder_is_found_only_beside_a_cargo_toml() {
     let rust = project(home.path(), "rust-app", true);
     let other = project(home.path(), "not-rust", false);
 
-    let places = catalog(Os::Linux, home.path(), &no_env, &[rust.clone(), other], &SpaceSettings::default());
+    let places = catalog(
+        Os::Linux,
+        home.path(),
+        &no_env,
+        &[rust.clone(), other],
+        &SpaceSettings::default(),
+    );
 
     assert_eq!(ids(&places), [CatalogId::CargoTarget]);
     assert_eq!(places[0].path, rust.join("target"));
@@ -50,10 +56,23 @@ fn a_target_folder_is_found_only_beside_a_cargo_toml() {
 #[test]
 fn only_what_exists_is_listed_and_a_symlink_is_not() {
     let home = TempDir::new().unwrap();
-    assert!(catalog(Os::Linux, home.path(), &no_env, &[], &SpaceSettings::default()).is_empty());
+    assert!(catalog(
+        Os::Linux,
+        home.path(),
+        &no_env,
+        &[],
+        &SpaceSettings::default()
+    )
+    .is_empty());
 
     write(&home.path().join(".bun/install/cache/a"), 5);
-    let places = catalog(Os::Linux, home.path(), &no_env, &[], &SpaceSettings::default());
+    let places = catalog(
+        Os::Linux,
+        home.path(),
+        &no_env,
+        &[],
+        &SpaceSettings::default(),
+    );
     assert_eq!(ids(&places), [CatalogId::Bun]);
 
     #[cfg(unix)]
@@ -61,7 +80,13 @@ fn only_what_exists_is_listed_and_a_symlink_is_not() {
         let elsewhere = TempDir::new().unwrap();
         std::fs::create_dir_all(home.path().join(".gradle")).unwrap();
         std::os::unix::fs::symlink(elsewhere.path(), home.path().join(".gradle/caches")).unwrap();
-        let places = catalog(Os::Linux, home.path(), &no_env, &[], &SpaceSettings::default());
+        let places = catalog(
+            Os::Linux,
+            home.path(),
+            &no_env,
+            &[],
+            &SpaceSettings::default(),
+        );
         assert_eq!(ids(&places), [CatalogId::Bun]);
     }
 }
@@ -73,9 +98,19 @@ fn a_worktree_of_a_listed_repo_gets_its_target_too() {
     let linked = project(home.path(), "linked", true);
     let admin = repo.join(".git/worktrees/linked");
     std::fs::create_dir_all(&admin).unwrap();
-    std::fs::write(admin.join("gitdir"), format!("{}\n", linked.join(".git").display())).unwrap();
+    std::fs::write(
+        admin.join("gitdir"),
+        format!("{}\n", linked.join(".git").display()),
+    )
+    .unwrap();
 
-    let places = catalog(Os::Linux, home.path(), &no_env, &[repo.clone()], &SpaceSettings::default());
+    let places = catalog(
+        Os::Linux,
+        home.path(),
+        &no_env,
+        &[repo.clone()],
+        &SpaceSettings::default(),
+    );
 
     let paths: Vec<_> = places.iter().map(|place| place.path.clone()).collect();
     assert_eq!(paths, [repo.join("target"), linked.join("target")]);
@@ -103,7 +138,10 @@ fn an_own_regenerable_folder_is_added_unless_it_is_never_touched() {
     let home = TempDir::new().unwrap();
     let own = home.path().join("renders");
     write(&own.join("a"), 5);
-    let mut settings = SpaceSettings { own_regenerable: vec![own.clone()], ..SpaceSettings::default() };
+    let mut settings = SpaceSettings {
+        own_regenerable: vec![own.clone()],
+        ..SpaceSettings::default()
+    };
     let places = catalog(Os::Linux, home.path(), &no_env, &[], &settings);
     assert_eq!(ids(&places), [CatalogId::OwnRegenerable]);
 
@@ -118,11 +156,20 @@ fn known_app_caches_come_from_the_system_cache_folder_by_name() {
     write(&home.path().join("Library/Caches/SomeOtherApp/a"), 5);
     write(&home.path().join("Library/Caches/Homebrew/a"), 5);
 
-    let places = catalog(Os::MacOs, home.path(), &no_env, &[], &SpaceSettings::default());
+    let places = catalog(
+        Os::MacOs,
+        home.path(),
+        &no_env,
+        &[],
+        &SpaceSettings::default(),
+    );
 
     let mut found = ids(&places);
     found.sort_by_key(|id| id.name());
-    assert_eq!(found, [CatalogId::Homebrew, CatalogId::AppCache("ms-playwright")]);
+    assert_eq!(
+        found,
+        [CatalogId::Homebrew, CatalogId::AppCache("ms-playwright")]
+    );
 }
 
 #[test]
@@ -133,8 +180,12 @@ fn windows_reads_local_app_data_and_takes_only_week_old_temp_files() {
     write(&local.join("pip/Cache/a"), 5);
     write(&temp.join("old.tmp"), 5);
     write(&temp.join("new.tmp"), 5);
-    let old = std::fs::File::options().write(true).open(temp.join("old.tmp")).unwrap();
-    old.set_modified(SystemTime::now() - Duration::from_secs(8 * 24 * 60 * 60)).unwrap();
+    let old = std::fs::File::options()
+        .write(true)
+        .open(temp.join("old.tmp"))
+        .unwrap();
+    old.set_modified(SystemTime::now() - Duration::from_secs(8 * 24 * 60 * 60))
+        .unwrap();
     let local_value = local.clone();
     let temp_value = temp.clone();
     let env = move |name: &str| match name {
@@ -143,7 +194,13 @@ fn windows_reads_local_app_data_and_takes_only_week_old_temp_files() {
         _ => None,
     };
 
-    let places = catalog(Os::Windows, home.path(), &env, &[], &SpaceSettings::default());
+    let places = catalog(
+        Os::Windows,
+        home.path(),
+        &env,
+        &[],
+        &SpaceSettings::default(),
+    );
 
     assert_eq!(ids(&places), [CatalogId::Pip, CatalogId::WinTempOld]);
     assert_eq!(places[1].path, temp.join("old.tmp"));

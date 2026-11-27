@@ -118,6 +118,11 @@ pub struct InputState {
     /// The Repos tab is up and neither a field nor its menu has the keys: an
     /// Option tap opens the menu of the row, as in the panels.
     pub repos_menu_key: bool,
+    /// The Platz tab is up with nothing over it: Escape is its own.
+    pub space: bool,
+    /// The Platz tab is up and neither the filter, its menu nor its confirm has the keys: an
+    /// Option tap opens the menu of the row.
+    pub space_menu_key: bool,
     /// The same for the Git tab.
     pub git_menu_key: bool,
     /// A row is held with the left button: the pointer and the button decide
@@ -182,6 +187,7 @@ impl InputState {
             ),
             (self.notes, Message::Notes(ncrs_notes::Message::Escape)),
             (self.repos, Message::Repos(ncrs_repos::Message::Escape)),
+            (self.space, Message::Space(ncrs_space_view::Message::Escape)),
             (
                 self.git.is_some(),
                 Message::GitView(self.git.unwrap_or_default(), ncrs_git_view::Message::Escape),
@@ -263,6 +269,10 @@ impl InputState {
                 if self.repos {
                     return (nothing_else_up && self.repos_menu_key)
                         .then_some(Message::Repos(ncrs_repos::Message::OpenMenuKey));
+                }
+                if self.space {
+                    return (nothing_else_up && self.space_menu_key)
+                        .then_some(Message::Space(ncrs_space_view::Message::OpenMenuKey));
                 }
                 if let Some(git) = self.git {
                     return (nothing_else_up && self.git_menu_key)
@@ -547,7 +557,7 @@ mod tests {
     #[test]
     fn every_overlay_escape_closes_also_blocks_the_tap() {
         type OpenOverlay = fn(&mut InputState);
-        let overlays: [(&str, OpenOverlay); 15] = [
+        let overlays: [(&str, OpenOverlay); 16] = [
             ("monitor_filter", |input| {
                 input.monitor = true;
                 input.monitor_filter = true;
@@ -568,6 +578,7 @@ mod tests {
             ("settings", |input| input.settings = true),
             ("notes", |input| input.notes = true),
             ("repos", |input| input.repos = true),
+            ("space", |input| input.space = true),
             ("filing_renaming", |input| {
                 input.filing = true;
                 input.filing_renaming = true;

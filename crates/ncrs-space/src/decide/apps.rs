@@ -9,8 +9,26 @@ pub trait InstalledApps {
 
 /// Words of an installer's file name that follow the app name and are not part of it.
 const NOISE_WORDS: [&str; 20] = [
-    "macos", "osx", "darwin", "win", "win32", "win64", "windows", "linux", "x64", "x86", "x86_64",
-    "amd64", "arm64", "aarch64", "universal", "intel", "silicon", "setup", "installer", "install",
+    "macos",
+    "osx",
+    "darwin",
+    "win",
+    "win32",
+    "win64",
+    "windows",
+    "linux",
+    "x64",
+    "x86",
+    "x86_64",
+    "amd64",
+    "arm64",
+    "aarch64",
+    "universal",
+    "intel",
+    "silicon",
+    "setup",
+    "installer",
+    "install",
 ];
 
 /// The app an installer file is for, from its name: the words before a version
@@ -117,7 +135,10 @@ fn collect_shortcuts(folder: &Path, known: &mut Vec<(String, PathBuf)>, depth: u
             if depth > 0 {
                 collect_shortcuts(&path, known, depth - 1);
             }
-        } else if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("lnk")) {
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"))
+        {
             if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
                 known.push((normalized(stem), path));
             }
@@ -131,10 +152,17 @@ fn collect_desktop_entries(folder: &Path, known: &mut Vec<(String, PathBuf)>) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().is_none_or(|extension| extension != "desktop") {
+        if path
+            .extension()
+            .is_none_or(|extension| extension != "desktop")
+        {
             continue;
         }
-        if let Some(name) = fs::read_to_string(&path).ok().as_deref().and_then(desktop_name) {
+        if let Some(name) = fs::read_to_string(&path)
+            .ok()
+            .as_deref()
+            .and_then(desktop_name)
+        {
             known.push((normalized(&name), path));
         }
     }
@@ -170,7 +198,10 @@ mod tests {
     #[test]
     fn names_match_without_case_spaces_or_punctuation() {
         let apps = SystemInstalledApps {
-            known: vec![(normalized("Visual Studio Code"), PathBuf::from("/Applications/Visual Studio Code.app"))],
+            known: vec![(
+                normalized("Visual Studio Code"),
+                PathBuf::from("/Applications/Visual Studio Code.app"),
+            )],
         };
 
         assert!(apps.find("visual-studio-code").is_some());

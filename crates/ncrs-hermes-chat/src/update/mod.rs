@@ -15,7 +15,6 @@ pub use crate::fallback::{
 };
 mod chips;
 mod space;
-pub use space::{ask_measure, card_key_message};
 use crate::message::Message;
 use crate::state::{Asked, ChipReply, Entry, Part, Retry, State, Step, Unsent};
 use crate::texts::{fill, folder_name, text};
@@ -24,6 +23,7 @@ pub use chips::{
     cancel_chip, chip, chip_labelled, clear_chips, folder_chips, hermes, is_known, mention_of, say,
     user, user_folder, well_known, work,
 };
+pub use space::{ask_measure, card_key_message};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let mut action = route(state, message, ctx);
@@ -206,6 +206,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             crate::working::tick(state, ctx);
             None
         }
+        Message::SpaceAsked => space::ask_measure(state, ctx),
         Message::SpaceMeasured(scan) => {
             space::measured(state, ctx, &scan);
             None

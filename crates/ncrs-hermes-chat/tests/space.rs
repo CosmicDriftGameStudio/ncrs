@@ -17,8 +17,8 @@ mod tests {
     use ncrs_i18n::Msg;
     use ncrs_space::decide::DecideKind;
     use ncrs_space::{
-        CatalogId, Entry as SpaceEntry, EntryKind, Group, LogRow, RunLog, Scan, Skip,
-        VolumeSpace, WorktreeSpace,
+        CatalogId, Entry as SpaceEntry, EntryKind, Group, LogRow, RunLog, Scan, Skip, VolumeSpace,
+        WorktreeSpace,
     };
     use ncrs_ui_kit::format;
 
@@ -89,7 +89,11 @@ mod tests {
         let mut talk = talk();
         talk.open();
         talk.type_text_understood(sentence, reply);
-        assert!(talk.actions.contains(&Action::MeasureSpace), "{:?}", talk.actions);
+        assert!(
+            talk.actions.contains(&Action::MeasureSpace),
+            "{:?}",
+            talk.actions
+        );
         talk
     }
 
@@ -105,7 +109,10 @@ mod tests {
 
     #[test]
     fn why_is_the_drive_full_measures_and_then_shows_the_card_with_the_sums() {
-        let mut talk = asks_to_measure("warum ist die platte voll", r#"{"intent":"space","ask":"why"}"#);
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
         talk.model
             .push_notes(Ok(vec!["Vermutlich alte Sicherungen.".to_owned()]));
         let measured = scan(&talk);
@@ -135,11 +142,19 @@ mod tests {
 
     #[test]
     fn a_failed_description_keeps_the_reason_of_the_code_and_says_so() {
-        let mut talk = asks_to_measure("warum ist die platte voll", r#"{"intent":"space","ask":"why"}"#);
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
         let measured = scan(&talk);
         talk.send(Message::SpaceMeasured(measured));
 
-        let decide = the_card(&talk).rows.iter().find(|row| row.described).unwrap().clone();
+        let decide = the_card(&talk)
+            .rows
+            .iter()
+            .find(|row| row.described)
+            .unwrap()
+            .clone();
         assert_eq!(decide.hint, say(Msg::SpaceDecideOtherCheck, &[]));
         assert!(talk
             .last_texts()
@@ -148,7 +163,10 @@ mod tests {
 
     #[test]
     fn a_store_build_offers_no_worktree_button() {
-        let mut talk = asks_to_measure("warum ist die platte voll", r#"{"intent":"space","ask":"why"}"#);
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
         talk.ctx.store_build = true;
         let measured = scan(&talk);
         talk.send(Message::SpaceMeasured(measured));
@@ -200,13 +218,19 @@ mod tests {
     fn the_overview_sentence_opens_the_platz_tab() {
         let mut talk = talk();
         talk.open();
-        talk.type_text_understood("zeig die platzübersicht", r#"{"intent":"space","ask":"overview"}"#);
+        talk.type_text_understood(
+            "zeig die platzübersicht",
+            r#"{"intent":"space","ask":"overview"}"#,
+        );
         assert_eq!(talk.actions.last(), Some(&Action::OpenSpace));
     }
 
     #[test]
     fn cmd_enter_on_the_card_is_the_delete_button_and_not_a_submit() {
-        let mut talk = asks_to_measure("warum ist die platte voll", r#"{"intent":"space","ask":"why"}"#);
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
         let measured = scan(&talk);
         talk.send(Message::SpaceMeasured(measured));
 
@@ -215,7 +239,10 @@ mod tests {
         let message = card_key_message(&talk.state, key).expect("the button is shown");
         assert!(matches!(
             &message,
-            Message::ChipPressed { reply: ChipReply::SpaceDeleteSafe, .. }
+            Message::ChipPressed {
+                reply: ChipReply::SpaceDeleteSafe,
+                ..
+            }
         ));
         talk.send(message);
         assert_eq!(
@@ -228,12 +255,18 @@ mod tests {
     fn a_card_key_without_its_button_does_nothing() {
         let mut talk = talk();
         talk.open();
-        assert_eq!(card_key_message(&talk.state, ChatKey::SpaceDeleteSafe), None);
+        assert_eq!(
+            card_key_message(&talk.state, ChatKey::SpaceDeleteSafe),
+            None
+        );
     }
 
     #[test]
     fn the_result_of_a_run_is_told_with_what_was_left_standing() {
-        let mut talk = asks_to_measure("warum ist die platte voll", r#"{"intent":"space","ask":"why"}"#);
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
         let measured = scan(&talk);
         talk.send(Message::SpaceMeasured(measured));
         let log = RunLog {
@@ -255,10 +288,7 @@ mod tests {
         talk.send(Message::SpaceRunDone(Arc::new(log)));
 
         let texts = talk.last_texts();
-        assert_eq!(
-            texts[0],
-            say(Msg::SpaceResultFreed, &[("size", &gb(40))])
-        );
+        assert_eq!(texts[0], say(Msg::SpaceResultFreed, &[("size", &gb(40))]));
         assert_eq!(
             texts[1],
             say(
@@ -266,6 +296,9 @@ mod tests {
                 &[("name", "wt"), ("reason", &say(Msg::SpaceSkipChanged, &[]))]
             )
         );
-        assert!(matches!(talk.state.thread().last(), Some(Entry::Hermes { .. })));
+        assert!(matches!(
+            talk.state.thread().last(),
+            Some(Entry::Hermes { .. })
+        ));
     }
 }

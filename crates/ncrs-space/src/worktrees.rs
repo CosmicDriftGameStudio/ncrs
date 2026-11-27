@@ -95,14 +95,18 @@ fn remove_one(
         .ok_or(Skip::Changed)?;
     let git = Git::open(&worktree.repo).map_err(|error| Skip::Failed(error.to_string()))?;
     let report = git
-        .clean_up(&CleanupPlan { worktrees: vec![still_merged], ..CleanupPlan::default() })
+        .clean_up(&CleanupPlan {
+            worktrees: vec![still_merged],
+            ..CleanupPlan::default()
+        })
         .map_err(|error| Skip::Failed(error.to_string()))?;
     let row = report
         .rows
         .into_iter()
         .find(|row| matches!(&row.target, CleanupTarget::Worktree(path) if *path == worktree.path))
         .ok_or_else(|| Skip::Failed("git reported nothing".to_owned()))?;
-    row.result.map_err(|error| Skip::Failed(error.to_string()))?;
+    row.result
+        .map_err(|error| Skip::Failed(error.to_string()))?;
     Ok(worktree.size.bytes)
 }
 

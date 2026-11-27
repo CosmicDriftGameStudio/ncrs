@@ -4,6 +4,7 @@
 //! safe; every fact here is checked by code, again right before a delete.
 
 mod catalog;
+mod catalog_texts;
 mod checks;
 pub mod decide;
 mod delete;
@@ -12,6 +13,7 @@ mod scan;
 mod worktrees;
 
 pub use catalog::{catalog, CatalogId, Os, Place};
+pub use catalog_texts::catalog_msgs;
 pub use checks::{check_before_delete, ProcessSource, Skip, SystemProbes, UnknownUse};
 pub use delete::delete_safe;
 pub use log::{append_log, LogRow, RunLog};

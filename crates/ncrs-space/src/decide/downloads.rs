@@ -57,7 +57,11 @@ pub struct DownloadGroups {
 
 /// Sorts what lies directly in `folder`. When `stop` is set the groups found so
 /// far come back; hidden entries, links and unfinished downloads are left out.
-pub fn sort_downloads(folder: &Path, apps: &dyn InstalledApps, stop: &AtomicBool) -> DownloadGroups {
+pub fn sort_downloads(
+    folder: &Path,
+    apps: &dyn InstalledApps,
+    stop: &AtomicBool,
+) -> DownloadGroups {
     sort_downloads_at(folder, apps, stop, SystemTime::now())
 }
 
@@ -139,7 +143,9 @@ fn list_items(folder: &Path, stop: &AtomicBool) -> Vec<DownloadItem> {
         let is_partial = path
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| PARTIAL_EXTENSIONS.contains(&extension.to_lowercase().as_str()));
+            .is_some_and(|extension| {
+                PARTIAL_EXTENSIONS.contains(&extension.to_lowercase().as_str())
+            });
         if name.starts_with('.') || is_partial {
             continue;
         }
@@ -188,8 +194,12 @@ fn unpacked_folder_of(item: &DownloadItem, folders: &HashMap<String, PathBuf>) -
     }
     let name = name_of(&item.path)?;
     let lower = name.to_lowercase();
-    let suffix = ARCHIVE_SUFFIXES.iter().find(|suffix| lower.ends_with(**suffix))?;
-    folders.get(lower.get(..lower.len() - suffix.len())?).cloned()
+    let suffix = ARCHIVE_SUFFIXES
+        .iter()
+        .find(|suffix| lower.ends_with(**suffix))?;
+    folders
+        .get(lower.get(..lower.len() - suffix.len())?)
+        .cloned()
 }
 
 fn duplicate_sets(items: &[DownloadItem], stop: &AtomicBool) -> Vec<DuplicateSet> {
@@ -210,7 +220,10 @@ fn duplicate_sets(items: &[DownloadItem], stop: &AtomicBool) -> Vec<DuplicateSet
         }
         for mut same in by_hash.into_values().filter(|group| group.len() > 1) {
             same.sort_by(|first, second| {
-                first.modified.cmp(&second.modified).then_with(|| first.path.cmp(&second.path))
+                first
+                    .modified
+                    .cmp(&second.modified)
+                    .then_with(|| first.path.cmp(&second.path))
             });
             let mut copies = same.into_iter().cloned();
             if let Some(keep) = copies.next() {

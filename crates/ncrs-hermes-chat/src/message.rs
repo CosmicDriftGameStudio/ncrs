@@ -59,6 +59,8 @@ pub enum Message {
     HermesReady,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
+    /// "Why is the disk full?" asked from the Platz tab: the same as the typed sentence; sent by the app.
+    SpaceAsked,
     /// The measure the chat asked for; sent by the app.
     SpaceMeasured(Arc<Scan>),
     SpaceMeasureFailed(String),
@@ -105,7 +107,8 @@ impl PartialEq for Message {
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
-            | (Self::WorkTick, Self::WorkTick) => true,
+            | (Self::WorkTick, Self::WorkTick)
+            | (Self::SpaceAsked, Self::SpaceAsked) => true,
             (Self::List(left), Self::List(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))

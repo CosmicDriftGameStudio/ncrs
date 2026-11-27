@@ -21,7 +21,11 @@ pub fn delete_safe(
             break;
         }
         let outcome = delete_one(entry, probes, unknown);
-        let row = LogRow { path: entry.path.clone(), size: entry.size.bytes, outcome };
+        let row = LogRow {
+            path: entry.path.clone(),
+            size: entry.size.bytes,
+            outcome,
+        };
         on_row(&row);
         log.rows.push(row);
     }

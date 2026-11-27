@@ -16,7 +16,12 @@ impl FakeApps {
         Self(
             names
                 .iter()
-                .map(|name| (name.to_lowercase(), PathBuf::from(format!("/Applications/{name}.app"))))
+                .map(|name| {
+                    (
+                        name.to_lowercase(),
+                        PathBuf::from(format!("/Applications/{name}.app")),
+                    )
+                })
                 .collect(),
         )
     }
@@ -37,13 +42,20 @@ fn write(folder: &Path, name: &str, content: &str) -> PathBuf {
 fn age(path: &Path, by: Duration) {
     let then = SystemTime::now() - by;
     let file = File::options().write(true).open(path).unwrap();
-    file.set_times(FileTimes::new().set_accessed(then).set_modified(then)).unwrap();
+    file.set_times(FileTimes::new().set_accessed(then).set_modified(then))
+        .unwrap();
 }
 
 fn names(items: &[ncrs_space::decide::DownloadItem]) -> Vec<String> {
     let mut names: Vec<String> = items
         .iter()
-        .map(|item| item.path.file_name().unwrap().to_string_lossy().into_owned())
+        .map(|item| {
+            item.path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     names.sort();
     names
@@ -55,11 +67,18 @@ fn an_installer_of_an_installed_app_is_grouped_and_one_of_an_unknown_app_is_not(
     write(dir.path(), "Firefox 126.0.dmg", "installer");
     write(dir.path(), "Strange-Tool-1.0.pkg", "other installer");
 
-    let groups = sort_downloads(dir.path(), &FakeApps::with(&["Firefox"]), &AtomicBool::new(false));
+    let groups = sort_downloads(
+        dir.path(),
+        &FakeApps::with(&["Firefox"]),
+        &AtomicBool::new(false),
+    );
 
     assert_eq!(groups.installed.len(), 1);
     assert!(groups.installed[0].item.path.ends_with("Firefox 126.0.dmg"));
-    assert_eq!(groups.installed[0].with, PathBuf::from("/Applications/Firefox.app"));
+    assert_eq!(
+        groups.installed[0].with,
+        PathBuf::from("/Applications/Firefox.app")
+    );
     assert_eq!(names(&groups.rest), ["Strange-Tool-1.0.pkg"]);
 }
 
@@ -130,10 +149,16 @@ fn decide_entries_carry_the_group_the_kind_and_the_facts() {
     let old = write(&downloads, "b.txt", "two two");
     age(&old, Duration::from_secs(500 * 24 * 3600));
 
-    let entries = decide_entries(home.path(), &SpaceSettings::default(), &AtomicBool::new(false));
+    let entries = decide_entries(
+        home.path(),
+        &SpaceSettings::default(),
+        &AtomicBool::new(false),
+    );
 
     assert_eq!(entries.len(), 2);
-    assert!(entries.iter().all(|entry| entry.group == Group::Decide && entry.held_by.is_empty()));
+    assert!(entries
+        .iter()
+        .all(|entry| entry.group == Group::Decide && entry.held_by.is_empty()));
     let kind_of = |name: &str| {
         entries
             .iter()
@@ -141,8 +166,13 @@ fn decide_entries_carry_the_group_the_kind_and_the_facts() {
             .map(|entry| entry.kind.clone())
     };
     assert_eq!(kind_of("a.txt"), Some(EntryKind::Decide(DecideKind::Other)));
-    assert_eq!(kind_of("b.txt"), Some(EntryKind::Decide(DecideKind::UntouchedYear)));
-    assert!(entries.iter().all(|entry| entry.modified.is_some() && entry.size.bytes > 0));
+    assert_eq!(
+        kind_of("b.txt"),
+        Some(EntryKind::Decide(DecideKind::UntouchedYear))
+    );
+    assert!(entries
+        .iter()
+        .all(|entry| entry.modified.is_some() && entry.size.bytes > 0));
 }
 
 #[test]

@@ -119,6 +119,7 @@ mod open_file_tests;
 mod remote_panel_tests;
 #[cfg(test)]
 mod repos_tests;
+mod space_tests;
 #[cfg(test)]
 mod store_tests;
 #[cfg(test)]

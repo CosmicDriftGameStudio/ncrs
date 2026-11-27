@@ -179,6 +179,8 @@ impl App {
             ai_on: self.chat_ai_on(),
             changes_allowed: self.changes_allowed(),
             model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
+            store_build: cfg!(feature = "sandbox"),
+            drive_name: self.space_drive_name(),
         }
     }
 
@@ -236,6 +238,9 @@ impl App {
             }
             ncrs_hermes_chat::Action::TurnOnHermes => self.turn_on_hermes(),
             ncrs_hermes_chat::Action::ChangesLocked => self.refuse_locked_change(),
+            ncrs_hermes_chat::Action::MeasureSpace => self.measure_space_for_chat(),
+            ncrs_hermes_chat::Action::OpenSpace => self.open_space(),
+            ncrs_hermes_chat::Action::SpaceRun(kind) => self.run_space_for_chat(kind),
         }
     }
 

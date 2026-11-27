@@ -2,7 +2,7 @@ use crate::app::*;
 use ncrs_repos::Action as Ask;
 
 impl App {
-    fn repos_file(&self) -> Option<PathBuf> {
+    pub(in crate::app) fn repos_file(&self) -> Option<PathBuf> {
         self.config_path
             .as_deref()
             .and_then(Path::parent)

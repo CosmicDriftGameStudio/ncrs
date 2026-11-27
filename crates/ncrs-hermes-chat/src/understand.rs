@@ -17,9 +17,9 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Thinking, Unsent}
 use crate::texts::{fill, problem_text, text};
 use crate::undo;
 use crate::update::{
-    ask_measure, ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, open_thread, say, say_failed, say_model_failed, say_off, search_not_yet,
-    sort_hint,
+    ask_measure, ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback,
+    fallback_chips, handle_reply, open_thread, say, say_failed, say_model_failed, say_off,
+    search_not_yet, sort_hint,
 };
 
 /// The question the newest bubble of Hermes asks and its buttons. Read before

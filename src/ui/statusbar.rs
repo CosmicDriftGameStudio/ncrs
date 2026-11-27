@@ -170,6 +170,12 @@ pub struct MonitorBadge<M> {
     pub on_press: M,
 }
 
+/// The hint that the drive is nearly full; pressing it opens the Platz tab.
+pub struct SpaceHintBadge<M> {
+    pub text: String,
+    pub on_press: M,
+}
+
 /// The hint of the App Store build in the last days of the trial and after it.
 pub struct StoreBadge<M> {
     pub text: String,
@@ -256,6 +262,7 @@ pub struct Activity<'a, M> {
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
     pub store: Option<StoreBadge<M>>,
+    pub space_hint: Option<SpaceHintBadge<M>>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
@@ -335,6 +342,7 @@ pub fn view<'a, M: Clone + 'a>(
         version,
         monitor,
         store,
+        space_hint,
         test_folder,
         date_format,
     } = activity;
@@ -568,6 +576,19 @@ pub fn view<'a, M: Clone + 'a>(
                     .wrapping(text::Wrapping::None),
             )
             .padding([0.0, FIELD_PADDING_X]),
+        );
+    }
+    if let Some(badge) = space_hint {
+        bar = bar.push(
+            button(
+                text(badge.text)
+                    .size(font_size::SMALL)
+                    .color(palette.error)
+                    .wrapping(text::Wrapping::None),
+            )
+            .on_press(badge.on_press)
+            .padding([0.0, FIELD_PADDING_X])
+            .style(theme::icon_button(palette)),
         );
     }
     if let Some(badge) = store {

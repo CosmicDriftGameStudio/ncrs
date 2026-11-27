@@ -3,7 +3,7 @@
 use std::time::{Duration, SystemTime};
 
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_space::{CatalogId, Group, Skip};
+use ncrs_space::{catalog_msgs, CatalogId, Group, Skip};
 use ncrs_ui_kit::format::size_shown;
 use ncrs_ui_kit::git_state::RunOutcome;
 
@@ -30,38 +30,6 @@ pub fn fill_count_size(msg: Msg, count: usize, bytes: u64, lang: Language) -> St
 /// `one` for exactly one thing, else `other`; both take `{count}` and `{size}`.
 pub fn fill_plural(one: Msg, other: Msg, count: usize, bytes: u64, lang: Language) -> String {
     fill_count_size(if count == 1 { one } else { other }, count, bytes, lang)
-}
-
-fn catalog_msgs(id: CatalogId) -> (Msg, Msg) {
-    match id {
-        CatalogId::CargoTarget => (
-            Msg::SpaceCatalogCargoTarget,
-            Msg::SpaceCatalogCargoTargetWhy,
-        ),
-        CatalogId::Sccache => (Msg::SpaceCatalogSccache, Msg::SpaceCatalogSccacheWhy),
-        CatalogId::CargoRegistryCache => (
-            Msg::SpaceCatalogCargoRegistryCache,
-            Msg::SpaceCatalogCargoRegistryCacheWhy,
-        ),
-        CatalogId::Yarn => (Msg::SpaceCatalogYarn, Msg::SpaceCatalogYarnWhy),
-        CatalogId::Npm => (Msg::SpaceCatalogNpm, Msg::SpaceCatalogNpmWhy),
-        CatalogId::Bun => (Msg::SpaceCatalogBun, Msg::SpaceCatalogBunWhy),
-        CatalogId::Pnpm => (Msg::SpaceCatalogPnpm, Msg::SpaceCatalogPnpmWhy),
-        CatalogId::Pip => (Msg::SpaceCatalogPip, Msg::SpaceCatalogPipWhy),
-        CatalogId::Homebrew => (Msg::SpaceCatalogHomebrew, Msg::SpaceCatalogHomebrewWhy),
-        CatalogId::DerivedData => (
-            Msg::SpaceCatalogDerivedData,
-            Msg::SpaceCatalogDerivedDataWhy,
-        ),
-        CatalogId::UnavailableSimulators => (
-            Msg::SpaceCatalogUnavailableSimulators,
-            Msg::SpaceCatalogUnavailableSimulatorsWhy,
-        ),
-        CatalogId::Gradle => (Msg::SpaceCatalogGradle, Msg::SpaceCatalogGradleWhy),
-        CatalogId::AppCache(_) => (Msg::SpaceCatalogXdgCache, Msg::SpaceCatalogXdgCacheWhy),
-        CatalogId::WinTempOld => (Msg::SpaceCatalogWinTempOld, Msg::SpaceCatalogWinTempOldWhy),
-        CatalogId::OwnRegenerable => (Msg::SpaceDecideOther, Msg::SpaceCatalogXdgCacheWhy),
-    }
 }
 
 /// What the row is called: the tool for a catalog folder, the branch for a worktree, the folder otherwise.

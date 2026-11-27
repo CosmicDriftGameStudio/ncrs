@@ -14,12 +14,18 @@ pub struct Fake {
 
 impl Fake {
     pub fn quiet() -> Self {
-        Self { processes: Some(Vec::new()), folder: FolderUse::Free }
+        Self {
+            processes: Some(Vec::new()),
+            folder: FolderUse::Free,
+        }
     }
 
     pub fn running(name: &str) -> Self {
         Self {
-            processes: Some(vec![Holder { pid: 42, name: name.to_owned() }]),
+            processes: Some(vec![Holder {
+                pid: 42,
+                name: name.to_owned(),
+            }]),
             folder: FolderUse::Free,
         }
     }
@@ -50,7 +56,10 @@ pub fn entry_for(path: &Path, id: CatalogId) -> Entry {
         path: path.to_path_buf(),
         group: Group::Safe,
         kind: EntryKind::Catalog(id),
-        size: FolderSize { bytes, partial: false },
+        size: FolderSize {
+            bytes,
+            partial: false,
+        },
         modified: metadata.modified().ok(),
         device: device(&metadata),
         held_by: Vec::new(),

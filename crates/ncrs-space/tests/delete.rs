@@ -27,7 +27,9 @@ fn a_safe_folder_is_deleted_for_good_and_its_bytes_are_logged() {
     let entry = entry_for(&folder, CatalogId::Bun);
     let mut seen = 0;
 
-    let log = delete_safe(&[entry], &Fake::quiet(), UnknownUse::Skip, &stop(), |_| seen += 1);
+    let log = delete_safe(&[entry], &Fake::quiet(), UnknownUse::Skip, &stop(), |_| {
+        seen += 1
+    });
 
     assert!(!folder.exists());
     assert_eq!(seen, 1);
@@ -37,7 +39,12 @@ fn a_safe_folder_is_deleted_for_good_and_its_bytes_are_logged() {
 
     let logs = home.path().join("logs");
     append_log(&logs, &log).unwrap();
-    let written = std::fs::read_dir(&logs).unwrap().next().unwrap().unwrap().path();
+    let written = std::fs::read_dir(&logs)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
     let text = std::fs::read_to_string(written).unwrap();
     assert!(text.contains("freed=300"));
     assert!(text.contains(&format!("{}\t300\tfreed\t300", folder.display())));
@@ -83,7 +90,13 @@ fn a_running_tool_keeps_its_folder() {
     write(&folder.join("a"), 100);
     let entry = entry_for(&folder, CatalogId::CargoTarget);
 
-    let log = delete_safe(&[entry], &Fake::running("rustc"), UnknownUse::Skip, &stop(), |_| {});
+    let log = delete_safe(
+        &[entry],
+        &Fake::running("rustc"),
+        UnknownUse::Skip,
+        &stop(),
+        |_| {},
+    );
 
     assert!(matches!(log.rows[0].outcome, Err(Skip::ToolRunning(_))));
     assert!(folder.exists());
@@ -110,7 +123,13 @@ fn a_raised_stop_flag_ends_the_run_between_entries() {
     write(&folder.join("a"), 100);
     let entry = entry_for(&folder, CatalogId::Bun);
 
-    let log = delete_safe(&[entry], &Fake::quiet(), UnknownUse::Skip, &AtomicBool::new(true), |_| {});
+    let log = delete_safe(
+        &[entry],
+        &Fake::quiet(),
+        UnknownUse::Skip,
+        &AtomicBool::new(true),
+        |_| {},
+    );
 
     assert!(log.rows.is_empty());
     assert!(folder.exists());

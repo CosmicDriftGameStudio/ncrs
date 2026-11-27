@@ -8,7 +8,7 @@ use chrono::{DateTime, Local};
 use iced::{Color, Element};
 use ncrs_ai::FolderFacts;
 use ncrs_i18n::{Language, Msg};
-use ncrs_space::{CatalogId, Entry, EntryKind, Group, Scan};
+use ncrs_space::{catalog_msgs, CatalogId, Entry, EntryKind, Group, Scan};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::hermes_kit::{space_card, SpaceCardRow, SpaceCardView};
 use ncrs_ui_kit::palette::Palette;
@@ -130,33 +130,18 @@ fn catalog_texts(ctx: &Ctx, id: CatalogId, entry: &Entry) -> (String, String) {
     let lang = ctx.lang;
     let pair = |name: Msg, why: Msg| (text(lang, name), text(lang, why));
     match id {
-        CatalogId::CargoTarget => pair(Msg::SpaceCatalogCargoTarget, Msg::SpaceCatalogCargoTargetWhy),
-        CatalogId::Sccache => pair(Msg::SpaceCatalogSccache, Msg::SpaceCatalogSccacheWhy),
-        CatalogId::CargoRegistryCache => pair(
-            Msg::SpaceCatalogCargoRegistryCache,
-            Msg::SpaceCatalogCargoRegistryCacheWhy,
-        ),
-        CatalogId::Yarn => pair(Msg::SpaceCatalogYarn, Msg::SpaceCatalogYarnWhy),
-        CatalogId::Npm => pair(Msg::SpaceCatalogNpm, Msg::SpaceCatalogNpmWhy),
-        CatalogId::Bun => pair(Msg::SpaceCatalogBun, Msg::SpaceCatalogBunWhy),
-        CatalogId::Pnpm => pair(Msg::SpaceCatalogPnpm, Msg::SpaceCatalogPnpmWhy),
-        CatalogId::Pip => pair(Msg::SpaceCatalogPip, Msg::SpaceCatalogPipWhy),
-        CatalogId::Homebrew => pair(Msg::SpaceCatalogHomebrew, Msg::SpaceCatalogHomebrewWhy),
-        CatalogId::DerivedData => pair(Msg::SpaceCatalogDerivedData, Msg::SpaceCatalogDerivedDataWhy),
-        CatalogId::UnavailableSimulators => pair(
-            Msg::SpaceCatalogUnavailableSimulators,
-            Msg::SpaceCatalogUnavailableSimulatorsWhy,
-        ),
-        CatalogId::Gradle => pair(Msg::SpaceCatalogGradle, Msg::SpaceCatalogGradleWhy),
         CatalogId::AppCache(name) => (
             fill(lang, Msg::SpaceCatalogXdgCache, &[("name", name)]),
             text(lang, Msg::SpaceCatalogXdgCacheWhy),
         ),
-        CatalogId::WinTempOld => pair(Msg::SpaceCatalogWinTempOld, Msg::SpaceCatalogWinTempOldWhy),
         CatalogId::OwnRegenerable => (
             folder_name(ctx, &entry.path),
             text(lang, Msg::SpaceGroupSafeResultHint),
         ),
+        other => {
+            let (name, why) = catalog_msgs(other);
+            pair(name, why)
+        }
     }
 }
 

@@ -22,9 +22,10 @@ const LEFT_STANDING_LINES: usize = 3;
 /// What a typed sentence about the space of the drive leads to: a measure,
 /// then the card with the buttons that run something.
 pub fn ask_measure(state: &mut State, ctx: &Ctx) -> Option<Action> {
-    state
-        .thread
-        .push(Entry::Working(text(ctx.lang, Msg::HermesChatSpaceMeasuring)));
+    state.thread.push(Entry::Working(text(
+        ctx.lang,
+        Msg::HermesChatSpaceMeasuring,
+    )));
     state.session.measuring_space = true;
     Some(Action::MeasureSpace)
 }
@@ -135,7 +136,10 @@ pub fn described(state: &mut State, ctx: &Ctx, result: Result<Vec<String>, Strin
         }
         Ok(_) | Err(_) => {
             if let Some(Entry::Hermes { parts, .. }) = state.thread.last_mut() {
-                parts.push(Part::Text(text(ctx.lang, Msg::HermesChatSpaceDescribeFailed)));
+                parts.push(Part::Text(text(
+                    ctx.lang,
+                    Msg::HermesChatSpaceDescribeFailed,
+                )));
             }
         }
     }
@@ -145,8 +149,12 @@ fn skip_text(ctx: &Ctx, skip: &Skip) -> Option<String> {
     let lang = ctx.lang;
     Some(match skip {
         Skip::Gone => return None,
-        Skip::ToolRunning(holder) => fill(lang, Msg::SpaceSkipToolRunning, &[("tool", &holder.name)]),
-        Skip::FolderOpen(holder) => fill(lang, Msg::SpaceSkipFolderOpen, &[("holder", &holder.name)]),
+        Skip::ToolRunning(holder) => {
+            fill(lang, Msg::SpaceSkipToolRunning, &[("tool", &holder.name)])
+        }
+        Skip::FolderOpen(holder) => {
+            fill(lang, Msg::SpaceSkipFolderOpen, &[("holder", &holder.name)])
+        }
         Skip::UseUnknown => text(lang, Msg::SpaceSkipUseUnknown),
         Skip::Symlink => text(lang, Msg::SpaceSkipSymlink),
         Skip::OtherDrive => text(lang, Msg::SpaceSkipOtherDrive),

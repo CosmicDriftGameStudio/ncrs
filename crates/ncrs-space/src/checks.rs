@@ -84,7 +84,10 @@ pub fn check_before_delete(
         EntryKind::Catalog(id) => id.tools(),
         EntryKind::Worktree(_) | EntryKind::Decide(_) => &[],
     };
-    let measurable = !matches!(&entry.kind, EntryKind::Catalog(CatalogId::UnavailableSimulators));
+    let measurable = !matches!(
+        &entry.kind,
+        EntryKind::Catalog(CatalogId::UnavailableSimulators)
+    );
     check_subject(
         &Subject {
             path: &entry.path,
@@ -103,7 +106,8 @@ pub(crate) fn check_subject(
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
 ) -> Result<(), Skip> {
-    let metadata = std::fs::symlink_metadata(subject.path).map_err(|error| Skip::from_io(&error))?;
+    let metadata =
+        std::fs::symlink_metadata(subject.path).map_err(|error| Skip::from_io(&error))?;
     if metadata.file_type().is_symlink() {
         return Err(Skip::Symlink);
     }
@@ -112,7 +116,10 @@ pub(crate) fn check_subject(
     }
     match probes.processes() {
         Some(running) => {
-            if let Some(holder) = running.into_iter().find(|holder| runs_tool(holder, subject.tools)) {
+            if let Some(holder) = running
+                .into_iter()
+                .find(|holder| runs_tool(holder, subject.tools))
+            {
                 return Err(Skip::ToolRunning(holder));
             }
         }
@@ -122,7 +129,10 @@ pub(crate) fn check_subject(
     match probes.folder_use(subject.path, FOLDER_USE_LIMIT) {
         FolderUse::Free => {}
         FolderUse::Held(holders) => {
-            return Err(holders.into_iter().next().map_or(Skip::UseUnknown, Skip::FolderOpen));
+            return Err(holders
+                .into_iter()
+                .next()
+                .map_or(Skip::UseUnknown, Skip::FolderOpen));
         }
         FolderUse::Unknown(_) if unknown == UnknownUse::Skip => return Err(Skip::UseUnknown),
         FolderUse::Unknown(_) => {}

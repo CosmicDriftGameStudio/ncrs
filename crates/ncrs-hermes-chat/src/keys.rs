@@ -107,10 +107,7 @@ mod tests {
     #[test]
     fn the_space_card_has_its_keys_before_the_input_submits() {
         let command = Modifiers::COMMAND;
-        assert_eq!(
-            named(Named::Enter, command),
-            ChatKey::SpaceDeleteSafe
-        );
+        assert_eq!(named(Named::Enter, command), ChatKey::SpaceDeleteSafe);
         assert_eq!(
             named(Named::Enter, command | Modifiers::SHIFT),
             ChatKey::SpaceRemoveWorktrees

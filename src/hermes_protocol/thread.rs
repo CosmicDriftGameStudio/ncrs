@@ -38,6 +38,12 @@ pub fn entry_text(entry: &Entry) -> String {
                     .map(|row| format!("{}. {}", row.number, row.text))
                     .collect::<Vec<_>>()
                     .join(" "),
+                Part::Space(card) => card
+                    .rows
+                    .iter()
+                    .map(|row| format!("[{} | {} | {}]", row.name, row.size, row.group))
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
             })
             .collect::<Vec<_>>()

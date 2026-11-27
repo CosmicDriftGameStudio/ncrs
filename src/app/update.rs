@@ -467,6 +467,24 @@ impl App {
                 self.close_repos();
                 Task::none()
             }
+            Message::Space(space_message) => self.update_space(space_message),
+            Message::OpenSpace => self.open_space(),
+            Message::CloseSpace => {
+                self.close_space();
+                Task::none()
+            }
+            Message::SpaceHintDue => self.measure_space_hint(),
+            Message::SpaceHintMeasured(volume) => {
+                self.space_hint_measured(volume);
+                Task::none()
+            }
+            Message::SpaceHermesMeasured(scan) => self.space_measured_for_chat(scan),
+            Message::SpaceTrashed { paths, failed } => self.space_trashed(paths, failed),
+            Message::SpaceTrashFailed(reason) => {
+                self.set_status_error(&reason);
+                Task::none()
+            }
+            Message::HermesChatKey(key) => self.hermes_chat_key(key),
             Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
             Message::GitAsked(request) => self.route_git_request(request),
             Message::GitFetchDue => self.fetch_git_tabs_in_background(),

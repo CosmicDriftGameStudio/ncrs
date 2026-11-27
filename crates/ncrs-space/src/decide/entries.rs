@@ -87,7 +87,10 @@ fn big_folder_entries(
             && !path.starts_with(downloads)
             && !downloads.starts_with(path)
             && !is_left_alone(home, path)
-            && !settings.never_touch.iter().any(|never| path.starts_with(never))
+            && !settings
+                .never_touch
+                .iter()
+                .any(|never| path.starts_with(never))
     };
     let big: Vec<_> = tree
         .below
@@ -96,7 +99,10 @@ fn big_folder_entries(
         .collect();
     // The deepest big folders: a parent that holds a big folder is its sum, not a choice of its own.
     big.iter()
-        .filter(|(path, _)| !big.iter().any(|(other, _)| other != path && other.starts_with(path)))
+        .filter(|(path, _)| {
+            !big.iter()
+                .any(|(other, _)| other != path && other.starts_with(path))
+        })
         .map(|(path, size)| Entry {
             path: path.clone(),
             group: Group::Decide,

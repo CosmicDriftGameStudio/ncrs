@@ -127,6 +127,7 @@ impl KeyActionMessage for KeyAction {
             Self::GitFileHistory => Message::OpenGitFile(GitFileView::History),
             Self::GitFileBlame => Message::OpenGitFile(GitFileView::Blame),
             Self::Repos => Message::OpenRepos,
+            Self::Space => Message::OpenSpace,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),

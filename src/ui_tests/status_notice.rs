@@ -43,6 +43,7 @@ fn status_bar<'a>(app: &'a App, failure: Option<&'a str>) -> iced::Element<'a, M
             version: None,
             monitor: None,
             store: None,
+            space_hint: None,
             test_folder: None,
             date_format: ncrs_core::DateFormat::Iso,
         },

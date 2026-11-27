@@ -34,11 +34,11 @@ pub use ctx::{Availability, Ctx};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use rule_flow::{RuleAnswer, RuleAsk};
+pub use space_card::{SpaceBand, SpaceCard, SpaceRow};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FolderMention, LevelsCard, Part, State,
     Step,
 };
-pub use space_card::{SpaceBand, SpaceCard, SpaceRow};
 pub use texts::problem_text;
 pub use update::{card_key_message, update};
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

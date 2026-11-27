@@ -4,9 +4,9 @@ use iced::widget::{column, operation, Row};
 use iced::{Element, Length, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
-    areas_card, chat_chip_keyed, chat_header, chat_input, chat_list, chat_page, chat_text, chip_row,
-    folder_mention, hermes_bubble, levels_card, user_bubble, user_folder_bubble, working_bubble,
-    AreaLine, ChatInput,
+    areas_card, chat_chip_keyed, chat_header, chat_input, chat_list, chat_page, chat_text,
+    chip_row, folder_mention, hermes_bubble, levels_card, user_bubble, user_folder_bubble,
+    working_bubble, AreaLine, ChatInput,
 };
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::panel_footer::panel_footer;
@@ -101,7 +101,11 @@ fn key_label(reply: &ChipReply) -> Option<&'static str> {
         ChipReply::SpaceOverview => ("\u{2318}O", "Ctrl+O"),
         _ => return None,
     };
-    Some(if cfg!(target_os = "macos") { mac } else { other })
+    Some(if cfg!(target_os = "macos") {
+        mac
+    } else {
+        other
+    })
 }
 
 fn chips_of<'a>(state: &State, ctx: ViewCtx<'_>) -> Option<Element<'a, Message>> {

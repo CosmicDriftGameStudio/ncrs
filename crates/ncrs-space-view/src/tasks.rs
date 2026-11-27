@@ -47,6 +47,24 @@ pub fn request_of(ctx: &crate::ctx::Ctx) -> ScanRequest {
     }
 }
 
+/// One measure without progress, for the app when the chat asks for the numbers; `None` when it failed.
+pub fn scan_once(ctx: &crate::ctx::Ctx) -> Task<Option<Arc<ncrs_space::Scan>>> {
+    let request = request_of(ctx);
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let stop = AtomicBool::new(false);
+                ncrs_space::scan(&request, &SystemProbes, &stop, |_| {})
+            })
+            .await
+            .ok()
+            .flatten()
+            .map(Arc::new)
+        },
+        std::convert::identity,
+    )
+}
+
 /// The delete run: the rows one after the other, then the worktrees; the log file at the end.
 pub fn delete(
     run: u64,

@@ -30,5 +30,6 @@ pub use message::{Finished, MenuEntry, Message};
 pub use rows::{DisplayRow, Item, RowKind};
 pub use shortcuts::{commands, message_of_command, Shortcut};
 pub use state::{Measuring, ResultState, Running, State};
+pub use tasks::scan_once;
 pub use update::{open, update, Outcome, FILTER_ID, LIST_ID};
 pub use view::{tab_title, view};

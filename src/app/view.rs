@@ -105,6 +105,8 @@ impl App {
 
         let below_title_bar = if self.filing_shown() {
             self.filing_area()
+        } else if self.space_shown() {
+            self.space_area()
         } else if self.repos_shown() {
             self.repos_area()
         } else if self.git_shown() {
@@ -194,6 +196,7 @@ impl App {
                         }),
                         monitor: self.monitor_badge(),
                         store: self.store_badge(),
+                        space_hint: self.space_hint_badge(),
                         test_folder: config::data_dir_override().map(|dir| {
                             ncrs_i18n::fill_template(
                                 self.lang.text(Msg::StatusTestFolder),

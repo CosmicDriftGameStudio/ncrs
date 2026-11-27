@@ -96,7 +96,13 @@ pub fn scan(
             continue;
         }
         let (group, held_by) = if processes.is_some() {
-            use_of(&place.path, place.tools, processes.as_deref(), probes, Group::Safe)
+            use_of(
+                &place.path,
+                place.tools,
+                processes.as_deref(),
+                probes,
+                Group::Safe,
+            )
         } else {
             (Group::Safe, Vec::new())
         };
@@ -119,8 +125,13 @@ pub fn scan(
             let device = std::fs::symlink_metadata(&worktree.path)
                 .ok()
                 .and_then(|metadata| device_of(&metadata));
-            let (group, held_by) =
-                use_of(&worktree.path, &[], processes.as_deref(), probes, Group::Worktrees);
+            let (group, held_by) = use_of(
+                &worktree.path,
+                &[],
+                processes.as_deref(),
+                probes,
+                Group::Worktrees,
+            );
             entries.push(Entry {
                 path: worktree.path.clone(),
                 group,
@@ -146,7 +157,10 @@ pub fn scan(
     entries.sort_by(|left, right| right.size.bytes.cmp(&left.size.bytes));
 
     Some(Scan {
-        volume: volume.unwrap_or(VolumeSpace { total: 0, available: 0 }),
+        volume: volume.unwrap_or(VolumeSpace {
+            total: 0,
+            available: 0,
+        }),
         entries,
         partial,
         processes_known,
@@ -176,16 +190,26 @@ fn measure(
         return Some(None);
     }
     let size = if id == CatalogId::UnavailableSimulators {
-        FolderSize { bytes: unavailable_simulator_bytes(path, stop)?, partial: false }
+        FolderSize {
+            bytes: unavailable_simulator_bytes(path, stop)?,
+            partial: false,
+        }
     } else if metadata.is_dir() {
         let tree = measure_folder_depth(path, stop, 0, RUNNING_REPORT_INTERVAL, |bytes| {
             on_running(counted.saturating_add(bytes));
         })?;
         tree.total
     } else {
-        FolderSize { bytes: metadata.len(), partial: false }
+        FolderSize {
+            bytes: metadata.len(),
+            partial: false,
+        }
     };
-    Some(Some(Measured { size, modified: metadata.modified().ok(), device: device_of(&metadata) }))
+    Some(Some(Measured {
+        size,
+        modified: metadata.modified().ok(),
+        device: device_of(&metadata),
+    }))
 }
 
 /// The group the entry is in and who holds it: a running tool or an open file moves it
@@ -200,8 +224,11 @@ fn use_of(
     let Some(running) = processes else {
         return (Group::InUse, Vec::new());
     };
-    let tool_holders: Vec<Holder> =
-        running.iter().filter(|holder| runs_tool(holder, tools)).cloned().collect();
+    let tool_holders: Vec<Holder> = running
+        .iter()
+        .filter(|holder| runs_tool(holder, tools))
+        .cloned()
+        .collect();
     if !tool_holders.is_empty() {
         return (Group::InUse, tool_holders);
     }
@@ -237,7 +264,7 @@ fn unavailable_simulator_bytes(_devices: &Path, _stop: &AtomicBool) -> Option<u6
 /// The UUID in parentheses of a `simctl list` line.
 #[cfg(all(target_os = "macos", not(feature = "sandbox")))]
 fn device_id_of(line: &str) -> Option<&str> {
-    line.split(['(', ')']).map(str::trim).find(|part| {
-        part.len() == 36 && part.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-    })
+    line.split(['(', ')'])
+        .map(str::trim)
+        .find(|part| part.len() == 36 && part.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))
 }

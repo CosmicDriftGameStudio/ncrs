@@ -9,6 +9,9 @@ const NOTES_TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(10)
 /// How often an open app asks the update check whether a day has passed.
 const UPDATE_CHECK_ASKS_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
+/// How often the drive of the home folder is looked at for the "nearly full" hint.
+const SPACE_HINT_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
 #[cfg(target_os = "macos")]
 fn native_menu_events() -> Subscription<Message> {
     native_menu::events()
@@ -169,6 +172,7 @@ impl App {
             } else {
                 Subscription::none()
             },
+            iced::time::every(SPACE_HINT_EVERY).map(|_| Message::SpaceHintDue),
             self.watch_handoffs(),
             if ncrs_filing_view::is_running(&self.filing_view) {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)

@@ -22,7 +22,11 @@ pub struct RunLog {
 
 impl RunLog {
     pub(crate) fn new(started: SystemTime) -> Self {
-        Self { started, finished: started, rows: Vec::new() }
+        Self {
+            started,
+            finished: started,
+            rows: Vec::new(),
+        }
     }
 
     /// The bytes the rows that went freed.
@@ -38,18 +42,33 @@ impl RunLog {
 /// (`space-YYYY-MM-DD.log`, UTC) in `dir`.
 pub fn append_log(dir: &Path, log: &RunLog) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let seconds = log.started.duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+    let seconds = log
+        .started
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
     let (year, month, day) = civil_date(seconds / 86_400);
     let file = dir.join(format!("space-{year:04}-{month:02}-{day:02}.log"));
     let mut out = OpenOptions::new().create(true).append(true).open(file)?;
-    let finished = log.finished.duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
-    writeln!(out, "# run\tstarted={seconds}\tfinished={finished}\tfreed={}", log.freed_bytes())?;
+    let finished = log
+        .finished
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    writeln!(
+        out,
+        "# run\tstarted={seconds}\tfinished={finished}\tfreed={}",
+        log.freed_bytes()
+    )?;
     for row in &log.rows {
         let outcome = match &row.outcome {
             Ok(freed) => format!("freed\t{freed}"),
             Err(skip) => format!("skipped\t{}", describe(skip)),
         };
-        writeln!(out, "{seconds}\t{}\t{}\t{outcome}", row.path.display(), row.size)?;
+        writeln!(
+            out,
+            "{seconds}\t{}\t{}\t{outcome}",
+            row.path.display(),
+            row.size
+        )?;
     }
     Ok(())
 }
@@ -73,11 +92,17 @@ fn civil_date(days: u64) -> (i64, u32, u32) {
     let z = i64::try_from(days).unwrap_or(0) + 719_468;
     let era = z.div_euclid(146_097);
     let day_of_era = z.rem_euclid(146_097);
-    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let shifted_month = (5 * day_of_year + 2) / 153;
     let day = u32::try_from(day_of_year - (153 * shifted_month + 2) / 5 + 1).unwrap_or(1);
-    let month = u32::try_from(if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 }).unwrap_or(1);
+    let month = u32::try_from(if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    })
+    .unwrap_or(1);
     let year = year_of_era + era * 400 + i64::from(month <= 2);
     (year, month, day)
 }

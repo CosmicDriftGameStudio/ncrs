@@ -129,11 +129,19 @@ pub fn catalog(
     repos: &[PathBuf],
     settings: &SpaceSettings,
 ) -> Vec<Place> {
-    let env_path = |name: &str| env(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+    let env_path = |name: &str| {
+        env(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    };
     let mut places: Vec<Place> = Vec::new();
     let mut add = |id: CatalogId, path: PathBuf, files_too: bool| {
         if exists_exactly(&path, files_too) && !places.iter().any(|known| known.path == path) {
-            places.push(Place { id, tools: id.tools(), path });
+            places.push(Place {
+                id,
+                tools: id.tools(),
+                path,
+            });
         }
     };
 
@@ -144,11 +152,17 @@ pub fn catalog(
         Os::Windows => None,
     };
     let in_app_data = |tool: &str, below: &str| {
-        local_app_data.as_ref().map(|root| root.join(tool).join(below))
+        local_app_data
+            .as_ref()
+            .map(|root| root.join(tool).join(below))
     };
 
     let cargo_home = env_path("CARGO_HOME").unwrap_or_else(|| home.join(".cargo"));
-    add(CatalogId::CargoRegistryCache, cargo_home.join("registry/cache"), false);
+    add(
+        CatalogId::CargoRegistryCache,
+        cargo_home.join("registry/cache"),
+        false,
+    );
 
     let sccache = env_path("SCCACHE_DIR").or_else(|| match os {
         Os::MacOs => cache_root.as_ref().map(|root| root.join("Mozilla.sccache")),
@@ -191,8 +205,16 @@ pub fn catalog(
     }
 
     if os == Os::MacOs {
-        add(CatalogId::Homebrew, home.join("Library/Caches/Homebrew"), false);
-        add(CatalogId::DerivedData, home.join("Library/Developer/Xcode/DerivedData"), false);
+        add(
+            CatalogId::Homebrew,
+            home.join("Library/Caches/Homebrew"),
+            false,
+        );
+        add(
+            CatalogId::DerivedData,
+            home.join("Library/Developer/Xcode/DerivedData"),
+            false,
+        );
         if cfg!(all(target_os = "macos", not(feature = "sandbox"))) {
             add(
                 CatalogId::UnavailableSimulators,
@@ -217,9 +239,12 @@ pub fn catalog(
             add(CatalogId::CargoTarget, project.join("target"), false);
         }
     }
-    for shared in [env_path("CARGO_TARGET_DIR"), Some(home.join(".cargo-target"))]
-        .into_iter()
-        .flatten()
+    for shared in [
+        env_path("CARGO_TARGET_DIR"),
+        Some(home.join(".cargo-target")),
+    ]
+    .into_iter()
+    .flatten()
     {
         add(CatalogId::CargoTarget, shared, false);
     }
@@ -236,7 +261,12 @@ pub fn catalog(
         add(CatalogId::OwnRegenerable, own.clone(), false);
     }
 
-    places.retain(|place| !settings.catalog_off.iter().any(|off| off == place.id.name()));
+    places.retain(|place| {
+        !settings
+            .catalog_off
+            .iter()
+            .any(|off| off == place.id.name())
+    });
     places.retain(|place| !is_under_any(&place.path, &settings.never_touch));
     places
 }
@@ -284,7 +314,8 @@ fn old_children(folder: &Path) -> Vec<PathBuf> {
                 .metadata()
                 .and_then(|found| found.modified())
                 .is_ok_and(|modified| {
-                    now.duration_since(modified).is_ok_and(|age| age > TEMP_MAX_AGE)
+                    now.duration_since(modified)
+                        .is_ok_and(|age| age > TEMP_MAX_AGE)
                 })
         })
         .map(|entry| entry.path())

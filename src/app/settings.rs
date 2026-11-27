@@ -449,6 +449,11 @@ impl App {
                 }
                 self.update_repos(ncrs_repos::Message::Rescan)
             }
+            SettingChange::Space(settings) => {
+                self.space_settings = settings;
+                self.refresh_space_facts();
+                self.update_space(ncrs_space_view::Message::Rescan)
+            }
             SettingChange::Git(settings) => {
                 self.git_settings = settings;
                 Task::none()
@@ -685,7 +690,8 @@ impl App {
                 let reloads = [PanelSide::Left, PanelSide::Right]
                     .map(|each| self.reload_keeping_cursor(each));
                 let notice = self.show_notice(text);
-                Task::batch(reloads.into_iter().chain([notice]))
+                let remeasured = self.update_space(ncrs_space_view::Message::Rescan);
+                Task::batch(reloads.into_iter().chain([notice, remeasured]))
             }
             Err(text) => {
                 self.set_status_error(&text);
