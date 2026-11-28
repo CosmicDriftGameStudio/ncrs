@@ -528,7 +528,10 @@ mod tests {
         let outcome = scene.trash.purge(&purged);
 
         if cfg!(feature = "sandbox") {
-            assert!(outcome.is_err(), "the sandbox cannot reach the trash folder");
+            assert!(
+                outcome.is_err(),
+                "the sandbox cannot reach the trash folder"
+            );
             assert_eq!(scene.trash.list().unwrap().len(), 2);
             return;
         }
