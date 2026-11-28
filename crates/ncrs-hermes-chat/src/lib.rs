@@ -34,7 +34,7 @@ pub use ctx::{Availability, Ctx};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use rule_flow::{RuleAnswer, RuleAsk};
-pub use space_card::{SpaceBand, SpaceCard, SpaceRow};
+pub use space_card::{SpaceBand, SpaceCard, SpaceLegend, SpaceRow};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FolderMention, LevelsCard, Part, State,
     Step,

@@ -6,14 +6,21 @@ use iced::widget::column;
 use iced::Element;
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::confirm::{confirm_dialog, Confirm, ConfirmButton};
-use ncrs_ui_kit::format::size_shown;
+use ncrs_ui_kit::confirm_list::{confirm_list, ConfirmLine, ConfirmSum};
+use ncrs_ui_kit::format::{shown_path, size_shown};
+use ncrs_ui_kit::frame::DialogSize;
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::theme::{size, spacing};
+use ncrs_ui_kit::size_row::CheckTone;
+use ncrs_ui_kit::theme::{self, size, spacing};
 
+use super::list::group_color;
 use crate::confirm::{ConfirmKind, ConfirmState};
 use crate::ctx::ViewCtx;
 use crate::message::Message;
-use crate::texts::{fill_count_size, fill_plural, fill_size};
+use crate::rows::DisplayRow;
+use crate::shortcuts::Shortcut;
+use crate::state::State;
+use crate::texts::{fill_count_size, fill_plural, fill_size, row_check, row_name};
 
 fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(
@@ -22,21 +29,48 @@ fn file_name(path: &Path) -> String {
     )
 }
 
-/// One line per thing that goes: its name and its size.
-fn names(ask: &ConfirmState, ctx: ViewCtx<'_>) -> Vec<String> {
-    let line = |name: String, bytes: u64| format!("{name}  {}", size_shown(bytes, ctx.lang));
-    let safe = ask
+/// One line per thing that goes, as the list of the tab names it.
+fn lines(ask: &ConfirmState, state: &State, ctx: ViewCtx<'_>) -> Vec<ConfirmLine> {
+    let things = ask
         .safe
         .iter()
-        .map(|entry| line(file_name(&entry.path), entry.size.bytes));
-    let worktrees = ask
-        .worktrees_taken()
-        .iter()
-        .map(|worktree| line(worktree.branch.clone(), worktree.size.bytes));
-    safe.chain(worktrees).collect()
+        .map(|entry| (entry.path.as_path(), entry.size.bytes))
+        .chain(
+            ask.worktrees_taken()
+                .iter()
+                .map(|worktree| (worktree.path.as_path(), worktree.size.bytes)),
+        );
+    let biggest = things.clone().map(|(_, bytes)| bytes).max().unwrap_or(0);
+    things
+        .map(|(path, bytes)| {
+            let row: Option<&DisplayRow> = state.row_by_path(path);
+            let (name, check, color) = match row {
+                Some(row) => (
+                    row_name(row, ctx.lang),
+                    row_check(row, ctx.processes_known, ctx.lang)
+                        .filter(|(tone, _)| *tone == CheckTone::Ok)
+                        .map(|(_, words)| words),
+                    group_color(row.group, ctx.palette),
+                ),
+                None => (file_name(path), None, theme::space::safe(ctx.palette)),
+            };
+            ConfirmLine {
+                name,
+                path: shown_path(path, ctx.home),
+                check,
+                size_text: size_shown(bytes, ctx.lang),
+                fraction: bytes as f32 / biggest.max(1) as f32,
+                color,
+            }
+        })
+        .collect()
 }
 
-pub fn dialog<'a>(ask: &'a ConfirmState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+pub fn dialog<'a>(
+    ask: &'a ConfirmState,
+    state: &'a State,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, Message> {
     let palette = ctx.palette;
     let bytes = ask.total_bytes();
     let (title, body) = match ask.kind {
@@ -61,17 +95,23 @@ pub fn dialog<'a>(ask: &'a ConfirmState, ctx: ViewCtx<'a>) -> Element<'a, Messag
             ),
         ),
     };
-    let mut list = column![kit::name_list(
-        names(ask, ctx),
-        None,
-        Some(size::LIST_BOX_HEIGHT),
+    let sum = ConfirmSum {
+        label: ctx
+            .lang
+            .text(Msg::SpaceConfirmTotal)
+            .replace("{size}", "")
+            .trim()
+            .to_owned(),
+        size_text: size_shown(bytes, ctx.lang),
+    };
+    let mut list = column![confirm_list(
+        lines(ask, state, ctx),
+        Some(sum),
+        size::LIST_BOX_HEIGHT,
         palette,
     )]
     .spacing(spacing::M);
-    list = list.push(kit::dim_line(
-        fill_size(Msg::SpaceConfirmTotal, bytes, ctx.lang),
-        palette,
-    ));
+    list = list.push(kit::dim(ctx.lang.text(Msg::SpaceConfirmRecheck), palette));
     if ask.kind == ConfirmKind::Safe && !ctx.store_build && !ask.worktrees.is_empty() {
         let worktree_bytes = ask.worktrees.iter().fold(0_u64, |sum, worktree| {
             sum.saturating_add(worktree.size.bytes)
@@ -86,25 +126,28 @@ pub fn dialog<'a>(ask: &'a ConfirmState, ctx: ViewCtx<'a>) -> Element<'a, Messag
                 ctx.lang
             )
         );
-        let state = if ask.with_worktrees {
+        let checked = if ask.with_worktrees {
             Check::On
         } else {
             Check::Off
         };
         list = list.push(kit::labelled_checkbox(
-            state,
+            checked,
             Some(Message::ConfirmWithWorktreesToggled),
             Some(&label),
             palette,
         ));
     }
-    list = list.push(kit::dim(ctx.lang.text(Msg::SpaceConfirmRecheck), palette));
     if ask.unknown_use {
         list = list.push(kit::warning_line(
             ctx.lang.text(Msg::SpaceConfirmUnknownUse),
             palette,
         ));
     }
+    let delete_key = match ask.kind {
+        ConfirmKind::Worktrees => Shortcut::RemoveWorktrees,
+        ConfirmKind::Safe | ConfirmKind::One => Shortcut::DeleteSafe,
+    };
     confirm_dialog(
         Confirm {
             title,
@@ -112,11 +155,11 @@ pub fn dialog<'a>(ask: &'a ConfirmState, ctx: ViewCtx<'a>) -> Element<'a, Messag
             list: Some(list.into()),
             cancel: ConfirmButton {
                 label: ctx.lang.text(Msg::DialogCancel),
-                key: Some("Esc"),
+                key: Some(ctx.lang.text(Msg::SpaceKeyNameEscape).to_owned()),
             },
             confirm: ConfirmButton {
                 label: &ask.confirm_label,
-                key: None,
+                key: Some(ctx.keys.label(delete_key)).filter(|label| !label.is_empty()),
             },
             tone: Tone::Danger,
             focus: ask.focus,
@@ -124,6 +167,8 @@ pub fn dialog<'a>(ask: &'a ConfirmState, ctx: ViewCtx<'a>) -> Element<'a, Messag
             on_confirm: Message::ConfirmAccept,
             window: ctx.window,
             lang: ctx.lang,
+            size: DialogSize::Large,
+            hint: Some(ctx.lang.text(Msg::SpaceConfirmHint).to_owned()),
         },
         palette,
     )

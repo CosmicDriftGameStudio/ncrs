@@ -6,6 +6,15 @@ impl App {
         &mut self,
         message: HermesChatMessage,
     ) -> Task<Message> {
+        if message == HermesChatMessage::SpaceAsked && !self.hermes_chat_shown() {
+            let opened = self.update_hermes_chat(HermesChatMessage::Open);
+            if !self.hermes_chat.open {
+                return opened;
+            }
+            self.shown_tab = ShownTab::Hermes;
+            let asked = self.update_hermes_chat(HermesChatMessage::SpaceAsked);
+            return Task::batch([opened, asked]);
+        }
         let mut first_run = Task::none();
         if message == HermesChatMessage::Open {
             if self.blocking_overlay_is_open() {
@@ -312,8 +321,10 @@ impl App {
         let chat = ncrs_hermes_chat::view(
             &self.hermes_chat,
             ncrs_hermes_chat::ViewCtx {
+                disk_warning: self.disk_warning_percent(),
                 lang: self.lang,
                 palette: &self.palette,
+                now: chrono::Local::now(),
             },
         )
         .map(Message::HermesChat);

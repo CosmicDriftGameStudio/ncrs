@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use ncrs_space::{Group, RunLog, Scan, UnknownUse};
+use ncrs_space::{Group, LoggedRun, RunLog, Scan, UnknownUse};
 
-use crate::confirm::{ConfirmState, RunPlan};
+use crate::confirm::{ConfirmKind, ConfirmState, RunPlan};
 use crate::decide::DecideState;
 use crate::rows::{matches_filter, rows_of, DisplayRow, Item, GROUP_ORDER};
 
@@ -23,6 +23,7 @@ pub struct Running {
     pub run: u64,
     pub stop: Arc<AtomicBool>,
     pub plan: RunPlan,
+    pub kind: ConfirmKind,
     pub done: usize,
     pub total: usize,
     pub free_before: u64,
@@ -32,12 +33,12 @@ pub struct Running {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResultState {
     pub log: Arc<RunLog>,
+    pub kind: ConfirmKind,
     pub unknown: UnknownUse,
     pub free_before: u64,
     pub free_after: Option<u64>,
-    /// The lines of the run log files, once read.
-    pub log_lines: Option<Vec<String>>,
-    pub show_log: bool,
+    /// This run as the log file has it, with the time of every row, once read.
+    pub log_run: Option<LoggedRun>,
 }
 
 impl ResultState {
@@ -59,6 +60,15 @@ impl ResultState {
             .iter()
             .filter(|row| row.outcome.is_err())
             .count()
+    }
+
+    /// What the run did to the folder at `path`.
+    pub fn logged(&self, path: &Path) -> Option<&ncrs_space::LogRow> {
+        self.log.rows.iter().find(|row| row.path == path)
+    }
+
+    pub fn is_deleted(&self, path: &Path) -> bool {
+        self.logged(path).is_some_and(|row| row.outcome.is_ok())
     }
 }
 
@@ -93,6 +103,10 @@ pub struct State {
     pub(crate) failure: Option<String>,
     pub(crate) list_scroll: f32,
     pub(crate) decide: Option<DecideState>,
+    pub(crate) show_rules: bool,
+    /// A measure that ended while the result was up: the rows follow when it closes, so
+    /// the deleted ones stay in the list as the run left them.
+    pub(crate) pending_scan: Option<Arc<Scan>>,
 }
 
 impl State {
@@ -128,6 +142,10 @@ impl State {
 
     pub const fn result(&self) -> Option<&ResultState> {
         self.result.as_ref()
+    }
+
+    pub const fn show_rules(&self) -> bool {
+        self.show_rules
     }
 
     pub const fn decide(&self) -> Option<&DecideState> {
@@ -187,7 +205,8 @@ impl State {
                 continue;
             }
             items.push(Item::Head(group));
-            if !self.is_folded(group) {
+            let listed_apart = self.result.is_some() && group == Group::Worktrees;
+            if !self.is_folded(group) && !listed_apart {
                 items.extend(rows.into_iter().map(Item::Row));
             }
         }
@@ -262,8 +281,54 @@ impl State {
         self.ticked_rows(group).count()
     }
 
+    /// Whether the last run already deleted the row.
+    pub fn is_done(&self, row: &DisplayRow) -> bool {
+        self.result
+            .as_ref()
+            .is_some_and(|result| result.is_deleted(&row.path))
+    }
+
+    /// The ticked rows of the group that the last run did not delete already.
+    pub fn open_ticked_rows(&self, group: Group) -> impl Iterator<Item = &DisplayRow> {
+        self.ticked_rows(group).filter(|row| !self.is_done(row))
+    }
+
+    pub fn open_ticked_bytes(&self, group: Group) -> u64 {
+        self.open_ticked_rows(group)
+            .fold(0, |sum, row| sum.saturating_add(row.bytes))
+    }
+
+    pub fn open_ticked_count(&self, group: Group) -> usize {
+        self.open_ticked_rows(group).count()
+    }
+
+    /// What the last run freed out of the rows of the group.
+    pub fn freed_in(&self, group: Group) -> u64 {
+        let Some(result) = &self.result else {
+            return 0;
+        };
+        self.group_rows(group)
+            .filter_map(|row| match result.logged(&row.path)?.outcome {
+                Ok(freed) => Some(freed),
+                Err(_) => None,
+            })
+            .fold(0, u64::saturating_add)
+    }
+
+    /// Takes the measure the result held back.
+    pub(crate) fn settle_result(&mut self, home: &Path, store_build: bool) {
+        self.result = None;
+        if let Some(scan) = self.pending_scan.take() {
+            self.take_scan(scan, home, store_build);
+        }
+    }
+
     /// Replaces the scan, keeping the unticks of rows that are still there.
     pub(crate) fn take_scan(&mut self, scan: Arc<Scan>, home: &Path, store_build: bool) {
+        if self.result.is_some() {
+            self.pending_scan = Some(scan);
+            return;
+        }
         self.rows = rows_of(&scan, home, store_build);
         self.scan = Some(scan);
         let rows = &self.rows;

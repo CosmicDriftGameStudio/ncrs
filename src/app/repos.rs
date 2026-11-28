@@ -34,6 +34,7 @@ impl App {
         let content = match &self.repos {
             Some(state) => {
                 let ctx = ncrs_repos::ViewCtx {
+                    disk_warning: self.disk_warning_percent(),
                     lang: self.lang,
                     palette: &self.palette,
                     window: self.window_size,
@@ -105,6 +106,7 @@ impl App {
 
     fn run_repos_action(&mut self, action: Ask) -> Task<Message> {
         match action {
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::OpenGitTab(root) => self.open_git_tab_at(root),
             Ask::OpenGitTabs(roots) => {
                 Task::batch(roots.into_iter().map(|root| self.open_git_tab_at(root)))

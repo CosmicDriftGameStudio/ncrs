@@ -7,7 +7,6 @@ mod confirm;
 mod ctx;
 mod decide;
 mod keys;
-mod log_lines;
 mod menu;
 mod message;
 mod rows;

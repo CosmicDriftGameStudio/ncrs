@@ -32,15 +32,6 @@ fn modifier_name() -> &'static str {
     }
 }
 
-pub fn keys_line(lang: Language) -> String {
-    let keys = fill(
-        lang,
-        Msg::HermesChatListKeysHint,
-        &[("mod", modifier_name())],
-    );
-    format!("{keys} \u{b7} {}", lang.text(Msg::HermesChatListMarkHint))
-}
-
 fn status_text(lang: Language, status: ChatStatus) -> &'static str {
     lang.text(match status {
         ChatStatus::PlanOpen => Msg::HermesChatStatusPlanOpen,
@@ -184,7 +175,7 @@ pub fn list_props(state: &State, ctx: ViewCtx<'_>) -> ChatListProps<'static, Mes
         })
         .collect();
     ChatListProps {
-        new_label: lang.text(Msg::HermesChatListNew),
+        new_label: lang.text(Msg::HermesChatNewChat),
         new_key: fill(lang, Msg::HermesChatListNewKey, &[("mod", modifier_name())]),
         on_new: Message::NewChat,
         search_placeholder: lang.text(Msg::HermesChatListSearch),

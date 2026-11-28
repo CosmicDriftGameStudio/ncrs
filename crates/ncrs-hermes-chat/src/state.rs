@@ -244,6 +244,12 @@ pub struct Session {
     pub measuring_space: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpaceMeasured {
+    pub free: u64,
+    pub at: std::time::SystemTime,
+}
+
 #[derive(Debug, Default)]
 pub struct State {
     pub open: bool,
@@ -288,6 +294,8 @@ pub struct State {
     /// Counts the ticks of the wait; moves the dots of the working line.
     pub tick: usize,
     pub session: Session,
+    /// What the last measure for the card found, for the status bar.
+    pub space_measured: Option<SpaceMeasured>,
     /// The chats of the list; the conversation above is the one of
     /// `chats.live()`.
     pub chats: crate::chat_list::ChatList,

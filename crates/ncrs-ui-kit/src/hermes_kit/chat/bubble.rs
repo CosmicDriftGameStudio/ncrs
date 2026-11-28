@@ -24,7 +24,7 @@ const BOLD_MARK: &str = "**";
 const PATH_OPACITY: f32 = 0.8;
 
 /// The text with its `**bold**` stretches as spans.
-fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
+pub(super) fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
     content
         .split(BOLD_MARK)
         .enumerate()
@@ -38,6 +38,14 @@ fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
             }
         })
         .collect()
+}
+
+/// The dim, centred line above the first message of a day.
+pub fn day_mark<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
+    container(small(content.to_owned(), palette.dim_text))
+        .width(Length::Fill)
+        .align_x(alignment::Horizontal::Center)
+        .into()
 }
 
 /// A paragraph of the chat; `**bold**` is set in bold.

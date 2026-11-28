@@ -30,6 +30,7 @@ pub fn update(
             actions.push(Action::PickFolder(kind));
             Task::none()
         }
+        SettingsMessage::SpaceListKey(key) => space_list_key(settings, key, ctx, actions),
         SettingsMessage::FolderPicked { path: None, .. } => Task::none(),
         SettingsMessage::FolderPicked {
             kind,
@@ -211,6 +212,54 @@ fn repos_with_folder(current: &ReposSettings, kind: AddAs, path: PathBuf) -> Rep
         | AddAs::SpaceHome => {}
     }
     next
+}
+
+/// ⌘N and ⌫ on the Platz page: add to the folder list under the cursor, or remove the folder there.
+fn space_list_key(
+    settings: &mut Settings,
+    key: crate::message::SpaceListKey,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    use crate::focus::Area;
+    use crate::message::SpaceListKey;
+    use crate::settings::view::space_list_target;
+    let Some(state) = settings.page.as_ref() else {
+        return Task::none();
+    };
+    if state.feature != ncrs_config::SettingsFeature::Space
+        || state.focus.area != Area::Rows
+        || state.focus.field
+        || !state.query.is_empty()
+    {
+        return Task::none();
+    }
+    let Some(current) = state.config().map(|config| config.space.clone()) else {
+        return Task::none();
+    };
+    let Some(target) = space_list_target(
+        state.focus.row,
+        &current,
+        &state.space_drives,
+        state.sandboxed,
+    ) else {
+        return Task::none();
+    };
+    match (key, target.folder) {
+        (SpaceListKey::Add, _) => {
+            actions.push(Action::PickFolder(target.kind));
+            Task::none()
+        }
+        (SpaceListKey::Remove, Some(position)) => change_space(settings, ctx, |current| {
+            let mut next = current.clone();
+            match target.kind {
+                AddAs::SpaceRegenerable => next.own_regenerable.remove(position),
+                _ => next.never_touch.remove(position),
+            };
+            next
+        }),
+        (SpaceListKey::Remove, None) => Task::none(),
+    }
 }
 
 fn change_space(

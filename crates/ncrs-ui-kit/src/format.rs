@@ -304,6 +304,13 @@ pub fn time(time: Option<SystemTime>) -> String {
         .unwrap_or_default()
 }
 
+/// Local clock time with seconds, `HH:MM:SS`, or empty if unknown.
+pub fn clock_seconds(time: Option<SystemTime>) -> String {
+    time.and_then(local_time)
+        .map(|at| at.format("%H:%M:%S").to_string())
+        .unwrap_or_default()
+}
+
 /// The day of a time with its year, no clock time (`01.03.2025`). Empty when
 /// unknown.
 pub fn day_in(time: Option<SystemTime>, lang: Language) -> String {

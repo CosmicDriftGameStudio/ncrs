@@ -73,6 +73,39 @@ pub fn mono_text_field<'a, M: Clone + 'a>(
     )
 }
 
+const NUMBER_FIELD_WIDTH: f32 = 64.0;
+
+/// A narrow field for a whole number with its unit after it; only digits are taken.
+pub fn number_field<'a, M: Clone + 'a>(
+    unit: &str,
+    value: &str,
+    id: impl Into<iced::widget::Id>,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let digits_only = on_input.map(|typed| {
+        move |text: String| typed(text.chars().filter(char::is_ascii_digit).collect())
+    });
+    iced::widget::row![
+        iced::widget::container(mono_text_field(
+            "",
+            value,
+            id,
+            digits_only,
+            on_submit,
+            palette
+        ))
+        .width(NUMBER_FIELD_WIDTH),
+        iced::widget::text(unit.to_owned())
+            .size(crate::theme::font_size::BODY)
+            .color(palette.dim_text),
+    ]
+    .spacing(crate::theme::spacing::XS)
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
 /// How a text field shows what is typed.
 #[derive(Clone, Copy)]
 enum Look {

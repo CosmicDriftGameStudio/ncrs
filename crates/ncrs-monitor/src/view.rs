@@ -11,7 +11,7 @@ use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::meter::{
     level_text_color, meter, meter_by_level, meter_level, meter_level_from, Meter, MeterLevel,
 };
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_band, page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
@@ -220,7 +220,10 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
         .enumerate()
         .map(|(position, drive)| {
             let shown = if free { drive.available } else { drive.used() };
-            let color = level_text_color(drive_level(drive.used_percent(), state.space.warn_from_percent), palette);
+            let color = level_text_color(
+                drive_level(drive.used_percent(), state.space.warn_from_percent),
+                palette,
+            );
             TableRow {
                 cells: vec![
                     TableCell::plain(if drive.name.is_empty() {
@@ -309,18 +312,17 @@ fn drive_meter<'a>(
     if !is_home {
         return bar;
     }
+    let tone = if drive_level(percent, state.space.warn_from_percent) == MeterLevel::Normal {
+        Tone::Secondary
+    } else {
+        Tone::Warning
+    };
     let button_label = lang.text(Msg::MonitorSpaceButton);
     let press = Some(MonitorMessage::OpenSpace);
     let button = if state.space.key.is_empty() {
-        kit::button(button_label, press, Tone::Secondary, palette)
+        kit::button(button_label, press, tone, palette)
     } else {
-        kit::key_button(
-            button_label,
-            &state.space.key,
-            press,
-            Tone::Secondary,
-            palette,
-        )
+        kit::key_button(button_label, &state.space.key, press, tone, palette)
     };
     column![bar, button].spacing(spacing::M).into()
 }
@@ -404,6 +406,7 @@ fn tasks_block<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Page<'a> {
         lang,
         palette,
         window_size,
+        ..
     } = ctx;
     let visible = visible_rows(window_size.height);
     let first = state.window.offset(state.order.len(), visible);
@@ -494,7 +497,8 @@ fn tasks_block<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Page<'a> {
     block.into()
 }
 
-fn status_bar<'a>(state: &'a State, lang: Language, palette: &Palette) -> Page<'a> {
+fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Page<'a> {
+    let (lang, palette) = (ctx.lang, ctx.palette);
     let failure = state
         .failure
         .as_ref()
@@ -507,14 +511,27 @@ fn status_bar<'a>(state: &'a State, lang: Language, palette: &Palette) -> Page<'
         lang.text(Msg::MonitorHintRefresh),
         &[("{seconds}", &state.refresh_every().as_secs().to_string())],
     );
+    let mut keys: Vec<(&str, &str)> = vec![
+        ("\u{2191}\u{2193}", lang.text(Msg::MonitorHintKeyDrive)),
+        ("Enter", lang.text(Msg::MonitorHintKeyOpen)),
+    ];
+    if !state.space.key.is_empty() {
+        keys.push((&state.space.key, lang.text(Msg::MonitorHintKeySpace)));
+    }
+    keys.push(("Tab", lang.text(Msg::SpaceKeyNextArea)));
+    keys.push((
+        "g",
+        lang.text(if state.is_grouped() {
+            Msg::MonitorHintKeyUngroup
+        } else {
+            Msg::MonitorHintKeyGroup
+        }),
+    ));
+    keys.push(("F1", lang.text(Msg::ShortcutCommands)));
     let line = match (&failure, &notice) {
         (Some(text), _) => PageStatusLine::Failure(text),
         (None, Some(text)) => PageStatusLine::Notice(text),
-        (None, None) => PageStatusLine::Hint(lang.text(if state.is_grouped() {
-            Msg::MonitorHintUngroup
-        } else {
-            Msg::MonitorHintGroup
-        })),
+        (None, None) => PageStatusLine::Keys(&keys),
     };
     page_status_bar(
         PageStatusBar {
@@ -522,6 +539,7 @@ fn status_bar<'a>(state: &'a State, lang: Language, palette: &Palette) -> Page<'
             line,
             right: Some(&every),
         },
+        DiskWarning::of(ctx.disk_warning, ctx.lang, MonitorMessage::AskWhyDiskFull),
         palette,
     )
 }
@@ -602,7 +620,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, MonitorMessag
     };
     column![
         container(body).width(Length::Fill).height(Length::Fill),
-        status_bar(state, lang, palette),
+        status_bar(state, ctx),
     ]
     .into()
 }
@@ -648,6 +666,7 @@ pub fn dialog_view<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Mo
         lang,
         palette,
         window_size,
+        ..
     } = ctx;
     let subject = fill_template(
         lang.text(Msg::MonitorKillSubject),

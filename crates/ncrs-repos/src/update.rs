@@ -660,6 +660,7 @@ pub fn update(state: &mut State, incoming: Message, ctx: &Ctx) -> Outcome {
             }
             quiet(Task::none())
         }
+        Message::AskWhyDiskFull => (Task::none(), vec![Action::AskWhyDiskFull]),
         Message::CloseResult => {
             if state
                 .run

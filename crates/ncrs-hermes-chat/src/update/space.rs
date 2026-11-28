@@ -35,6 +35,10 @@ pub fn measured(state: &mut State, ctx: &Ctx, scan: &Arc<Scan>) {
         return;
     }
     drop_working(state);
+    state.space_measured = Some(crate::state::SpaceMeasured {
+        free: scan.volume.available,
+        at: scan.measured_at,
+    });
     let built = build(scan, ctx);
     let shown = |bytes: u64| format::size_shown(bytes, ctx.lang);
     let mut parts = vec![Part::Text(built.intro), Part::Space(built.card)];

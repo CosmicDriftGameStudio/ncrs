@@ -90,7 +90,10 @@ mod tests {
         let at = disk_hint(volume(100 * GB, 10 * GB), 90).unwrap();
         assert_eq!(at.used_percent, 90);
         assert_eq!(at.available, 10 * GB);
-        assert_eq!(disk_hint(volume(100 * GB, 0), 99).unwrap().used_percent, 100);
+        assert_eq!(
+            disk_hint(volume(100 * GB, 0), 99).unwrap().used_percent,
+            100
+        );
     }
 
     #[test]

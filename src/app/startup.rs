@@ -551,6 +551,7 @@ impl App {
             space_progress: None,
             last_own_trash: Vec::new(),
             space_hint: None,
+            home_volume: None,
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
             dialog_focus: 0,

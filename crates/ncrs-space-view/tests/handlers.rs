@@ -14,11 +14,11 @@ mod common;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use common::{ctx, log_of, path, send, small_scan, tab, GIB, HOME};
+use common::{ctx, entry, log_of, path, scan_of, send, small_scan, tab, GIB, HOME};
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
-use ncrs_space::decide::{DownloadGroups, DownloadItem, Matched};
-use ncrs_space::{Group, LogRow, Skip, UnknownUse};
+use ncrs_space::decide::{DecideKind, DownloadGroups, DownloadItem, Matched};
+use ncrs_space::{EntryKind, Group, LogRow, Skip, UnknownUse};
 use ncrs_space_view::{
     commands, message_of_command, space_key, Action, ConfirmKind, DecideMessage, Finished, KeyMode,
     Message, RowKind, SpaceKeys,
@@ -322,26 +322,18 @@ fn try_again_asks_once_more_about_the_skipped_rows_only() {
 }
 
 #[test]
-fn closing_the_result_and_reading_the_log_go_back_and_forth() {
+fn reading_the_log_fills_the_result_and_escape_closes_it() {
     let ctx = ctx();
     let (mut state, _) = tab(small_scan(), &ctx);
     finished_run(&mut state, &ctx);
-    send(&mut state, Message::ShowLog, &ctx);
-    assert!(state.result().unwrap().show_log);
+    let text =
+        "# run\tstarted=1790000000\tfinished=1790000005\tfreed=10\n1790000001\t/a\t10\tfreed\t10";
     send(
         &mut state,
-        Message::LogRead(vec!["1790000000\t/a\t10\tfreed\t10".to_owned()]),
+        Message::LogRead(text.lines().map(str::to_owned).collect()),
         &ctx,
     );
-    assert_eq!(
-        state.result().unwrap().log_lines.as_ref().map(Vec::len),
-        Some(1)
-    );
-    send(&mut state, Message::Escape, &ctx);
-    assert!(
-        !state.result().unwrap().show_log,
-        "Esc leaves the log first"
-    );
+    assert!(state.result().unwrap().log_run.is_some());
     send(&mut state, Message::Escape, &ctx);
     assert!(state.result().is_none());
 }
@@ -442,7 +434,7 @@ fn downloads() -> DownloadGroups {
             with: path("/Applications/Setup.app"),
             installed: None,
         }],
-        rest: vec![item("notes.pdf", GIB)],
+        untouched_year: vec![item("notes.pdf", GIB)],
         ..DownloadGroups::default()
     }
 }
@@ -672,4 +664,31 @@ fn the_command_list_has_every_action_and_each_answers_with_its_message() {
     assert!(listed.iter().all(|(label, _)| !label.is_empty()));
     assert_eq!(message_of_command(0), Some(Message::DeleteSafe));
     assert_eq!(message_of_command(listed.len()), None);
+}
+
+#[test]
+fn the_simulators_row_cannot_go_to_the_trash_but_the_backups_row_can() {
+    let simulators = format!("{HOME}/Library/Developer/CoreSimulator");
+    let backups = format!("{HOME}/Backups");
+    let place =
+        |folder: &str, kind: DecideKind| entry(folder, Group::Decide, EntryKind::Decide(kind), GIB);
+    let scan = scan_of(
+        vec![
+            place(&simulators, DecideKind::Simulators),
+            place(&backups, DecideKind::Backups),
+        ],
+        true,
+    );
+    let app = ctx();
+    let (mut state, _) = tab(scan, &app);
+    assert!(!row_of(&state, &simulators).can_trash());
+    assert!(row_of(&state, &backups).can_trash());
+
+    send(&mut state, Message::RowPressed(path(&simulators)), &app);
+    send(&mut state, Message::Enter, &app);
+    assert!(state.decide().is_none());
+
+    send(&mut state, Message::RowPressed(path(&backups)), &app);
+    send(&mut state, Message::Enter, &app);
+    assert!(state.decide().is_some());
 }

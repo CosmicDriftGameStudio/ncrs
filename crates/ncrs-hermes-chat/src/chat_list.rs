@@ -199,6 +199,29 @@ impl ChatList {
         self.prune_empty();
     }
 
+    /// Names the running chat, such as the chat the Platz card answers.
+    pub fn set_live_title(&mut self, title: String) {
+        let Some(id) = self.live.clone() else {
+            return;
+        };
+        let Some(chat) = self.chat_mut(&id) else {
+            return;
+        };
+        if chat.title == title {
+            return;
+        }
+        chat.title = title;
+        self.save(&id);
+    }
+
+    /// When the chat on show was started.
+    pub fn shown_created(&self) -> Option<i64> {
+        self.shown
+            .as_ref()
+            .and_then(|id| self.chat(id))
+            .map(|chat| chat.created)
+    }
+
     pub fn forget_live(&mut self) {
         self.live = None;
     }

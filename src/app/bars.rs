@@ -287,7 +287,12 @@ impl App {
         }
         if self.space.is_some() {
             tabs.push(titlebar::PageTabState {
-                page: titlebar::PageTab::Space,
+                page: titlebar::PageTab::Space(
+                    self.space_last_scan
+                        .as_ref()
+                        .map(|scan| scan.volume_name.clone())
+                        .filter(|name| !name.is_empty()),
+                ),
                 active: self.shown_tab == ShownTab::Space,
             });
         }

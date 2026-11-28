@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// The disk warning in the status bar was pressed: ask Hermes why the drive is full.
+    AskWhyDiskFull,
     /// Show this repository in a Git tab (a new one, or the one that has it).
     OpenGitTab(PathBuf),
     /// Show each of these in a Git tab.

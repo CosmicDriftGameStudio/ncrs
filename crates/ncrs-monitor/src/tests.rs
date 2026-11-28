@@ -512,6 +512,7 @@ fn idle_interfaces_and_system_volumes_are_hidden_until_shown() {
 fn view_ctx() -> ViewCtx<'static> {
     static PALETTE: std::sync::OnceLock<ncrs_ui_kit::palette::Palette> = std::sync::OnceLock::new();
     ViewCtx {
+        disk_warning: None,
         lang: Language::English,
         palette: PALETTE.get_or_init(|| ThemePreset::DEFAULT.palette()),
         window_size: WINDOW,
@@ -604,6 +605,7 @@ fn the_rows_fill_the_page_without_a_cut_off_row() {
             },
         );
         let page = ViewCtx {
+            disk_warning: None,
             window_size: window,
             ..view_ctx()
         };
@@ -816,7 +818,10 @@ mod ui_tests {
         let mut state = open_state(mac);
         let mut nearly_full = drive("Macintosh HD", "/", "apfs");
         nearly_full.available = 40 << 30;
-        state.test_put_drives(vec![nearly_full, drive("Archiv", "/Volumes/Archiv", "apfs")]);
+        state.test_put_drives(vec![
+            nearly_full,
+            drive("Archiv", "/Volumes/Archiv", "apfs"),
+        ]);
         state.set_space_facts(SpaceFacts {
             warn_from_percent: 90,
             home: Some(PathBuf::from("/Users/marc")),

@@ -10,23 +10,29 @@ use ncrs_ui_kit::format::size_shown;
 use ncrs_ui_kit::kit::{self, text_field, Tone};
 use ncrs_ui_kit::meter::{meter_by_level, meter_level_from, Meter};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
-use ncrs_ui_kit::stacked_bar::{stacked_bar, BarSegment};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::stacked_bar::{stacked_bar, stacked_bar_striped, BarSegment};
 use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 use super::list::group_color;
 use crate::ctx::ViewCtx;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
-use crate::state::State;
+use crate::state::{ResultState, State};
 use crate::texts::{fill_size, percent_of};
 use crate::update::FILTER_ID;
 
 pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    let info = match state.measuring() {
-        Some(measuring) => fill_size(Msg::SpaceMeasuring, measuring.bytes, ctx.lang),
-        None => super::measured_line(state, ctx),
-    };
+    let info = state.measuring().map_or_else(
+        || super::measured_line(state, ctx),
+        |measuring| fill_size(Msg::SpaceMeasuring, measuring.bytes, ctx.lang),
+    );
+    let heading = state
+        .scan()
+        .map(|scan| scan.volume_name.as_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| ctx.lang.text(Msg::SpaceHeading));
     let partial = state.scan().is_some_and(|scan| scan.partial) && !state.is_measuring();
     let filter = text_field(
         ctx.lang.text(Msg::SpaceFilterPlaceholder),
@@ -36,14 +42,15 @@ pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         Message::FilterSubmitted,
         palette,
     );
-    let rescan = kit::button(
+    let rescan = kit::key_button(
         ctx.lang.text(Msg::SpaceRescan),
+        &ctx.keys.label(Shortcut::Rescan),
         (state.running().is_none()).then_some(Message::Rescan),
         Tone::Secondary,
         palette,
     );
     let mut line = row![
-        page_heading(ctx.lang.text(Msg::SpaceHeading), palette),
+        page_heading(heading, palette),
         page_line(info, font_size::BODY, palette.dim_text),
     ];
     if partial {
@@ -135,7 +142,7 @@ pub fn drive<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         Msg::SpaceLegendDecide,
         Msg::SpaceLegendInUse,
     ];
-    let chips = row(groups
+    let mut legend: Vec<Element<'a, Message>> = groups
         .iter()
         .zip(labels)
         .zip(&group_sizes)
@@ -148,11 +155,54 @@ pub fn drive<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 group_color(*group, palette),
                 None::<Message>,
             )
-        }))
+        })
+        .collect();
+    legend.push(color_chip(
+        &legend_text(Msg::SpaceLegendRest, used.saturating_sub(counted)),
+        ncrs_ui_kit::theme::space::rest(palette),
+        None::<Message>,
+    ));
+    legend.push(color_chip(
+        &legend_text(Msg::SpaceLegendFree, free),
+        palette.dim_text,
+        None::<Message>,
+    ));
+    let after_cleanup = free
+        .saturating_add(state.open_ticked_bytes(Group::Safe))
+        .saturating_add(if ctx.store_build {
+            0
+        } else {
+            state.open_ticked_bytes(Group::Worktrees)
+        });
+    let mut figures = row![color_chip(
+        &fill_size(Msg::SpaceFreeNow, free, ctx.lang),
+        palette.text,
+        None::<Message>,
+    )]
     .spacing(spacing::XS);
-    container(column![gauge, stacked_bar(&segments, palette), chips].spacing(spacing::M))
-        .padding([spacing::M, spacing::XXL])
-        .into()
+    if after_cleanup > free && state.result().is_none() {
+        figures = figures.push(color_chip(
+            &fill_size(Msg::SpaceFreeAfter, after_cleanup, ctx.lang),
+            group_color(Group::Safe, palette),
+            None::<Message>,
+        ));
+    }
+    let bar = match state.result() {
+        Some(done) => result_bar(state, done, total, palette),
+        None => stacked_bar(&segments, palette),
+    };
+    container(
+        column![
+            row![gauge, figures]
+                .spacing(spacing::XL)
+                .align_y(alignment::Vertical::Center),
+            bar,
+            row(legend).spacing(spacing::XS),
+        ]
+        .spacing(spacing::M),
+    )
+    .padding([spacing::M, spacing::XXL])
+    .into()
 }
 
 /// The buttons for what the ticked rows hold.
@@ -198,6 +248,12 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     }
     line = line
         .push(Space::new().width(Length::Fill))
+        .push(kit::button(
+            ctx.lang.text(Msg::SpaceRulesOpen),
+            Some(Message::ShowRules),
+            Tone::Secondary,
+            palette,
+        ))
         .push(kit::key_button(
             ctx.lang.text(Msg::SpaceAsk),
             &ctx.keys.label(Shortcut::AskHermes),
@@ -209,4 +265,46 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .padding([spacing::M, spacing::XXL])
         .height(size::HEADER + spacing::XL)
         .into()
+}
+
+/// The bar after a run: what is left of each group, what the run freed in stripes, and what
+/// was free before.
+fn result_bar<'a>(
+    state: &State,
+    done: &ResultState,
+    total: u64,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let left = |group: Group| {
+        state
+            .group_bytes(group)
+            .saturating_sub(state.freed_in(group))
+    };
+    let in_groups: u64 = [Group::Safe, Group::Worktrees, Group::Decide, Group::InUse]
+        .iter()
+        .map(|group| left(*group))
+        .sum();
+    let freed = done.freed();
+    let was_free = done.free_before;
+    let other = total
+        .saturating_sub(in_groups)
+        .saturating_sub(freed)
+        .saturating_sub(was_free);
+    let segment = |portion: u64, color| BarSegment { portion, color };
+    stacked_bar_striped(
+        &[
+            segment(left(Group::Safe), group_color(Group::Safe, palette)),
+            segment(freed, group_color(Group::Safe, palette)),
+            segment(
+                left(Group::Worktrees),
+                group_color(Group::Worktrees, palette),
+            ),
+            segment(left(Group::Decide), group_color(Group::Decide, palette)),
+            segment(left(Group::InUse), group_color(Group::InUse, palette)),
+            segment(other, ncrs_ui_kit::theme::space::rest(palette)),
+            segment(was_free, ncrs_ui_kit::theme::space::free(palette)),
+        ],
+        Some(1),
+        palette,
+    )
 }

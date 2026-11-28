@@ -4,9 +4,11 @@
 use ncrs_config::space::{Depth, SpaceSettings, DEPTH_CHOICES};
 use ncrs_space::{CatalogId, Os};
 
-use super::index_page::add_folder_row;
 use super::*;
-use crate::folders::{warn_from_stepped, AddAs};
+use crate::folders::AddAs;
+use crate::message::DriveRow;
+
+const WARN_FIELD_ID: &str = "space-warn-from";
 
 pub fn space_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
@@ -31,12 +33,25 @@ pub fn space_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             ],
         )
     );
-    let mut groups = vec![
-        Group {
+    let never_title = format!(
+        "{} \u{b7} {}",
+        lang.text(Msg::SettingsSpaceNeverGroup),
+        current.never_touch.len()
+    );
+    let mut groups = vec![Group {
+        intro: None,
+        title: lang.text(Msg::SettingsSpaceWarningGroup).to_owned(),
+        rows: vec![warn_row(view)],
+    }];
+    let drives = drive_rows(&current, view);
+    if !drives.is_empty() {
+        groups.push(Group {
             intro: None,
-            title: lang.text(Msg::SettingsSpaceWarningGroup).to_owned(),
-            rows: vec![warn_row(&current, view)],
-        },
+            title: lang.text(Msg::SettingsSpaceDrives).to_owned(),
+            rows: drives,
+        });
+    }
+    groups.extend([
         Group {
             intro: Some(lang.text(Msg::SettingsSpaceRegenerableIntro).to_owned()),
             title: safe_title,
@@ -46,41 +61,60 @@ pub fn space_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 .collect(),
         },
         Group {
-            intro: None,
-            title: lang.text(Msg::SettingsSpaceOwnRegenerable).to_owned(),
+            intro: Some(lang.text(Msg::SettingsSpaceOwnRegenerable).to_owned()),
+            title: lang.text(Msg::SettingsSpaceRegenerable).to_owned(),
             rows: folder_rows(
                 &current.own_regenerable,
                 AddAs::SpaceRegenerable,
-                |next, folder| next.own_regenerable.retain(|known| known != folder),
+                "",
+                |next, position| {
+                    next.own_regenerable.remove(position);
+                },
                 &current,
                 view,
             ),
         },
         Group {
-            intro: Some(lang.text(Msg::SettingsSpaceProtectedIntro).to_owned()),
-            title: lang.text(Msg::SettingsSpaceNeverGroup).to_owned(),
+            intro: Some(format!(
+                "{}. {}",
+                lang.text(Msg::SettingsSpaceProtected),
+                lang.text(Msg::SettingsSpaceProtectedIntro)
+            )),
+            title: never_title,
             rows: folder_rows(
                 &current.never_touch,
                 AddAs::SpaceNeverTouch,
-                |next, folder| next.never_touch.retain(|known| known != folder),
+                "\u{2717} ",
+                |next, position| {
+                    next.never_touch.remove(position);
+                },
                 &current,
                 view,
             ),
         },
-    ];
+    ]);
     if !view.state.sandboxed {
         groups.push(Group {
             intro: None,
             title: lang.text(Msg::SettingsSpaceWorktreesGroup).to_owned(),
-            rows: vec![switch_row(
-                Msg::SettingsSpaceShowWorktrees,
-                Msg::SettingsSpaceWorktreesNote,
-                current.show_worktrees,
-                changed(&current, |next| {
-                    next.show_worktrees = !current.show_worktrees
-                }),
-                view,
-            )],
+            rows: vec![SettingRow::text(
+                lang.text(Msg::SettingsSpaceWorktreesLabel).to_owned(),
+                Some(format!(
+                    "{} \u{b7} {}",
+                    lang.text(Msg::SettingsSpaceShowWorktrees),
+                    lang.text(Msg::SettingsSpaceWorktreesNote)
+                )),
+                switch(
+                    current.show_worktrees,
+                    changed(&current, |next| {
+                        next.show_worktrees = !current.show_worktrees
+                    }),
+                    view,
+                ),
+            )
+            .keyed(RowKey::Press(change(changed(&current, |next| {
+                next.show_worktrees = !current.show_worktrees
+            }))))],
         });
     }
     groups.push(Group {
@@ -116,11 +150,143 @@ pub fn space_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     groups
 }
 
+/// One drive of the warning list: its name, whether the warning is on for it, and what is known of it.
+struct DriveEntry<'d> {
+    name: String,
+    on: bool,
+    measured: Option<&'d DriveRow>,
+}
+
+/// The drives the warning is for: the listed ones, or the drive of the home folder when none is listed.
+fn warned_drives(current: &SpaceSettings, drives: &[DriveRow]) -> Vec<String> {
+    if current.warn_drives.is_empty() {
+        drives
+            .iter()
+            .filter(|drive| drive.is_home)
+            .map(|drive| drive.name.clone())
+            .collect()
+    } else {
+        current.warn_drives.clone()
+    }
+}
+
+/// The connected drives, then the listed ones that are not connected.
+fn drive_entries<'d>(current: &SpaceSettings, drives: &'d [DriveRow]) -> Vec<DriveEntry<'d>> {
+    let warned = warned_drives(current, drives);
+    let mut entries: Vec<DriveEntry<'d>> = drives
+        .iter()
+        .map(|drive| DriveEntry {
+            on: warned.contains(&drive.name),
+            name: drive.name.clone(),
+            measured: Some(drive),
+        })
+        .collect();
+    entries.extend(
+        current
+            .warn_drives
+            .iter()
+            .filter(|name| !drives.iter().any(|drive| &drive.name == *name))
+            .map(|name| DriveEntry {
+                name: name.clone(),
+                on: true,
+                measured: None,
+            }),
+    );
+    entries
+}
+
+fn with_drive_toggled(current: &SpaceSettings, drives: &[DriveRow], name: &str) -> SpaceSettings {
+    let mut listed = warned_drives(current, drives);
+    if listed.iter().any(|known| known == name) {
+        listed.retain(|known| known != name);
+    } else {
+        listed.push(name.to_owned());
+    }
+    let mut next = current.clone();
+    next.warn_drives = listed;
+    next
+}
+
+fn drive_rows<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    drive_entries(current, &view.state.space_drives)
+        .into_iter()
+        .map(|entry| {
+            let (label, note) = match entry.measured {
+                Some(drive) => (
+                    drive.name.clone(),
+                    Some(fill_template(
+                        lang.text(Msg::SettingsSpaceDriveRow),
+                        &[
+                            (
+                                "{total}",
+                                &ncrs_ui_kit::format::size_shown(drive.total, lang),
+                            ),
+                            ("{used}", &ncrs_ui_kit::format::size_shown(drive.used, lang)),
+                        ],
+                    )),
+                ),
+                None => (
+                    entry.name.clone(),
+                    Some(lang.text(Msg::SettingsSpaceDriveAbsent).to_owned()),
+                ),
+            };
+            let setting = SettingChange::Space(with_drive_toggled(
+                current,
+                &view.state.space_drives,
+                &entry.name,
+            ));
+            SettingRow::text(label, note, switch(entry.on, setting.clone(), view))
+                .keyed(RowKey::Press(change(setting)))
+        })
+        .collect()
+}
+
+/// The folder list a key of the Platz page works on, and the folder under the cursor in it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ListTarget {
+    pub kind: AddAs,
+    pub folder: Option<usize>,
+}
+
+/// Which list the row `row` (counted among the rows with a key) belongs to. The rows are keyed in
+/// the order `space_groups` builds them: warning field, drives, safe places, own folders (each,
+/// then the add button), protected folders (the same).
+pub(crate) fn space_list_target(
+    row: usize,
+    current: &SpaceSettings,
+    drives: &[DriveRow],
+    sandboxed: bool,
+) -> Option<ListTarget> {
+    let own_start =
+        1 + drive_entries(current, drives).len() + listed_catalog(Os::current(), sandboxed).len();
+    let never_start = own_start + current.own_regenerable.len() + 1;
+    let inside = |start: usize, len: usize, kind: AddAs| {
+        (start..=start + len).contains(&row).then(|| ListTarget {
+            kind,
+            folder: (row < start + len).then(|| row - start),
+        })
+    };
+    inside(
+        own_start,
+        current.own_regenerable.len(),
+        AddAs::SpaceRegenerable,
+    )
+    .or_else(|| {
+        inside(
+            never_start,
+            current.never_touch.len(),
+            AddAs::SpaceNeverTouch,
+        )
+    })
+}
+
 /// The catalog entries the page switches on and off: the ones this system
 /// has a place for, and that the build may touch.
 pub(crate) fn listed_catalog(os: Os, sandboxed: bool) -> Vec<CatalogId> {
     let mut listed = vec![
         CatalogId::CargoTarget,
+        CatalogId::CargoTargetHome,
         CatalogId::Sccache,
         CatalogId::CargoRegistryCache,
         CatalogId::Yarn,
@@ -128,6 +294,7 @@ pub(crate) fn listed_catalog(os: Os, sandboxed: bool) -> Vec<CatalogId> {
         CatalogId::Bun,
         CatalogId::Pnpm,
         CatalogId::Pip,
+        CatalogId::NodeModulesStale,
     ];
     if os == Os::MacOs {
         listed.extend([CatalogId::Homebrew, CatalogId::DerivedData]);
@@ -224,7 +391,7 @@ fn catalog_row<'a>(
     let setting = SettingChange::Space(with_catalog_toggled(current, id));
     Some(
         SettingRow::text(
-            view.lang.text(name).to_owned(),
+            fill_template(view.lang.text(name), &[("{name}", "target")]),
             Some(view.lang.text(why).to_owned()),
             switch(on, setting.clone(), view),
         )
@@ -232,38 +399,25 @@ fn catalog_row<'a>(
     )
 }
 
-fn warn_row<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> SettingRow<'a> {
+fn warn_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
     let lang = view.lang;
-    let palette = view.palette;
-    let stepped = |step: i8| {
-        changed(current, |next| {
-            next.warn_from_percent = warn_from_stepped(current.warn_from_percent, step);
-        })
-    };
-    let control: Element<'a, Message> = row![
-        kit::button(
-            "\u{2212}",
-            Some(change(stepped(-1))),
-            Tone::Secondary,
-            palette
-        ),
-        text(current.warn_from_percent.to_string())
-            .size(font_size::BODY)
-            .color(palette.text),
-        kit::button("+", Some(change(stepped(1))), Tone::Secondary, palette),
-    ]
-    .spacing(spacing::M)
-    .align_y(iced::alignment::Vertical::Center)
-    .into();
-    SettingRow::text(
-        lang.text(Msg::SettingsSpaceWarnFrom).to_owned(),
-        Some(lang.text(Msg::SettingsSpaceWarnSuffix).to_owned()),
-        control,
-    )
-    .keyed(RowKey::Choice {
-        previous: change(stepped(-1)),
-        next: change(stepped(1)),
-    })
+    let field = SettingField::SpaceWarnFrom;
+    SettingRow {
+        key: Some(RowKey::Text(WARN_FIELD_ID)),
+        problem: field_problem(field, view),
+        ..SettingRow::text(
+            lang.text(Msg::SettingsSpaceWarnFrom).to_owned(),
+            Some(lang.text(Msg::SettingsSpaceWarnSuffix).to_owned()),
+            kit::number_field(
+                lang.text(Msg::SettingsSpaceWarnUnit),
+                &view.state.field_text(field),
+                WARN_FIELD_ID,
+                Some(move |text| SettingsMessage::Edit { field, text }),
+                SettingsMessage::Submit(field),
+                view.palette,
+            ),
+        )
+    }
 }
 
 fn depth_row<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> SettingRow<'a> {
@@ -293,19 +447,28 @@ fn depth_row<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> SettingRow
     .keyed_maybe(choice_key(keys, at))
 }
 
+/// The add key as the platform writes it.
+const ADD_KEY: &str = if cfg!(target_os = "macos") {
+    "\u{2318}N"
+} else {
+    "Ctrl+N"
+};
+
 fn folder_rows<'a>(
     folders: &[std::path::PathBuf],
     add_as: AddAs,
-    remove: impl Fn(&mut SpaceSettings, &std::path::Path),
+    mark: &str,
+    remove: impl Fn(&mut SpaceSettings, usize),
     current: &SpaceSettings,
     view: &SettingsView<'a>,
 ) -> Vec<SettingRow<'a>> {
     let mut rows: Vec<SettingRow<'a>> = folders
         .iter()
-        .map(|folder| {
-            let without = changed(current, |next| remove(next, folder));
+        .enumerate()
+        .map(|(position, folder)| {
+            let without = changed(current, |next| remove(next, position));
             SettingRow::listed_buttons(
-                shown_path(folder, view.home),
+                format!("{mark}{}", shown_path(folder, view.home)),
                 None,
                 None,
                 vec![RowButton::new(
@@ -317,7 +480,16 @@ fn folder_rows<'a>(
             )
         })
         .collect();
-    rows.push(add_folder_row(add_as, None, Vec::new(), view));
+    rows.push(SettingRow::adding_buttons(
+        None,
+        view.state.folder_note.clone(),
+        vec![RowButton::new(
+            format!("{}  {ADD_KEY}", view.lang.text(Msg::SettingsSpaceAddFolder)),
+            Some(SettingsMessage::AddFolder(add_as)),
+            Tone::Secondary,
+        )],
+        view.palette,
+    ));
     rows
 }
 
@@ -344,6 +516,53 @@ mod tests {
         assert!(!listed_catalog(Os::Linux, false).contains(&CatalogId::DerivedData));
         assert!(listed_catalog(Os::Windows, false).contains(&CatalogId::WinTempOld));
         assert!(!mac.contains(&CatalogId::WinTempOld));
+    }
+
+    #[test]
+    fn the_keys_of_the_lists_find_their_folder() {
+        let mut current = SpaceSettings::default();
+        current.own_regenerable = vec!["/a".into(), "/b".into()];
+        current.never_touch = vec!["/c".into()];
+        let drives = vec![DriveRow {
+            name: "Macintosh HD".into(),
+            total: 10,
+            used: 5,
+            is_home: true,
+        }];
+        let own_start = 1 + 1 + listed_catalog(Os::current(), false).len();
+        let target = |row| space_list_target(row, &current, &drives, false);
+        assert_eq!(target(own_start - 1), None);
+        assert_eq!(
+            target(own_start + 1),
+            Some(ListTarget {
+                kind: AddAs::SpaceRegenerable,
+                folder: Some(1)
+            })
+        );
+        assert_eq!(
+            target(own_start + 2),
+            Some(ListTarget {
+                kind: AddAs::SpaceRegenerable,
+                folder: None
+            })
+        );
+        assert_eq!(
+            target(own_start + 3),
+            Some(ListTarget {
+                kind: AddAs::SpaceNeverTouch,
+                folder: Some(0)
+            })
+        );
+        assert_eq!(target(own_start + 5), None);
+    }
+
+    #[test]
+    fn a_drive_that_is_not_connected_stays_listed() {
+        let mut current = SpaceSettings::default();
+        current.warn_drives = vec!["Archiv".into()];
+        let entries = drive_entries(&current, &[]);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].on && entries[0].measured.is_none());
     }
 
     #[test]

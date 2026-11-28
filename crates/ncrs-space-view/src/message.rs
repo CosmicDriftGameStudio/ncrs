@@ -58,6 +58,8 @@ pub enum Message {
     RowPressed(PathBuf),
     RowToggled(PathBuf),
     HeadToggled(Group),
+    /// The button of a decide row: the cursor goes there and the pane opens.
+    RowOpened(PathBuf),
     OpenMenuAt(PathBuf),
     CloseMenu,
     MenuCursor(usize),
@@ -89,9 +91,11 @@ pub enum Message {
     },
     RunFinished(Finished),
     CloseResult,
-    ShowLog,
-    HideLog,
     LogRead(Vec<String>),
+    ShowRules,
+    HideRules,
+    /// The box in the head of a group.
+    HeadTicked(Group),
     // The decide pane.
     Decide(DecideMessage),
 }

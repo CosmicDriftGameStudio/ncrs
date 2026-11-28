@@ -3,9 +3,10 @@
 use std::time::{Duration, SystemTime};
 
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_space::{catalog_msgs, CatalogId, Group, Skip};
+use ncrs_space::decide::DecideKind;
+use ncrs_space::{cargo_project_name, catalog_msgs, CatalogId, Group, Skip};
 use ncrs_ui_kit::format::size_shown;
-use ncrs_ui_kit::git_state::RunOutcome;
+use ncrs_ui_kit::size_row::CheckTone;
 
 use crate::rows::{DisplayRow, RowKind};
 
@@ -39,28 +40,74 @@ pub fn row_name(row: &DisplayRow, lang: Language) -> String {
             let (name, _) = catalog_msgs(*id);
             let shown = match id {
                 CatalogId::AppCache(app) => (*app).to_owned(),
+                CatalogId::CargoTarget => {
+                    cargo_project_name(&row.path).unwrap_or_else(|| row.name())
+                }
                 _ => row.name(),
             };
             fill_template(lang.text(name), &[("{name}", &shown)])
         }
         RowKind::Downloads => lang.text(Msg::SpaceDecideDownloads).to_owned(),
-        RowKind::Worktree(_) | RowKind::BigFolder => row.name(),
+        RowKind::Worktree(_) | RowKind::BigFolder | RowKind::Place(_) => row.name(),
+    }
+}
+
+/// The reason and the check of a folder of a known kind.
+fn place_msgs(kind: &DecideKind) -> (Msg, Msg) {
+    match kind {
+        DecideKind::SessionLogs => (
+            Msg::SpaceDecidePlaceSessionLogsWhy,
+            Msg::SpaceDecidePlaceSessionLogsCheck,
+        ),
+        DecideKind::Simulators => (
+            Msg::SpaceDecidePlaceSimulatorsWhy,
+            Msg::SpaceDecidePlaceSimulatorsCheck,
+        ),
+        DecideKind::Backups => (
+            Msg::SpaceDecidePlaceBackupsWhy,
+            Msg::SpaceDecidePlaceBackupsCheck,
+        ),
+        DecideKind::ModelCache => (
+            Msg::SpaceDecidePlaceModelCacheWhy,
+            Msg::SpaceDecidePlaceModelCacheCheck,
+        ),
+        _ => (Msg::SpaceDecideOtherWhy, Msg::SpaceDecideOtherCheck),
     }
 }
 
 /// The short reason in the row. A folder in use says who holds it.
 pub fn row_reason(row: &DisplayRow, lang: Language) -> String {
-    if row.group == Group::InUse {
-        return in_use_reason(row, lang);
-    }
     match &row.kind {
         RowKind::Catalog(id) => lang.text(catalog_msgs(*id).1).to_owned(),
-        RowKind::Worktree(_) => lang.text(Msg::SpaceWorktreeCheck).to_owned(),
+        RowKind::Worktree(_) => lang.text(Msg::SpaceWorktreeRemoval).to_owned(),
         RowKind::Downloads => lang.text(Msg::SpaceDecideDownloadsWhy).to_owned(),
+        RowKind::Place(kind) => lang.text(place_msgs(kind).0).to_owned(),
         RowKind::BigFolder => fill_template(
             lang.text(Msg::SpaceDecideOtherWhy),
             &[("{name}", &row.name())],
         ),
+    }
+}
+
+/// The check column of the list: what was or was not found out about the row.
+pub fn row_check(
+    row: &DisplayRow,
+    processes_known: bool,
+    lang: Language,
+) -> Option<(CheckTone, String)> {
+    if row.group == Group::InUse {
+        return Some((CheckTone::Blocked, in_use_reason(row, lang)));
+    }
+    match &row.kind {
+        RowKind::Catalog(_) | RowKind::Worktree(_) if !processes_known => None,
+        RowKind::Catalog(_) | RowKind::Worktree(_) => row_checks(row, true, lang)
+            .into_iter()
+            .next()
+            .map(|check| (CheckTone::Ok, check)),
+        RowKind::Downloads | RowKind::BigFolder | RowKind::Place(_) => row_checks(row, true, lang)
+            .into_iter()
+            .next()
+            .map(|check| (CheckTone::Decide, check)),
     }
 }
 
@@ -85,15 +132,13 @@ pub fn row_checks(row: &DisplayRow, processes_known: bool, lang: Language) -> Ve
                 return vec![lang.text(Msg::SpaceCheckUnknownUse).to_owned()];
             }
             let mut checks = Vec::new();
-            match (id, id.tools().first()) {
-                (CatalogId::DerivedData, _) => {
-                    checks.push(lang.text(Msg::SpaceCheckNoBuild).to_owned())
-                }
-                (_, Some(tool)) => checks.push(fill_template(
+            if *id == CatalogId::DerivedData {
+                checks.push(lang.text(Msg::SpaceCheckNoBuild).to_owned());
+            } else if !id.tools().is_empty() {
+                checks.push(fill_template(
                     lang.text(Msg::SpaceCheckNoTool),
-                    &[("{tool}", tool)],
-                )),
-                (_, None) => {}
+                    &[("{tool}", &id.tools().join("/"))],
+                ));
             }
             if *id == CatalogId::UnavailableSimulators {
                 checks.push(lang.text(Msg::SpaceCheckReportedUnavailable).to_owned());
@@ -104,6 +149,7 @@ pub fn row_checks(row: &DisplayRow, processes_known: bool, lang: Language) -> Ve
         }
         RowKind::Worktree(_) => vec![lang.text(Msg::SpaceWorktreeCheck).to_owned()],
         RowKind::Downloads => vec![lang.text(Msg::SpaceDecideDownloadsCheck).to_owned()],
+        RowKind::Place(kind) => vec![lang.text(place_msgs(kind).1).to_owned()],
         RowKind::BigFolder => vec![lang.text(Msg::SpaceDecideOtherCheck).to_owned()],
     }
 }
@@ -111,8 +157,10 @@ pub fn row_checks(row: &DisplayRow, processes_known: bool, lang: Language) -> Ve
 /// The tools that write a catalog folder, for "made by".
 pub fn made_by(row: &DisplayRow) -> String {
     match &row.kind {
-        RowKind::Catalog(id) => id.tools().join(", "),
-        RowKind::Worktree(_) | RowKind::Downloads | RowKind::BigFolder => String::new(),
+        RowKind::Catalog(id) => id.regenerated_by().to_owned(),
+        RowKind::Worktree(_) | RowKind::Downloads | RowKind::BigFolder | RowKind::Place(_) => {
+            String::new()
+        }
     }
 }
 
@@ -154,18 +202,6 @@ pub fn skip_text(skip: &Skip, lang: Language) -> String {
         Skip::Failed(reason) => {
             fill_template(lang.text(Msg::SpaceSkipFailed), &[("{reason}", reason)])
         }
-    }
-}
-
-/// The sign and the words a log row gets in the result list.
-pub fn outcome_of(outcome: &Result<u64, Skip>, lang: Language) -> (RunOutcome, String) {
-    match outcome {
-        Ok(freed) => (
-            RunOutcome::Updated,
-            fill_size(Msg::SpaceResultRowDeleted, *freed, lang),
-        ),
-        Err(skip @ Skip::Failed(_)) => (RunOutcome::Failed, skip_text(skip, lang)),
-        Err(skip) => (RunOutcome::Skipped, skip_text(skip, lang)),
     }
 }
 

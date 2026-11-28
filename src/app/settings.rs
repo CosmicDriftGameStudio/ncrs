@@ -200,6 +200,7 @@ impl App {
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::ReadTextlessAgain => self.read_textless_again(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
@@ -393,10 +394,14 @@ impl App {
                     page_focus,
                 ))
             });
+        let space_free = self.space_free_text();
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
             failure: self.settings_status_failure(),
             notice: self.notice.as_deref(),
+            space_free,
+            disk_warning: self.disk_warning_percent(),
+            platz_keys: state.feature == ncrs_config::SettingsFeature::Space,
             lang: self.lang,
             palette: &self.palette,
         })

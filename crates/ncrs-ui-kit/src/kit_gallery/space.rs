@@ -118,11 +118,11 @@ fn the_confirm_dialog_and_the_keyed_chip_look_the_same() {
             list: Some(list),
             cancel: ConfirmButton {
                 label: "Cancel",
-                key: Some("Esc"),
+                key: Some("Esc".to_owned()),
             },
             confirm: ConfirmButton {
                 label: "Delete for good",
-                key: Some("Mod+Enter"),
+                key: Some("Mod+Enter".to_owned()),
             },
             tone: Tone::Danger,
             focus: ConfirmFocus::Cancel,
@@ -130,6 +130,8 @@ fn the_confirm_dialog_and_the_keyed_chip_look_the_same() {
             on_confirm: (),
             window: Size::new(700.0, 420.0),
             lang: Language::English,
+            size: crate::frame::DialogSize::Medium,
+            hint: None,
         },
         &p,
     );
@@ -165,17 +167,25 @@ fn the_meter_by_level_and_the_keyed_chips_look_the_same() {
 
 #[test]
 fn the_space_card_looks_the_same() {
-    use crate::hermes_kit::{space_card, SpaceCardRow, SpaceCardView};
+    use crate::hermes_kit::{space_card, SpaceCardRow, SpaceCardView, SpaceLegendItem};
 
     let p = palette();
     let segment = |portion: u64, color| BarSegment { portion, color };
-    let row = |name: &str, path: &str, size: &str, group: &str, color, hint: &str| SpaceCardRow {
-        name: name.to_owned(),
-        path: path.to_owned(),
+    let legend = |label: &str, size: &str, color| SpaceLegendItem {
+        label: label.to_owned(),
         size: size.to_owned(),
-        group: group.to_owned(),
-        group_color: color,
-        hint: hint.to_owned(),
+        color,
+    };
+    let row = |name: &str, path: &str, size: &str, group: &str, color, hint: &str, selected| {
+        SpaceCardRow {
+            name: name.to_owned(),
+            path: path.to_owned(),
+            size: size.to_owned(),
+            parts: vec![segment(1, color)],
+            groups: vec![(group.to_owned(), color)],
+            hint: hint.to_owned(),
+            selected,
+        }
     };
     let view = SpaceCardView {
         title: "Where the space is".to_owned(),
@@ -189,11 +199,11 @@ fn the_space_card_looks_the_same() {
             segment(78, theme::space::free(&p)),
         ],
         legend: vec![
-            ("safe 134 GB".to_owned(), theme::space::safe(&p)),
-            ("worktrees 22 GB".to_owned(), theme::space::worktrees()),
-            ("you decide 139 GB".to_owned(), theme::space::decide()),
+            legend("safe", "134 GB", theme::space::safe(&p)),
+            legend("worktrees", "22 GB", theme::space::worktrees()),
+            legend("you decide", "139 GB", theme::space::decide()),
         ],
-        after: Some("After \"all safe ones\": 213 GB free, 77 % used".to_owned()),
+        after: Some("After \"all safe ones\": **213 GB** free, **77 %** used".to_owned()),
         columns: [
             "WHAT".to_owned(),
             "SIZE".to_owned(),
@@ -208,6 +218,7 @@ fn the_space_card_looks_the_same() {
                 "Safe",
                 theme::space::safe(&p),
                 "Rust build, worktrees merged",
+                true,
             ),
             row(
                 "Backups",
@@ -216,11 +227,50 @@ fn the_space_card_looks_the_same() {
                 "You decide",
                 theme::space::decide(),
                 "Old backups; only you know if you still need them",
+                false,
             ),
         ],
         also: Some("Also: 3 more Rust builds 11 GB (safe)".to_owned()),
         footer: "Safe means: made again when needed. Nothing is deleted before your OK.".to_owned(),
     };
-    let card: Cell<'_> = space_card(&view, &p);
+    let card: Cell<'_> = space_card(
+        &view,
+        Some(chat_chip_keyed(
+            "Delete all safe ones",
+            true,
+            Some("\u{2318}\u{23ce}"),
+            (),
+            &p,
+        )),
+        &p,
+    );
     matches_picture("space-card", Size::new(900.0, 360.0), card);
+}
+
+#[test]
+fn the_disk_warning_segment_looks_the_same() {
+    use crate::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
+
+    let p = palette();
+    let bar = page_status_bar(
+        PageStatusBar {
+            mode: "Monitor",
+            line: PageStatusLine::Hint("g group by program"),
+            right: Some("Every 2 s"),
+        },
+        Some(DiskWarning {
+            percent: 92,
+            lang: Language::English,
+            on_press: (),
+        }),
+        &p,
+    );
+    matches_picture("disk-warning-bar", Size::new(900.0, 40.0), bar);
+}
+
+#[test]
+fn the_number_field_looks_the_same() {
+    let p = palette();
+    let field = crate::kit::number_field("%", "90", "number-field", Some(|_| ()), (), &p);
+    matches_picture("number-field", Size::new(200.0, 40.0), field);
 }

@@ -229,6 +229,16 @@ fn settings_focus_key(key: &Key, modifiers: Modifiers) -> Option<FocusKey> {
     }
 }
 
+/// ⌘N and ⌫ on the lists of the Platz page; the page ignores them anywhere else.
+fn settings_list_key(key: &Key, modifiers: Modifiers) -> Option<ncrs_settings::message::SpaceListKey> {
+    use ncrs_settings::message::SpaceListKey;
+    match key.as_ref() {
+        Key::Character("n") if modifiers == Modifiers::COMMAND => Some(SpaceListKey::Add),
+        Key::Named(Named::Backspace) if modifiers.is_empty() => Some(SpaceListKey::Remove),
+        _ => None,
+    }
+}
+
 /// The bindings that reach past a page (Settings, System, viewer, notes,
 /// filing, chat): quitting, the command list and every key that opens another
 /// page or a card that stands over pages.
@@ -271,6 +281,9 @@ pub(in crate::app) fn settings_key(
     }
     if let Some(focus_key) = settings_focus_key(key, key_modifiers) {
         return Some(Message::Settings(SettingsMessage::FocusKey(focus_key)));
+    }
+    if let Some(list_key) = settings_list_key(key, key_modifiers) {
+        return Some(Message::Settings(SettingsMessage::SpaceListKey(list_key)));
     }
     match ncrs_settings::keys::settings_key(key, || bound().is_some())? {
         SettingsKey::Close => Some(Message::Settings(SettingsMessage::Close)),

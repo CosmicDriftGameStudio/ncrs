@@ -23,7 +23,7 @@ pub use chips::{
     cancel_chip, chip, chip_labelled, clear_chips, folder_chips, hermes, is_known, mention_of, say,
     user, user_folder, well_known, work,
 };
-pub use space::{ask_measure, card_key_message};
+pub use space::{ask_measure, card_key_message, reply as space_reply};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let mut action = route(state, message, ctx);
@@ -35,7 +35,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
     if state.restart_when_idle && !is_busy(state) {
         restart_conversation(state, ctx);
     }
-    state.sync_chats(ctx.now);
+    state.sync_chats(ctx);
     (launch(state, ctx), action)
 }
 
@@ -206,7 +206,13 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             crate::working::tick(state, ctx);
             None
         }
-        Message::SpaceAsked => space::ask_measure(state, ctx),
+        Message::SpaceAsked => {
+            if is_busy(state) {
+                return None;
+            }
+            chips::user(state, text(ctx.lang, Msg::HermesChatSpaceQuestion));
+            space::ask_measure(state, ctx)
+        }
         Message::SpaceMeasured(scan) => {
             space::measured(state, ctx, &scan);
             None
@@ -246,7 +252,7 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
 /// Starts a new conversation. The old one stays in the list as a closed chat.
 pub fn restart_conversation(state: &mut State, ctx: &Ctx) {
     if state.chats.live().is_some() {
-        state.sync_chats(ctx.now);
+        state.sync_chats(ctx);
     }
     let chats = std::mem::take(&mut state.chats);
     *state = State {
@@ -263,7 +269,7 @@ pub fn restart_conversation(state: &mut State, ctx: &Ctx) {
 /// restored as something to press or run, and the chat keeps its id.
 fn continue_old_chat(state: &mut State, ctx: &Ctx) -> bool {
     if state.chats.live().is_some() {
-        state.sync_chats(ctx.now);
+        state.sync_chats(ctx);
     }
     let input = std::mem::take(&mut state.input);
     let mut chats = std::mem::take(&mut state.chats);

@@ -31,5 +31,7 @@ pub enum Message {
     OpenExternal,
     Edit,
     Close,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
     Scroll(Scroll),
 }

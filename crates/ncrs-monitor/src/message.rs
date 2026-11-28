@@ -68,4 +68,6 @@ pub enum MonitorMessage {
     DriveOpen,
     /// "Make space…" on the drive of the home folder.
     OpenSpace,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
 }

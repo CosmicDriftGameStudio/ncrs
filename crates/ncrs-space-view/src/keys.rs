@@ -8,6 +8,7 @@ use ncrs_config::keymap::{ChordTable, ChordTableError, TabActions};
 
 pub use ncrs_config::keymap::{Chord, KeyOverride};
 
+use crate::decide::DecideMessage;
 use crate::message::Message;
 use crate::shortcuts::Shortcut;
 
@@ -129,10 +130,17 @@ pub fn space_key(
         };
     }
     if mode.confirm_open {
+        if matches!(
+            keys.pressed(key, modifiers),
+            Some(Shortcut::DeleteSafe | Shortcut::RemoveWorktrees)
+        ) {
+            return Some(Message::ConfirmAccept);
+        }
         if !modifiers.is_empty() {
             return None;
         }
         return match key.as_ref() {
+            Key::Named(Named::Space) => Some(Message::ConfirmWithWorktreesToggled),
             Key::Named(Named::Tab | Named::ArrowLeft | Named::ArrowRight) => {
                 Some(Message::ConfirmSwitchFocus)
             }
@@ -153,6 +161,14 @@ pub fn space_key(
     }
     if let Some(shortcut) = keys.pressed(key, modifiers) {
         return Some(shortcut.message());
+    }
+    if matches!(key.as_ref(), Key::Named(Named::Tab)) {
+        if modifiers == Modifiers::SHIFT {
+            return Some(Message::Decide(DecideMessage::PreviousArea));
+        }
+        return modifiers
+            .is_empty()
+            .then_some(Message::Decide(DecideMessage::NextArea));
     }
     if !modifiers.is_empty() {
         return None;

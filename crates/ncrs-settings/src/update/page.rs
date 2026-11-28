@@ -45,6 +45,12 @@ pub fn update(
             }
             Task::none()
         }
+        SettingsMessage::DrivesLoaded(drives) => {
+            if let Some(state) = settings.page.as_mut() {
+                state.space_drives = drives;
+            }
+            Task::none()
+        }
         SettingsMessage::Integrate { switch, on } => {
             let label = ctx.lang.text(Msg::SettingsExplorerMenuEntry).to_owned();
             let memory_dir = ctx
@@ -194,6 +200,10 @@ pub fn update(
         SettingsMessage::OpenOcrModels => {
             models::update_ocr(settings, OcrModelsMessage::Open, ctx, actions)
         }
+        SettingsMessage::AskWhyDiskFull => {
+            actions.push(Action::AskWhyDiskFull);
+            Task::none()
+        }
         SettingsMessage::OpenServerAdd => {
             actions.push(Action::OpenServerAdd);
             Task::none()
@@ -207,6 +217,7 @@ pub fn update(
             Task::none()
         }
         forwarded @ (SettingsMessage::AddFolder(_)
+        | SettingsMessage::SpaceListKey(_)
         | SettingsMessage::FolderPicked { .. }
         | SettingsMessage::FolderGranted { .. }
         | SettingsMessage::RemoveFolder(_)
@@ -395,7 +406,35 @@ pub fn open_settings(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
     }
     settings.failure = None;
     settings.page = Some(fresh_settings_state(ctx));
-    Task::batch([release_focus(), load_system_lists()])
+    Task::batch([
+        release_focus(),
+        load_system_lists(),
+        load_drives(ctx.home.to_path_buf()),
+    ])
+}
+
+/// Asks the drives for their size off the UI thread: a share that went away makes it slow.
+fn load_drives(home: std::path::PathBuf) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                ncrs_space::drives(&home)
+                    .into_iter()
+                    .map(|drive| {
+                        let space = drive.space();
+                        crate::message::DriveRow {
+                            total: space.map_or(0, |space| space.total),
+                            used: space.map_or(0, |space| space.total - space.available),
+                            is_home: drive.is_home_drive,
+                            name: drive.name,
+                        }
+                    })
+                    .collect()
+            })
+            .await
+        },
+        |joined| Message::Settings(SettingsMessage::DrivesLoaded(joined.unwrap_or_default())),
+    )
 }
 
 /// Reads the terminals and fonts of this machine off the UI thread: finding

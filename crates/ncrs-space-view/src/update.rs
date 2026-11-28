@@ -86,11 +86,13 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             nothing()
         }
         Message::Toggle => {
-            toggle_at_cursor(state);
+            if state.result.is_none() {
+                toggle_at_cursor(state);
+            }
             nothing()
         }
         Message::Enter => enter(state, ctx),
-        Message::Escape => escape(state),
+        Message::Escape => escape(state, ctx),
         Message::FocusFilter => {
             state.filter_focused = true;
             quiet(operation::focus(FILTER_ID))
@@ -120,7 +122,12 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             if state.running.is_some() {
                 return nothing();
             }
-            quiet(start_measure(state, ctx))
+            let measure = start_measure(state, ctx);
+            let sort = state
+                .decide
+                .as_ref()
+                .map_or_else(Task::none, |pane| decide::reload(pane, ctx));
+            quiet(Task::batch([measure, sort]))
         }
         Message::Retry => retry(state, ctx),
         Message::AskHermes => (Task::none(), vec![Action::AskHermes]),
@@ -134,6 +141,10 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.cursor = Some(CursorKey::Row(path.clone()));
             toggle_row(state, &path);
             nothing()
+        }
+        Message::RowOpened(path) => {
+            state.cursor = Some(CursorKey::Row(path));
+            enter(state, ctx)
         }
         Message::HeadToggled(group) => {
             state.cursor = Some(CursorKey::Head(group));
@@ -237,29 +248,26 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::RunFinished(finished) => run_finished(state, ctx, finished),
         Message::CloseResult => {
-            state.result = None;
-            nothing()
-        }
-        Message::ShowLog => {
-            let Some(result) = state.result.as_mut() else {
-                return nothing();
-            };
-            result.show_log = true;
-            if result.log_lines.is_some() {
-                return nothing();
-            }
-            quiet(tasks::read_log(ctx.log_dir.clone()))
-        }
-        Message::HideLog => {
-            if let Some(result) = state.result.as_mut() {
-                result.show_log = false;
-            }
+            state.settle_result(&ctx.home, ctx.store_build);
             nothing()
         }
         Message::LogRead(lines) => {
             if let Some(result) = state.result.as_mut() {
-                result.log_lines = Some(lines);
+                result.log_run = ncrs_space::parse_log(&lines.join("\n")).pop();
             }
+            nothing()
+        }
+        Message::ShowRules => {
+            state.show_rules = true;
+            nothing()
+        }
+        Message::HideRules => {
+            state.show_rules = false;
+            nothing()
+        }
+        Message::HeadTicked(group) => {
+            state.cursor = Some(CursorKey::Head(group));
+            toggle_at_cursor(state);
             nothing()
         }
         Message::Decide(inner) => update_decide(state, inner, ctx),
@@ -291,6 +299,9 @@ fn update_decide_keys(state: &mut State, message: &Message, ctx: &Ctx) -> Option
 }
 
 fn update_decide(state: &mut State, message: DecideMessage, ctx: &Ctx) -> Outcome {
+    if let Some(handled) = decide::side_update(state, &message, ctx) {
+        return handled;
+    }
     match state.decide.as_mut() {
         Some(pane) => decide::update(pane, message, ctx),
         None => nothing(),
@@ -373,6 +384,13 @@ fn toggle_at_cursor(state: &mut State) {
 }
 
 fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
+    if state.result.is_some() {
+        if let Some(CursorKey::Head(group)) = state.cursor.clone() {
+            toggle_fold(state, group);
+            return nothing();
+        }
+        return show_in_panel(state);
+    }
     match state.cursor.clone() {
         Some(CursorKey::Head(group)) => {
             toggle_fold(state, group);
@@ -382,7 +400,7 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
             let Some(row) = state.row_by_path(&path) else {
                 return nothing();
             };
-            if row.group != Group::Decide {
+            if row.group != Group::Decide || !row.can_trash() {
                 return nothing();
             }
             let is_downloads = row.kind == RowKind::Downloads;
@@ -396,8 +414,12 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
 
 /// The first of: the menu, the dialog, the filter, the decide pane, the log, the result, a
 /// run or measure that goes on, a filter text. Nothing left: the tab may close.
-fn escape(state: &mut State) -> Outcome {
+fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
     if state.menu.take().is_some() || state.confirm.take().is_some() {
+        return nothing();
+    }
+    if state.show_rules {
+        state.show_rules = false;
         return nothing();
     }
     if state.filter_focused {
@@ -407,12 +429,8 @@ fn escape(state: &mut State) -> Outcome {
     if state.decide.take().is_some() {
         return nothing();
     }
-    if let Some(result) = state.result.as_mut() {
-        if result.show_log {
-            result.show_log = false;
-        } else {
-            state.result = None;
-        }
+    if state.result.is_some() {
+        state.settle_result(&ctx.home, ctx.store_build);
         return nothing();
     }
     if state.running.is_some() || state.measuring.is_some() {
@@ -436,6 +454,12 @@ fn step_menu(state: &mut State, step: isize) -> Outcome {
 }
 
 fn show_in_panel(state: &State) -> Outcome {
+    if let Some(pane) = state.decide() {
+        return (
+            Task::none(),
+            vec![Action::ShowInPanel(pane.panel_path().to_path_buf())],
+        );
+    }
     match state.menu_path().or_else(|| state.cursor_path()) {
         Some(path) => (Task::none(), vec![Action::ShowInPanel(path.to_path_buf())]),
         None => nothing(),
@@ -487,8 +511,8 @@ fn open_confirm(state: &mut State, kind: ConfirmKind, ctx: &Ctx) -> Outcome {
         return nothing();
     }
     let rows: Vec<&DisplayRow> = match kind {
-        ConfirmKind::Safe => state.ticked_rows(Group::Safe).collect(),
-        ConfirmKind::Worktrees => state.ticked_rows(Group::Worktrees).collect(),
+        ConfirmKind::Safe => state.open_ticked_rows(Group::Safe).collect(),
+        ConfirmKind::Worktrees => state.open_ticked_rows(Group::Worktrees).collect(),
         ConfirmKind::One => state
             .cursor_row()
             .filter(|row| row.is_deletable())
@@ -507,7 +531,7 @@ fn open_confirm(state: &mut State, kind: ConfirmKind, ctx: &Ctx) -> Outcome {
     }
     if kind == ConfirmKind::Safe {
         worktrees = state
-            .ticked_rows(Group::Worktrees)
+            .open_ticked_rows(Group::Worktrees)
             .flat_map(|row| entry_of_row(state, row))
             .filter_map(worktree_of)
             .collect();
@@ -572,6 +596,7 @@ fn accept(state: &mut State, ctx: &Ctx) -> Outcome {
         return nothing();
     };
     let plan = confirm.plan();
+    let kind = confirm.kind;
     let total = plan.safe.len() + plan.worktrees.len();
     if total == 0 {
         return nothing();
@@ -583,11 +608,12 @@ fn accept(state: &mut State, ctx: &Ctx) -> Outcome {
         run: state.run_id,
         stop: Arc::clone(&stop),
         plan: plan.clone(),
+        kind,
         done: 0,
         total,
         free_before,
     });
-    state.result = None;
+    state.settle_result(&ctx.home, ctx.store_build);
     let task = tasks::delete(
         state.run_id,
         plan,
@@ -609,12 +635,12 @@ fn run_finished(state: &mut State, ctx: &Ctx, finished: crate::message::Finished
         unknown: running.plan.unknown,
         free_before: running.free_before,
         free_after: finished.free_after,
-        log_lines: None,
-        show_log: false,
+        kind: running.kind,
+        log_run: None,
     });
     let again = start_measure(state, ctx);
     (
-        again,
+        Task::batch([again, tasks::read_log(ctx.log_dir.clone())]),
         vec![Action::ClearJobProgress, Action::RunDone(finished.log)],
     )
 }

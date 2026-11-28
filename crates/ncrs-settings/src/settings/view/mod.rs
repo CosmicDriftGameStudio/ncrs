@@ -25,6 +25,7 @@ use notes_page::notes_groups;
 pub use page::focus_facts;
 use page::*;
 use space_page::space_groups;
+pub(crate) use space_page::space_list_target;
 use system_page::system_groups;
 use type_rows::by_type_group;
 use usage_page::usage_sections;
@@ -48,7 +49,7 @@ use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::layout::{SETTINGS_PAGE_MAX_WIDTH, SETTINGS_WIDE_PAGE_MAX_WIDTH};
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 type Message = SettingsMessage;
@@ -156,6 +157,7 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
         FieldProblem::NoExtension => Msg::SettingsByTypeProblemNoExtension,
         FieldProblem::NoProgram => Msg::SettingsByTypeProblemNoProgram,
         FieldProblem::NotAnIban => Msg::SettingsProblemIban,
+        FieldProblem::WarnFromRange => Msg::SettingsProblemWarnRange,
         FieldProblem::Write(failure) => return failure.clone(),
     };
     lang.text(message).to_owned()
@@ -557,6 +559,12 @@ pub struct StatusBar<'a> {
     /// A failed write, which takes the place of the hint.
     pub failure: Option<&'a str>,
     pub notice: Option<&'a str>,
+    /// The Platz page is open: the line shows its keys.
+    pub platz_keys: bool,
+    /// The free space of the home drive, dim at the right end.
+    pub space_free: Option<String>,
+    /// The used share of the drive, once it is past the warn level.
+    pub disk_warning: Option<u8>,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -569,17 +577,43 @@ pub fn status_bar<'a>(bar: &StatusBar<'a>) -> Element<'a, Message> {
             &[("{count}", &bar.changed.to_string())],
         )
     });
+    let add_key = if cfg!(target_os = "macos") {
+        "\u{2318}N"
+    } else {
+        "Ctrl+N"
+    };
+    let remove_key = if cfg!(target_os = "macos") {
+        "\u{232b}"
+    } else {
+        "Backspace"
+    };
+    let platz_keys = [
+        ("\u{2191}\u{2193}", lang.text(Msg::SettingsSpaceKeySelect)),
+        ("Tab", lang.text(Msg::SpaceKeyNextArea)),
+        ("Space", lang.text(Msg::SettingsSpaceKeyToggle)),
+        ("Enter", lang.text(Msg::SettingsSpaceKeyButton)),
+        (add_key, lang.text(Msg::SettingsSpaceKeyAdd)),
+        (remove_key, lang.text(Msg::SettingsSpaceKeyRemove)),
+        ("Esc", lang.text(Msg::SettingsSpaceKeyClose)),
+    ];
     let line = match (bar.failure, bar.notice) {
         (Some(failure), _) => PageStatusLine::Failure(failure),
         (None, Some(notice)) => PageStatusLine::Notice(notice),
+        (None, None) if bar.platz_keys => PageStatusLine::Keys(&platz_keys),
         (None, None) => PageStatusLine::Hint(lang.text(Msg::SettingsStatusHint)),
     };
+    let right = [changed, bar.space_free.clone()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ");
     page_status_bar(
         PageStatusBar {
             mode: lang.text(Msg::SettingsMode),
             line,
-            right: changed.as_deref(),
+            right: (!right.is_empty()).then_some(right.as_str()),
         },
+        DiskWarning::of(bar.disk_warning, lang, Message::AskWhyDiskFull),
         bar.palette,
     )
 }

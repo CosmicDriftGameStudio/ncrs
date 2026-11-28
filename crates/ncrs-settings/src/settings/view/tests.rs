@@ -759,7 +759,7 @@ fn the_platz_page_lists_its_rows_and_the_store_build_swaps_two_of_them() {
     ));
     assert!(words.contains(
         &Language::English
-            .text(Msg::SettingsSpaceShowWorktrees)
+            .text(Msg::SettingsSpaceWorktreesLabel)
             .to_owned()
     ));
 
@@ -779,6 +779,7 @@ fn the_platz_page_lists_its_rows_and_the_store_build_swaps_two_of_them() {
 /// Named for CI, which compares pixels only on macOS.
 mod ui_tests {
     use super::*;
+    use crate::message::DriveRow;
     use iced::Size;
     use iced_test::Simulator;
     use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
@@ -786,8 +787,32 @@ mod ui_tests {
 
     #[test]
     fn the_platz_page_at_marcs_window_size() {
-        let size = Size::new(1740.0, 1130.0);
-        let state = state_of("");
+        let size = Size::new(1740.0, 1900.0);
+        let home = Path::new("/home/test");
+        let mut never_touch = ncrs_config::space::default_never_touch(home);
+        never_touch.push(home.join("Documents/Tax"));
+        let never_touch: Vec<String> = never_touch
+            .iter()
+            .map(|folder| format!("\"{}\"", folder.display()))
+            .collect();
+        let mut state = state_of(&format!(
+            "[space]\nwarn_drives = [\"Macintosh HD\", \"Backup\"]\ncatalog_off = []\nown_regenerable = [\"/home/test/work/build-cache\"]\nnever_touch = [{}]\n",
+            never_touch.join(", ")
+        ));
+        state.space_drives = vec![
+            DriveRow {
+                name: "Macintosh HD".to_owned(),
+                total: 994_000_000_000,
+                used: 874_000_000_000,
+                is_home: true,
+            },
+            DriveRow {
+                name: "Work SSD".to_owned(),
+                total: 2_000_000_000_000,
+                used: 600_000_000_000,
+                is_home: false,
+            },
+        ];
         let filing = Filing::default();
         let palette = ThemePreset::DEFAULT.palette();
         let view = SettingsView {

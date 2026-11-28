@@ -133,10 +133,12 @@ pub fn load_decide(folder: PathBuf, is_downloads: bool, home: PathBuf) -> Task<M
             let groups = tokio::task::spawn_blocking(move || {
                 let never = AtomicBool::new(false);
                 if is_downloads {
-                    ncrs_space::decide::sort_downloads(
+                    ncrs_space::decide::sort_downloads_with(
                         &read,
                         &SystemInstalledApps::new(&home),
                         &never,
+                        std::time::SystemTime::now(),
+                        &[home.join("Documents")],
                     )
                 } else {
                     children_of(&read, &never)

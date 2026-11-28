@@ -3,18 +3,25 @@
 
 mod confirm;
 mod decide;
+mod decide_detail;
+mod decide_foot;
+mod decide_head;
+mod decide_list;
+mod decide_side;
+mod decide_text;
 mod detail;
 mod head;
 mod list;
 mod log;
 mod result;
+mod rules;
 
 use iced::widget::{column, stack};
 use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_space::Group;
 use ncrs_ui_kit::kit::scrim;
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::popup_menu::{
     menu_rows_height, popup_layer, popup_menu_rows, MenuRow, PopupEntry, RightPress,
     POPUP_MENU_WIDTH,
@@ -98,11 +105,7 @@ fn menu_origin(state: &State, ctx: ViewCtx<'_>, height: f32) -> Point {
 fn key_hints(state: &State, ctx: ViewCtx<'_>) -> Vec<(String, Msg)> {
     let own = |shortcut: Shortcut| ctx.keys.label(shortcut);
     if state.decide().is_some() {
-        return vec![
-            ("Space".to_owned(), Msg::SpaceKeyChoose),
-            (own(Shortcut::Trash), Msg::SpaceKeyTrash),
-            ("Esc".to_owned(), Msg::SpaceKeyBack),
-        ];
+        return decide_text::key_hints(ctx);
     }
     if state.result().is_some() {
         return vec![
@@ -144,14 +147,14 @@ fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             line,
             right: chosen.as_deref(),
         },
+        DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskHermes),
         ctx.palette,
     )
 }
 
 fn chosen_text(state: &State, ctx: ViewCtx<'_>) -> Option<String> {
     if let Some(pane) = state.decide() {
-        return (pane.chosen_count() > 0)
-            .then(|| fill_size(Msg::SpaceStatusSelected, pane.chosen_bytes(), ctx.lang));
+        return decide_text::chosen_text(pane, ctx);
     }
     let bytes = state
         .ticked_bytes(Group::Safe)
@@ -165,22 +168,23 @@ fn body<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(pane) = state.decide() {
         return decide::view(pane, state, ctx);
     }
-    if let Some(done) = state.result() {
-        return if done.show_log {
-            log::view(done, ctx)
-        } else {
-            result::view(done, ctx)
-        };
+    if state.show_rules() {
+        return rules::view(ctx);
     }
-    column![
+    let mut page = column![
         head::title(state, ctx),
         theme::horizontal_rule(palette.border_inactive),
         head::drive(state, ctx),
         head::actions(state, ctx),
-        list::view(state, ctx),
-    ]
-    .height(Length::Fill)
-    .into()
+    ];
+    if let Some(done) = state.result() {
+        page = page.push(result::banner(state, done, ctx));
+    }
+    page = page.push(list::view(state, ctx));
+    if let Some(done) = state.result() {
+        page = page.push(log::panel(state, done, ctx));
+    }
+    page.height(Length::Fill).into()
 }
 
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -193,7 +197,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     // The page stays the first layer whatever lies over it, so the list keeps its scroll.
     let mut layers = stack![page];
     if let Some(ask) = state.confirm() {
-        layers = layers.push(scrim(confirm::dialog(ask, ctx)));
+        layers = layers.push(scrim(confirm::dialog(ask, state, ctx)));
     } else if state.menu_open() {
         let rows = menu_rows(state, ctx);
         let origin = menu_origin(state, ctx, menu_rows_height(&rows));

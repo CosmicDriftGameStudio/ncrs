@@ -16,6 +16,7 @@ impl App {
         })
         .unwrap_or_default();
         let ctx = ncrs_notes::ViewCtx {
+            disk_warning: self.disk_warning_percent(),
             lang: self.lang,
             palette: &self.palette,
             home: &self.home,
@@ -125,6 +126,7 @@ impl App {
 
     fn run_notes_action(&mut self, action: Ask) -> Task<Message> {
         match action {
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::Close => Task::none(),
             Ask::OpenUrl(url) => {
                 self.open_link(&url);

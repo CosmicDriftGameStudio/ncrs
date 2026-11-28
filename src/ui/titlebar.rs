@@ -75,8 +75,8 @@ pub enum PageTab {
     Notes,
     /// The Repos tab, every repository of the machine.
     Repos,
-    /// The Platz tab: what takes the space on the drive.
-    Space,
+    /// The Platz tab: what takes the space on the drive; the name of the measured drive, once there is one.
+    Space(Option<String>),
     /// The filing tab; the title is already worded.
     Filing(String),
     /// A Git tab; the title is already worded, the name is the repository alone.
@@ -254,8 +254,14 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 (ShownTab::Repos, Message::CloseRepos),
                 fit,
             ),
-            PageTab::Space => page_tab(
-                lang.text(Msg::SpaceTabTitle),
+            PageTab::Space(drive) => page_tab(
+                &match drive {
+                    Some(drive) => ncrs_i18n::fill_template(
+                        lang.text(Msg::SpaceTabTitleDrive),
+                        &[("{drive}", drive)],
+                    ),
+                    None => lang.text(Msg::SpaceTabTitle).to_owned(),
+                },
                 SPACE_TAB_ID,
                 open.active,
                 (ShownTab::Space, Message::CloseSpace),

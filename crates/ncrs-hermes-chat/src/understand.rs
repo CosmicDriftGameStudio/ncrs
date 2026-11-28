@@ -19,7 +19,7 @@ use crate::undo;
 use crate::update::{
     ask_measure, ask_read_folder, cancel_chip, chip, drop_working, explain_not_yet, fallback,
     fallback_chips, handle_reply, open_thread, say, say_failed, say_model_failed, say_off,
-    search_not_yet, sort_hint,
+    search_not_yet, sort_hint, space_reply,
 };
 
 /// The question the newest bubble of Hermes asks and its buttons. Read before
@@ -350,7 +350,17 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             None
         }
         ChatIntent::Space(SpaceAsk::Overview) => Some(Action::OpenSpace),
-        ChatIntent::Space(_) => ask_measure(state, ctx),
+        ChatIntent::Space(ask) => {
+            let chip = match ask {
+                SpaceAsk::DeleteSafe => Some(ChipReply::SpaceDeleteSafe),
+                SpaceAsk::RemoveWorktrees => Some(ChipReply::SpaceRemoveWorktrees),
+                SpaceAsk::Why | SpaceAsk::Overview => None,
+            };
+            match chip.filter(|reply| state.chips().iter().any(|shown| shown.reply == *reply)) {
+                Some(reply) => space_reply(ctx, &reply),
+                None => ask_measure(state, ctx),
+            }
+        }
         ChatIntent::SmallTalk => {
             say(
                 state,

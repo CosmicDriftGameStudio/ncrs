@@ -197,6 +197,7 @@ impl App {
                         monitor: self.monitor_badge(),
                         store: self.store_badge(),
                         space_hint: self.space_hint_badge(),
+                        space_free: self.space_free_text(),
                         test_folder: config::data_dir_override().map(|dir| {
                             ncrs_i18n::fill_template(
                                 self.lang.text(Msg::StatusTestFolder),

@@ -29,7 +29,7 @@ pub fn in_use(palette: &Palette) -> Color {
 
 /// Everything else on the drive.
 pub fn rest(palette: &Palette) -> Color {
-    palette.border_inactive
+    palette.dim_text.scale_alpha(0.45)
 }
 
 /// What is free on the drive; drawn like the ground, the bar outlines it.

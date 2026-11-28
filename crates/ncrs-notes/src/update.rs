@@ -136,6 +136,7 @@ fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message
         }
         Message::ToggleLock => secure::handle(state, Message::Unlock, ctx),
         Message::Escape => escape(state, ctx),
+        Message::AskWhyDiskFull => (Task::none(), Some(Action::AskWhyDiskFull)),
         Message::Close => close(state),
         Message::Tick(_)
         | Message::Unlock

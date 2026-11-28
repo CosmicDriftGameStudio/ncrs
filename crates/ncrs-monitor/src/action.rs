@@ -4,6 +4,8 @@ use std::path::PathBuf;
 /// app runs it right after `update`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// The disk warning in the status bar was pressed: ask Hermes why the drive is full.
+    AskWhyDiskFull,
     /// The page opens: the app closes the other pages.
     Opened,
     /// The page closed.

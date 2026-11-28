@@ -50,6 +50,7 @@ impl App {
         let content = match &self.space {
             Some(state) => {
                 let ctx = ncrs_space_view::ViewCtx {
+                    disk_warning: self.disk_warning_percent(),
                     lang: self.lang,
                     palette: &self.palette,
                     window: self.window_size,
@@ -65,7 +66,27 @@ impl App {
             }
             None => Space::new().into(),
         };
-        container(content).width(Length::Fill).height(Length::Fill)
+        if !self.hermes_chat.open {
+            return container(content).width(Length::Fill).height(Length::Fill);
+        }
+        let chat = ncrs_hermes_chat::view(
+            &self.hermes_chat,
+            ncrs_hermes_chat::ViewCtx {
+                disk_warning: self.disk_warning_percent(),
+                lang: self.lang,
+                palette: &self.palette,
+                now: chrono::Local::now(),
+            },
+        )
+        .map(Message::HermesChat);
+        container(row![
+            container(content).width(Length::Fill).height(Length::Fill),
+            container(chat)
+                .width(ncrs_ui_kit::theme::size::HERMES_DOCK)
+                .height(Length::Fill),
+        ])
+        .width(Length::Fill)
+        .height(Length::Fill)
     }
 
     /// Shows the tab, measuring the drive when it was not open.
@@ -157,9 +178,6 @@ impl App {
     fn ask_hermes_about_space(&mut self) -> Task<Message> {
         let opened = self.update_hermes_chat(HermesChatMessage::Open);
         let asked = self.update_hermes_chat(HermesChatMessage::SpaceAsked);
-        if self.hermes_chat.open {
-            self.shown_tab = ShownTab::Hermes;
-        }
         Task::batch([opened, asked])
     }
 
@@ -347,6 +365,7 @@ impl App {
         &mut self,
         volume: Option<ncrs_os_probe::VolumeSpace>,
     ) {
+        self.home_volume = volume;
         let hint = volume.and_then(|volume| {
             ncrs_monitor::disk_hint(volume, self.space_settings.warn_from_percent)
         });
@@ -372,6 +391,28 @@ impl App {
         }
     }
 
+    pub(in crate::app) fn space_free_text(&self) -> Option<String> {
+        let volume = self.home_volume?;
+        Some(fill_template(
+            self.lang.text(Msg::StatusSpaceFree),
+            &[
+                (
+                    "{free}",
+                    &ncrs_ui_kit::format::size_shown(volume.available, self.lang),
+                ),
+                (
+                    "{total}",
+                    &ncrs_ui_kit::format::size_shown(volume.total, self.lang),
+                ),
+            ],
+        ))
+    }
+
+    /// The used share of the home drive while it is past the warn level, for the bar of every page.
+    pub(in crate::app) fn disk_warning_percent(&self) -> Option<u8> {
+        self.space_hint.map(|hint| hint.used_percent)
+    }
+
     pub(in crate::app) fn space_hint_badge(&self) -> Option<statusbar::SpaceHintBadge<Message>> {
         let hint = self.space_hint?;
         let percent = hint.used_percent.to_string();
@@ -389,7 +430,8 @@ impl App {
         };
         Some(statusbar::SpaceHintBadge {
             text,
-            on_press: Message::OpenSpace,
+            tooltip: self.lang.text(Msg::StatusDiskHintTooltip).to_owned(),
+            on_press: Message::HermesChat(HermesChatMessage::SpaceAsked),
         })
     }
 }

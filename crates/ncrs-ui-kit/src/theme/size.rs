@@ -64,3 +64,15 @@ pub const SIZE_ROW: f32 = 40.0;
 pub const SIZE_REASON_WIDTH: f32 = 340.0;
 /// The height of the bar that shows how a drive is filled.
 pub const STACKED_BAR: f32 = 14.0;
+/// The cell of the check of a size row.
+pub const SIZE_CHECK_WIDTH: f32 = 200.0;
+/// The cell of the button at the end of a size row.
+pub const SIZE_ACTION_WIDTH: f32 = 150.0;
+/// The width of a time or a size column in a log line.
+pub const LOG_TIME_WIDTH: f32 = 90.0;
+/// The height of the log panel under the result list.
+pub const LOG_PANEL_HEIGHT: f32 = 170.0;
+/// The column of the key caps in a key list.
+pub const KEY_COLUMN: f32 = 90.0;
+/// The Hermes chat docked at the right of the Platz tab.
+pub const HERMES_DOCK: f32 = 420.0;

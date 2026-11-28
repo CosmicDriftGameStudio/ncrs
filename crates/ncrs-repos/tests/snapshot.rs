@@ -101,6 +101,7 @@ mod ui_tests {
         let palette = ThemePreset::Cosmic.palette();
         let keys = ReposKeys::defaults_for(true);
         let ctx = ViewCtx {
+            disk_warning: None,
             lang: Language::English,
             palette: &palette,
             window: WINDOW,

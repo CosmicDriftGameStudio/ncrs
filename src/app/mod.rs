@@ -288,6 +288,8 @@ pub struct App {
     last_own_trash: Vec<PathBuf>,
     /// The drive is nearly full: the hint in the status bar.
     space_hint: Option<ncrs_monitor::DiskHint>,
+    /// The drive of the home folder as last measured, whether or not it is nearly full.
+    home_volume: Option<ncrs_os_probe::VolumeSpace>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
     /// The question whether to remove the Hermes index and begin again.

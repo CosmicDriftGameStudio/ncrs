@@ -7,6 +7,8 @@ use crate::palette::Palette;
 use crate::theme::{self, size};
 
 const PORTIONS: u64 = 10_000;
+/// How many stripes a striped part is cut into.
+const STRIPES: u16 = 40;
 
 /// One part of the bar: its share is `portion` of the sum of all parts.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -34,15 +36,45 @@ pub fn segment_portions(segments: &[BarSegment]) -> Vec<u16> {
 }
 
 pub fn stacked_bar<'a, M: 'a>(segments: &[BarSegment], palette: &Palette) -> Element<'a, M> {
+    stacked_bar_striped(segments, None, palette)
+}
+
+/// As [`stacked_bar`], with the part at `striped` cut into stripes: what was just freed.
+pub fn stacked_bar_striped<'a, M: 'a>(
+    segments: &[BarSegment],
+    striped: Option<usize>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let part = |portion: u16, color: Color| {
+        container("")
+            .width(Length::FillPortion(portion))
+            .height(size::STACKED_BAR)
+            .style(theme::line(color))
+    };
     let mut bar = row![];
-    for (segment, portion) in segments.iter().zip(segment_portions(segments)) {
-        if portion > 0 {
-            bar = bar.push(
-                container("")
-                    .width(Length::FillPortion(portion))
-                    .height(size::STACKED_BAR)
-                    .style(theme::line(segment.color)),
-            );
+    for (place, (segment, portion)) in segments.iter().zip(segment_portions(segments)).enumerate() {
+        if portion == 0 {
+            continue;
+        }
+        if striped == Some(place) {
+            let stripe = (portion / STRIPES).max(1);
+            let mut left = portion;
+            let mut solid = true;
+            while left > 0 {
+                let width = stripe.min(left);
+                bar = bar.push(part(
+                    width,
+                    if solid {
+                        segment.color
+                    } else {
+                        segment.color.scale_alpha(0.3)
+                    },
+                ));
+                left -= width;
+                solid = !solid;
+            }
+        } else {
+            bar = bar.push(part(portion, segment.color));
         }
     }
     let edge = palette.border_inactive;

@@ -6933,8 +6933,8 @@
     {
       "key": "hermes_chat.subtitle",
       "context": "Hermes chat (F2): Line under the heading of the Hermes chat window. Beta says the feature is new and may change.",
-      "en": "recognises the order of your folders · Beta",
-      "de": "erkennt die Ordnung deiner Ordner · Beta"
+      "en": "sorts your documents · Beta",
+      "de": "sortiert deine Dokumente · Beta"
     },
     {
       "key": "hermes_chat.esc_hint",
@@ -8669,6 +8669,36 @@
       "context": "Hint in the middle of the status bar of the Monitor page while processes of one program are shown as one row. g is the key; it shows every process again.",
       "en": "g: show all tasks",
       "de": "g: alle Prozesse zeigen"
+    },
+    {
+      "key": "monitor.hint_key_drive",
+      "context": "Verb after a key in the status bar of the System page: moves the cursor over the drives.",
+      "en": "select drive",
+      "de": "Laufwerk wählen"
+    },
+    {
+      "key": "monitor.hint_key_open",
+      "context": "Verb after a key in the status bar of the System page: opens the drive under the cursor.",
+      "en": "open",
+      "de": "öffnen"
+    },
+    {
+      "key": "monitor.hint_key_space",
+      "context": "After the key of the Platz tab in the status bar of the System page.",
+      "en": "make space",
+      "de": "Platz schaffen"
+    },
+    {
+      "key": "monitor.hint_key_group",
+      "context": "After the key g in the status bar of the System page: groups the processes by program.",
+      "en": "group by program",
+      "de": "nach Programm gruppieren"
+    },
+    {
+      "key": "monitor.hint_key_ungroup",
+      "context": "After the key g in the status bar of the System page: shows every process again.",
+      "en": "show all processes",
+      "de": "alle Prozesse zeigen"
     },
     {
       "key": "monitor.hint_refresh",
@@ -15614,9 +15644,9 @@
     },
     {
       "key": "space.catalog.cargo_target",
-      "context": "Name of a safe folder in the Platz tab: the Rust build folder of a project.",
-      "en": "Rust build",
-      "de": "Rust-Build"
+      "context": "Name of a safe folder in the Platz tab: the Rust build folder of a project. {name} is the project.",
+      "en": "Rust build {name}",
+      "de": "Rust-Build {name}"
     },
     {
       "key": "space.catalog.cargo_target_why",
@@ -15911,6 +15941,54 @@
       "context": "What to think of before deleting an unknown big folder.",
       "en": "check what is inside",
       "de": "Inhalt prüfen"
+    },
+    {
+      "key": "space.decide_place_session_logs_why",
+      "context": "What the folders of AI session logs are.",
+      "en": "session logs of AI tools",
+      "de": "Sitzungsprotokolle von KI-Werkzeugen"
+    },
+    {
+      "key": "space.decide_place_session_logs_check",
+      "context": "What to think of before deleting session logs.",
+      "en": "you lose the history of old sessions",
+      "de": "der Verlauf alter Sitzungen geht verloren"
+    },
+    {
+      "key": "space.decide_place_simulators_why",
+      "context": "What the simulators in use are.",
+      "en": "simulators in use",
+      "de": "Simulatoren in Benutzung"
+    },
+    {
+      "key": "space.decide_place_simulators_check",
+      "context": "Why the simulators in use cannot go to the trash.",
+      "en": "only Xcode may remove them",
+      "de": "nur Xcode darf sie entfernen"
+    },
+    {
+      "key": "space.decide_place_backups_why",
+      "context": "What a folder of backups is.",
+      "en": "your own backups",
+      "de": "eigene Backups"
+    },
+    {
+      "key": "space.decide_place_backups_check",
+      "context": "What to think of before deleting backups.",
+      "en": "may be the only copy",
+      "de": "kann die einzige Kopie sein"
+    },
+    {
+      "key": "space.decide_place_model_cache_why",
+      "context": "What a folder of downloaded AI models is.",
+      "en": "downloaded AI models",
+      "de": "geladene KI-Modelle"
+    },
+    {
+      "key": "space.decide_place_model_cache_check",
+      "context": "What to think of before deleting downloaded models.",
+      "en": "loaded again on next use",
+      "de": "werden bei nächster Nutzung neu geladen"
     },
     {
       "key": "space.skip.tool_running",
@@ -16443,14 +16521,14 @@
     {
       "key": "space.decide_group_untouched_year",
       "context": "Name of a group of downloaded files: not opened for more than a year. Not ticked.",
-      "en": "Not opened for over a year",
-      "de": "Seit über einem Jahr nicht geöffnet"
+      "en": "Not opened for long",
+      "de": "Lange nicht geöffnet"
     },
     {
       "key": "space.decide_group_rest",
       "context": "Name of a group of downloaded files: everything else. Not ticked.",
-      "en": "Everything else",
-      "de": "Alles andere"
+      "en": "Rest",
+      "de": "Rest"
     },
     {
       "key": "space.decide_group_reason_installed",
@@ -16473,8 +16551,8 @@
     {
       "key": "space.decide_group_reason_untouched",
       "context": "Reason column of a file not opened for a long time.",
-      "en": "not opened for a year",
-      "de": "seit einem Jahr nicht geöffnet"
+      "en": "not opened for over 1 year",
+      "de": "seit über 1 Jahr nicht geöffnet"
     },
     {
       "key": "space.decide_trash_note",
@@ -16553,6 +16631,12 @@
       "context": "Label in the detail pane of a file: which group it is in.",
       "en": "Group",
       "de": "Gruppe"
+    },
+    {
+      "key": "space.decide_check_installed_unversioned",
+      "context": "A reason in the detail pane of an installer whose installed version is not known. {app} is the program, {path} where it is.",
+      "en": "{app} is installed: {path}",
+      "de": "{app} ist installiert: {path}"
     },
     {
       "key": "space.decide_why_head",
@@ -16685,6 +16769,192 @@
       "context": "Reason a file was not moved to the trash: it changed since it was measured.",
       "en": "changed since it was measured",
       "de": "seit dem Messen geändert"
+    },
+    {
+      "key": "space.decide_hermes_label",
+      "context": "Small label above the sentence Hermes says in the pane in which you decide, naming who speaks.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "space.decide_column_name",
+      "context": "Column title above the file names in the pane in which you decide.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "space.decide_column_modified",
+      "context": "Column title above the date a file was last changed in the pane in which you decide.",
+      "en": "Changed",
+      "de": "Geändert"
+    },
+    {
+      "key": "space.decide_hint_installed",
+      "context": "Dim hint after the title of the group of installers whose program is installed.",
+      "en": "program is there",
+      "de": "Programm ist da"
+    },
+    {
+      "key": "space.decide_hint_unpacked",
+      "context": "Dim hint after the title of the group of archives that are unpacked next to them.",
+      "en": "content lies next to it",
+      "de": "Inhalt liegt daneben"
+    },
+    {
+      "key": "space.decide_hint_duplicates",
+      "context": "Dim hint after the title of the group of files whose content exists elsewhere.",
+      "en": "same content elsewhere",
+      "de": "gleicher Inhalt woanders"
+    },
+    {
+      "key": "space.decide_hint_untouched",
+      "context": "Dim hint after the title of the group of files not opened for over a year; the user ticks them.",
+      "en": "over 1 year, you choose",
+      "de": "seit über 1 Jahr, du wählst"
+    },
+    {
+      "key": "space.decide_hint_rest",
+      "context": "Dim hint after the title of the group of files with no reason to delete them.",
+      "en": "no reason found, stays",
+      "de": "kein Grund gefunden, bleibt liegen"
+    },
+    {
+      "key": "space.decide_row_installed",
+      "context": "Reason of an installer in the list: the app it installs is installed. {app} is the app name.",
+      "en": "{app} is installed",
+      "de": "{app} ist installiert"
+    },
+    {
+      "key": "space.decide_row_installed_same",
+      "context": "Reason of an installer in the list: the app is installed in the same version. {app} is the app name.",
+      "en": "{app} is installed, same version",
+      "de": "{app} ist installiert, gleiche Version"
+    },
+    {
+      "key": "space.decide_row_installed_newer",
+      "context": "Reason of an installer in the list: a newer version of the app is installed. {version} is the installed version.",
+      "en": "newer version installed ({version})",
+      "de": "neuere Version installiert ({version})"
+    },
+    {
+      "key": "space.decide_row_unpacked",
+      "context": "Reason of an archive in the list: it is unpacked in this folder. {folder} is a shortened path.",
+      "en": "content lies next to it in {folder}",
+      "de": "Inhalt liegt daneben in {folder}"
+    },
+    {
+      "key": "space.decide_row_duplicate",
+      "context": "Reason of a duplicate in the list: the copy that stays lies here. {path} is a shortened path.",
+      "en": "same content in {path}",
+      "de": "gleicher Inhalt in {path}"
+    },
+    {
+      "key": "space.decide_more",
+      "context": "Last row of a long group: how many rows are not shown; a click shows them.",
+      "en": "{count} more",
+      "de": "{count} weitere"
+    },
+    {
+      "key": "space.decide_key_space",
+      "context": "Name of the space bar as shown on a key cap in the status bar and in hints.",
+      "en": "Space",
+      "de": "Leertaste"
+    },
+    {
+      "key": "space.decide_status_files_chosen",
+      "context": "Right side of the status bar while you decide: how many files are chosen and their size.",
+      "en": "{count} files chosen · {size}",
+      "de": "{count} Dateien gewählt · {size}"
+    },
+    {
+      "key": "space.decide_status_files_chosen_one",
+      "context": "Right side of the status bar while you decide: one file is chosen, and its size.",
+      "en": "1 file chosen · {size}",
+      "de": "1 Datei gewählt · {size}"
+    },
+    {
+      "key": "space.decide_kind_installer_archive",
+      "context": "Kind of a file in the detail pane: an .xip installer.",
+      "en": "Installer (Apple archive)",
+      "de": "Installer (Apple-Archiv)"
+    },
+    {
+      "key": "space.decide_kind_installer_disk_image",
+      "context": "Kind of a file in the detail pane: a .dmg installer.",
+      "en": "Installer (disk image)",
+      "de": "Installer (Disk-Image)"
+    },
+    {
+      "key": "space.decide_kind_installer_package",
+      "context": "Kind of a file in the detail pane: a .pkg installer.",
+      "en": "Installer (package)",
+      "de": "Installer (Paket)"
+    },
+    {
+      "key": "space.decide_kind_installer_windows",
+      "context": "Kind of a file in the detail pane: an .exe or .msi installer.",
+      "en": "Installer (Windows)",
+      "de": "Installer (Windows)"
+    },
+    {
+      "key": "space.decide_kind_app_image",
+      "context": "Kind of a file in the detail pane: a Linux AppImage.",
+      "en": "Program (AppImage)",
+      "de": "Programm (AppImage)"
+    },
+    {
+      "key": "space.decide_kind_archive",
+      "context": "Kind of a file in the detail pane: a zip, tar or other archive.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "space.decide_kind_disk_image",
+      "context": "Kind of a file in the detail pane: an .iso or virtual disk.",
+      "en": "Disk image",
+      "de": "Disk-Image"
+    },
+    {
+      "key": "space.decide_kind_video",
+      "context": "Kind of a file in the detail pane: a video.",
+      "en": "Video",
+      "de": "Video"
+    },
+    {
+      "key": "space.decide_kind_audio",
+      "context": "Kind of a file in the detail pane: a sound file.",
+      "en": "Audio",
+      "de": "Audio"
+    },
+    {
+      "key": "space.decide_kind_image",
+      "context": "Kind of a file in the detail pane: a picture.",
+      "en": "Image",
+      "de": "Bild"
+    },
+    {
+      "key": "space.decide_kind_pdf",
+      "context": "Kind of a file in the detail pane: a PDF document.",
+      "en": "PDF",
+      "de": "PDF"
+    },
+    {
+      "key": "space.decide_kind_document",
+      "context": "Kind of a file in the detail pane: an office or text document.",
+      "en": "Document",
+      "de": "Dokument"
+    },
+    {
+      "key": "space.decide_kind_folder",
+      "context": "Kind of an item in the detail pane: a folder.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "space.decide_kind_file",
+      "context": "Kind of a file in the detail pane when nothing more specific is known.",
+      "en": "File",
+      "de": "Datei"
     },
     {
       "key": "space.rules_title",
@@ -16825,6 +17095,222 @@
       "de": "Was gilt als sicher…"
     },
     {
+      "key": "space.status_confirm",
+      "context": "Mode field in the status bar of the Platz tab while the delete question is open.",
+      "en": "Question",
+      "de": "Rückfrage"
+    },
+    {
+      "key": "space.key_next_button",
+      "context": "Status bar hint of the delete question: the key after the Tab cap, it moves the focus to the other button.",
+      "en": "next button",
+      "de": "nächster Knopf"
+    },
+    {
+      "key": "space.key_check",
+      "context": "Status bar hint of the delete question: the key after the Space cap, it ticks the box 'Remove merged worktrees too'.",
+      "en": "tick the box",
+      "de": "Haken setzen"
+    },
+    {
+      "key": "space.key_focused_button",
+      "context": "Status bar hint of the delete question: the key after the Enter cap, it presses the button that has the focus.",
+      "en": "focused button",
+      "de": "fokussierter Knopf"
+    },
+    {
+      "key": "space.key_delete",
+      "context": "Status bar hint of the delete question: the key after the delete cap, it deletes at once.",
+      "en": "delete",
+      "de": "löschen"
+    },
+    {
+      "key": "space.key_cancel",
+      "context": "Status bar hint of the delete question: the key after the Esc cap, it closes the question without deleting.",
+      "en": "cancels",
+      "de": "bricht ab"
+    },
+    {
+      "key": "space.key_name_space",
+      "context": "Name of the space bar on the key cap in the status bar of the Platz tab.",
+      "en": "Space",
+      "de": "Leertaste"
+    },
+    {
+      "key": "space.key_name_escape",
+      "context": "Name of the Escape key on the key cap in the status bar of the Platz tab.",
+      "en": "Esc",
+      "de": "Esc"
+    },
+    {
+      "key": "space.key_name_tab",
+      "context": "Name of the Tab key on the key cap in the status bar of the Platz tab.",
+      "en": "Tab",
+      "de": "Tab"
+    },
+    {
+      "key": "space.result_title_safe",
+      "context": "Title of the banner of the Platz tab after 'Delete all safe' ran.",
+      "en": "All safe ones deleted",
+      "de": "Alle sicheren gelöscht"
+    },
+    {
+      "key": "space.result_title_worktrees",
+      "context": "Title of the banner of the Platz tab after merged worktrees were removed.",
+      "en": "Worktrees removed",
+      "de": "Worktrees entfernt"
+    },
+    {
+      "key": "space.result_title_one",
+      "context": "Title of the banner of the Platz tab after one folder was deleted, or a skipped one was tried again.",
+      "en": "Deleted",
+      "de": "Gelöscht"
+    },
+    {
+      "key": "space.group_safe_result_sum",
+      "context": "Head of the safe group in the result of the Platz tab. {freed} is what the run freed, {left} what of the safe group is still there.",
+      "en": "{freed} freed · {left} left",
+      "de": "{freed} frei gemacht · {left} übrig"
+    },
+    {
+      "key": "space.rules_os_macos",
+      "context": "Small label over the safe folders of macOS on the rules page of the Platz tab.",
+      "en": "macOS",
+      "de": "macOS"
+    },
+    {
+      "key": "space.rules_os_linux",
+      "context": "Small label over the safe folders of Linux on the rules page of the Platz tab.",
+      "en": "Linux",
+      "de": "Linux"
+    },
+    {
+      "key": "space.rules_os_windows",
+      "context": "Small label over the safe folders of Windows on the rules page of the Platz tab.",
+      "en": "Windows",
+      "de": "Windows"
+    },
+    {
+      "key": "space.rules_os_all",
+      "context": "Small label over the safe folders that count on every system on the rules page of the Platz tab.",
+      "en": "All",
+      "de": "Alle"
+    },
+    {
+      "key": "space.rules_hint_known_tools",
+      "context": "Dim note after a cache folder on the rules page: only the folders of tools that ncrs knows.",
+      "en": "only known tools",
+      "de": "nur bekannte Werkzeuge"
+    },
+    {
+      "key": "space.rules_hint_unavailable_simulators",
+      "context": "Dim note after the simulator folder on the rules page: only simulators that Xcode reports as unavailable.",
+      "en": "only simulators that are no longer available",
+      "de": "nur nicht mehr verfügbare Simulatoren"
+    },
+    {
+      "key": "space.rules_hint_older_week",
+      "context": "Dim note after the temp folder on the rules page: only files older than 7 days.",
+      "en": "only older than 7 days",
+      "de": "nur älter als 7 Tage"
+    },
+    {
+      "key": "space.rules_hint_cargo_toml",
+      "context": "Dim note after the target folders of Rust projects on the rules page: only where a Cargo.toml lies next to the folder.",
+      "en": "with Cargo.toml next to it",
+      "de": "mit Cargo.toml daneben"
+    },
+    {
+      "key": "space.rules_hint_package_caches",
+      "context": "Dim note after the list of package managers on the rules page.",
+      "en": "package caches",
+      "de": "Paket-Caches"
+    },
+    {
+      "key": "space.rules_target_folders",
+      "context": "Entry of the safe folders on the rules page: the build folders of Rust projects.",
+      "en": "target folders of Rust projects",
+      "de": "target-Ordner von Rust-Projekten"
+    },
+    {
+      "key": "space.rules_package_tools",
+      "context": "Entry of the safe folders on the rules page: the package managers whose caches count as safe. Keep the product names.",
+      "en": "Yarn, npm, bun, pnpm, pip",
+      "de": "Yarn, npm, bun, pnpm, pip"
+    },
+    {
+      "key": "space.rules_check_tool",
+      "context": "First check before a delete, on the rules page of the Platz tab.",
+      "en": "No process of the tool is running",
+      "de": "Kein Prozess des Werkzeugs läuft"
+    },
+    {
+      "key": "space.rules_check_tool_hint",
+      "context": "Dim note after the first check: the tools that are looked for. Keep the product names.",
+      "en": "(cargo, rustc, xcodebuild, simctl, brew, yarn …)",
+      "de": "(cargo, rustc, xcodebuild, simctl, brew, yarn …)"
+    },
+    {
+      "key": "space.rules_check_open",
+      "context": "Second check before a delete, on the rules page of the Platz tab.",
+      "en": "No process has the folder open",
+      "de": "Kein Prozess hat den Ordner offen"
+    },
+    {
+      "key": "space.rules_check_open_hint",
+      "context": "Dim note after the second check: how it is checked per system.",
+      "en": "(macOS/Linux: open files and working folders, Windows: lock)",
+      "de": "(macOS/Linux: offene Dateien und Arbeitsordner, Windows: Sperre)"
+    },
+    {
+      "key": "space.rules_check_symlink",
+      "context": "Third check before a delete, on the rules page of the Platz tab.",
+      "en": "Path is not a symlink and lies on the measured drive",
+      "de": "Pfad ist kein Symlink und liegt auf dem gemessenen Laufwerk"
+    },
+    {
+      "key": "space.rules_check_unchanged",
+      "context": "Fourth check before a delete, on the rules page of the Platz tab.",
+      "en": "Size and modification time are the same as when measured",
+      "de": "Größe und Änderungszeit seit dem Messen gleich"
+    },
+    {
+      "key": "space.rules_check_unchanged_hint",
+      "context": "Dim note after the fourth check: what to do when it fails.",
+      "en": "(otherwise measure again)",
+      "de": "(sonst neu messen)"
+    },
+    {
+      "key": "space.rules_check_worktree",
+      "context": "Fifth check before a delete, on the rules page of the Platz tab. It counts for worktrees only.",
+      "en": "Worktrees: no local changes, no unpushed commits, branch merged",
+      "de": "Worktrees: keine lokalen Änderungen, keine ungepushten Commits, Branch gemergt"
+    },
+    {
+      "key": "space.rules_check_worktree_hint",
+      "context": "Dim note after the fifth check: it is the same as tidying up with Git.",
+      "en": "(as Git cleans up)",
+      "de": "(wie Git aufräumen)"
+    },
+    {
+      "key": "space.rules_key_entry",
+      "context": "Key list on the rules page: what the space bar does on a row.",
+      "en": "Entry on/off",
+      "de": "Eintrag an/aus"
+    },
+    {
+      "key": "space.rules_key_everywhere",
+      "context": "Key list on the rules page: the key that opens the Platz tab from every tab.",
+      "en": "Free up space from anywhere",
+      "de": "Platz schaffen von überall"
+    },
+    {
+      "key": "space.rules_key_commands",
+      "context": "Key list on the rules page: what F1 opens, the list of all commands.",
+      "en": "Commands",
+      "de": "Befehle"
+    },
+    {
       "key": "monitor.space_button",
       "context": "Button next to a drive in the System monitor that opens the Platz tab. Ends with an ellipsis.",
       "en": "Free up space…",
@@ -16847,6 +17333,12 @@
       "context": "Share of the drive that is used, in the drive row of the System monitor. {percent} is a number.",
       "en": "{percent} %",
       "de": "{percent} %"
+    },
+    {
+      "key": "status.space_free",
+      "context": "Quiet text at the right of a status bar: the free space of the drive that holds the home folder. {free} and {total} are sizes.",
+      "en": "Space · {free} free of {total}",
+      "de": "Platz · {free} frei von {total}"
     },
     {
       "key": "status.disk_hint",
@@ -16893,8 +17385,56 @@
     {
       "key": "settings.space.warn_suffix",
       "context": "Text after the number box of the warning setting: percent sign and what happens.",
-      "en": "% used – then Hermes lets you know",
-      "de": "% belegt – dann sagt Hermes Bescheid"
+      "en": "used – then Hermes lets you know",
+      "de": "belegt – dann sagt Hermes Bescheid"
+    },
+    {
+      "key": "settings.problem_warn_range",
+      "context": "Problem text under the field 'warn from' on the Platz page: the number is outside what is allowed.",
+      "en": "Enter a number from 50 to 99.",
+      "de": "Gib eine Zahl von 50 bis 99 ein."
+    },
+    {
+      "key": "settings.space.key_select",
+      "context": "After the arrow keys in the status bar of the Platz settings page: moves the cursor over the rows.",
+      "en": "select",
+      "de": "wählen"
+    },
+    {
+      "key": "settings.space.key_toggle",
+      "context": "After the Space key in the status bar of the Platz settings page: switches the row on or off.",
+      "en": "switch",
+      "de": "umschalten"
+    },
+    {
+      "key": "settings.space.key_button",
+      "context": "After the Enter key in the status bar of the Platz settings page: presses the button of the row.",
+      "en": "button",
+      "de": "Knopf"
+    },
+    {
+      "key": "settings.space.key_add",
+      "context": "After the add key in the status bar of the Platz settings page: adds a folder to the list.",
+      "en": "add",
+      "de": "hinzufügen"
+    },
+    {
+      "key": "settings.space.key_remove",
+      "context": "After the remove key in the status bar of the Platz settings page: removes the folder under the cursor.",
+      "en": "remove",
+      "de": "entfernen"
+    },
+    {
+      "key": "settings.space.key_close",
+      "context": "After the Esc key in the status bar of the Platz settings page: closes the tab.",
+      "en": "closes",
+      "de": "schließt"
+    },
+    {
+      "key": "settings.space.warn_unit",
+      "context": "Unit after the number field 'warn from' on the Platz page.",
+      "en": "%",
+      "de": "%"
     },
     {
       "key": "settings.space.drives",
@@ -16904,9 +17444,9 @@
     },
     {
       "key": "settings.space.drive_row",
-      "context": "Row in the list of drives. {name} is the drive, {total} its size, {used} how much is used.",
-      "en": "{name}  {total} · {used} used",
-      "de": "{name}  {total} · {used} belegt"
+      "context": "Second line of a drive in the list of drives. {total} is its size, {used} how much is used.",
+      "en": "{total} · {used} used",
+      "de": "{total} · {used} belegt"
     },
     {
       "key": "settings.space.drive_absent",
@@ -17067,8 +17607,8 @@
     {
       "key": "hermes_chat.space_intro",
       "context": "Hermes bubble with the result of the measuring. {used} and {total} and {free} are sizes, {percent} the used share, {took} how long measuring took.",
-      "en": "{used} of {total} are used, {free} free ({percent} %). I measured the big folders ({took}).",
-      "de": "Belegt sind {used} von {total}, frei {free} ({percent} %). Ich habe die großen Ordner gemessen ({took})."
+      "en": "**{used}** of {total} are used, **{free}** free ({percent} %). I measured the big folders ({took}).",
+      "de": "Belegt sind **{used}** von {total}, frei **{free}** ({percent} %). Ich habe die großen Ordner gemessen ({took})."
     },
     {
       "key": "hermes_chat.space_card_title",
@@ -17085,32 +17625,32 @@
     {
       "key": "hermes_chat.space_card_after",
       "context": "Line on the card in the chat. {free} is the free space and {percent} the used share after deleting all safe folders.",
-      "en": "After \"all safe ones\": free {free}, {percent} % used",
-      "de": "Nach „Alle sicheren“: frei {free}, belegt {percent} %"
+      "en": "After \"all safe ones\": free **{free}**, {percent} % used",
+      "de": "Nach „Alle sicheren“: frei **{free}**, belegt {percent} %"
     },
     {
       "key": "hermes_chat.space_card_column_what",
       "context": "Column header on the card in the chat. Noun.",
-      "en": "What",
-      "de": "Was"
+      "en": "WHAT",
+      "de": "WAS"
     },
     {
       "key": "hermes_chat.space_card_column_size",
       "context": "Column header on the card in the chat. Noun.",
-      "en": "Size",
-      "de": "Größe"
+      "en": "SIZE",
+      "de": "GRÖSSE"
     },
     {
       "key": "hermes_chat.space_card_column_group",
       "context": "Column header on the card in the chat. Noun.",
-      "en": "Group",
-      "de": "Gruppe"
+      "en": "GROUP",
+      "de": "GRUPPE"
     },
     {
       "key": "hermes_chat.space_card_column_hint",
       "context": "Column header on the card in the chat. Noun.",
-      "en": "Note",
-      "de": "Hinweis"
+      "en": "NOTE",
+      "de": "HINWEIS"
     },
     {
       "key": "hermes_chat.space_card_also",
@@ -17195,6 +17735,120 @@
       "context": "Verb after a key in the Hermes chat footer: removes merged worktrees.",
       "en": "remove worktrees",
       "de": "Worktrees entfernen"
+    },
+    {
+      "key": "hermes_chat.space_row_caches",
+      "context": "Row of the card in the chat: the folders of the system's cache folder together. Noun, plural.",
+      "en": "Caches",
+      "de": "Caches"
+    },
+    {
+      "key": "hermes_chat.space_row_simulators",
+      "context": "Row of the card in the chat: the iOS simulators together. Noun, plural.",
+      "en": "iOS simulators",
+      "de": "iOS-Simulatoren"
+    },
+    {
+      "key": "hermes_chat.space_row_rust_build",
+      "context": "Row of the card in the chat: the build folder of a Rust project. {project} is the project name.",
+      "en": "Rust build {project}",
+      "de": "Rust-Build {project}"
+    },
+    {
+      "key": "hermes_chat.space_worktree_count",
+      "context": "Part of the worktrees row of the card in the chat, after the folder. {count} is the number of worktrees.",
+      "en": "{count} in all",
+      "de": "{count} Stück"
+    },
+    {
+      "key": "hermes_chat.space_worktrees_hint",
+      "context": "Hint of the worktrees row of the card in the chat. {merged} is the number of merged worktrees, {size} their size, {kept} how many stay.",
+      "en": "{merged} merged, {size} · {kept} stay (open, changes, in use)",
+      "de": "{merged} gemergt, {size} · {kept} bleiben (offen, Änderungen, in Benutzung)"
+    },
+    {
+      "key": "hermes_chat.space_simulators_hint",
+      "context": "Hint of the simulators row of the card in the chat. {gone} and {usable} are sizes.",
+      "en": "{gone} no longer available · {usable} still available",
+      "de": "{gone} nicht mehr verfügbar · {usable} noch verfügbar"
+    },
+    {
+      "key": "hermes_chat.space_hint_last_free_build",
+      "context": "Hint of a safe row of the card in the chat for a build folder. {date} is the day and month it was last used; the check found no build running.",
+      "en": "last used {date}, no build running ✓",
+      "de": "zuletzt {date}, kein Build läuft ✓"
+    },
+    {
+      "key": "hermes_chat.space_hint_last_free",
+      "context": "Hint of a safe row of the card in the chat. {date} is the day and month it was last used; the check found no program using it.",
+      "en": "last used {date}, nothing is using it ✓",
+      "de": "zuletzt {date}, nichts nutzt es ✓"
+    },
+    {
+      "key": "hermes_chat.space_hint_in_use",
+      "context": "Hint of a row of the card in the chat whose folder a program holds. {holder} is the name of the program.",
+      "en": "{holder} is running",
+      "de": "{holder} läuft"
+    },
+    {
+      "key": "hermes_chat.space_hint_in_use_part",
+      "context": "Part of the hint of a group row of the card in the chat: a folder a program holds. {name} is the folder, {size} its size, {holder} the program.",
+      "en": "{name} {size}: {holder} is running",
+      "de": "{name} {size}: {holder} läuft"
+    },
+    {
+      "key": "hermes_chat.space_hint_part",
+      "context": "Part of the hint of a group row of the card in the chat. {items} lists folders with their sizes, {group} is the group in lower case (safe, you decide).",
+      "en": "{items} {group}",
+      "de": "{items} {group}"
+    },
+    {
+      "key": "hermes_chat.space_also_one",
+      "context": "One entry of the line under the card in the chat. {name} is the folder, {size} its size, {group} its group in lower case.",
+      "en": "{name} {size} ({group})",
+      "de": "{name} {size} ({group})"
+    },
+    {
+      "key": "hermes_chat.space_also_many",
+      "context": "One entry of the line under the card in the chat for several folders of the same kind. {name} is the kind, {count} how many, {size} their size, {group} their group in lower case.",
+      "en": "{name} ×{count} {size} ({group})",
+      "de": "{name} ×{count} {size} ({group})"
+    },
+    {
+      "key": "hermes_chat.space_day_today",
+      "context": "Dim mark at the top of the chat for messages of today. {time} is the time of day.",
+      "en": "Today {time}",
+      "de": "Heute {time}"
+    },
+    {
+      "key": "hermes_chat.space_day_dated",
+      "context": "Dim mark in the chat before the first message of a day. {date} is the day, {time} the time of day.",
+      "en": "{date} {time}",
+      "de": "{date} {time}"
+    },
+    {
+      "key": "hermes_chat.space_key_send",
+      "context": "Verb after a key in the Hermes status bar: sends the typed sentence.",
+      "en": "send",
+      "de": "senden"
+    },
+    {
+      "key": "hermes_chat.space_key_command_line",
+      "context": "After a key in the Hermes status bar: moves to the command line.",
+      "en": "command line",
+      "de": "Befehlszeile"
+    },
+    {
+      "key": "hermes_chat.space_key_close",
+      "context": "Verb after a key in the Hermes status bar: closes the chat.",
+      "en": "closes",
+      "de": "schließt"
+    },
+    {
+      "key": "hermes_chat.space_status_right",
+      "context": "Right end of the Hermes status bar. {free} is the free space of the drive, {time} the time of the last measure.",
+      "en": "{free} free · measured {time}",
+      "de": "frei {free} · gemessen {time}"
     },
     {
       "key": "hermes_chat.space_key_overview",

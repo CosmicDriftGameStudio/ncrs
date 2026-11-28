@@ -113,7 +113,10 @@ fn a_click_on_a_changed_file_opens_its_diff() {
     assert!(local.diff_open);
     assert_eq!(local.focus, WipFocus::Staged);
     assert_eq!(state.area, Area::Detail);
-    assert_eq!(crate::file_views::middle(&state), crate::file_views::Middle::LocalDiff);
+    assert_eq!(
+        crate::file_views::middle(&state),
+        crate::file_views::Middle::LocalDiff
+    );
 }
 
 #[test]

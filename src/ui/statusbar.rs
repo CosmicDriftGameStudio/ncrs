@@ -170,9 +170,24 @@ pub struct MonitorBadge<M> {
     pub on_press: M,
 }
 
-/// The hint that the drive is nearly full; pressing it opens the Platz tab.
+fn warning_segment_of<'a, M: Clone + 'a>(
+    badge: SpaceHintBadge<M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    ncrs_ui_kit::page_status_bar::warning_segment(
+        ncrs_ui_kit::page_status_bar::WarningSegment {
+            text: badge.text,
+            tooltip: Some(badge.tooltip),
+            on_press: badge.on_press,
+        },
+        palette,
+    )
+}
+
+/// The hint that the drive is nearly full; pressing it asks Hermes why.
 pub struct SpaceHintBadge<M> {
     pub text: String,
+    pub tooltip: String,
     pub on_press: M,
 }
 
@@ -263,6 +278,8 @@ pub struct Activity<'a, M> {
     pub monitor: Option<MonitorBadge<M>>,
     pub store: Option<StoreBadge<M>>,
     pub space_hint: Option<SpaceHintBadge<M>>,
+    /// "Space · 78 GB free of 926 GB", dim, while the drive is not above the warning level.
+    pub space_free: Option<String>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
@@ -343,6 +360,7 @@ pub fn view<'a, M: Clone + 'a>(
         monitor,
         store,
         space_hint,
+        space_free,
         test_folder,
         date_format,
     } = activity;
@@ -579,16 +597,16 @@ pub fn view<'a, M: Clone + 'a>(
         );
     }
     if let Some(badge) = space_hint {
+        bar = bar.push(warning_segment_of(badge, palette));
+    } else if let Some(quiet) = space_free {
         bar = bar.push(
-            button(
-                text(badge.text)
+            container(
+                text(quiet)
                     .size(font_size::SMALL)
-                    .color(palette.error)
+                    .color(palette.dim_text)
                     .wrapping(text::Wrapping::None),
             )
-            .on_press(badge.on_press)
-            .padding([0.0, FIELD_PADDING_X])
-            .style(theme::icon_button(palette)),
+            .padding([0.0, FIELD_PADDING_X]),
         );
     }
     if let Some(badge) = store {

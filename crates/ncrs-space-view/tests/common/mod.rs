@@ -100,7 +100,7 @@ pub fn scan_of(entries: Vec<Entry>, processes_known: bool) -> Arc<Scan> {
         entries,
         partial: false,
         processes_known,
-        volume_name: String::new(),
+        volume_name: "Macintosh HD".to_owned(),
         worktree_roots: Vec::new(),
         measured_at: now() - Duration::from_secs(120),
         took: Duration::from_millis(4_200),

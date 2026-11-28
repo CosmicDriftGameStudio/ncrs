@@ -36,6 +36,7 @@ mod ui_tests {
         let palette = ThemePreset::Cosmic.palette();
         let keys = SpaceKeys::defaults_for(true);
         let ctx = ViewCtx {
+            disk_warning: None,
             lang: Language::English,
             palette: &palette,
             window: WINDOW,
@@ -136,6 +137,15 @@ mod ui_tests {
             }),
             &app,
         );
+        let again = state.scan_run();
+        send(
+            &mut state,
+            Message::Scanned {
+                run: again,
+                scan: Some(crowded_scan(true)),
+            },
+            &app,
+        );
         assert!(matches_picture(
             &state,
             &app,
@@ -154,23 +164,23 @@ mod ui_tests {
             &app,
         );
         send(&mut state, Message::Enter, &app);
-        let item = |name: &str, gib: u64| DownloadItem {
+        let item = |name: &str, gib: u64, days: u64| DownloadItem {
             path: path(&format!("{HOME}/Downloads/{name}")),
             size: gib * GIB,
-            modified: Some(now()),
+            modified: Some(now() - std::time::Duration::from_secs(days * 86_400)),
             touched: None,
-            last_opened: None,
-            open_count: None,
+            last_opened: Some(now() - std::time::Duration::from_secs(days * 86_400)),
+            open_count: Some(3),
             is_folder: false,
         };
         let groups = DownloadGroups {
             installed: vec![Matched {
-                item: item("Setup.dmg", 3),
+                item: item("Setup.dmg", 3, 1),
                 with: path("/Applications/Setup.app"),
                 installed: None,
             }],
-            rest: (0..30)
-                .map(|place| item(&format!("file-{place}.pdf"), 1))
+            untouched_year: (0..60)
+                .map(|place| item(&format!("file-{place}.pdf"), 1, 400 + place * 9))
                 .collect(),
             ..DownloadGroups::default()
         };
@@ -182,6 +192,7 @@ mod ui_tests {
             }),
             &app,
         );
+        send(&mut state, Message::Down, &app);
         assert!(matches_picture(
             &state,
             &app,

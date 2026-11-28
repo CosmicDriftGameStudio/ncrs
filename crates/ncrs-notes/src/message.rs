@@ -64,6 +64,8 @@ pub enum Message {
     Escape,
     /// The cross of the tab.
     Close,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
     /// The clock of the app, a few times a minute: locks after the pause
     /// without input and starts the sync that runs every few minutes.
     Tick(Instant),

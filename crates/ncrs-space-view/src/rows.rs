@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use ncrs_space::decide::DecideKind;
 use ncrs_space::{CatalogId, Entry, EntryKind, Group, Holder, Scan};
 
 /// The groups in the order the overview shows them.
@@ -17,6 +18,8 @@ pub enum RowKind {
     /// All the items of the Downloads folder.
     Downloads,
     BigFolder,
+    /// A folder of a known kind that needs its own words: logs, simulators, backups, models.
+    Place(DecideKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,10 +41,15 @@ impl DisplayRow {
         matches!(self.group, Group::Safe | Group::Worktrees)
     }
 
+    /// Whether the folder may be opened to choose what goes to the trash.
+    pub fn can_trash(&self) -> bool {
+        !matches!(&self.kind, RowKind::Place(kind) if !kind.can_trash())
+    }
+
     pub fn name(&self) -> String {
         match &self.kind {
             RowKind::Worktree(branch) => branch.clone(),
-            RowKind::Catalog(_) | RowKind::Downloads | RowKind::BigFolder => {
+            RowKind::Catalog(_) | RowKind::Downloads | RowKind::BigFolder | RowKind::Place(_) => {
                 self.path.file_name().map_or_else(
                     || self.path.display().to_string(),
                     |name| name.to_string_lossy().into_owned(),
@@ -90,6 +98,12 @@ pub fn rows_of(scan: &Scan, home: &Path, store_build: bool) -> Vec<DisplayRow> {
         let kind = match &entry.kind {
             EntryKind::Catalog(id) => RowKind::Catalog(*id),
             EntryKind::Worktree(worktree) => RowKind::Worktree(worktree.branch.clone()),
+            EntryKind::Decide(
+                kind @ (DecideKind::SessionLogs
+                | DecideKind::Simulators
+                | DecideKind::Backups
+                | DecideKind::ModelCache),
+            ) => RowKind::Place(kind.clone()),
             EntryKind::Decide(_) => RowKind::BigFolder,
         };
         rows.push(row_of(entry.path.clone(), kind, entry, place));

@@ -9,6 +9,8 @@ use crate::frame::{DialogSize, Frame, KeyHints};
 use crate::kit::{self, Tone};
 use crate::palette::Palette;
 use crate::theme::spacing;
+use crate::theme::{self, focus_border};
+use iced::widget::container;
 
 /// Which of the two buttons has the focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -19,10 +21,10 @@ pub enum ConfirmFocus {
 }
 
 /// A button with its label and, when it has one, the key shown on it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ConfirmButton<'a> {
     pub label: &'a str,
-    pub key: Option<&'a str>,
+    pub key: Option<String>,
 }
 
 pub struct Confirm<'a, M> {
@@ -39,6 +41,9 @@ pub struct Confirm<'a, M> {
     pub on_confirm: M,
     pub window: Size,
     pub lang: Language,
+    pub size: DialogSize,
+    /// Under the buttons instead of the keys the frame names.
+    pub hint: Option<String>,
 }
 
 impl<M> std::fmt::Debug for Confirm<'_, M> {
@@ -56,9 +61,33 @@ fn dialog_button<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     match button.key {
-        Some(key) => kit::key_button(button.label, key, Some(on_press), tone, palette),
+        Some(key) => kit::key_button(button.label, &key, Some(on_press), tone, palette),
         None => kit::button(button.label, Some(on_press), tone, palette),
     }
+}
+
+/// The 1 px focus outline around the button that has the keys; the other keeps the
+/// room of the outline, so the buttons do not move.
+fn focus_ring<'a, M: 'a>(
+    button: Element<'a, M>,
+    focused: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let ring = focus_border(palette);
+    container(button)
+        .padding(theme::spacing::BORDER_WIDTH)
+        .style(move |_theme: &iced::Theme| container::Style {
+            border: if focused {
+                ring
+            } else {
+                iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    ..ring
+                }
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 pub fn confirm_dialog<'a, M: Clone + 'a>(
@@ -69,28 +98,37 @@ pub fn confirm_dialog<'a, M: Clone + 'a>(
     if let Some(list) = confirm.list {
         content = content.push(list);
     }
-    let cancel_tone = Tone::filled_if(confirm.focus == ConfirmFocus::Cancel);
-    Frame::new(
+    let cancel = focus_ring(
+        dialog_button(
+            confirm.cancel,
+            confirm.on_cancel.clone(),
+            Tone::Secondary,
+            palette,
+        ),
+        confirm.focus == ConfirmFocus::Cancel,
+        palette,
+    );
+    let accept = focus_ring(
+        dialog_button(confirm.confirm, confirm.on_confirm, confirm.tone, palette),
+        confirm.focus == ConfirmFocus::Confirm,
+        palette,
+    );
+    let mut frame = Frame::new(
         confirm.title,
         content,
-        DialogSize::Medium,
+        confirm.size,
         confirm.window,
         confirm.lang,
         palette,
     )
-    .buttons(vec![
-        dialog_button(
-            confirm.cancel,
-            confirm.on_cancel.clone(),
-            cancel_tone,
-            palette,
-        ),
-        dialog_button(confirm.confirm, confirm.on_confirm, confirm.tone, palette),
-    ])
+    .buttons(vec![cancel, accept])
     .on_close(confirm.on_cancel)
     .hints(KeyHints {
         enter: false,
         tab: true,
-    })
-    .into_element()
+    });
+    if let Some(hint) = confirm.hint {
+        frame = frame.footer_note(hint);
+    }
+    frame.into_element()
 }

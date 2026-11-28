@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// The disk warning in the status bar was pressed: ask Hermes why the drive is full.
+    AskWhyDiskFull,
     /// Esc: back to the panels.
     Close,
     /// An address for the browser or the mail program.
