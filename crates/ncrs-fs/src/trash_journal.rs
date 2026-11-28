@@ -360,16 +360,20 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
             let Some(position) = entries.iter().position(|entry| {
                 entry.trashed().as_os_str() == item.key && entry.original() == item.original
             }) else {
-                first_failure.get_or_insert_with(|| "this item is not in the record of ncrs".to_owned());
+                first_failure
+                    .get_or_insert_with(|| "this item is not in the record of ncrs".to_owned());
                 continue;
             };
             let trashed = Path::new(&item.key);
             if !is_plain_absolute(trashed) {
-                first_failure
-                    .get_or_insert_with(|| "the record holds a path that can not be trusted".to_owned());
+                first_failure.get_or_insert_with(|| {
+                    "the record holds a path that can not be trusted".to_owned()
+                });
                 continue;
             }
-            if let Err(RestoreError::Failed(reason)) = self.check_in_trash_folder(&item.original, trashed) {
+            if let Err(RestoreError::Failed(reason)) =
+                self.check_in_trash_folder(&item.original, trashed)
+            {
                 first_failure.get_or_insert(reason);
                 continue;
             }

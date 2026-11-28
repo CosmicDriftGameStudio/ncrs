@@ -5,6 +5,7 @@ use std::sync::Arc;
 use iced::widget::operation;
 use iced::Task;
 use ncrs_fs::transfer::Tick;
+use ncrs_i18n::Msg;
 use ncrs_space::{Entry, EntryKind, Group, WorktreeSpace};
 use ncrs_ui_kit::confirm::ConfirmFocus;
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
@@ -81,7 +82,9 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         }
         Message::Right => {
             if let Some(CursorKey::Head(group)) = state.cursor.clone() {
-                state.folded.remove(&group);
+                if !state.folded.remove(&group) && group == Group::Worktrees {
+                    state.worktrees_expanded = true;
+                }
             }
             nothing()
         }
@@ -145,6 +148,10 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
         Message::RowOpened(path) => {
             state.cursor = Some(CursorKey::Row(path));
             enter(state, ctx)
+        }
+        Message::ExpandWorktrees => {
+            state.worktrees_expanded = true;
+            nothing()
         }
         Message::HeadToggled(group) => {
             state.cursor = Some(CursorKey::Head(group));
@@ -474,13 +481,25 @@ fn scanned(state: &mut State, ctx: &Ctx, run: u64, scan: Option<Arc<ncrs_space::
     {
         return nothing();
     }
+    let stopped = state
+        .measuring
+        .as_ref()
+        .is_some_and(|measuring| measuring.stop.load(Ordering::Relaxed));
     state.measuring = None;
     match scan {
         Some(scan) => {
             state.take_scan(Arc::clone(&scan), &ctx.home, ctx.store_build);
             (Task::none(), vec![Action::Measured(scan)])
         }
-        None => nothing(),
+        None => {
+            if !stopped {
+                state.failure = Some(ncrs_i18n::fill_template(
+                    ctx.lang.text(Msg::SpaceFailed),
+                    &[("{reason}", ctx.lang.text(Msg::SpaceFailedUnknown))],
+                ));
+            }
+            nothing()
+        }
     }
 }
 

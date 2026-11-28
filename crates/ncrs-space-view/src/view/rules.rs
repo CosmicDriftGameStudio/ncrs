@@ -4,6 +4,7 @@ use iced::widget::{column, container, row, Space};
 use iced::{alignment, Element, Length, Padding};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_space::{catalog_msgs, CatalogId, Group};
+use ncrs_ui_kit::color_chip::color_chip;
 use ncrs_ui_kit::info_card::{card_note, card_text, dot_line, info_card, key_row};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
@@ -199,6 +200,32 @@ fn keys_card<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
     )
 }
 
+/// The colours of the bars and what they stand for.
+fn color_legend<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let palette = ctx.palette;
+    let chip = |msg: Msg, color| color_chip(ctx.lang.text(msg), color, None::<Message>);
+    row![
+        page_line(
+            ctx.lang.text(Msg::SpaceRulesColors),
+            font_size::SMALL,
+            palette.dim_text
+        ),
+        chip(Msg::SpaceLegendSafe, group_color(Group::Safe, palette)),
+        chip(
+            Msg::SpaceLegendWorktrees,
+            group_color(Group::Worktrees, palette)
+        ),
+        chip(Msg::SpaceLegendDecide, group_color(Group::Decide, palette)),
+        chip(
+            Msg::SpaceRulesColorBlocked,
+            group_color(Group::InUse, palette)
+        ),
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
 pub fn view<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let head = row![
@@ -238,6 +265,7 @@ pub fn view<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
     column![
         container(head).padding([spacing::L, spacing::XL]),
         theme::horizontal_rule(palette.border_inactive),
+        container(color_legend(ctx)).padding([spacing::M, spacing::XL]),
         page_scroll_padded(
             RULES_SCROLL_ID,
             cards.into(),

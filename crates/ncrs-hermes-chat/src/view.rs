@@ -9,11 +9,13 @@ use ncrs_ui_kit::hermes_kit::{
     chip_row, day_mark, folder_mention, hermes_bubble, levels_card, user_bubble,
     user_folder_bubble, working_bubble, AreaLine, ChatInput,
 };
-use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{
+    hint_bar, page_status_bar, DiskWarning, PageStatusBar, PageStatusLine,
+};
 use ncrs_ui_kit::palette::Palette;
 
 use crate::chat_store::{Line, Speaker};
-use crate::list_view::list_props;
+use crate::list_view::{keys_line, list_props};
 use crate::message::Message;
 use crate::state::{AreasCard, ChipReply, CountRow, Entry, Part, State};
 use crate::texts::{documents_label, fill};
@@ -300,6 +302,7 @@ pub fn view<'a>(state: &State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let list = chat_list(list_props(state, ctx), ctx.palette);
     column![
         Row::new().push(list).push(page).height(Length::Fill),
+        hint_bar(&keys_line(ctx.lang), ctx.palette),
         status_bar(state, ctx),
     ]
     .into()

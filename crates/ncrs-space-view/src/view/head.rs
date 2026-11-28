@@ -2,11 +2,11 @@
 //! and the buttons for what the groups hold.
 
 use iced::widget::{column, container, row, Space};
-use iced::{alignment, Element, Length};
+use iced::{alignment, Color, Element, Length};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_space::Group;
 use ncrs_ui_kit::color_chip::color_chip;
-use ncrs_ui_kit::format::size_shown;
+use ncrs_ui_kit::format::{clock_minutes, size_shown};
 use ncrs_ui_kit::kit::{self, text_field, Tone};
 use ncrs_ui_kit::meter::{meter_by_level, meter_level_from, Meter};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
@@ -22,10 +22,24 @@ use crate::state::{ResultState, State};
 use crate::texts::{fill_size, percent_of};
 use crate::update::FILTER_ID;
 
+/// After a run the newer measure says when the numbers are from; else the measure of the list.
+fn measured_text(state: &State, ctx: ViewCtx<'_>) -> String {
+    match (state.result(), state.pending_scan()) {
+        (Some(_), Some(scan)) => fill_template(
+            ctx.lang.text(Msg::SpaceResultMeasuredAgain),
+            &[
+                ("{total}", &size_shown(scan.volume.total, ctx.lang)),
+                ("{time}", &clock_minutes(Some(scan.measured_at))),
+            ],
+        ),
+        _ => super::measured_line(state, ctx),
+    }
+}
+
 pub fn title<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let info = state.measuring().map_or_else(
-        || super::measured_line(state, ctx),
+        || measured_text(state, ctx),
         |measuring| fill_size(Msg::SpaceMeasuring, measuring.bytes, ctx.lang),
     );
     let heading = state
@@ -79,8 +93,9 @@ pub fn drive<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let Some(scan) = state.scan() else {
         return Space::new().into();
     };
-    let total = scan.volume.total;
-    let free = scan.volume.available.min(total);
+    let volume = state.volume_now().unwrap_or(scan.volume);
+    let total = volume.total;
+    let free = volume.available.min(total);
     let used = total - free;
     let percent = percent_of(used, total);
     let value = fill_template(
@@ -188,7 +203,17 @@ pub fn drive<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         ));
     }
     let bar = match state.result() {
-        Some(done) => result_bar(state, done, total, palette),
+        Some(done) => {
+            let parts = result_parts(state, done, total, palette);
+            legend = parts
+                .iter()
+                .filter(|(_, bytes, _)| *bytes > 0)
+                .map(|(label, bytes, color)| {
+                    color_chip(&legend_text(*label, *bytes), *color, None::<Message>)
+                })
+                .collect();
+            result_bar(&parts, palette)
+        }
         None => stacked_bar(&segments, palette),
     };
     container(
@@ -209,12 +234,12 @@ pub fn drive<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let idle = !state.is_measuring() && state.running().is_none();
-    let safe_ticked = state.ticked_count(Group::Safe);
-    let worktrees_ticked = state.ticked_count(Group::Worktrees);
+    let safe_ticked = state.open_ticked_count(Group::Safe);
+    let worktrees_ticked = state.open_ticked_count(Group::Worktrees);
     let delete_label = if safe_ticked > 0 {
         fill_size(
             Msg::SpaceDeleteAllSafe,
-            state.ticked_bytes(Group::Safe),
+            state.open_ticked_bytes(Group::Safe),
             ctx.lang,
         )
     } else {
@@ -233,7 +258,7 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         line = line.push(kit::key_button(
             &fill_size(
                 Msg::SpaceRemoveWorktrees,
-                state.ticked_bytes(Group::Worktrees),
+                state.open_ticked_bytes(Group::Worktrees),
                 ctx.lang,
             ),
             &ctx.keys.label(Shortcut::RemoveWorktrees),
@@ -267,14 +292,14 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .into()
 }
 
-/// The bar after a run: what is left of each group, what the run freed in stripes, and what
-/// was free before.
-fn result_bar<'a>(
+/// The parts of the drive after a run, in the order of the bar: what is left of each group,
+/// what the run freed, what is not in a group, and what was free before.
+fn result_parts(
     state: &State,
     done: &ResultState,
     total: u64,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Vec<(Msg, u64, Color)> {
     let left = |group: Group| {
         state
             .group_bytes(group)
@@ -290,21 +315,54 @@ fn result_bar<'a>(
         .saturating_sub(in_groups)
         .saturating_sub(freed)
         .saturating_sub(was_free);
-    let segment = |portion: u64, color| BarSegment { portion, color };
-    stacked_bar_striped(
-        &[
-            segment(left(Group::Safe), group_color(Group::Safe, palette)),
-            segment(freed, group_color(Group::Safe, palette)),
-            segment(
-                left(Group::Worktrees),
-                group_color(Group::Worktrees, palette),
-            ),
-            segment(left(Group::Decide), group_color(Group::Decide, palette)),
-            segment(left(Group::InUse), group_color(Group::InUse, palette)),
-            segment(other, ncrs_ui_kit::theme::space::rest(palette)),
-            segment(was_free, ncrs_ui_kit::theme::space::free(palette)),
-        ],
-        Some(1),
-        palette,
-    )
+    vec![
+        (
+            Msg::SpaceLegendSafeLeft,
+            left(Group::Safe),
+            group_color(Group::Safe, palette),
+        ),
+        (
+            Msg::SpaceLegendFreed,
+            freed,
+            group_color(Group::Safe, palette),
+        ),
+        (
+            Msg::SpaceLegendWorktrees,
+            left(Group::Worktrees),
+            group_color(Group::Worktrees, palette),
+        ),
+        (
+            Msg::SpaceLegendDecide,
+            left(Group::Decide),
+            group_color(Group::Decide, palette),
+        ),
+        (
+            Msg::SpaceLegendInUse,
+            left(Group::InUse),
+            group_color(Group::InUse, palette),
+        ),
+        (
+            Msg::SpaceLegendOther,
+            other,
+            ncrs_ui_kit::theme::space::rest(palette),
+        ),
+        (Msg::SpaceLegendWasFree, was_free, palette.dim_text),
+    ]
+}
+
+/// The bar after a run, with what the run freed in stripes.
+fn result_bar<'a>(parts: &[(Msg, u64, Color)], palette: &Palette) -> Element<'a, Message> {
+    let free_look = ncrs_ui_kit::theme::space::free(palette);
+    let segments: Vec<BarSegment> = parts
+        .iter()
+        .map(|(label, bytes, color)| BarSegment {
+            portion: *bytes,
+            color: if *label == Msg::SpaceLegendWasFree {
+                free_look
+            } else {
+                *color
+            },
+        })
+        .collect();
+    stacked_bar_striped(&segments, Some(1), palette)
 }

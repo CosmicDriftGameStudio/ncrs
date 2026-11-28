@@ -250,6 +250,7 @@ impl App {
             ncrs_hermes_chat::Action::MeasureSpace => self.measure_space_for_chat(),
             ncrs_hermes_chat::Action::OpenSpace => self.open_space(),
             ncrs_hermes_chat::Action::SpaceRun(kind) => self.run_space_for_chat(kind),
+            ncrs_hermes_chat::Action::SpaceDecide(target) => self.show_space_decide(target),
         }
     }
 

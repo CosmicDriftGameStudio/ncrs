@@ -26,7 +26,7 @@ mod understand;
 mod undo;
 mod working;
 
-pub use action::{Action, SpaceRunKind};
+pub use action::{Action, SpaceDecideTarget, SpaceRunKind};
 pub use chat_list::{day_group, ChatList, DayGroup, ListGroup, ListRow};
 pub use chat_list_update::ListMessage;
 pub use chat_store::{ChatId, ChatStatus};

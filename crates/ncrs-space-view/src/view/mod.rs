@@ -20,6 +20,7 @@ use iced::widget::{column, stack};
 use iced::{Element, Length, Point};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_space::Group;
+use ncrs_ui_kit::format::size_shown;
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::popup_menu::{
@@ -28,13 +29,14 @@ use ncrs_ui_kit::popup_menu::{
 };
 use ncrs_ui_kit::theme::{self, size};
 
+use crate::confirm::ConfirmKind;
 use crate::ctx::ViewCtx;
 use crate::menu::menu_items;
 use crate::message::Message;
 use crate::rows::Item;
 use crate::shortcuts::Shortcut;
 use crate::state::State;
-use crate::texts::fill_size;
+use crate::texts::{fill_size, percent_of};
 
 /// Where the menu opens horizontally; its height follows the row of the cursor.
 const MENU_X: f32 = 280.0;
@@ -107,15 +109,50 @@ fn key_hints(state: &State, ctx: ViewCtx<'_>) -> Vec<(String, Msg)> {
     if state.decide().is_some() {
         return decide_text::key_hints(ctx);
     }
+    if let Some(ask) = state.confirm() {
+        let delete_key = match ask.kind {
+            ConfirmKind::Worktrees => Shortcut::RemoveWorktrees,
+            ConfirmKind::Safe | ConfirmKind::One => Shortcut::DeleteSafe,
+        };
+        let mut hints = vec![(
+            ctx.lang.text(Msg::SpaceKeyNameTab).to_owned(),
+            Msg::SpaceKeyNextButton,
+        )];
+        if ask.offers_worktrees(ctx.store_build) {
+            hints.push((
+                ctx.lang.text(Msg::SpaceKeyNameSpace).to_owned(),
+                Msg::SpaceKeyCheck,
+            ));
+        }
+        hints.extend([
+            ("\u{21b5}".to_owned(), Msg::SpaceKeyFocusedButton),
+            (own(delete_key), Msg::SpaceKeyDelete),
+            (
+                ctx.lang.text(Msg::SpaceKeyNameEscape).to_owned(),
+                Msg::SpaceKeyCancel,
+            ),
+        ]);
+        return hints;
+    }
+    let space_key = ctx.lang.text(Msg::SpaceKeyNameSpace).to_owned();
     if state.result().is_some() {
-        return vec![
+        let mut hints = vec![
+            ("\u{2191}\u{2193}".to_owned(), Msg::SpaceKeyChoose),
+            ("\u{21b5}".to_owned(), Msg::SpaceKeyShowInPanel),
             (own(Shortcut::Retry), Msg::SpaceKeyRetry),
-            ("Esc".to_owned(), Msg::SpaceKeyCloseResult),
         ];
+        if !ctx.store_build {
+            hints.push((own(Shortcut::RemoveWorktrees), Msg::SpaceKeyRemoveWorktrees));
+        }
+        hints.extend([
+            (own(Shortcut::AskHermes), Msg::SpaceKeyHermes),
+            ("Esc".to_owned(), Msg::SpaceKeyCloseResult),
+        ]);
+        return hints;
     }
     let mut hints = vec![
         (own(Shortcut::DeleteSafe), Msg::SpaceKeyDeleteSafe),
-        ("Space".to_owned(), Msg::SpaceKeyToggle),
+        (space_key, Msg::SpaceKeyToggle),
         ("\u{21b5}".to_owned(), Msg::SpaceKeyDetails),
         ("\u{2190}/\u{2192}".to_owned(), Msg::SpaceKeyFold),
         (own(Shortcut::Filter), Msg::SpaceKeySearch),
@@ -140,16 +177,37 @@ fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         Some(failure) => PageStatusLine::Failure(failure),
         None => PageStatusLine::Keys(&labelled),
     };
-    let chosen = chosen_text(state, ctx);
+    let right = chosen_text(state, ctx).or_else(|| free_text(state, ctx));
+    let mode = if state.confirm().is_some() {
+        Msg::SpaceStatusConfirm
+    } else {
+        Msg::SpaceTabTitle
+    };
     page_status_bar(
         PageStatusBar {
-            mode: ctx.lang.text(Msg::SpaceTabTitle),
+            mode: ctx.lang.text(mode),
             line,
-            right: chosen.as_deref(),
+            right: right.as_deref(),
         },
         DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskHermes),
         ctx.palette,
     )
+}
+
+/// What is free on the drive, at the right of the status bar when nothing is chosen.
+fn free_text(state: &State, ctx: ViewCtx<'_>) -> Option<String> {
+    let volume = state.volume_now()?;
+    let free = volume.available.min(volume.total);
+    Some(fill_template(
+        ctx.lang.text(Msg::SpaceStatusFree),
+        &[
+            ("{free}", &size_shown(free, ctx.lang)),
+            (
+                "{percent}",
+                &percent_of(volume.total - free, volume.total).to_string(),
+            ),
+        ],
+    ))
 }
 
 fn chosen_text(state: &State, ctx: ViewCtx<'_>) -> Option<String> {

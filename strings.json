@@ -6949,12 +6949,6 @@
       "de": "Neuer Chat"
     },
     {
-      "key": "hermes_chat.list_new",
-      "context": "Hermes chat (F2): Button at the top of the chat list at the left. It starts a new chat and keeps the old ones. A plus sign and two words; the key of the button is shown beside it.",
-      "en": "+ New chat",
-      "de": "+ Neuer Chat"
-    },
-    {
       "key": "hermes_chat.list_new_key",
       "context": "Hermes chat (F2): The key that starts a new chat, shown on the button of the chat list. {mod} is the modifier key of the system (Cmd on a Mac, Ctrl elsewhere); keep the placeholder.",
       "en": "{mod}N",
@@ -8657,18 +8651,6 @@
       "context": "Button of the kill dialog that ends the task.",
       "en": "Kill",
       "de": "Beenden"
-    },
-    {
-      "key": "monitor.hint_group",
-      "context": "Hint in the middle of the status bar of the Monitor page while every process has its own row. g is the key; it groups the processes by program.",
-      "en": "g: group by program",
-      "de": "g: nach Programm gruppieren"
-    },
-    {
-      "key": "monitor.hint_ungroup",
-      "context": "Hint in the middle of the status bar of the Monitor page while processes of one program are shown as one row. g is the key; it shows every process again.",
-      "en": "g: show all tasks",
-      "de": "g: alle Prozesse zeigen"
     },
     {
       "key": "monitor.hint_key_drive",
@@ -15379,12 +15361,6 @@
       "de": "Was"
     },
     {
-      "key": "space.column_place",
-      "context": "Column header over the place of a folder in the result list of the Platz tab. Noun.",
-      "en": "Place",
-      "de": "Ort"
-    },
-    {
       "key": "space.column_result",
       "context": "Column header over what became of a folder in the result list of the Platz tab. Noun.",
       "en": "Result",
@@ -15943,22 +15919,10 @@
       "de": "Inhalt prüfen"
     },
     {
-      "key": "space.decide_place_session_logs_why",
-      "context": "What the folders of AI session logs are.",
-      "en": "session logs of AI tools",
-      "de": "Sitzungsprotokolle von KI-Werkzeugen"
-    },
-    {
       "key": "space.decide_place_session_logs_check",
       "context": "What to think of before deleting session logs.",
       "en": "you lose the history of old sessions",
       "de": "der Verlauf alter Sitzungen geht verloren"
-    },
-    {
-      "key": "space.decide_place_simulators_why",
-      "context": "What the simulators in use are.",
-      "en": "simulators in use",
-      "de": "Simulatoren in Benutzung"
     },
     {
       "key": "space.decide_place_simulators_check",
@@ -15967,22 +15931,10 @@
       "de": "nur Xcode darf sie entfernen"
     },
     {
-      "key": "space.decide_place_backups_why",
-      "context": "What a folder of backups is.",
-      "en": "your own backups",
-      "de": "eigene Backups"
-    },
-    {
       "key": "space.decide_place_backups_check",
       "context": "What to think of before deleting backups.",
       "en": "may be the only copy",
       "de": "kann die einzige Kopie sein"
-    },
-    {
-      "key": "space.decide_place_model_cache_why",
-      "context": "What a folder of downloaded AI models is.",
-      "en": "downloaded AI models",
-      "de": "geladene KI-Modelle"
     },
     {
       "key": "space.decide_place_model_cache_check",
@@ -16133,12 +16085,6 @@
       "context": "Remove button in the question before merged worktrees are removed. {count} is the number of worktrees.",
       "en": "Remove {count}",
       "de": "{count} entfernen"
-    },
-    {
-      "key": "space.result_title",
-      "context": "Heading of the result of the Platz tab after a delete or remove run; the counts below say what was deleted and what was skipped.",
-      "en": "Done",
-      "de": "Fertig"
     },
     {
       "key": "space.result_freed",
@@ -16297,6 +16243,12 @@
       "de": "Die Platte konnte nicht gemessen werden: {reason}"
     },
     {
+      "key": "space.failed_unknown",
+      "context": "The reason shown after 'The drive could not be measured:' when the measuring ended without a result and was not stopped by the user.",
+      "en": "the measuring did not finish",
+      "de": "die Messung wurde nicht fertig"
+    },
+    {
       "key": "space.status_free",
       "context": "Status bar text of the Platz tab. {free} is the free space, {percent} the used share.",
       "en": "{free} free · {percent} % used",
@@ -16453,12 +16405,6 @@
       "de": "Platz: Danach Papierkorb leeren an/aus"
     },
     {
-      "key": "space.decide_title",
-      "context": "Heading of the pane where the user decides about a folder. {name} is the folder name such as Downloads.",
-      "en": "You decide: {name}",
-      "de": "Du entscheidest: {name}"
-    },
-    {
       "key": "space.decide_breadcrumb_group",
       "context": "Small label in front of the group name above the Decide pane.",
       "en": "Group",
@@ -16527,26 +16473,8 @@
     {
       "key": "space.decide_group_rest",
       "context": "Name of a group of downloaded files: everything else. Not ticked.",
-      "en": "Rest",
+      "en": "Other",
       "de": "Rest"
-    },
-    {
-      "key": "space.decide_group_reason_installed",
-      "context": "Reason column of a file in the group of installers that are installed already.",
-      "en": "already installed",
-      "de": "schon installiert"
-    },
-    {
-      "key": "space.decide_group_reason_unpacked",
-      "context": "Reason column of a file in the group of archives that are unpacked already.",
-      "en": "already unpacked",
-      "de": "schon entpackt"
-    },
-    {
-      "key": "space.decide_group_reason_duplicate",
-      "context": "Reason column of a file that is a duplicate. {name} is the file the same content is in.",
-      "en": "same as {name}",
-      "de": "gleich wie {name}"
     },
     {
       "key": "space.decide_group_reason_untouched",

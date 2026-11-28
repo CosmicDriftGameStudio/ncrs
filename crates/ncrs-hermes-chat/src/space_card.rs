@@ -85,6 +85,12 @@ pub struct Built {
     pub intro: String,
     pub safe_bytes: u64,
     pub worktree_bytes: u64,
+    /// The folders the user decides about, with their size, biggest first.
+    pub untouched: Vec<(String, u64)>,
+    /// The scan has the Downloads folder to decide on.
+    pub has_downloads: bool,
+    /// The scan has session logs to decide on.
+    pub has_session_logs: bool,
     /// What the model is asked about, in the order of the rows it fills.
     pub facts: Vec<FolderFacts>,
 }
@@ -685,6 +691,25 @@ pub fn build(scan: &Scan, ctx: &Ctx) -> Built {
     });
 
     let mut all = drafts(ctx, scan);
+    let untouched = all
+        .iter()
+        .filter_map(|made| {
+            let (_, bytes) = made
+                .row
+                .parts
+                .iter()
+                .find(|(band, _)| *band == SpaceBand::Decide)?;
+            Some((made.row.name.clone(), *bytes))
+        })
+        .collect();
+    let decide_entries = || {
+        scan.entries
+            .iter()
+            .filter(|entry| entry.group == Group::Decide)
+    };
+    let has_downloads = decide_entries().any(|entry| entry.path == ctx.home.join("Downloads"));
+    let has_session_logs = decide_entries()
+        .any(|entry| matches!(entry.kind, EntryKind::Decide(DecideKind::SessionLogs)));
     let rest = all.split_off(TABLE_ROWS.min(all.len()));
     let also = also_line(ctx, &rest);
     let facts: Vec<FolderFacts> = all
@@ -734,6 +759,9 @@ pub fn build(scan: &Scan, ctx: &Ctx) -> Built {
         intro,
         safe_bytes,
         worktree_bytes,
+        untouched,
+        has_downloads,
+        has_session_logs,
         facts,
     }
 }

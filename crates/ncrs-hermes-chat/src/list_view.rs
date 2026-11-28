@@ -32,6 +32,16 @@ fn modifier_name() -> &'static str {
     }
 }
 
+/// The keys of the chat list, in the line below the chat.
+pub fn keys_line(lang: Language) -> String {
+    let keys = fill(
+        lang,
+        Msg::HermesChatListKeysHint,
+        &[("mod", modifier_name())],
+    );
+    format!("{keys} \u{b7} {}", lang.text(Msg::HermesChatListMarkHint))
+}
+
 fn status_text(lang: Language, status: ChatStatus) -> &'static str {
     lang.text(match status {
         ChatStatus::PlanOpen => Msg::HermesChatStatusPlanOpen,

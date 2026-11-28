@@ -4,7 +4,9 @@
 use iced::widget::{column, container, mouse_area, row, Space};
 use iced::{alignment, Color, Element, Length, Padding};
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_space::decide::DecideKind;
 use ncrs_space::Group;
+use ncrs_ui_kit::folded_row::folded_row;
 use ncrs_ui_kit::format::{shown_path, size_shown};
 use ncrs_ui_kit::git_state::RunOutcome;
 use ncrs_ui_kit::kit::{self, Check};
@@ -21,7 +23,7 @@ use crate::message::Message;
 use crate::rows::{matches_filter, DisplayRow, RowKind, GROUP_ORDER};
 use crate::state::{CursorKey, State};
 use crate::texts::{
-    fill_count, fill_size, group_title, row_check, row_name, row_reason, skip_text,
+    fill_count, fill_count_size, fill_size, group_title, row_check, row_name, row_reason, skip_text,
 };
 use crate::update::LIST_ID;
 
@@ -99,11 +101,12 @@ fn one_row<'a>(
                 ext.action = Some((ctx.lang.text(Msg::SpaceRetry).to_owned(), Message::Retry));
             }
             None => {
-                reason = match row.group {
-                    Group::InUse => reason,
-                    Group::Safe | Group::Worktrees | Group::Decide => {
-                        ctx.lang.text(Msg::SpaceResultRowUntouched).to_owned()
+                reason = match (&row.kind, row.group) {
+                    (_, Group::InUse) => reason,
+                    (RowKind::Place(DecideKind::ModelCache), _) => {
+                        ctx.lang.text(Msg::SpaceResultRowUntouchedModels).to_owned()
                     }
+                    _ => ctx.lang.text(Msg::SpaceResultRowUntouched).to_owned(),
                 };
             }
         }
@@ -260,8 +263,27 @@ fn group_view<'a>(
             body = body.push(worktree_summary(state, ctx));
         }
     } else if !state.is_folded(group) {
-        for row in rows {
+        let shown = state.row_limit(group);
+        let hidden: Vec<&DisplayRow> = rows.iter().skip(shown).copied().collect();
+        for row in rows.into_iter().take(shown) {
             body = body.push(one_row(row, biggest, state, ctx));
+        }
+        if !hidden.is_empty() {
+            let hidden_bytes = hidden
+                .iter()
+                .fold(0_u64, |sum, row| sum.saturating_add(row.bytes));
+            body = body.push(folded_row(
+                &fill_count_size(
+                    Msg::SpaceGroupMoreWorktrees,
+                    hidden.len(),
+                    hidden_bytes,
+                    ctx.lang,
+                ),
+                "\u{2192}",
+                ctx.lang.text(Msg::SpaceGroupExpand),
+                Message::ExpandWorktrees,
+                ctx.palette,
+            ));
         }
     }
     Some(body.into())
@@ -278,29 +300,30 @@ fn worktree_summary<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Messa
         .filter(|row| !state.is_done(row))
         .collect();
     let bytes_of = |rows: &[&DisplayRow]| rows.iter().fold(0_u64, |sum, row| sum + row.bytes);
-    let line = |name: String, reason: String, bytes: u64, gone: bool, palette: &Palette| {
-        size_row_ext(
-            SizeRow {
-                check: None,
-                name,
-                path: String::new(),
-                size_text: size_shown(bytes, ctx.lang),
-                fraction: 1.0,
-                color: group_color(Group::Worktrees, palette),
-                reason,
-                outcome: None,
-                cursor: false,
-                on_press: None,
-                on_toggle: None,
-            },
-            SizeRowExt {
-                gone,
-                action_column: has_actions(state),
-                ..SizeRowExt::default()
-            },
-            palette,
-        )
-    };
+    let line =
+        |name: String, path: String, reason: String, bytes: u64, gone: bool, palette: &Palette| {
+            size_row_ext(
+                SizeRow {
+                    check: None,
+                    name,
+                    path,
+                    size_text: size_shown(bytes, ctx.lang),
+                    fraction: 1.0,
+                    color: group_color(Group::Worktrees, palette),
+                    reason,
+                    outcome: None,
+                    cursor: false,
+                    on_press: None,
+                    on_toggle: None,
+                },
+                SizeRowExt {
+                    gone,
+                    action_column: has_actions(state),
+                    ..SizeRowExt::default()
+                },
+                palette,
+            )
+        };
     let mut lines = column![];
     if !removed.is_empty() {
         lines = lines.push(line(
@@ -312,6 +335,7 @@ fn worktree_summary<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Messa
                 ],
             ),
             String::new(),
+            String::new(),
             bytes_of(&removed),
             true,
             ctx.palette,
@@ -320,6 +344,7 @@ fn worktree_summary<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Messa
     if !there.is_empty() {
         lines = lines.push(line(
             fill_count(Msg::SpaceResultWorktreesClean, there.len(), ctx.lang),
+            String::new(),
             fill_template(
                 ctx.lang.text(Msg::SpaceResultRowStillThere),
                 &[(
@@ -339,6 +364,7 @@ fn worktree_summary<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Messa
             lines = lines.push(line(
                 fill_count(Msg::SpaceResultWorktreesStay, kept, ctx.lang),
                 ctx.lang.text(Msg::SpaceResultWorktreesStayWhy).to_owned(),
+                ctx.lang.text(Msg::SpaceResultRowStay).to_owned(),
                 kept_bytes,
                 false,
                 ctx.palette,
@@ -431,8 +457,20 @@ fn footer<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             palette.success,
         ));
     }
+    let note = if state.result().is_some() {
+        Msg::SpaceResultNote
+    } else {
+        Msg::SpacePermanentNote
+    };
+    if state.result().is_some() {
+        line = line.push(page_line(
+            ctx.lang.text(Msg::SpaceResultPermanent),
+            font_size::SMALL,
+            palette.dim_text,
+        ));
+    }
     line = line.push(Space::new().width(Length::Fill)).push(page_line(
-        ctx.lang.text(Msg::SpacePermanentNote),
+        ctx.lang.text(note),
         font_size::SMALL,
         palette.dim_text,
     ));

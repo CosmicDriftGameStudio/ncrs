@@ -79,8 +79,9 @@ pub fn banner<'a>(
     ]
     .spacing(spacing::XXL)
     .align_y(alignment::Vertical::Center);
-    if let Some(free_after) = done.free_after {
-        let total = state.scan().map_or(0, |scan| scan.volume.total);
+    let volume = state.volume_now();
+    if let Some(free_after) = volume.map(|now| now.available).or(done.free_after) {
+        let total = volume.map_or(0, |now| now.total);
         line = line
             .push(page_line(
                 fill_size(Msg::SpaceResultFreeNow, free_after, ctx.lang),
@@ -106,6 +107,15 @@ pub fn banner<'a>(
     }
     line = line.push(Space::new().width(Length::Fill));
     let idle = !state.is_measuring() && state.running().is_none();
+    if skipped > 0 {
+        line = line.push(kit::key_button(
+            ctx.lang.text(Msg::SpaceRetrySkipped),
+            &ctx.keys.label(Shortcut::Retry),
+            idle.then_some(Message::Retry),
+            Tone::Secondary,
+            palette,
+        ));
+    }
     if !ctx.store_build && state.open_ticked_count(Group::Worktrees) > 0 {
         line = line.push(kit::key_button(
             &fill_size(

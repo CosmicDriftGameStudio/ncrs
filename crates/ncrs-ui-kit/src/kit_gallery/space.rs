@@ -269,6 +269,15 @@ fn the_disk_warning_segment_looks_the_same() {
 }
 
 #[test]
+fn the_hint_bar_looks_the_same() {
+    let bar = crate::page_status_bar::hint_bar(
+        "\u{2318}N new chat \u{b7} \u{2318}\u{2191}/\u{2318}\u{2193} switch chat \u{b7} Space marks a chat \u{b7} Del deletes",
+        &palette(),
+    );
+    matches_picture("hint-bar", Size::new(900.0, 24.0), bar);
+}
+
+#[test]
 fn the_number_field_looks_the_same() {
     let p = palette();
     let field = crate::kit::number_field("%", "90", "number-field", Some(|_| ()), (), &p);

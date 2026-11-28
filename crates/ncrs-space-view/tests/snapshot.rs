@@ -107,6 +107,12 @@ mod ui_tests {
         ));
     }
 
+    fn measured_after_run(free: u64) -> std::sync::Arc<ncrs_space::Scan> {
+        let mut scan = (*crowded_scan(true)).clone();
+        scan.volume.available = free;
+        std::sync::Arc::new(scan)
+    }
+
     #[test]
     fn space_result_with_a_skipped_row() {
         let app = ctx();
@@ -114,6 +120,11 @@ mod ui_tests {
         send(&mut state, Message::DeleteSafe, &app);
         send(&mut state, Message::ConfirmAccept, &app);
         let run = state.running().unwrap().run;
+        let freed: u64 = (0..24_u64)
+            .filter(|place| *place != 5)
+            .map(|place| (place + 2) * GIB / 3)
+            .sum();
+        let free_after = 78 * GIB + freed;
         let rows = (0..24_u64)
             .map(|place| LogRow {
                 path: path(&format!("/Users/marc/.cargo-target/ncrs-{place}")),
@@ -132,7 +143,7 @@ mod ui_tests {
             Message::RunFinished(ncrs_space_view::Finished {
                 run,
                 log: log_of(rows),
-                free_after: Some(118 * GIB),
+                free_after: Some(free_after),
                 log_error: None,
             }),
             &app,
@@ -142,7 +153,7 @@ mod ui_tests {
             &mut state,
             Message::Scanned {
                 run: again,
-                scan: Some(crowded_scan(true)),
+                scan: Some(measured_after_run(free_after)),
             },
             &app,
         );

@@ -50,6 +50,10 @@ pub enum ChipReply {
     SpaceRemoveWorktrees,
     /// Opens the Platz tab.
     SpaceOverview,
+    /// Opens the Platz tab on the Downloads folder.
+    SpaceShowDownloads,
+    /// Opens the Platz tab on the session logs.
+    SpaceShowOldLogs,
 }
 
 impl Session {
@@ -71,6 +75,8 @@ impl ChipReply {
                 | Self::SpaceDeleteSafe
                 | Self::SpaceRemoveWorktrees
                 | Self::SpaceOverview
+                | Self::SpaceShowDownloads
+                | Self::SpaceShowOldLogs
         )
     }
 
@@ -105,7 +111,9 @@ impl ChipReply {
             | Self::SuggestRules
             | Self::OpenSort(_)
             | Self::OpenRuleForm
-            | Self::SpaceOverview => false,
+            | Self::SpaceOverview
+            | Self::SpaceShowDownloads
+            | Self::SpaceShowOldLogs => false,
         }
     }
 }
@@ -244,6 +252,15 @@ pub struct Session {
     pub measuring_space: bool,
 }
 
+/// What the last measure left for the user to decide, for the answer after a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceLeft {
+    pub untouched: Vec<(String, u64)>,
+    pub has_downloads: bool,
+    pub has_session_logs: bool,
+    pub has_worktrees: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpaceMeasured {
     pub free: u64,
@@ -296,6 +313,7 @@ pub struct State {
     pub session: Session,
     /// What the last measure for the card found, for the status bar.
     pub space_measured: Option<SpaceMeasured>,
+    pub space_left: Option<SpaceLeft>,
     /// The chats of the list; the conversation above is the one of
     /// `chats.live()`.
     pub chats: crate::chat_list::ChatList,

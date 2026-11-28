@@ -350,8 +350,64 @@ fn escape_stops_a_measure_and_only_then_closes_the_tab() {
     assert!(actions.is_empty());
     let run = state.scan_run();
     send(&mut state, Message::Scanned { run, scan: None }, &ctx);
+    assert!(state.failure().is_none(), "a stopped measure is no failure");
     let actions = send(&mut state, Message::Escape, &ctx);
     assert_eq!(actions, [Action::Closed]);
+}
+
+#[test]
+fn after_a_run_the_banner_the_drive_and_the_status_bar_share_the_new_measure() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    let before = state.volume_now().unwrap().available;
+    send(&mut state, Message::DeleteSafe, &ctx);
+    send(&mut state, Message::ConfirmAccept, &ctx);
+    let run = state.running().unwrap().run;
+    let after = before + 5 * GIB;
+    send(
+        &mut state,
+        Message::RunFinished(ncrs_space_view::Finished {
+            run,
+            log: log_of(Vec::new()),
+            free_after: Some(before),
+            log_error: None,
+        }),
+        &ctx,
+    );
+    let mut again = (*small_scan()).clone();
+    again.volume.available = after;
+    let again_run = state.scan_run();
+    send(
+        &mut state,
+        Message::Scanned {
+            run: again_run,
+            scan: Some(Arc::new(again)),
+        },
+        &ctx,
+    );
+    assert_eq!(state.volume_now().unwrap().available, after);
+}
+
+#[test]
+fn a_measure_that_ends_without_a_result_shows_a_failure() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    send(&mut state, Message::Rescan, &ctx);
+    let run = state.scan_run();
+    send(&mut state, Message::Scanned { run, scan: None }, &ctx);
+    assert!(state
+        .failure()
+        .is_some_and(|text| text.contains("measured")));
+}
+
+#[test]
+fn the_merged_worktrees_fold_after_the_first_ones_until_expanded() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    assert_eq!(state.row_limit(ncrs_space::Group::Worktrees), 8);
+    send(&mut state, Message::ExpandWorktrees, &ctx);
+    assert_eq!(state.row_limit(ncrs_space::Group::Worktrees), usize::MAX);
+    assert_eq!(state.row_limit(ncrs_space::Group::Safe), usize::MAX);
 }
 
 #[test]

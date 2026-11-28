@@ -29,6 +29,9 @@ pub struct Running {
     pub free_before: u64,
 }
 
+/// The merged worktrees listed before the rest folds into one row.
+pub const WORKTREES_SHOWN: usize = 8;
+
 /// How the last run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResultState {
@@ -104,6 +107,8 @@ pub struct State {
     pub(crate) list_scroll: f32,
     pub(crate) decide: Option<DecideState>,
     pub(crate) show_rules: bool,
+    /// All merged worktrees are listed, not only the first ones.
+    pub(crate) worktrees_expanded: bool,
     /// A measure that ended while the result was up: the rows follow when it closes, so
     /// the deleted ones stay in the list as the run left them.
     pub(crate) pending_scan: Option<Arc<Scan>>,
@@ -112,6 +117,13 @@ pub struct State {
 impl State {
     pub fn scan(&self) -> Option<&Arc<Scan>> {
         self.scan.as_ref()
+    }
+
+    /// The drive as it is now: after a run the newer measure, else the one of the list.
+    /// Drive line, chips, status bar and result banner all read this one place.
+    pub fn volume_now(&self) -> Option<ncrs_space::VolumeSpace> {
+        let scan = self.pending_scan.as_ref().or(self.scan.as_ref())?;
+        Some(scan.volume)
     }
 
     /// The number of the measure that runs or ran last; its answers carry it.
@@ -142,6 +154,21 @@ impl State {
 
     pub const fn result(&self) -> Option<&ResultState> {
         self.result.as_ref()
+    }
+
+    /// How many rows of the group the list shows: the merged worktrees fold after the first
+    /// ones until the user opens them, or filters.
+    pub fn row_limit(&self, group: Group) -> usize {
+        if group == Group::Worktrees && !self.worktrees_expanded && self.filter.is_empty() {
+            WORKTREES_SHOWN
+        } else {
+            usize::MAX
+        }
+    }
+
+    /// The newer measure that waits for the result to close.
+    pub fn pending_scan(&self) -> Option<&Scan> {
+        self.pending_scan.as_deref()
     }
 
     pub const fn show_rules(&self) -> bool {
@@ -207,7 +234,7 @@ impl State {
             items.push(Item::Head(group));
             let listed_apart = self.result.is_some() && group == Group::Worktrees;
             if !self.is_folded(group) && !listed_apart {
-                items.extend(rows.into_iter().map(Item::Row));
+                items.extend(rows.into_iter().take(self.row_limit(group)).map(Item::Row));
             }
         }
         items

@@ -56,19 +56,19 @@ pub fn row_name(row: &DisplayRow, lang: Language) -> String {
 fn place_msgs(kind: &DecideKind) -> (Msg, Msg) {
     match kind {
         DecideKind::SessionLogs => (
-            Msg::SpaceDecidePlaceSessionLogsWhy,
+            Msg::SpaceDecideSessionLogsWhy,
             Msg::SpaceDecidePlaceSessionLogsCheck,
         ),
         DecideKind::Simulators => (
-            Msg::SpaceDecidePlaceSimulatorsWhy,
+            Msg::SpaceDecideSimulatorsWhy,
             Msg::SpaceDecidePlaceSimulatorsCheck,
         ),
         DecideKind::Backups => (
-            Msg::SpaceDecidePlaceBackupsWhy,
+            Msg::SpaceDecideBackupsWhy,
             Msg::SpaceDecidePlaceBackupsCheck,
         ),
         DecideKind::ModelCache => (
-            Msg::SpaceDecidePlaceModelCacheWhy,
+            Msg::SpaceDecideModelCacheWhy,
             Msg::SpaceDecidePlaceModelCacheCheck,
         ),
         _ => (Msg::SpaceDecideOtherWhy, Msg::SpaceDecideOtherCheck),

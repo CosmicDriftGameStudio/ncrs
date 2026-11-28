@@ -12,7 +12,8 @@ mod tests {
     use iced::keyboard::{key::Named, Key, Modifiers};
     use ncrs_core::FolderSize;
     use ncrs_hermes_chat::{
-        card_key_message, chat_key, Action, ChatKey, ChipReply, Entry, Message, Part, SpaceRunKind,
+        card_key_message, chat_key, Action, ChatKey, ChipReply, Entry, Message, Part,
+        SpaceDecideTarget, SpaceRunKind,
     };
     use ncrs_i18n::Msg;
     use ncrs_space::decide::DecideKind;
@@ -86,6 +87,93 @@ mod tests {
             measured_at: SystemTime::UNIX_EPOCH,
             took: Duration::from_secs(9),
         })
+    }
+
+    /// Downloads (when `downloads`) and session logs to decide on, no worktrees.
+    fn scan_without_worktrees(talk: &Talk, downloads: bool) -> Arc<Scan> {
+        let home = &talk.ctx.home;
+        let entry = |name: &str, kind| SpaceEntry {
+            path: home.join(name),
+            group: Group::Decide,
+            kind: EntryKind::Decide(kind),
+            size: FolderSize {
+                bytes: 20 * GB,
+                partial: false,
+            },
+            modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            device: None,
+            held_by: Vec::new(),
+            facts: Default::default(),
+        };
+        let mut entries = vec![entry(".claude/projects", DecideKind::SessionLogs)];
+        if downloads {
+            entries.push(entry("Downloads", DecideKind::BigFolder));
+        }
+        Arc::new(Scan {
+            volume: VolumeSpace {
+                total: 1000 * GB,
+                available: 100 * GB,
+            },
+            entries,
+            partial: false,
+            processes_known: true,
+            volume_name: String::new(),
+            worktree_roots: Vec::new(),
+            measured_at: SystemTime::UNIX_EPOCH,
+            took: Duration::from_secs(9),
+        })
+    }
+
+    fn empty_run() -> Message {
+        Message::SpaceRunDone(Arc::new(RunLog {
+            started: SystemTime::UNIX_EPOCH,
+            finished: SystemTime::UNIX_EPOCH,
+            rows: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn after_a_run_the_untouched_folders_are_listed_and_downloads_opens_its_decision() {
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
+        let measured = scan_without_worktrees(&talk, true);
+        talk.send(Message::SpaceMeasured(measured));
+        talk.send(empty_run());
+
+        let texts = talk.last_texts();
+        assert!(texts.contains(&say(Msg::HermesChatSpaceNoWorktrees, &[])));
+        assert!(texts.contains(&say(Msg::HermesChatSpaceUntouched, &[])));
+        let list = texts.last().unwrap();
+        assert!(list.contains("Downloads"), "{list}");
+        assert!(
+            list.contains(&say(Msg::SpaceDecideSessionLogs, &[])),
+            "{list}"
+        );
+        assert!(talk
+            .labels()
+            .contains(&say(Msg::HermesChatSpaceShowOldLogs, &[])));
+        talk.press(&ChipReply::SpaceShowDownloads);
+        assert_eq!(
+            talk.actions.last(),
+            Some(&Action::SpaceDecide(SpaceDecideTarget::Downloads))
+        );
+    }
+
+    #[test]
+    fn without_downloads_in_the_scan_there_is_no_downloads_button() {
+        let mut talk = asks_to_measure(
+            "warum ist die platte voll",
+            r#"{"intent":"space","ask":"why"}"#,
+        );
+        let measured = scan_without_worktrees(&talk, false);
+        talk.send(Message::SpaceMeasured(measured));
+        talk.send(empty_run());
+
+        let labels = talk.labels();
+        assert!(!labels.contains(&say(Msg::HermesChatSpaceShowDownloads, &[])));
+        assert!(labels.contains(&say(Msg::HermesChatSpaceShowOldLogs, &[])));
     }
 
     fn asks_to_measure(sentence: &str, reply: &str) -> Talk {

@@ -58,6 +58,8 @@ pub enum Message {
     RowPressed(PathBuf),
     RowToggled(PathBuf),
     HeadToggled(Group),
+    /// The folded row under the merged worktrees: lists all of them.
+    ExpandWorktrees,
     /// The button of a decide row: the cursor goes there and the pane opens.
     RowOpened(PathBuf),
     OpenMenuAt(PathBuf),

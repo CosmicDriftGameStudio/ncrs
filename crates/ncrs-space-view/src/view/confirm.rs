@@ -112,7 +112,7 @@ pub fn dialog<'a>(
     )]
     .spacing(spacing::M);
     list = list.push(kit::dim(ctx.lang.text(Msg::SpaceConfirmRecheck), palette));
-    if ask.kind == ConfirmKind::Safe && !ctx.store_build && !ask.worktrees.is_empty() {
+    if ask.offers_worktrees(ctx.store_build) {
         let worktree_bytes = ask.worktrees.iter().fold(0_u64, |sum, worktree| {
             sum.saturating_add(worktree.size.bytes)
         });

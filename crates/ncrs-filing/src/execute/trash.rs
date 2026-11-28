@@ -204,7 +204,15 @@ fn run_planned(
     let mut trashed = Vec::new();
     for item in items {
         if let Some(reason) = item.check {
-            skip(index, batch, &Planned { check: None, ..item }, reason)?;
+            skip(
+                index,
+                batch,
+                &Planned {
+                    check: None,
+                    ..item
+                },
+                reason,
+            )?;
             report.skipped += 1;
             continue;
         }

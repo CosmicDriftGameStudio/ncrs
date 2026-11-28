@@ -230,7 +230,10 @@ fn settings_focus_key(key: &Key, modifiers: Modifiers) -> Option<FocusKey> {
 }
 
 /// ⌘N and ⌫ on the lists of the Platz page; the page ignores them anywhere else.
-fn settings_list_key(key: &Key, modifiers: Modifiers) -> Option<ncrs_settings::message::SpaceListKey> {
+fn settings_list_key(
+    key: &Key,
+    modifiers: Modifiers,
+) -> Option<ncrs_settings::message::SpaceListKey> {
     use ncrs_settings::message::SpaceListKey;
     match key.as_ref() {
         Key::Character("n") if modifiers == Modifiers::COMMAND => Some(SpaceListKey::Add),

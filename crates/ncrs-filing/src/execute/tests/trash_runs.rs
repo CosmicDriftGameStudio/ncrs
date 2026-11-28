@@ -339,11 +339,22 @@ fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
     let file = setup.write("downloads/old.dmg", "installer");
     let item = own_item(&file);
 
-    let report =
-        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
-            .unwrap();
+    let report = crate::execute::trash::trash_run_own(
+        &setup.index,
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+    )
+    .unwrap();
 
-    assert_eq!(report, TrashReport { trashed: 1, skipped: 0 });
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 1,
+            skipped: 0
+        }
+    );
     assert!(!file.exists());
     let undone = undo_with_trash(
         &setup.index,
@@ -364,12 +375,26 @@ fn an_own_file_that_changed_since_it_was_shown_stays() {
     let item = own_item(&file);
     fs::write(&file, "much longer than before").unwrap();
 
-    let report =
-        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
-            .unwrap();
+    let report = crate::execute::trash::trash_run_own(
+        &setup.index,
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+    )
+    .unwrap();
 
-    assert_eq!(report, TrashReport { trashed: 0, skipped: 1 });
-    assert_eq!(fs::read_to_string(&file).unwrap(), "much longer than before");
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 0,
+            skipped: 1
+        }
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "much longer than before"
+    );
 }
 
 #[test]
@@ -380,10 +405,21 @@ fn an_own_item_outside_the_root_stays() {
     fs::write(&outside, "x").unwrap();
     let item = own_item(&outside);
 
-    let report =
-        crate::execute::trash::trash_run_own(&setup.index, "Cleared", &setup.root, &[item], &bin.trash)
-            .unwrap();
+    let report = crate::execute::trash::trash_run_own(
+        &setup.index,
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+    )
+    .unwrap();
 
-    assert_eq!(report, TrashReport { trashed: 0, skipped: 1 });
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 0,
+            skipped: 1
+        }
+    );
     assert!(outside.exists());
 }

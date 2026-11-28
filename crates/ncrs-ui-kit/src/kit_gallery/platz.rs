@@ -47,6 +47,19 @@ fn the_confirm_list_keeps_its_columns_apart() {
 }
 
 #[test]
+fn the_folded_row_names_what_it_hides_and_the_key() {
+    let p = palette();
+    let folded: Cell<'_> = crate::folded_row::folded_row(
+        "31 more merged worktrees \u{b7} 19.9 GB",
+        "\u{2192}",
+        "expand",
+        (),
+        &p,
+    );
+    matches_picture("platz-folded-row", Size::new(700.0, 40.0), folded);
+}
+
+#[test]
 fn the_info_card_shows_title_lines_and_keys() {
     let p = palette();
     let card: Cell<'_> = info_card(

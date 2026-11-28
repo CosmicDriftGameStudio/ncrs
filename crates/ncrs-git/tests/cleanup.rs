@@ -277,7 +277,9 @@ fn a_merged_worktree_with_a_changed_file_is_not_merged() {
     let repo = repo();
     let folder = merged_worktree(&repo);
     let listed = |repo: &Repo| refs(repo.path(), &go()).unwrap().worktrees;
-    assert!(listed(&repo).iter().any(|tree| !tree.is_main && tree.merged));
+    assert!(listed(&repo)
+        .iter()
+        .any(|tree| !tree.is_main && tree.merged));
 
     write(&folder, "scratch.txt", "x\n");
     let dirty = listed(&repo);

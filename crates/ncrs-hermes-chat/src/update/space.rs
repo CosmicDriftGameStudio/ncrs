@@ -9,7 +9,7 @@ use ncrs_space::{RunLog, Scan, Skip};
 use ncrs_ui_kit::format;
 
 use super::{chip, chip_labelled, drop_working, hermes, is_busy, say};
-use crate::action::{Action, SpaceRunKind};
+use crate::action::{Action, SpaceDecideTarget, SpaceRunKind};
 use crate::ctx::Ctx;
 use crate::message::Message;
 use crate::space_card::{build, percent};
@@ -40,6 +40,12 @@ pub fn measured(state: &mut State, ctx: &Ctx, scan: &Arc<Scan>) {
         at: scan.measured_at,
     });
     let built = build(scan, ctx);
+    state.space_left = Some(crate::state::SpaceLeft {
+        untouched: built.untouched.clone(),
+        has_downloads: built.has_downloads,
+        has_session_logs: built.has_session_logs,
+        has_worktrees: built.worktree_bytes > 0,
+    });
     let shown = |bytes: u64| format::size_shown(bytes, ctx.lang);
     let mut parts = vec![Part::Text(built.intro), Part::Space(built.card)];
     let mut chips = Vec::new();
@@ -206,12 +212,43 @@ pub fn run_done(state: &mut State, ctx: &Ctx, log: &RunLog) {
         .take(LEFT_STANDING_LINES)
         .collect();
     parts.extend(left.into_iter().map(Part::Text));
-    let chips = vec![chip(
+    let mut chips = Vec::new();
+    if let Some(still) = state.space_left.clone() {
+        if !still.has_worktrees && !ctx.store_build {
+            parts.push(Part::Text(text(ctx.lang, Msg::HermesChatSpaceNoWorktrees)));
+        }
+        if !still.untouched.is_empty() {
+            parts.push(Part::Text(text(ctx.lang, Msg::HermesChatSpaceUntouched)));
+            let lines: Vec<String> = still
+                .untouched
+                .iter()
+                .map(|(name, bytes)| format!("{name}  {}", shown(*bytes)))
+                .collect();
+            parts.push(Part::Text(lines.join("\n")));
+        }
+        if still.has_downloads {
+            chips.push(chip(
+                ctx,
+                Msg::HermesChatSpaceShowDownloads,
+                ChipReply::SpaceShowDownloads,
+                false,
+            ));
+        }
+        if still.has_session_logs {
+            chips.push(chip(
+                ctx,
+                Msg::HermesChatSpaceShowOldLogs,
+                ChipReply::SpaceShowOldLogs,
+                false,
+            ));
+        }
+    }
+    chips.push(chip(
         ctx,
         Msg::SpaceOpenOverview,
         ChipReply::SpaceOverview,
         false,
-    )];
+    ));
     hermes(state, parts, chips);
 }
 
@@ -224,6 +261,8 @@ pub fn reply(ctx: &Ctx, reply: &ChipReply) -> Option<Action> {
             Some(Action::SpaceRun(SpaceRunKind::RemoveWorktrees))
         }
         ChipReply::SpaceOverview => Some(Action::OpenSpace),
+        ChipReply::SpaceShowDownloads => Some(Action::SpaceDecide(SpaceDecideTarget::Downloads)),
+        ChipReply::SpaceShowOldLogs => Some(Action::SpaceDecide(SpaceDecideTarget::SessionLogs)),
         _ => None,
     }
 }

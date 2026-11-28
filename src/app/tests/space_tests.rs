@@ -218,3 +218,20 @@ async fn own_files_go_to_the_trash_and_come_back_without_hermes() {
     assert_eq!(restore_items(&trash, &app.last_own_trash), Ok(2));
     assert!(paths.iter().all(|path| path.exists()));
 }
+
+#[test]
+fn a_file_changed_since_the_measure_is_not_trashed() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("model.bin");
+    std::fs::write(&path, b"a").expect("write");
+    let measured = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    let item = |modified| ncrs_filing::execute::OwnTrashItem {
+        path: path.clone(),
+        size: 1,
+        modified,
+    };
+    assert!(!crate::app::space::changed_since_measure(&item(measured)));
+    assert!(!crate::app::space::changed_since_measure(&item(None)));
+    let earlier = measured.map(|time| time - std::time::Duration::from_secs(60));
+    assert!(crate::app::space::changed_since_measure(&item(earlier)));
+}

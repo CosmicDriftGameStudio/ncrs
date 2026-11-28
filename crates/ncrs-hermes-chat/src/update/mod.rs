@@ -692,7 +692,11 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::OpenSearch | ChipReply::IntentSearch => return Some(Action::OpenSearch),
         ChipReply::IntentTidy => sort_hint(state, ctx, None),
         ChipReply::IntentStructure => ask_read_folder(state, ctx),
-        ChipReply::SpaceDeleteSafe | ChipReply::SpaceRemoveWorktrees | ChipReply::SpaceOverview => {
+        ChipReply::SpaceDeleteSafe
+        | ChipReply::SpaceRemoveWorktrees
+        | ChipReply::SpaceOverview
+        | ChipReply::SpaceShowDownloads
+        | ChipReply::SpaceShowOldLogs => {
             return space::reply(ctx, &reply);
         }
     }

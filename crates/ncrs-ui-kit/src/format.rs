@@ -304,6 +304,13 @@ pub fn time(time: Option<SystemTime>) -> String {
         .unwrap_or_default()
 }
 
+/// Local clock time without seconds, `HH:MM`, or empty if unknown.
+pub fn clock_minutes(time: Option<SystemTime>) -> String {
+    time.and_then(local_time)
+        .map(|at| at.format("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
 /// Local clock time with seconds, `HH:MM:SS`, or empty if unknown.
 pub fn clock_seconds(time: Option<SystemTime>) -> String {
     time.and_then(local_time)

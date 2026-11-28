@@ -41,6 +41,11 @@ pub struct RunPlan {
 }
 
 impl ConfirmState {
+    /// The dialog has the box "remove merged worktrees too".
+    pub fn offers_worktrees(&self, store_build: bool) -> bool {
+        self.kind == ConfirmKind::Safe && !store_build && !self.worktrees.is_empty()
+    }
+
     /// A dialog with the focus on Cancel.
     pub fn new(
         kind: ConfirmKind,

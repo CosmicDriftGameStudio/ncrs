@@ -31,7 +31,14 @@ pub struct MeasuredTree {
 /// through, so entering one shows its size without another walk. A hard link
 /// is counted in the folder the walk met it in first.
 pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX, Keep::default())
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        |_| {},
+        Duration::MAX,
+        Keep::default(),
+    )
 }
 
 /// How often a running walk reports what it has counted so far.
@@ -47,7 +54,14 @@ pub fn measure_folder_tree_reporting(
     report_every: Duration,
     on_running: impl FnMut(u64),
 ) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of, on_running, report_every, Keep::default())
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        on_running,
+        report_every,
+        Keep::default(),
+    )
 }
 
 /// [`measure_folder_tree_reporting`] that keeps a size only for the folders down to `max_depth`
@@ -83,7 +97,15 @@ fn measure_folder_on(
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
 ) -> Option<FolderSize> {
-    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX, Keep::default()).map(|tree| tree.total)
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        |_| {},
+        Duration::MAX,
+        Keep::default(),
+    )
+    .map(|tree| tree.total)
 }
 
 fn measure_tree_on(
@@ -284,7 +306,12 @@ mod tests {
         let kept: Vec<_> = tree
             .below
             .iter()
-            .map(|(path, size)| (path.strip_prefix(root.path()).unwrap().to_owned(), size.bytes))
+            .map(|(path, size)| {
+                (
+                    path.strip_prefix(root.path()).unwrap().to_owned(),
+                    size.bytes,
+                )
+            })
             .collect();
         assert_eq!(
             kept,

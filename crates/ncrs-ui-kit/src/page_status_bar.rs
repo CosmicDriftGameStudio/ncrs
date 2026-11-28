@@ -115,7 +115,12 @@ fn key_line<'a, M: 'a>(keys: &[(&str, &str)], palette: &Palette) -> Element<'a, 
                 .size(font_size::KEY_CAP)
                 .wrapping(Wrapping::None),
         )
-        .padding([0.0, spacing::XS - 1.0])
+        .padding(iced::Padding {
+            top: 0.0,
+            right: spacing::XS + 2.0,
+            bottom: 0.0,
+            left: spacing::XS - 1.0,
+        })
         .style(theme::key_cap(palette, false));
         line = line.push(
             row![
@@ -130,6 +135,26 @@ fn key_line<'a, M: 'a>(keys: &[(&str, &str)], palette: &Palette) -> Element<'a, 
         );
     }
     container(line).padding([0.0, spacing::L]).into()
+}
+
+/// A dim line of hints above the status bar of a page.
+pub fn hint_bar<'a, M: 'a>(hint: &str, palette: &Palette) -> Element<'a, M> {
+    container(column![
+        theme::horizontal_rule(palette.border_inactive),
+        container(
+            text(hint.to_owned())
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
+                .wrapping(Wrapping::None),
+        )
+        .padding([0.0, spacing::L])
+        .height(Length::Fill)
+        .align_y(alignment::Vertical::Center),
+    ])
+    .height(size::STATUS_BAR)
+    .width(Length::Fill)
+    .style(theme::statusbar(palette))
+    .into()
 }
 
 /// The field at the left end of a bar that names the page.

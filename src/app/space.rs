@@ -188,10 +188,20 @@ impl App {
         empty_after: bool,
     ) -> Task<Message> {
         let trash = Arc::clone(&self.trash);
+        let changed_reason = self.lang.text(Msg::SpaceDecideChanged).to_owned();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
-                    trash_items(trash.as_ref(), &items, empty_after)
+                    let (unchanged, changed): (Vec<_>, Vec<_>) = items
+                        .into_iter()
+                        .partition(|item| !changed_since_measure(item));
+                    let (gone, failed) = trash_items(trash.as_ref(), &unchanged, empty_after);
+                    let failed = match (failed, changed.len()) {
+                        (failed, 0) => failed,
+                        (None, count) => Some((count, changed_reason)),
+                        (Some((count, reason)), changed) => Some((count + changed, reason)),
+                    };
+                    (gone, failed)
                 })
                 .await
                 .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string()))))
@@ -301,6 +311,45 @@ impl App {
             Task::none()
         };
         Task::batch([opened, confirm])
+    }
+
+    /// The Platz tab with the decide pane of this folder open, once the tab has its scan.
+    pub(in crate::app) fn show_space_decide(
+        &mut self,
+        target: ncrs_hermes_chat::SpaceDecideTarget,
+    ) -> Task<Message> {
+        let opened = self.open_space();
+        let downloads = self.home.join("Downloads");
+        let row = self.space_last_scan.as_ref().and_then(|scan| {
+            scan.entries
+                .iter()
+                .find(|entry| {
+                    entry.group == ncrs_space::Group::Decide
+                        && match target {
+                            ncrs_hermes_chat::SpaceDecideTarget::Downloads => {
+                                entry.path == downloads
+                            }
+                            ncrs_hermes_chat::SpaceDecideTarget::SessionLogs => matches!(
+                                entry.kind,
+                                ncrs_space::EntryKind::Decide(
+                                    ncrs_space::decide::DecideKind::SessionLogs
+                                )
+                            ),
+                        }
+                })
+                .map(|entry| entry.path.clone())
+        });
+        let ready = self
+            .space
+            .as_ref()
+            .is_some_and(|state| state.scan().is_some() && !state.is_measuring());
+        match row {
+            Some(path) if ready => Task::batch([
+                opened,
+                self.update_space(ncrs_space_view::Message::RowOpened(path)),
+            ]),
+            _ => opened,
+        }
     }
 
     /// The key of a card button of the chat, or the key back to the input.
@@ -450,6 +499,16 @@ pub(in crate::app) fn processes_known() -> bool {
 }
 
 /// What went to the trash, and the first reason (with the count) of those that did not.
+/// A file whose modification time differs from the one measured is not the file the user
+/// saw; same rule as the checks of `ncrs-space`.
+pub(in crate::app) fn changed_since_measure(item: &ncrs_filing::execute::OwnTrashItem) -> bool {
+    item.modified.is_some()
+        && std::fs::metadata(&item.path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            != item.modified
+}
+
 pub(in crate::app) fn trash_items(
     trash: &dyn fs::Trash,
     items: &[ncrs_filing::execute::OwnTrashItem],

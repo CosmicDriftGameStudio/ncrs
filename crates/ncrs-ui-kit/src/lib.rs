@@ -49,6 +49,7 @@ pub mod file_icon;
 pub mod file_row;
 pub mod fkeys;
 pub mod focus;
+pub mod folded_row;
 pub mod font;
 pub mod format;
 pub mod frame;
