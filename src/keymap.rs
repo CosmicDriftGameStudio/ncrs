@@ -766,7 +766,7 @@ mod tests {
     #[test]
     fn keys_are_case_blind_and_lists_keep_their_order() {
         let keymap =
-            rebound("[keys]\nquit = [\"PRIMARY+Q\", \"f10\"]\ncopy_path = \" Ctrl + Alt + P \"\n");
+            rebound("[keys]\nquit = [\"PRIMARY+Q\", \"f10\"]\ncopy_path = \" Ctrl + Alt + K \"\n");
         assert_eq!(
             press(&keymap, Key::Character("q".into()), Modifiers::COMMAND),
             Some(Message::Quit)
@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(
             press(
                 &keymap,
-                Key::Character("p".into()),
+                Key::Character("k".into()),
                 Modifiers::CTRL | Modifiers::ALT
             ),
             Some(Message::CopyToClipboard(ClipboardKind::Path))
