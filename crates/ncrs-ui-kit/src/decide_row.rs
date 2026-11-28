@@ -19,8 +19,9 @@ pub struct FileColumns;
 
 impl FileColumns {
     pub const TICK: f32 = 32.0;
-    pub const NAME_PORTION: u16 = 3;
-    pub const REASON_PORTION: u16 = 2;
+    // Equal halves: a reason ("same content in ~/Downloads/…") is as long as a file name.
+    pub const NAME_PORTION: u16 = 1;
+    pub const REASON_PORTION: u16 = 1;
     pub const DATE: f32 = 100.0;
     pub const SIZE: f32 = 80.0;
     pub const BAR: f32 = 120.0;
