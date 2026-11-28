@@ -9,7 +9,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{button, segmented, text_area, text_field, Tone};
 use ncrs_ui_kit::markdown_view::markdown_view;
 use ncrs_ui_kit::page_scroll::page_scroll;
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
@@ -68,10 +68,17 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>, new_note_key: &str) -> Eleme
         container(note_pane(state, ctx)).width(Length::Fill),
     ]
     .height(Length::Fill);
-    let page: Element<'a, Message> = column![body, page_status_bar(bar, palette)]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
+    let page: Element<'a, Message> = column![
+        body,
+        page_status_bar(
+            bar,
+            DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskWhyDiskFull),
+            palette
+        )
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into();
     match context_menu(state, ctx) {
         Some(menu) => stack![page, menu].into(),
         None => page,

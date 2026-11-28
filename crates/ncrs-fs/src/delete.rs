@@ -79,6 +79,17 @@ pub trait Trash: Send + Sync {
     /// Puts `item` back at `item.original`. Never replaces anything there: a
     /// taken name is `Taken`. A missing original folder is created.
     fn restore(&self, item: &TrashedItem) -> Result<(), RestoreError>;
+
+    /// Whether [`Trash::purge`] works here. Without it a caller must not
+    /// offer to empty what it trashed.
+    fn can_purge(&self) -> bool {
+        false
+    }
+
+    /// Deletes these entries from the trash for good, and only these.
+    fn purge(&self, _items: &[TrashedItem]) -> Result<(), String> {
+        Err("this trash cannot delete single entries for good".to_owned())
+    }
 }
 
 /// The system trash for this platform. `journal` is where macOS records what
@@ -153,6 +164,22 @@ impl Trash for OsTrash {
             Err(trash::Error::RestoreCollision { .. }) => Err(RestoreError::Taken),
             Err(err) => Err(RestoreError::Failed(err.to_string())),
         }
+    }
+
+    fn can_purge(&self) -> bool {
+        true
+    }
+
+    fn purge(&self, items: &[TrashedItem]) -> Result<(), String> {
+        let entries = items.iter().filter_map(|item| {
+            Some(trash::TrashItem {
+                id: item.key.clone(),
+                name: item.original.file_name()?.to_owned(),
+                original_parent: item.original.parent()?.to_path_buf(),
+                time_deleted: item.deleted_at,
+            })
+        });
+        trash::os_limited::purge_all(entries).map_err(|err| err.to_string())
     }
 }
 

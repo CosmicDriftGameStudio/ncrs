@@ -40,3 +40,11 @@ impl App {
         self
     }
 }
+
+impl App {
+    pub fn showing_space_for_test(mut self, space: ncrs_space_view::State) -> Self {
+        self.space = Some(space);
+        self.shown_tab = ShownTab::Space;
+        self
+    }
+}

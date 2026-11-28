@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -46,8 +47,30 @@ pub enum Failure {
     Measure(String),
 }
 
+/// What the drive rows take from the Platz settings and the app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceFacts {
+    /// A drive is drawn as full from this used share on.
+    pub warn_from_percent: u8,
+    /// The drive that holds it offers "Make space…".
+    pub home: Option<PathBuf>,
+    /// The chord that opens the Platz tab, as shown on the button; empty when unbound.
+    pub key: String,
+}
+
+impl Default for SpaceFacts {
+    fn default() -> Self {
+        Self {
+            warn_from_percent: ncrs_config::space::DEFAULT_WARN_FROM_PERCENT,
+            home: None,
+            key: String::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct State {
+    pub space: SpaceFacts,
     pub settings: SystemSettings,
     pub open: bool,
     pub sampler: Option<SharedSampler>,
@@ -91,6 +114,7 @@ impl State {
     pub fn with_drive_probe(probe: Arc<dyn DriveProbe>) -> Self {
         let settings = SystemSettings::default();
         Self {
+            space: SpaceFacts::default(),
             column: TaskColumn::from_setting(settings.sort),
             settings,
             open: false,
@@ -322,6 +346,22 @@ impl State {
                 .filter(|network| show_idle || network.has_traffic)
                 .collect()
         })
+    }
+
+    pub fn set_space_facts(&mut self, facts: SpaceFacts) {
+        self.space = facts;
+    }
+
+    /// The position among the shown drives of the one the home folder lies on:
+    /// the deepest mount that contains it.
+    pub(crate) fn home_drive_position(&self) -> Option<usize> {
+        let home = self.space.home.as_ref()?;
+        self.drives_to_show()
+            .iter()
+            .enumerate()
+            .filter(|(_, drive)| home.starts_with(&drive.mount))
+            .max_by_key(|(_, drive)| drive.mount.components().count())
+            .map(|(position, _)| position)
     }
 
     pub(crate) fn drives_to_show(&self) -> Vec<&DriveRow> {

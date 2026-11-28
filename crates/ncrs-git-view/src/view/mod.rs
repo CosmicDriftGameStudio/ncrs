@@ -28,7 +28,7 @@ use ncrs_config::keymap::KeyAction;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::action_rows::BANNER_HEIGHT;
 use ncrs_ui_kit::git_rows::drag_capture;
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::page_line;
 use ncrs_ui_kit::splitter::{splitter, width_label, SplitterMessages};
 use ncrs_ui_kit::theme::git::SplitterLook;
@@ -146,7 +146,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     if let Some(notice) = &state.actions.notice {
         top = top.push(overlay::notice_banner(notice, ctx));
     }
-    let page = top.push(body).push(page_status_bar(bar, palette));
+    let page = top.push(body).push(page_status_bar(
+        bar,
+        DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskWhyDiskFull),
+        palette,
+    ));
     if state.column_drag.is_some() {
         return stack![
             page,

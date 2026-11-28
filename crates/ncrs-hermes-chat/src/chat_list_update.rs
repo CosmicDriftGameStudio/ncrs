@@ -4,12 +4,14 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
+use ncrs_i18n::Msg;
 
 use crate::action::Action;
 use crate::chat_list::ChatList;
 use crate::chat_store::{ChatId, ChatStatus, Line, Speaker};
 use crate::ctx::Ctx;
-use crate::state::{Entry, Part, State, Step};
+use crate::state::{ChipReply, Entry, Part, State, Step};
+use crate::texts::text;
 use crate::update::{is_busy, restart_conversation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +49,7 @@ fn part_text(part: &Part) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
         Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
+        Part::Space(card) => card.title.clone(),
     }
 }
 
@@ -81,10 +84,32 @@ pub fn transcript(thread: &[Entry]) -> Vec<Line> {
         .collect()
 }
 
+/// The first thing Hermes answers to the first line of the user is the Platz card.
+fn first_answer_is_space_card(thread: &[Entry]) -> bool {
+    thread
+        .iter()
+        .skip_while(|entry| !matches!(entry, Entry::User(_)))
+        .find_map(|entry| match entry {
+            Entry::Hermes { parts, .. } => Some(parts),
+            _ => None,
+        })
+        .is_some_and(|parts| parts.iter().any(|part| matches!(part, Part::Space(_))))
+}
+
+/// The newest answer still offers a run of the Platz card.
+fn space_plan_waits(state: &State) -> bool {
+    state.chips().iter().any(|chip| {
+        matches!(
+            chip.reply,
+            ChipReply::SpaceDeleteSafe | ChipReply::SpaceRemoveWorktrees
+        )
+    })
+}
+
 /// Where the conversation stands: levels that wait for a yes, a finished job,
 /// or a question.
 pub fn status_of(state: &State) -> ChatStatus {
-    if state.session.rule.is_some() {
+    if state.session.rule.is_some() || space_plan_waits(state) {
         ChatStatus::PlanOpen
     } else if state.step == Step::Idle && state.thread.iter().any(|e| matches!(e, Entry::User(_))) {
         ChatStatus::Done
@@ -109,10 +134,14 @@ impl State {
         self.chats.keep_days()
     }
 
-    pub(crate) fn sync_chats(&mut self, now: DateTime<Local>) {
+    pub(crate) fn sync_chats(&mut self, ctx: &Ctx) {
         let lines = transcript(&self.thread);
         let status = status_of(self);
-        self.chats.sync_live(lines, status, now.timestamp());
+        self.chats.sync_live(lines, status, ctx.now.timestamp());
+        if first_answer_is_space_card(&self.thread) {
+            self.chats
+                .set_live_title(text(ctx.lang, Msg::HermesChatSpaceTitle));
+        }
     }
 
     pub fn chats(&self) -> &ChatList {

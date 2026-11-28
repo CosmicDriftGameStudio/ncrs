@@ -41,6 +41,7 @@ use crate::panel_columns::{
     columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
 };
 use crate::repos::{ReposSection, ReposSettings};
+use crate::space::{SpaceSection, SpaceSettings};
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
 use ncrs_ai::ConsentedOrigins;
@@ -155,6 +156,15 @@ pub struct Config {
     /// Where the repo manager looks and how its bulk actions run.
     #[serde(skip)]
     pub repos: ReposSettings,
+    /// The `[keys.space]` table, read for its keys; the Platz tab says which names are actions.
+    #[serde(skip)]
+    pub space_keys: TabKeys,
+    /// The `[space]` section as written; `load` checks it into `space`.
+    #[serde(default, rename = "space")]
+    pub space_section: SpaceSection,
+    /// What "Platz schaffen" treats as safe and what it leaves alone.
+    #[serde(skip)]
+    pub space: SpaceSettings,
     /// The `[theme]` section as written; `load` turns it into `palette`.
     #[serde(default)]
     pub theme: ThemeSection,
@@ -273,6 +283,7 @@ mod sections;
 mod setting_writes;
 mod sorting;
 mod sorting_writes;
+mod space_writes;
 mod write_support;
 mod writing;
 
@@ -316,6 +327,7 @@ pub use self::sorting_writes::{
     remove_sort_target, remove_sort_target_with_home, upsert_sort_source,
     upsert_sort_source_with_home, upsert_sort_target, upsert_sort_target_with_home, BACKUP_SUFFIX,
 };
+pub use self::space_writes::{space_settings, write_space};
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{

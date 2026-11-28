@@ -6,6 +6,15 @@ impl App {
         &mut self,
         message: HermesChatMessage,
     ) -> Task<Message> {
+        if message == HermesChatMessage::SpaceAsked && !self.hermes_chat_shown() {
+            let opened = self.update_hermes_chat(HermesChatMessage::Open);
+            if !self.hermes_chat.open {
+                return opened;
+            }
+            self.shown_tab = ShownTab::Hermes;
+            let asked = self.update_hermes_chat(HermesChatMessage::SpaceAsked);
+            return Task::batch([opened, asked]);
+        }
         let mut first_run = Task::none();
         if message == HermesChatMessage::Open {
             if self.blocking_overlay_is_open() {
@@ -179,6 +188,8 @@ impl App {
             ai_on: self.chat_ai_on(),
             changes_allowed: self.changes_allowed(),
             model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
+            store_build: cfg!(feature = "sandbox"),
+            drive_name: self.space_drive_name(),
         }
     }
 
@@ -236,6 +247,10 @@ impl App {
             }
             ncrs_hermes_chat::Action::TurnOnHermes => self.turn_on_hermes(),
             ncrs_hermes_chat::Action::ChangesLocked => self.refuse_locked_change(),
+            ncrs_hermes_chat::Action::MeasureSpace => self.measure_space_for_chat(),
+            ncrs_hermes_chat::Action::OpenSpace => self.open_space(),
+            ncrs_hermes_chat::Action::SpaceRun(kind) => self.run_space_for_chat(kind),
+            ncrs_hermes_chat::Action::SpaceDecide(target) => self.show_space_decide(target),
         }
     }
 
@@ -307,8 +322,10 @@ impl App {
         let chat = ncrs_hermes_chat::view(
             &self.hermes_chat,
             ncrs_hermes_chat::ViewCtx {
+                disk_warning: self.disk_warning_percent(),
                 lang: self.lang,
                 palette: &self.palette,
+                now: chrono::Local::now(),
             },
         )
         .map(Message::HermesChat);

@@ -184,6 +184,32 @@ pub enum Message {
     Repos(ncrs_repos::Message),
     OpenRepos,
     CloseRepos,
+    // --- The Platz tab, what takes the space on the drive ---
+    Space(ncrs_space_view::Message),
+    OpenSpace,
+    CloseSpace,
+    /// The hourly look at how full the home drive is.
+    SpaceHintDue,
+    /// The drive of the home folder was measured for the hint of the status bar.
+    SpaceHintMeasured(Option<ncrs_os_probe::VolumeSpace>),
+    /// The measure that the Hermes chat asked for.
+    SpaceHermesMeasured(Option<std::sync::Arc<ncrs_space::Scan>>),
+    /// Putting the files of the Platz tab in the trash, or bringing them back, failed.
+    SpaceTrashFailed(String),
+    /// The undo of the last own-trash run came back: how many files returned and how many stayed.
+    SpaceUndone {
+        undone: usize,
+        left: usize,
+    },
+    SpaceTrashed {
+        paths: Vec<std::path::PathBuf>,
+        failed: Option<(usize, String)>,
+        batch: Option<ncrs_index::BatchId>,
+        /// The history of the run could not be written: there is nothing to undo it with.
+        batch_error: Option<String>,
+        /// The trash was emptied of these files: there is nothing to put back.
+        emptied: bool,
+    },
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),
     /// The note on the file under the cursor, made when there is none.
@@ -205,6 +231,8 @@ pub enum Message {
     HermesChat(HermesChatMessage),
     /// Shift+F2 in the chat: the chat closes and the command line takes the focus.
     HermesChatToCommandLine,
+    /// A key of the card in the chat, or the key back to the input.
+    HermesChatKey(ncrs_hermes_chat::ChatKey),
 
     // --- Filing module: the index and its first-start questions ---
     Filing(FilingMessage),
@@ -319,6 +347,7 @@ pub enum ShownTab {
     Notes,
     Git(GitTabId),
     Repos,
+    Space,
     Filing,
     Hermes,
 }

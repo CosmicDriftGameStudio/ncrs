@@ -119,6 +119,7 @@ key_actions! {
     GitFileHistory => "git_file_history",
     GitFileBlame => "git_file_blame",
     Repos => "repos",
+    Space => "space",
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
@@ -246,6 +247,7 @@ impl KeyAction {
             | Self::GitFileHistory
             | Self::GitFileBlame
             | Self::Repos
+            | Self::Space
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -437,6 +439,7 @@ impl KeyAction {
             | Self::SavedQueries
             | Self::Notes
             | Self::Repos
+            | Self::Space
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -553,6 +556,7 @@ impl KeyAction {
             | Self::SavedQueries
             | Self::Notes
             | Self::Repos
+            | Self::Space
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -638,5 +642,28 @@ mod tests {
         assert!(KeyAction::DownloadOcrModels.is_offered_where(false));
         assert!(!KeyAction::DownloadOcrModels.is_offered_where(true));
         assert!(KeyAction::Quit.is_offered_where(true));
+    }
+
+    #[test]
+    fn the_platz_tab_opens_on_command_alt_p_and_no_other_action_has_that_key() {
+        for mac in [true, false] {
+            let command = if mac {
+                Modifiers::LOGO
+            } else {
+                Modifiers::CTRL
+            };
+            let taken: Vec<KeyAction> = default_bindings_for(mac)
+                .into_iter()
+                .filter(|(_, binding)| {
+                    *binding
+                        == Binding::with_modifiers(
+                            Key::Character("p".into()),
+                            Modifiers::ALT | command,
+                        )
+                })
+                .map(|(action, _)| action)
+                .collect();
+            assert_eq!(taken, vec![KeyAction::Space]);
+        }
     }
 }

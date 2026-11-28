@@ -47,6 +47,7 @@ pub struct WorktreeInfo {
     /// Distance to main; zero for the main worktree itself.
     pub ahead: u32,
     pub behind: u32,
+    /// Every commit is in main and nothing is changed or untracked; never true for the main worktree.
     pub merged: bool,
     pub is_main: bool,
     pub is_current: bool,
@@ -211,12 +212,13 @@ fn worktrees(
     main: Option<&DefaultBranch>,
     stop: &Arc<AtomicBool>,
 ) -> Result<Vec<WorktreeInfo>, GitError> {
-    let current = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let current = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let main_folder = crate::summary::main_worktree_of(root).unwrap_or_else(|| current.clone());
     let mut found = Vec::new();
     let all = repository
         .worktrees_including_main()
         .map_err(GitError::read)?;
-    for (index, candidate) in all.enumerate() {
+    for candidate in all {
         check_stop(stop)?;
         let Ok(worktree) = candidate else { continue };
         let Some(path) = worktree.workdir().map(std::path::Path::to_path_buf) else {
@@ -225,6 +227,8 @@ fn worktrees(
         if !path.exists() {
             continue;
         }
+        let canonical = dunce::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        let is_main = canonical == main_folder;
         let Ok(state) = status(&path, stop) else {
             continue;
         };
@@ -233,23 +237,26 @@ fn worktrees(
             .ok()
             .and_then(|head| head.id().map(|id| id.detach()));
         let main_tip = main.and_then(DefaultBranch::tip);
-        let (ahead, behind) = match (index, head_id, main_tip) {
-            (1.., Some(head), Some(main_id)) => (
+        let (ahead, behind) = match (is_main, head_id, main_tip) {
+            (false, Some(head), Some(main_id)) => (
                 count_commits_strict(repository, head, main_id, stop)?.unwrap_or(0),
                 count_commits_strict(repository, main_id, head, stop)?.unwrap_or(0),
             ),
             _ => (0, 0),
         };
-        let merged = match (index, head_id, main) {
-            (1.., Some(head), Some(default)) => {
-                unmerged_against(repository, head, default, stop)? == Some(0)
+        let changed = state
+            .entries
+            .values()
+            .filter(|entry| **entry != FileState::Ignored)
+            .count();
+        let merged = match (is_main, head_id, main) {
+            (false, Some(head), Some(default)) => {
+                changed == 0 && unmerged_against(repository, head, default, stop)? == Some(0)
             }
             _ => false,
         };
         let (upstream, upstream_ahead, upstream_behind) =
             worktree_upstream(repository, state.branch.as_deref(), head_id, stop)?;
-        let is_main = index == 0;
-        let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
         let ignored_files = if is_main {
             Vec::new()
         } else {
@@ -257,11 +264,7 @@ fn worktrees(
         };
         found.push(WorktreeInfo {
             ignored_files,
-            wip: state
-                .entries
-                .values()
-                .filter(|entry| **entry != FileState::Ignored)
-                .count(),
+            wip: changed,
             branch: state.branch,
             head_short: state.head_short,
             ahead,

@@ -54,6 +54,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
         Message::LinkClicked(target) => link_clicked(state, &target),
         Message::OpenExternal => (Task::none(), path_of(state).map(Action::OpenExternal)),
         Message::Edit => (Task::none(), path_of(state).map(Action::Edit)),
+        Message::AskWhyDiskFull => (Task::none(), Some(Action::AskWhyDiskFull)),
         Message::Close => {
             state.close();
             (Task::none(), Some(Action::Close))

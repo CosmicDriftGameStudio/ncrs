@@ -115,6 +115,8 @@ pub enum Message {
     CloneRun,
     CloneDone(Result<PathBuf, String>),
     CloneClose,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
     // The clean-up pane.
     Cleanup(CleanupMessage),
 }

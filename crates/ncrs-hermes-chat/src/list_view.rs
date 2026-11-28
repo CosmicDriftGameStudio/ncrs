@@ -32,6 +32,7 @@ fn modifier_name() -> &'static str {
     }
 }
 
+/// The keys of the chat list, in the line below the chat.
 pub fn keys_line(lang: Language) -> String {
     let keys = fill(
         lang,
@@ -184,7 +185,7 @@ pub fn list_props(state: &State, ctx: ViewCtx<'_>) -> ChatListProps<'static, Mes
         })
         .collect();
     ChatListProps {
-        new_label: lang.text(Msg::HermesChatListNew),
+        new_label: lang.text(Msg::HermesChatNewChat),
         new_key: fill(lang, Msg::HermesChatListNewKey, &[("mod", modifier_name())]),
         on_new: Message::NewChat,
         search_placeholder: lang.text(Msg::HermesChatListSearch),

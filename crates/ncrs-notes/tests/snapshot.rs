@@ -70,6 +70,7 @@ mod ui_tests {
     fn picture_sized(state: &State, home: &Path, image: &str, size: Size) {
         let palette = ThemePreset::Cosmic.palette();
         let ctx = ViewCtx {
+            disk_warning: None,
             lang: Language::English,
             palette: &palette,
             home,

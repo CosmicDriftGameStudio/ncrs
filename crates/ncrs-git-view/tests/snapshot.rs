@@ -202,6 +202,7 @@ mod ui_tests {
     fn matches_picture(state: &State, size: Size, reference: &str) -> bool {
         let palette = ThemePreset::Cosmic.palette();
         let ctx = ViewCtx {
+            disk_warning: None,
             lang: Language::English,
             palette: &palette,
             date_format: DateFormat::Iso,

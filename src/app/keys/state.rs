@@ -35,10 +35,13 @@ impl App {
         input.filing_renaming = input.filing && state.filing_keys.renaming;
         input.filing_question = input.filing && state.filing_keys.question;
         input.repos = self.repos_shown() && !self.blocking_overlay_is_open();
+        input.space = self.space_shown() && !self.blocking_overlay_is_open();
         input.git = self
             .shown_git_tab()
             .filter(|_| !self.blocking_overlay_is_open());
         input.repos_menu_key = input.repos && !state.repos_text && !state.repos_menu;
+        input.space_menu_key =
+            input.space && !state.space_filter && !state.space_menu && !state.space_confirm;
         input.git_menu_key = input.git.is_some() && state.git_context.takes_menu_key();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
@@ -118,6 +121,18 @@ impl App {
         let repos = self.repos_shown();
         let repos_text = repos && self.repos.as_ref().is_some_and(|state| state.takes_text());
         let repos_menu = repos && self.repos.as_ref().is_some_and(|state| state.menu_open());
+        let space = self.space_shown();
+        let space_filter = space
+            && self
+                .space
+                .as_ref()
+                .is_some_and(|state| state.filter_focused());
+        let space_menu = space && self.space.as_ref().is_some_and(|state| state.menu_open());
+        let space_confirm = space
+            && self
+                .space
+                .as_ref()
+                .is_some_and(|state| state.confirm().is_some());
         let git = self.shown_git_tab();
         let git_state = git.and_then(|id| self.git_tabs.get(id));
         let git_context = git_state
@@ -139,6 +154,7 @@ impl App {
             keymap: Arc::clone(&self.keymap),
             git_keys: Arc::clone(&self.git_keys),
             repos_keys: Arc::clone(&self.repos_keys),
+            space_keys: Arc::clone(&self.space_keys),
             job_running,
             config_error,
             delete_dialog,
@@ -187,6 +203,10 @@ impl App {
             repos,
             repos_text,
             repos_menu,
+            space,
+            space_filter,
+            space_menu,
+            space_confirm,
             git_context,
             // A conflict is asked while no prompt is open — the prompt is
             // gone by then, the transfer is what is running. Without this

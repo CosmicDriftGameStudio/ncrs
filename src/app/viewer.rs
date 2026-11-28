@@ -11,6 +11,7 @@ impl App {
 
     pub(in crate::app) fn viewer_area(&self) -> Container<'_, Message> {
         let ctx = ncrs_viewer::ViewCtx {
+            disk_warning: self.disk_warning_percent(),
             lang: self.lang,
             palette: &self.palette,
             home: &self.home,
@@ -43,6 +44,7 @@ impl App {
 
     fn run_viewer_action(&mut self, action: Ask) -> Task<Message> {
         match action {
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::Close => Task::none(),
             Ask::OpenUrl(url) => {
                 self.open_link(&url);

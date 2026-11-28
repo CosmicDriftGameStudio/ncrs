@@ -8,7 +8,8 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::*;
 use crate::chat::{
-    chat_user_message, parse_chat_reply, ChatIntent, ChatModel, ChatTurn, CHAT_SYSTEM_PROMPT,
+    chat_user_message, folder_notes_message, parse_chat_reply, parse_folder_notes, ChatIntent,
+    ChatModel, ChatTurn, FolderFacts, CHAT_SYSTEM_PROMPT, FOLDER_NOTES_PROMPT,
 };
 use crate::rules::{
     annotated_paths, parse_generate, parse_levels, parse_revision, prefix_text, repair_note_for,
@@ -182,6 +183,15 @@ impl ChatModel for OpenAiCompatible {
         let prefix = prefix_text(&documents_of(files), kinds);
         let request = RuleRequest::revise(&prefix, &revise_question(previous, sentence));
         parse_revision(&self.answer_rule_request(&request)?)
+    }
+
+    fn describe_folders(&self, folders: &[FolderFacts]) -> Result<Vec<String>, AiError> {
+        let raw = self.ask_for_json(
+            FOLDER_NOTES_PROMPT,
+            &folder_notes_message(folders),
+            &[ConsentPurpose::Folders],
+        )?;
+        parse_folder_notes(&raw, folders.len())
     }
 
     /// A server is there when it is asked; nothing is loaded here.

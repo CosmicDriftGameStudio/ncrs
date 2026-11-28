@@ -135,6 +135,9 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
     let query = view.state.query.trim().to_lowercase();
     let whole_feature = query.is_empty() || feature_name_matches(feature, &query, lang);
     let mut body = Column::new().push(heading(feature, view));
+    if feature == SettingsFeature::Space {
+        body = body.push(iced::widget::Space::new().height(spacing::SECTION_LEAD));
+    }
     if let Err(broken) = &view.state.file {
         body = body.push(
             container(kit::warning_box(config_broken_text(broken, view), palette)).padding(

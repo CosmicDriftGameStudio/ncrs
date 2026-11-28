@@ -31,4 +31,29 @@ pub enum Action {
     /// The work would have changed files while the trial does not allow it;
     /// it did not run.
     ChangesLocked,
+    /// Measures the drive for the Platz answer; `Message::SpaceMeasured` or
+    /// `Message::SpaceMeasureFailed` follows.
+    MeasureSpace,
+    /// Opens the Platz tab.
+    OpenSpace,
+    /// Opens the Platz tab on the confirm of this run; `Message::SpaceRunDone`
+    /// follows when it ran.
+    SpaceRun(SpaceRunKind),
+    /// Opens the Platz tab on the decide pane of this folder.
+    SpaceDecide(SpaceDecideTarget),
+}
+
+/// A folder of the Platz tab the user decides about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceDecideTarget {
+    Downloads,
+    SessionLogs,
+}
+
+/// What a Platz run clears; the run itself goes through the Platz tab and its
+/// confirm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceRunKind {
+    DeleteSafe,
+    RemoveWorktrees,
 }

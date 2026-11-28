@@ -343,6 +343,53 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
         self.save_quietly(entries);
         Ok(())
     }
+
+    fn can_purge(&self) -> bool {
+        // The sandbox has no access to the trash folder itself.
+        !cfg!(feature = "sandbox")
+    }
+
+    fn purge(&self, items: &[TrashedItem]) -> Result<(), String> {
+        if !self.can_purge() {
+            return Err("this build cannot reach the trash folder".to_owned());
+        }
+        let _writing = self.lock();
+        let mut entries = self.load()?;
+        let mut first_failure: Option<String> = None;
+        for item in items {
+            let Some(position) = entries.iter().position(|entry| {
+                entry.trashed().as_os_str() == item.key && entry.original() == item.original
+            }) else {
+                first_failure
+                    .get_or_insert_with(|| "this item is not in the record of ncrs".to_owned());
+                continue;
+            };
+            let trashed = Path::new(&item.key);
+            if !is_plain_absolute(trashed) {
+                first_failure.get_or_insert_with(|| {
+                    "the record holds a path that can not be trusted".to_owned()
+                });
+                continue;
+            }
+            if let Err(RestoreError::Failed(reason)) =
+                self.check_in_trash_folder(&item.original, trashed)
+            {
+                first_failure.get_or_insert(reason);
+                continue;
+            }
+            match crate::delete::remove_permanently(trashed) {
+                Ok(()) => {}
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    first_failure.get_or_insert_with(|| format!("{}: {err}", trashed.display()));
+                    continue;
+                }
+            }
+            entries.remove(position);
+        }
+        self.save_quietly(entries);
+        first_failure.map_or(Ok(()), Err)
+    }
 }
 
 /// A trash that is a folder, for tests: an entry "in the trash" is one that was
@@ -460,6 +507,39 @@ mod tests {
         assert!(scene.trash.list().unwrap().is_empty());
         let text = std::fs::read_to_string(&scene.journal).unwrap();
         assert!(!text.contains("a.txt"), "{text}");
+    }
+
+    #[test]
+    fn a_purged_file_is_gone_for_good_and_the_rest_of_the_trash_stays() {
+        let scene = scene();
+        let gone = scene.work.join("gone.txt");
+        let kept = scene.work.join("kept.txt");
+        std::fs::write(&gone, "a").unwrap();
+        std::fs::write(&kept, "b").unwrap();
+        scene.trash.trash(&gone).unwrap();
+        scene.trash.trash(&kept).unwrap();
+        let listed = scene.trash.list().unwrap();
+        let purged: Vec<TrashedItem> = listed
+            .iter()
+            .filter(|item| item.original == gone)
+            .cloned()
+            .collect();
+
+        let outcome = scene.trash.purge(&purged);
+
+        if cfg!(feature = "sandbox") {
+            assert!(
+                outcome.is_err(),
+                "the sandbox cannot reach the trash folder"
+            );
+            assert_eq!(scene.trash.list().unwrap().len(), 2);
+            return;
+        }
+        outcome.unwrap();
+        let rest = scene.trash.list().unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].original, kept);
+        assert!(!Path::new(&purged[0].key).exists());
     }
 
     #[test]

@@ -66,4 +66,8 @@ pub enum MonitorMessage {
     DriveMove(isize),
     /// Enter on the drive under the cursor.
     DriveOpen,
+    /// "Make space…" on the drive of the home folder.
+    OpenSpace,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
 }

@@ -182,6 +182,7 @@ mod search;
 mod session;
 mod settings;
 mod settings_facts;
+mod space;
 mod startup;
 mod store;
 mod subscription;
@@ -269,6 +270,32 @@ pub struct App {
     repos: Option<ncrs_repos::State>,
     /// `[repos]` of the config.
     repos_settings: ncrs_config::repos::ReposSettings,
+    /// The keys of the Platz tab: the built-in ones, or those of `[keys.space]`.
+    space_keys: Arc<ncrs_space_view::SpaceKeys>,
+    /// The Platz tab, open or not.
+    space: Option<ncrs_space_view::State>,
+    /// `[space]` of the config.
+    space_settings: ncrs_config::space::SpaceSettings,
+    /// The running processes can be listed here; asked once at the start.
+    space_processes_known: bool,
+    /// The last measure of the drive, which the chat answers from while it is fresh.
+    space_last_scan: Option<Arc<ncrs_space::Scan>>,
+    /// The run Hermes asked the tab for: its confirm opens once the measure is in, and the result goes back.
+    space_run_ask: Option<ncrs_space_view::ConfirmKind>,
+    /// The confirm of a run Hermes asked for is up; the user has neither accepted nor cancelled it.
+    space_chat_confirm: bool,
+    /// The user accepted a run Hermes asked for: its end is answered in the chat.
+    space_chat_run: bool,
+    /// How far the delete run of the tab has come, for the status bar.
+    space_progress: Option<fs::transfer::Tick>,
+    /// What the last trash run of the Platz tab moved, for its undo.
+    last_own_trash: Vec<PathBuf>,
+    /// The journal batch of that run, when the index was open: its undo.
+    last_own_batch: Option<ncrs_index::BatchId>,
+    /// The drive is nearly full: the hint in the status bar.
+    space_hint: Option<ncrs_monitor::DiskHint>,
+    /// The drive of the home folder as last measured, whether or not it is nearly full.
+    home_volume: Option<ncrs_os_probe::VolumeSpace>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
     /// The question whether to remove the Hermes index and begin again.
@@ -592,6 +619,16 @@ pub struct PromptKeyState {
     pub repos_menu: bool,
     /// The keys of the Repos tab, shared like the keymap.
     pub repos_keys: Arc<ncrs_repos::ReposKeys>,
+    /// The Platz tab is up: its keys move in the list and Escape goes back.
+    pub space: bool,
+    /// The Platz tab has the filter with the keyboard.
+    pub space_filter: bool,
+    /// The Platz tab shows its context menu.
+    pub space_menu: bool,
+    /// The Platz tab shows its confirm.
+    pub space_confirm: bool,
+    /// The keys of the Platz tab, shared like the keymap.
+    pub space_keys: Arc<ncrs_space_view::SpaceKeys>,
     /// What the Git tab is doing as far as its keys care: filter, diff, dialog, picker, area.
     pub git_context: ncrs_git_view::KeyContext,
     /// The delete dialog is up, so keys answer it.
@@ -625,7 +662,13 @@ pub struct PromptKeyState {
 impl PromptKeyState {
     /// The viewer, the notes or the System page is up and takes the keys.
     pub fn shows_viewer_or_monitor(&self) -> bool {
-        self.viewer || self.monitor || self.notes || self.filing || self.repos || self.git.is_some()
+        self.viewer
+            || self.monitor
+            || self.notes
+            || self.filing
+            || self.repos
+            || self.space
+            || self.git.is_some()
     }
 }
 
@@ -678,6 +721,11 @@ impl Default for PromptKeyState {
             repos_text: false,
             repos_menu: false,
             repos_keys: Arc::default(),
+            space: false,
+            space_filter: false,
+            space_menu: false,
+            space_confirm: false,
+            space_keys: Arc::default(),
             git_context: ncrs_git_view::KeyContext::default(),
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,

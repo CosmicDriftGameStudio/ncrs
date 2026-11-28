@@ -27,6 +27,8 @@ pub enum Tone {
     DangerOutline,
     /// On a row filled in the accent: outlined in the ink of that row.
     OnAccent,
+    /// An action that answers a warning: outlined in the warning orange.
+    Warning,
 }
 
 impl Tone {
@@ -138,6 +140,7 @@ fn tone_style(
     let danger = theme::danger_button(palette);
     let danger_outline = theme::danger_outline_button(palette);
     let on_accent = theme::on_accent_button(palette);
+    let warning = theme::space::warning_outline_button(palette);
     move |theme, status| {
         let disabled = matches!(status, widget_button::Status::Disabled);
         // A disabled button keeps its fill and outline, only fainter: without
@@ -153,6 +156,7 @@ fn tone_style(
             Tone::Danger => danger(theme, shown),
             Tone::DangerOutline => danger_outline(theme, shown),
             Tone::OnAccent => on_accent(theme, shown),
+            Tone::Warning => warning(theme, shown),
         };
         if disabled {
             style.background = style
@@ -332,6 +336,7 @@ pub fn icon_button<'a, M: Clone + 'a>(
         Tone::Primary => palette.primary_button().1,
         Tone::Secondary => palette.text,
         Tone::DangerOutline => palette.error,
+        Tone::Warning => theme::git::orange(),
         Tone::Danger | Tone::OnAccent => palette.cursor_text,
     };
     let ink = if on_press.is_none() {
@@ -371,7 +376,7 @@ pub fn toolbar_button<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     let tone_ink = match tone {
-        Tone::Secondary | Tone::DangerOutline => palette.dim_text,
+        Tone::Secondary | Tone::DangerOutline | Tone::Warning => palette.dim_text,
         Tone::OnAccent => palette.cursor_text,
         Tone::Primary => palette.primary_button().1.scale_alpha(KEY_ON_FILL_ALPHA),
         Tone::Danger => palette.cursor_text.scale_alpha(KEY_ON_FILL_ALPHA),

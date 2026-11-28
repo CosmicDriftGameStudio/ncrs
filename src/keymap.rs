@@ -127,6 +127,7 @@ impl KeyActionMessage for KeyAction {
             Self::GitFileHistory => Message::OpenGitFile(GitFileView::History),
             Self::GitFileBlame => Message::OpenGitFile(GitFileView::Blame),
             Self::Repos => Message::OpenRepos,
+            Self::Space => Message::OpenSpace,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
@@ -765,7 +766,7 @@ mod tests {
     #[test]
     fn keys_are_case_blind_and_lists_keep_their_order() {
         let keymap =
-            rebound("[keys]\nquit = [\"PRIMARY+Q\", \"f10\"]\ncopy_path = \" Ctrl + Alt + P \"\n");
+            rebound("[keys]\nquit = [\"PRIMARY+Q\", \"f10\"]\ncopy_path = \" Ctrl + Alt + K \"\n");
         assert_eq!(
             press(&keymap, Key::Character("q".into()), Modifiers::COMMAND),
             Some(Message::Quit)
@@ -777,7 +778,7 @@ mod tests {
         assert_eq!(
             press(
                 &keymap,
-                Key::Character("p".into()),
+                Key::Character("k".into()),
                 Modifiers::CTRL | Modifiers::ALT
             ),
             Some(Message::CopyToClipboard(ClipboardKind::Path))

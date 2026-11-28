@@ -2,7 +2,11 @@
 //! The journal keeps the trash's own key for each entry, so an undo puts back
 //! exactly that entry.
 
+use std::collections::HashSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::time::SystemTime;
 
 use ncrs_fs::{RestoreError, Trash, TrashReach, TrashedItem};
 use ncrs_index::{
@@ -36,11 +40,18 @@ pub fn trash_can_restore(trash: &dyn Trash) -> bool {
     trash.reach() != TrashReach::FinderOnly
 }
 
-fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) -> NewJournalItem {
+/// An item after its checks: what the journal records and whether it may go.
+struct Planned {
+    path: PathBuf,
+    hash: ContentHash,
+    check: Option<SkipReason>,
+}
+
+fn journal_entry(item: &Planned, state: JournalState, reason: Option<String>) -> NewJournalItem {
     NewJournalItem {
         from: item.path.clone(),
         to: item.path.clone(),
-        hash: item.expected_hash,
+        hash: item.hash,
         document_id: None,
         duplicate: false,
         state,
@@ -51,7 +62,7 @@ fn journal_entry(item: &TrashItem, state: JournalState, reason: Option<String>) 
 fn skip(
     index: &Index,
     batch: BatchId,
-    item: &TrashItem,
+    item: &Planned,
     reason: SkipReason,
 ) -> Result<(), ExecuteError> {
     index.add_journal_item(
@@ -59,6 +70,85 @@ fn skip(
         &journal_entry(item, JournalState::Skipped, Some(reason.text())),
     )?;
     Ok(())
+}
+
+/// A file or folder of the user's own to put in the trash, as it was shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnTrashItem {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+}
+
+/// The checks of an own item without the content hash: `true` for a folder.
+fn check_own(root: &Path, item: &OwnTrashItem) -> Result<bool, SkipReason> {
+    if !is_below(root, &item.path) {
+        return Err(SkipReason::OutsideLocation);
+    }
+    match has_symlink_ancestor_under(root, &item.path) {
+        Ok(false) => {}
+        Ok(true) => return Err(SkipReason::LeavesLocation),
+        Err(err) => return Err(SkipReason::Failed(err.to_string())),
+    }
+    let meta = match std::fs::symlink_metadata(&item.path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(SkipReason::SourceMissing)
+        }
+        Err(err) => return Err(SkipReason::Failed(err.to_string())),
+    };
+    if meta.file_type().is_symlink() {
+        return Err(SkipReason::LeavesLocation);
+    }
+    if meta.modified().ok() != item.modified {
+        return Err(SkipReason::SourceChanged);
+    }
+    if meta.is_dir() {
+        let never_stopped = AtomicBool::new(false);
+        return match ncrs_fs::measure_folder(&item.path, &never_stopped) {
+            Some(size) if size.bytes == item.size => Ok(true),
+            Some(_) => Err(SkipReason::SourceChanged),
+            None => Err(SkipReason::Cancelled),
+        };
+    }
+    if meta.len() != item.size {
+        return Err(SkipReason::SourceChanged);
+    }
+    Ok(false)
+}
+
+/// Why this own item must not be trashed, if there is a reason. A folder has
+/// no content hash; its journal entry carries the all-zero hash, and its undo
+/// trusts the key the trash gave.
+fn refusal_own(root: &Path, item: &OwnTrashItem) -> Result<ContentHash, SkipReason> {
+    if check_own(root, item)? {
+        return Ok(ContentHash([0; 32]));
+    }
+    match hash_path(&item.path) {
+        Ok(hash) => Ok(hash),
+        Err(err) if is_not_found(&err) => Err(SkipReason::SourceMissing),
+        Err(err) => Err(SkipReason::Failed(err.to_string())),
+    }
+}
+
+/// Each own item with its checks done: only an item still as it was shown (size and
+/// change time) has no `check`.
+fn plan_own(root: &Path, items: &[OwnTrashItem]) -> Vec<Planned> {
+    items
+        .iter()
+        .map(|item| match refusal_own(root, item) {
+            Ok(hash) => Planned {
+                path: item.path.clone(),
+                hash,
+                check: None,
+            },
+            Err(reason) => Planned {
+                path: item.path.clone(),
+                hash: ContentHash([0; 32]),
+                check: Some(reason),
+            },
+        })
+        .collect()
 }
 
 /// Why this item must not be trashed, if there is a reason.
@@ -91,40 +181,226 @@ pub fn trash_run(
     items: &[TrashItem],
     trash: &dyn Trash,
 ) -> Result<TrashReport, ExecuteError> {
+    let planned: Vec<Planned> = items
+        .iter()
+        .map(|item| Planned {
+            path: item.path.clone(),
+            hash: item.expected_hash,
+            check: refusal(root, item),
+        })
+        .collect();
+    run_planned(index, name, root, planned, trash)
+}
+
+fn run_planned(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: Vec<Planned>,
+    trash: &dyn Trash,
+) -> Result<TrashReport, ExecuteError> {
+    let run = run_planned_detailed(index, name, root, items, trash)?;
+    match run.error {
+        Some(err) => Err(err),
+        None => Ok(run.report),
+    }
+}
+
+/// What a journaled run did: the counts, the paths that went, why the rest did not, and
+/// the error that stopped it, if one did. What went stays true when the run stopped.
+struct PlannedRun {
+    report: TrashReport,
+    gone: Vec<PathBuf>,
+    refused: Vec<SkipReason>,
+    batch: BatchId,
+    error: Option<ExecuteError>,
+}
+
+fn run_planned_detailed(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: Vec<Planned>,
+    trash: &dyn Trash,
+) -> Result<PlannedRun, ExecuteError> {
     let source = remember_source_root(root)?;
     let batch = index.begin_named_batch(BatchKind::Hermes, name, Transfer::Trash)?;
     index.set_batch_source_root(batch, &source)?;
-    let mut report = TrashReport::default();
+    let mut run = PlannedRun {
+        report: TrashReport::default(),
+        gone: Vec::new(),
+        refused: Vec::new(),
+        batch,
+        error: None,
+    };
+    let moved = move_planned(index, batch, items, trash, &mut run);
+    let finished = index.finish_batch(batch).map_err(ExecuteError::from);
+    run.error = moved.err().or(finished.err());
+    Ok(run)
+}
+
+fn move_planned(
+    index: &Index,
+    batch: BatchId,
+    items: Vec<Planned>,
+    trash: &dyn Trash,
+    run: &mut PlannedRun,
+) -> Result<(), ExecuteError> {
     let mut trashed = Vec::new();
     for item in items {
-        if let Some(reason) = refusal(root, item) {
-            skip(index, batch, item, reason)?;
-            report.skipped += 1;
+        if let Some(reason) = item.check {
+            skip(
+                index,
+                batch,
+                &Planned {
+                    check: None,
+                    ..item
+                },
+                reason.clone(),
+            )?;
+            run.refused.push(reason);
+            run.report.skipped += 1;
             continue;
         }
         let seq =
-            index.add_journal_item(batch, &journal_entry(item, JournalState::Pending, None))?;
+            index.add_journal_item(batch, &journal_entry(&item, JournalState::Pending, None))?;
         if let Err(err) = trash.trash(&item.path) {
             let reason = SkipReason::Failed(err);
             index.set_journal_state(batch, seq, JournalState::Skipped, Some(&reason.text()))?;
-            report.skipped += 1;
+            run.refused.push(reason);
+            run.report.skipped += 1;
             continue;
         }
+        run.gone.push(item.path.clone());
+        run.report.trashed += 1;
         index.set_journal_state(batch, seq, JournalState::Moved, None)?;
-        trashed.push((seq, &item.path));
-        report.trashed += 1;
+        trashed.push((seq, item.path));
     }
     if let Ok(listed) = trash.list() {
         for (seq, original) in trashed {
-            if let Some(entry) = newest_listed(&listed, |entry| entry.original == *original) {
+            if let Some(entry) = newest_listed(&listed, |entry| entry.original == original) {
                 // A key that is not text cannot be journaled; the undo then
                 // finds the entry by its old place.
                 let _best_effort = index.set_journal_target(batch, seq, &PathBuf::from(&entry.key));
             }
         }
     }
-    index.finish_batch(batch)?;
-    Ok(report)
+    Ok(())
+}
+
+/// What a run of own items did: the paths that went to the trash, and why the others stayed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OwnTrashRun {
+    pub gone: Vec<PathBuf>,
+    pub refused: Vec<SkipReason>,
+    /// The journal batch of the run, when there was an index: what undoes it.
+    pub batch: Option<BatchId>,
+    /// The journal failed after the items were handled; no item is counted for it.
+    pub batch_error: Option<String>,
+}
+
+/// Puts your own files and folders in the trash, each only while it is still
+/// as it was shown (size and change time), journaled when there
+/// is an index, with the same checks (without the content hash) when there is
+/// none. With `empty_after` only the entries this run created are deleted for
+/// good: the ones that were not listed before it and come from a trashed place.
+pub fn trash_own_items(
+    index: Option<&Index>,
+    name: &str,
+    root: &Path,
+    items: &[OwnTrashItem],
+    trash: &dyn Trash,
+    empty_after: bool,
+) -> OwnTrashRun {
+    let keys_before = (empty_after && trash.can_purge())
+        .then(|| trash.list().ok())
+        .flatten()
+        .map(|listed| {
+            listed
+                .into_iter()
+                .map(|entry| entry.key)
+                .collect::<HashSet<_>>()
+        });
+    let run = match index {
+        Some(journal) => journaled_own_run(journal, name, root, items, trash),
+        None => unjournaled_own_run(root, items, trash),
+    };
+    if let Some(before) = keys_before {
+        purge_new_entries(trash, &before, &run.gone);
+    }
+    run
+}
+
+fn journaled_own_run(
+    index: &Index,
+    name: &str,
+    root: &Path,
+    items: &[OwnTrashItem],
+    trash: &dyn Trash,
+) -> OwnTrashRun {
+    let planned = plan_own(root, items);
+    match run_planned_detailed(index, name, root, planned, trash) {
+        Ok(run) => {
+            let mut refused = run.refused;
+            let batch_error = run.error.map(|err| err.to_string());
+            if let Some(err) = &batch_error {
+                // What was not reached stays; what went is still reported. An error after
+                // every item was handled counts no item.
+                let unreached = items.len().saturating_sub(run.gone.len() + refused.len());
+                refused.extend(vec![SkipReason::Failed(err.clone()); unreached]);
+            }
+            OwnTrashRun {
+                gone: run.gone,
+                refused,
+                batch: Some(run.batch),
+                batch_error,
+            }
+        }
+        Err(err) => OwnTrashRun {
+            gone: Vec::new(),
+            refused: vec![SkipReason::Failed(err.to_string()); items.len()],
+            batch: None,
+            batch_error: None,
+        },
+    }
+}
+
+fn unjournaled_own_run(root: &Path, items: &[OwnTrashItem], trash: &dyn Trash) -> OwnTrashRun {
+    let mut run = OwnTrashRun::default();
+    for item in items {
+        match check_own(root, item) {
+            Err(reason) => run.refused.push(reason),
+            Ok(_) => match trash.trash(&item.path) {
+                Ok(()) => run.gone.push(item.path.clone()),
+                Err(err) => run.refused.push(SkipReason::Failed(err)),
+            },
+        }
+    }
+    run
+}
+
+/// Puts back the newest trash entry of each place in `wanted`; how many came back.
+pub fn restore_own_items(trash: &dyn Trash, wanted: &[PathBuf]) -> Result<usize, String> {
+    let listed = trash.list()?;
+    Ok(wanted
+        .iter()
+        .filter_map(|original| newest_listed(&listed, |entry| entry.original == *original))
+        .filter(|entry| trash.restore(entry).is_ok())
+        .count())
+}
+
+fn purge_new_entries(trash: &dyn Trash, before: &HashSet<OsString>, gone: &[PathBuf]) {
+    let Ok(listed) = trash.list() else {
+        return;
+    };
+    let created: Vec<TrashedItem> = listed
+        .into_iter()
+        .filter(|entry| !before.contains(&entry.key) && gone.contains(&entry.original))
+        .collect();
+    if !created.is_empty() {
+        // Best effort: what stays in the trash can still be put back.
+        let _kept = trash.purge(&created);
+    }
 }
 
 fn newest_listed(

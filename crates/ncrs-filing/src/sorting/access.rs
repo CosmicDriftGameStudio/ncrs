@@ -11,7 +11,10 @@ use ncrs_pipeline::{Load, OwnDetails};
 
 use super::ready::{all_gone_below, state_of, TargetState, WaitReason};
 use crate::chat_work::{runs_of_index, undo_run, RecentRun, Snapshots, UndoReport};
-use crate::execute::{trash_can_restore, trash_run, TrashItem, TrashReport};
+use crate::execute::{
+    trash_can_restore, trash_own_items, trash_run, OwnTrashItem, OwnTrashRun, TrashItem,
+    TrashReport,
+};
 use crate::index_work::IndexWork;
 
 /// What sorting works with; one copy per job.
@@ -72,6 +75,30 @@ impl SortingAccess {
     /// Duplicates only go where they can be taken back from.
     pub fn trash_can_restore(&self) -> bool {
         trash_can_restore(self.trash.as_ref())
+    }
+
+    /// Moves own items below `root` to the trash as one run of the history.
+    pub fn trash_own(
+        &self,
+        name: &str,
+        root: &Path,
+        items: &[OwnTrashItem],
+        empty_after: bool,
+    ) -> OwnTrashRun {
+        let _work = self.index_work.begin();
+        let journaled = self.with_index(|index| {
+            Ok(trash_own_items(
+                Some(index),
+                name,
+                root,
+                items,
+                self.trash.as_ref(),
+                empty_after,
+            ))
+        });
+        journaled.unwrap_or_else(|_index_not_open| {
+            trash_own_items(None, name, root, items, self.trash.as_ref(), empty_after)
+        })
     }
 
     /// Moves duplicates below `root` to the trash as one run of the history.

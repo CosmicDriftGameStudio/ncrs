@@ -2,9 +2,12 @@
 //! block that changes its look changes its picture, and the diff is the
 //! review. The pixels are compared on macOS only.
 
+mod decide;
 mod lists;
 mod panes;
+mod platz;
 mod repos;
+mod space;
 
 use crate::snapshot_support::ReferenceSnapshot as _;
 use crate::theme;

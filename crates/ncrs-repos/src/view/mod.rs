@@ -13,7 +13,7 @@ use ncrs_config::keymap::KeyAction;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::git_rows::drag_capture;
 use ncrs_ui_kit::kit::scrim;
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::popup_menu::{
     menu_rows_height, popup_layer, popup_menu_rows, MenuRow, PopupEntry, RightPress,
     POPUP_MENU_WIDTH,
@@ -117,6 +117,7 @@ fn status_bar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             line,
             right: right.as_deref(),
         },
+        DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskWhyDiskFull),
         ctx.palette,
     )
 }

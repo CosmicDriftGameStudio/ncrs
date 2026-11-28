@@ -25,9 +25,10 @@ mod user_input;
 
 pub use api_key::{api_key_account, load_api_key, store_api_key, KeyLookup, KeychainKey};
 pub use chat::{
-    chat_grammar, chat_user_message, parse_chat_reply, propose_name_spec, search_json, ChatIntent,
-    ChatModel, ChatQuestion, ChatTurn, NameBlock, NameSpec, Order, QuestionKind, Schedule,
-    SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
+    chat_grammar, chat_user_message, folder_notes_message, parse_chat_reply, parse_folder_notes,
+    propose_name_spec, search_json, ChatIntent, ChatModel, ChatQuestion, ChatTurn, FolderFacts,
+    NameBlock, NameSpec, Order, QuestionKind, Schedule, SearchQuery, SpaceAsk, Transfer,
+    CHAT_SYSTEM_PROMPT, EVERY_AREA, FOLDER_NOTES_PROMPT, NAME_SEPARATORS,
 };
 pub use consent::{
     ConsentGivenInSettings, ConsentLedger, ConsentPurpose, ConsentedOrigins, OutgoingPreview,

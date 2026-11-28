@@ -12,6 +12,8 @@ use crate::message::{FavouritesEdit, SettingChange, StoreButton};
 /// runs the actions in order, right after `update`.
 #[derive(Debug)]
 pub enum Action {
+    /// The disk warning in the status bar was pressed: ask Hermes why the drive is full.
+    AskWhyDiskFull,
     CloseContextMenu,
     SetDialogFocus(usize),
     ShowNotice(String),

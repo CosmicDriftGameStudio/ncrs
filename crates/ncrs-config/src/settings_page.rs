@@ -13,6 +13,8 @@ pub enum SettingsFeature {
     Notes,
     /// The repo manager: where it looks for repositories and how its bulk actions run.
     Git,
+    /// "Platz schaffen": what counts as safe, what is never touched, when the drive counts as full.
+    Space,
     System,
     Updates,
     /// The trial and the purchase of the App Store build.
@@ -40,7 +42,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -53,6 +55,7 @@ impl SettingsFeature {
         Self::Favourites,
         Self::Notes,
         Self::Git,
+        Self::Space,
         Self::Index,
         Self::ReadErrors,
         Self::Reports,
@@ -90,7 +93,8 @@ impl SettingsFeature {
             | Self::Columns
             | Self::Favourites
             | Self::Notes
-            | Self::Git => SettingsGroup::Files,
+            | Self::Git
+            | Self::Space => SettingsGroup::Files,
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
             Self::Ai | Self::Hermes | Self::Activity | Self::Tags | Self::Usage => {
                 SettingsGroup::Hermes
@@ -131,6 +135,7 @@ mod tests {
                 Favourites,
                 Notes,
                 Git,
+                Space,
                 Index,
                 ReadErrors,
                 Reports,
@@ -154,6 +159,7 @@ mod tests {
             (Favourites, SettingsGroup::Files),
             (Notes, SettingsGroup::Files),
             (Git, SettingsGroup::Files),
+            (Space, SettingsGroup::Files),
             (Index, SettingsGroup::Documents),
             (ReadErrors, SettingsGroup::Documents),
             (Reports, SettingsGroup::Documents),

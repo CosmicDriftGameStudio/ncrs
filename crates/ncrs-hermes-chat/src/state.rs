@@ -44,6 +44,16 @@ pub enum ChipReply {
     /// Opens the dialog that files this folder, or the active one.
     OpenSort(Option<PathBuf>),
     OpenRuleForm,
+    /// Deletes the safe folders of the Platz card, through the Platz tab.
+    SpaceDeleteSafe,
+    /// Removes the merged worktrees of the Platz card, through the Platz tab.
+    SpaceRemoveWorktrees,
+    /// Opens the Platz tab.
+    SpaceOverview,
+    /// Opens the Platz tab on the Downloads folder.
+    SpaceShowDownloads,
+    /// Opens the Platz tab on the session logs.
+    SpaceShowOldLogs,
 }
 
 impl Session {
@@ -58,7 +68,15 @@ impl ChipReply {
     pub fn needs_no_hermes(&self) -> bool {
         matches!(
             self,
-            Self::TurnOn | Self::PickFolder | Self::OpenSort(_) | Self::OpenRuleForm
+            Self::TurnOn
+                | Self::PickFolder
+                | Self::OpenSort(_)
+                | Self::OpenRuleForm
+                | Self::SpaceDeleteSafe
+                | Self::SpaceRemoveWorktrees
+                | Self::SpaceOverview
+                | Self::SpaceShowDownloads
+                | Self::SpaceShowOldLogs
         )
     }
 
@@ -66,7 +84,7 @@ impl ChipReply {
     /// typed answer never runs such a reply on its own.
     pub fn changes_something(&self) -> bool {
         match self {
-            Self::PutBack => true,
+            Self::PutBack | Self::SpaceDeleteSafe | Self::SpaceRemoveWorktrees => true,
             Self::Cancel
             | Self::Folder(_)
             | Self::PickFolder
@@ -92,7 +110,10 @@ impl ChipReply {
             | Self::LevelsDone
             | Self::SuggestRules
             | Self::OpenSort(_)
-            | Self::OpenRuleForm => false,
+            | Self::OpenRuleForm
+            | Self::SpaceOverview
+            | Self::SpaceShowDownloads
+            | Self::SpaceShowOldLogs => false,
         }
     }
 }
@@ -150,6 +171,7 @@ pub enum Part {
     Levels(LevelsCard),
     Areas(AreasCard),
     Folder(FolderMention),
+    Space(crate::space_card::SpaceCard),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +248,23 @@ pub struct Session {
     pub progress: Option<Arc<ReadProgress>>,
     /// The folder whose order is being recognised.
     pub rule: Option<crate::rule_flow::RuleFlow>,
+    /// The Platz measure the app was asked for.
+    pub measuring_space: bool,
+}
+
+/// What the last measure left for the user to decide, for the answer after a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceLeft {
+    pub untouched: Vec<(String, u64)>,
+    pub has_downloads: bool,
+    pub has_session_logs: bool,
+    pub has_worktrees: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpaceMeasured {
+    pub free: u64,
+    pub at: std::time::SystemTime,
 }
 
 #[derive(Debug, Default)]
@@ -243,6 +282,11 @@ pub struct State {
     pub rule_ask: Option<crate::rule_flow::RuleAsk>,
     /// The ask set during this `update` that no task runs yet.
     pub fresh_rule_ask: bool,
+    /// The folders the model is asked to describe for the Platz card, until
+    /// its answer is in.
+    pub describing: Option<Vec<ncrs_ai::FolderFacts>>,
+    /// The ask set during this `update` that no task runs yet.
+    pub fresh_describe: bool,
     /// A typed folder being checked off the UI thread, and the step it was
     /// typed in.
     pub resolving: Option<(PathBuf, Step)>,
@@ -267,6 +311,9 @@ pub struct State {
     /// Counts the ticks of the wait; moves the dots of the working line.
     pub tick: usize,
     pub session: Session,
+    /// What the last measure for the card found, for the status bar.
+    pub space_measured: Option<SpaceMeasured>,
+    pub space_left: Option<SpaceLeft>,
     /// The chats of the list; the conversation above is the one of
     /// `chats.live()`.
     pub chats: crate::chat_list::ChatList,
@@ -297,6 +344,12 @@ impl State {
     /// thread.
     pub fn pending_rule_ask(&self) -> Option<&crate::rule_flow::RuleAsk> {
         self.rule_ask.as_ref()
+    }
+
+    /// The folders the model is asked to describe for the Platz card; the chat
+    /// runs this itself through `ctx.model`.
+    pub fn pending_describe(&self) -> Option<&[ncrs_ai::FolderFacts]> {
+        self.describing.as_deref()
     }
 
     /// The typed folder the app waits to have checked, and its step.

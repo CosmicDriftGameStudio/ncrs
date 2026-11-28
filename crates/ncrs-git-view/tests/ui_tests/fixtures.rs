@@ -393,6 +393,7 @@ pub fn picture_in(
 ) {
     let palette = preset.palette();
     let ctx = ViewCtx {
+        disk_warning: None,
         lang: Language::German,
         palette: &palette,
         date_format: DateFormat::Iso,

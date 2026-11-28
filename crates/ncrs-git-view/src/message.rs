@@ -72,6 +72,8 @@ pub enum Message {
     /// Escape: leaves the filter, then the diff, then the tab.
     Escape,
     Close,
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
     Refresh,
     // The actions of #338.
     SelectChange(ChangeSide, usize),

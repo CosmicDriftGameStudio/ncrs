@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use ncrs_config::config::{FilingLocation, LocationTransfer};
+use ncrs_config::space::{SpaceSettings, DEFAULT_WARN_FROM_PERCENT, WARN_FROM_RANGE};
 use ncrs_intake::LocationMode;
 
 /// Which page a folder is added from.
@@ -18,6 +19,12 @@ pub enum AddAs {
     RepoSource,
     /// Git: a folder name the search does not enter.
     RepoSkip,
+    /// Platz: a folder of the user's own that a tool regenerates.
+    SpaceRegenerable,
+    /// Platz: a folder that is measured but never offered for deleting.
+    SpaceNeverTouch,
+    /// Platz, App Store build: the home folder, picked once to give access to everything below it.
+    SpaceHome,
 }
 
 /// `path` joins the list as a folder that is only read; a folder that is
@@ -47,9 +54,61 @@ pub fn removed(locations: &[FilingLocation], path: &Path) -> Vec<FilingLocation>
         .collect()
 }
 
+/// `path` joins the Platz list `kind` names; one that is listed already changes
+/// nothing, and so does a kind that is no Platz list.
+pub fn space_with_folder(current: &SpaceSettings, kind: AddAs, path: PathBuf) -> SpaceSettings {
+    let mut next = current.clone();
+    let list = match kind {
+        AddAs::SpaceRegenerable => &mut next.own_regenerable,
+        AddAs::SpaceNeverTouch => &mut next.never_touch,
+        AddAs::Indexed
+        | AddAs::Favourite
+        | AddAs::RepoSource
+        | AddAs::RepoSkip
+        | AddAs::SpaceHome => return next,
+    };
+    if !list.contains(&path) {
+        list.push(path);
+    }
+    next
+}
+
+/// The warning threshold moved by `step` percent, kept in the range the
+/// config takes.
+pub fn warn_from_stepped(current: u8, step: i8) -> u8 {
+    let moved = i16::from(current) + i16::from(step);
+    let (low, high) = (
+        i16::from(*WARN_FROM_RANGE.start()),
+        i16::from(*WARN_FROM_RANGE.end()),
+    );
+    u8::try_from(moved.clamp(low, high)).unwrap_or(DEFAULT_WARN_FROM_PERCENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_platz_folder_joins_its_own_list_once() {
+        let first = space_with_folder(
+            &SpaceSettings::default(),
+            AddAs::SpaceRegenerable,
+            PathBuf::from("/a"),
+        );
+        let twice = space_with_folder(&first, AddAs::SpaceRegenerable, PathBuf::from("/a"));
+        let both = space_with_folder(&twice, AddAs::SpaceNeverTouch, PathBuf::from("/a"));
+        assert_eq!(both.own_regenerable, vec![PathBuf::from("/a")]);
+        assert_eq!(both.never_touch, vec![PathBuf::from("/a")]);
+    }
+
+    #[test]
+    fn the_threshold_stays_between_fifty_and_ninety_nine() {
+        assert_eq!(warn_from_stepped(90, 1), 91);
+        assert_eq!(warn_from_stepped(99, 1), 99);
+        assert_eq!(warn_from_stepped(50, -1), 50);
+        assert_eq!(warn_from_stepped(52, -5), 50);
+        assert_eq!(warn_from_stepped(97, 5), 99);
+    }
 
     fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         FilingLocation {

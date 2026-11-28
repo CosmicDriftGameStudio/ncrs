@@ -17,6 +17,9 @@ publish = false
 gix = { version = "0.90", default-features = false, features = ["sha1", "status", "revision", "parallel", "blame"] }
 # The secret that keeps other local processes off the askpass socket.
 getrandom = "0.4"
+# Resolves a folder without the verbatim `\\?\` prefix on Windows, which git and
+# the screen do not take.
+dunce = "1"
 
 [dev-dependencies]
 tempfile = "3.27"

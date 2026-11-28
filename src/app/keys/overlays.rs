@@ -229,6 +229,19 @@ fn settings_focus_key(key: &Key, modifiers: Modifiers) -> Option<FocusKey> {
     }
 }
 
+/// ⌘N and ⌫ on the lists of the Platz page; the page ignores them anywhere else.
+fn settings_list_key(
+    key: &Key,
+    modifiers: Modifiers,
+) -> Option<ncrs_settings::message::SpaceListKey> {
+    use ncrs_settings::message::SpaceListKey;
+    match key.as_ref() {
+        Key::Character("n") if modifiers == Modifiers::COMMAND => Some(SpaceListKey::Add),
+        Key::Named(Named::Backspace) if modifiers.is_empty() => Some(SpaceListKey::Remove),
+        _ => None,
+    }
+}
+
 /// The bindings that reach past a page (Settings, System, viewer, notes,
 /// filing, chat): quitting, the command list and every key that opens another
 /// page or a card that stands over pages.
@@ -246,6 +259,7 @@ pub(in crate::app) fn is_page_spanning(message: &Message) -> bool {
             KeyAction::Rules,
             KeyAction::SavedQueries,
             KeyAction::Repos,
+            KeyAction::Space,
         ]
         .into_iter()
         .any(|action| *message == action.message())
@@ -270,6 +284,9 @@ pub(in crate::app) fn settings_key(
     }
     if let Some(focus_key) = settings_focus_key(key, key_modifiers) {
         return Some(Message::Settings(SettingsMessage::FocusKey(focus_key)));
+    }
+    if let Some(list_key) = settings_list_key(key, key_modifiers) {
+        return Some(Message::Settings(SettingsMessage::SpaceListKey(list_key)));
     }
     match ncrs_settings::keys::settings_key(key, || bound().is_some())? {
         SettingsKey::Close => Some(Message::Settings(SettingsMessage::Close)),
@@ -543,6 +560,32 @@ pub(in crate::app) fn repos_page_key(
     bound.filter(is_page_spanning)
 }
 
+/// The Platz tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn space_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let app_key = bound
+        .as_ref()
+        .filter(|message| **message == KeyAction::ContextMenu.message())
+        .map(|_| ncrs_space_view::AppKey::ContextMenu);
+    let mode = ncrs_space_view::KeyMode {
+        filter_focused: prompt.space_filter,
+        menu_open: prompt.space_menu,
+        confirm_open: prompt.space_confirm,
+    };
+    if let Some(message) =
+        ncrs_space_view::space_key(&prompt.space_keys, key, key_modifiers, mode, app_key)
+    {
+        return Some(Message::Space(message));
+    }
+    bound.filter(is_page_spanning)
+}
+
 pub(in crate::app) fn viewer_or_monitor_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -551,6 +594,8 @@ pub(in crate::app) fn viewer_or_monitor_key(
 ) -> Option<Message> {
     if prompt.filing {
         filing_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.space {
+        space_page_key(prompt, key, key_modifiers, scope)
     } else if prompt.repos {
         repos_page_key(prompt, key, key_modifiers, scope)
     } else if let Some(git) = prompt.git {

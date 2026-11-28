@@ -8,6 +8,7 @@ mod groups;
 mod index_page;
 mod notes_page;
 mod page;
+mod space_page;
 mod system_page;
 mod type_rows;
 mod usage_page;
@@ -23,6 +24,8 @@ use index_page::index_groups;
 use notes_page::notes_groups;
 pub use page::focus_facts;
 use page::*;
+use space_page::space_groups;
+pub use space_page::space_list_target;
 use system_page::system_groups;
 use type_rows::by_type_group;
 use usage_page::usage_sections;
@@ -46,7 +49,7 @@ use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::layout::{SETTINGS_PAGE_MAX_WIDTH, SETTINGS_WIDE_PAGE_MAX_WIDTH};
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 type Message = SettingsMessage;
@@ -154,6 +157,7 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
         FieldProblem::NoExtension => Msg::SettingsByTypeProblemNoExtension,
         FieldProblem::NoProgram => Msg::SettingsByTypeProblemNoProgram,
         FieldProblem::NotAnIban => Msg::SettingsProblemIban,
+        FieldProblem::WarnFromRange => Msg::SettingsProblemWarnRange,
         FieldProblem::Write(failure) => return failure.clone(),
     };
     lang.text(message).to_owned()
@@ -177,6 +181,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Favourites => Msg::SettingsFeatureFavourites,
         SettingsFeature::Notes => Msg::SettingsFeatureNotes,
         SettingsFeature::Git => Msg::SettingsFeatureGit,
+        SettingsFeature::Space => Msg::SettingsSpaceTitle,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersion,
@@ -204,6 +209,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
         | SettingsFeature::Git
+        | SettingsFeature::Space
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -238,6 +244,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Favourites
         | SettingsFeature::Notes
         | SettingsFeature::Git
+        | SettingsFeature::Space
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::FullVersion
@@ -261,6 +268,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Favourites => Msg::SettingsFeatureFavouritesIntro,
         SettingsFeature::Notes => Msg::SettingsFeatureNotesIntro,
         SettingsFeature::Git => Msg::SettingsFeatureGitIntro,
+        SettingsFeature::Space => Msg::SettingsSpaceIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::FullVersion => Msg::SettingsFeatureFullVersionIntro,
@@ -288,6 +296,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Favourites => None,
         SettingsFeature::Notes => Some(NOTES_SECTION),
         SettingsFeature::Git => Some(REPOS_SECTION),
+        SettingsFeature::Space => Some(SPACE_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index => Some(FILING_SECTION),
         SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
@@ -362,6 +371,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::Notes => notes_groups(view),
         SettingsFeature::Git => git_groups(view),
+        SettingsFeature::Space => space_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::FullVersion => full_version_groups(view),
         SettingsFeature::Index => index_groups(view),
@@ -549,6 +559,12 @@ pub struct StatusBar<'a> {
     /// A failed write, which takes the place of the hint.
     pub failure: Option<&'a str>,
     pub notice: Option<&'a str>,
+    /// The Platz page is open: the line shows its keys.
+    pub platz_keys: bool,
+    /// The free space of the home drive, dim at the right end.
+    pub space_free: Option<String>,
+    /// The used share of the drive, once it is past the warn level.
+    pub disk_warning: Option<u8>,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -561,17 +577,43 @@ pub fn status_bar<'a>(bar: &StatusBar<'a>) -> Element<'a, Message> {
             &[("{count}", &bar.changed.to_string())],
         )
     });
+    let add_key = if cfg!(target_os = "macos") {
+        "\u{2318}N"
+    } else {
+        "Ctrl+N"
+    };
+    let remove_key = if cfg!(target_os = "macos") {
+        "\u{232b}"
+    } else {
+        "Backspace"
+    };
+    let platz_keys = [
+        ("\u{2191}\u{2193}", lang.text(Msg::SettingsSpaceKeySelect)),
+        ("Tab", lang.text(Msg::SpaceKeyNextArea)),
+        ("Space", lang.text(Msg::SettingsSpaceKeyToggle)),
+        ("Enter", lang.text(Msg::SettingsSpaceKeyButton)),
+        (add_key, lang.text(Msg::SettingsSpaceKeyAdd)),
+        (remove_key, lang.text(Msg::SettingsSpaceKeyRemove)),
+        ("Esc", lang.text(Msg::SettingsSpaceKeyClose)),
+    ];
     let line = match (bar.failure, bar.notice) {
         (Some(failure), _) => PageStatusLine::Failure(failure),
         (None, Some(notice)) => PageStatusLine::Notice(notice),
+        (None, None) if bar.platz_keys => PageStatusLine::Keys(&platz_keys),
         (None, None) => PageStatusLine::Hint(lang.text(Msg::SettingsStatusHint)),
     };
+    let right = [changed, bar.space_free.clone()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ");
     page_status_bar(
         PageStatusBar {
             mode: lang.text(Msg::SettingsMode),
             line,
-            right: changed.as_deref(),
+            right: (!right.is_empty()).then_some(right.as_str()),
         },
+        DiskWarning::of(bar.disk_warning, lang, Message::AskWhyDiskFull),
         bar.palette,
     )
 }

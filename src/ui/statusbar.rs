@@ -170,6 +170,27 @@ pub struct MonitorBadge<M> {
     pub on_press: M,
 }
 
+fn warning_segment_of<'a, M: Clone + 'a>(
+    badge: SpaceHintBadge<M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    ncrs_ui_kit::page_status_bar::warning_segment(
+        ncrs_ui_kit::page_status_bar::WarningSegment {
+            text: badge.text,
+            tooltip: Some(badge.tooltip),
+            on_press: badge.on_press,
+        },
+        palette,
+    )
+}
+
+/// The hint that the drive is nearly full; pressing it asks Hermes why.
+pub struct SpaceHintBadge<M> {
+    pub text: String,
+    pub tooltip: String,
+    pub on_press: M,
+}
+
 /// The hint of the App Store build in the last days of the trial and after it.
 pub struct StoreBadge<M> {
     pub text: String,
@@ -256,6 +277,9 @@ pub struct Activity<'a, M> {
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
     pub store: Option<StoreBadge<M>>,
+    pub space_hint: Option<SpaceHintBadge<M>>,
+    /// "Space · 78 GB free of 926 GB", dim, while the drive is not above the warning level.
+    pub space_free: Option<String>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
@@ -304,6 +328,21 @@ fn version_badge<'a, M: Clone + 'a>(
     )
 }
 
+/// The width the path field takes: what it shows, within the limits of the bar.
+fn path_width_of<M>(panel: &PanelState, path_bar_input: &PathBar<'_, M>) -> f32 {
+    let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
+        (Some(hit), _) => hit.text.chars().count(),
+        (None, Some(typed)) => typed.chars().count(),
+        (None, None) => panel.path.display().to_string().chars().count(),
+    };
+    if path_bar_input.hit_line.is_some() {
+        (estimated_text_width(path_chars, font_size::FILE) + HIT_HINT_WIDTH).min(HIT_LINE_MAX_WIDTH)
+    } else {
+        (estimated_text_width(path_chars, font_size::FILE) + PATH_EXTRA_WIDTH)
+            .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
+    }
+}
+
 /// The bottom bar: path, then the running job, then the failure of the last
 /// job, the panel's read error, or the selected entry; at the right the
 /// notice or the filing progress.
@@ -335,20 +374,12 @@ pub fn view<'a, M: Clone + 'a>(
         version,
         monitor,
         store,
+        space_hint,
+        space_free,
         test_folder,
         date_format,
     } = activity;
-    let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
-        (Some(hit), _) => hit.text.chars().count(),
-        (None, Some(typed)) => typed.chars().count(),
-        (None, None) => panel.path.display().to_string().chars().count(),
-    };
-    let path_width = if path_bar_input.hit_line.is_some() {
-        (estimated_text_width(path_chars, font_size::FILE) + HIT_HINT_WIDTH).min(HIT_LINE_MAX_WIDTH)
-    } else {
-        (estimated_text_width(path_chars, font_size::FILE) + PATH_EXTRA_WIDTH)
-            .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
-    };
+    let path_width = path_width_of(panel, &path_bar_input);
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
@@ -563,6 +594,19 @@ pub fn view<'a, M: Clone + 'a>(
         bar = bar.push(
             container(
                 text(dim)
+                    .size(font_size::SMALL)
+                    .color(palette.dim_text)
+                    .wrapping(text::Wrapping::None),
+            )
+            .padding([0.0, FIELD_PADDING_X]),
+        );
+    }
+    if let Some(badge) = space_hint {
+        bar = bar.push(warning_segment_of(badge, palette));
+    } else if let Some(quiet) = space_free {
+        bar = bar.push(
+            container(
+                text(quiet)
                     .size(font_size::SMALL)
                     .color(palette.dim_text)
                     .wrapping(text::Wrapping::None),

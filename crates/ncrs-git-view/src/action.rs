@@ -8,6 +8,8 @@ use crate::panes::PaneWidths;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// The disk warning in the status bar was pressed: ask Hermes why the drive is full.
+    AskWhyDiskFull,
     /// The tab is to go.
     Close,
     /// Show the repository of this worktree in a Git tab of its own.

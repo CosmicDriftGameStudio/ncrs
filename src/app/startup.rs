@@ -276,6 +276,7 @@ impl App {
                 panel_loads,
                 filing_start,
                 first_check,
+                Task::done(Message::SpaceHintDue),
                 notes_start,
                 store_start,
             ]),
@@ -327,6 +328,9 @@ impl App {
                 self.apply_git_keys(&config.git_keys);
                 self.repos_settings = config.repos;
                 self.apply_repos_keys(&config.repos_keys);
+                self.space_settings = config.space;
+                self.apply_space_keys(&config.space_keys);
+                self.refresh_space_facts();
                 self.monitor.set_settings(config.system);
                 self.update_check = config.check_for_updates;
                 self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
@@ -538,6 +542,19 @@ impl App {
             repos_keys: Arc::default(),
             repos: None,
             repos_settings: ncrs_config::repos::ReposSettings::default(),
+            space_keys: Arc::default(),
+            space: None,
+            space_settings: ncrs_config::space::SpaceSettings::default(),
+            space_processes_known: space::processes_known(),
+            space_last_scan: None,
+            space_run_ask: None,
+            space_chat_confirm: false,
+            space_chat_run: false,
+            space_progress: None,
+            last_own_trash: Vec::new(),
+            last_own_batch: None,
+            space_hint: None,
+            home_volume: None,
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
             dialog_focus: 0,

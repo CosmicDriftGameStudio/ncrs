@@ -110,6 +110,10 @@ ncrs-git-view = { path = "crates/ncrs-git-view", version = "0.0.0" }
 ncrs-git = { path = "crates/ncrs-git", version = "0.0.0" }
 # The Repos tab: every repository of the machine in one list.
 ncrs-repos = { path = "crates/ncrs-repos", version = "0.0.0" }
+# The Platz tab: what takes the space on the drive, and what is safe to delete.
+ncrs-space-view = { path = "crates/ncrs-space-view", version = "0.0.0" }
+ncrs-space = { path = "crates/ncrs-space", version = "0.0.0" }
+ncrs-os-probe = { path = "crates/ncrs-os-probe", version = "0.0.0" }
 # The filing tab: a source folder planned live into the write folder.
 ncrs-filing-view = { path = "crates/ncrs-filing-view", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
@@ -194,7 +198,7 @@ local-ai = ["ncrs-ai/llama", "ncrs-settings/local-ai", "ncrs-filing/local-ai"]
 # grants, the keychain entry and the trash work differently. Off by default, and
 # without the feature nothing of it is compiled in. On other systems the feature
 # builds but changes nothing, since only macOS has the sandbox.
-sandbox = ["ncrs-fs/sandbox", "ncrs-git/sandbox", "ncrs-monitor/sandbox", "ncrs-updates/sandbox", "ncrs-store/storekit"]
+sandbox = ["ncrs-fs/sandbox", "ncrs-git/sandbox", "ncrs-monitor/sandbox", "ncrs-space-view/sandbox", "ncrs-updates/sandbox", "ncrs-store/storekit"]
 
 # Software rasterisation only: no GPU or driver needed, works on CI runners and
 # VMs, but slow on high-resolution displays.
@@ -255,7 +259,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # arboard. In the tree through arboard already.
 clipboard-win = "5.4"
 
-# crates/ncrs-console, ncrs-ocr-vision, ncrs-priority, ncrs-sandbox, ncrs-store and ncrs-user-verify repeat
+# crates/ncrs-console, ncrs-ocr-vision, ncrs-os-probe, ncrs-priority, ncrs-sandbox, ncrs-store and ncrs-user-verify repeat
 # these tables in their Cargo.toml with unsafe_code = "deny"; change all together.
 [workspace.lints.rust]
 # A file manager must never execute unchecked code: the whole point is to touch

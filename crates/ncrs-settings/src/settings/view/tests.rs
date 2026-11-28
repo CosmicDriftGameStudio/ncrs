@@ -747,3 +747,111 @@ fn the_index_page_promises_background_work_only_while_there_is_some_left() {
         assert_eq!(described, shown, "work_left {work_left}");
     }
 }
+
+#[test]
+fn the_platz_page_lists_its_rows_and_the_store_build_swaps_two_of_them() {
+    let state = state_of("");
+    let words = rows_of(SettingsFeature::Space, &state, Language::English);
+    assert!(words.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceWarnFrom)
+            .to_owned()
+    ));
+    assert!(words.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceWorktreesLabel)
+            .to_owned()
+    ));
+
+    let store = SettingsState::new(
+        false,
+        Ok(Box::new(ncrs_config::config::from_text("").unwrap())),
+        true,
+    );
+    let in_store = rows_of(SettingsFeature::Space, &store, Language::English);
+    assert!(!in_store.contains(
+        &Language::English
+            .text(Msg::SettingsSpaceShowWorktrees)
+            .to_owned()
+    ));
+}
+
+/// Named for CI, which compares pixels only on macOS.
+mod ui_tests {
+    use super::*;
+    use crate::message::DriveRow;
+    use iced::Size;
+    use iced_test::Simulator;
+    use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
+    use ncrs_ui_kit::theme;
+
+    #[test]
+    fn the_platz_page_at_marcs_window_size() {
+        let size = Size::new(1740.0, 1900.0);
+        let home = Path::new("/home/test");
+        let mut never_touch_folders = ncrs_config::space::default_never_touch(home);
+        never_touch_folders.push(home.join("Documents/Tax"));
+        let never_touch: Vec<String> = never_touch_folders
+            .iter()
+            .map(|folder| format!("'{}'", folder.display()))
+            .collect();
+        let mut state = state_of(&format!(
+            "[space]\nwarn_drives = [\"Macintosh HD\", \"Backup\"]\ncatalog_off = []\nown_regenerable = [\"/home/test/work/build-cache\"]\nnever_touch = [{}]\n",
+            never_touch.join(", ")
+        ));
+        state.space_drives = vec![
+            DriveRow {
+                name: "Macintosh HD".to_owned(),
+                total: 994_000_000_000,
+                used: 874_000_000_000,
+                is_home: true,
+            },
+            DriveRow {
+                name: "Work SSD".to_owned(),
+                total: 2_000_000_000_000,
+                used: 600_000_000_000,
+                is_home: false,
+            },
+        ];
+        let filing = Filing::default();
+        let palette = ThemePreset::DEFAULT.palette();
+        let view = SettingsView {
+            state: &state,
+            preset: ThemePreset::DEFAULT,
+            vscode_theme: None,
+            filing: &filing,
+            servers: &[],
+            protection: None,
+            home: Path::new("/home/test"),
+            keys_changed: 0,
+            updates_listed: true,
+            entitlement: ncrs_store::Entitlement::Unrestricted,
+            facts: DocumentsFacts::default(),
+            favourites: FavouritesFacts::default(),
+            repos_scan: ReposScanFacts::default(),
+            lang: Language::English,
+            palette: &palette,
+        };
+        let framed = iced::widget::container(page(Some(SettingsFeature::Space), &view))
+            .max_width(ncrs_ui_kit::layout::SETTINGS_PAGE_MAX_WIDTH)
+            .padding(ncrs_ui_kit::theme::spacing::XXL);
+        let content = iced::widget::container(framed)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .style(theme::root(&palette));
+        let mut simulator = Simulator::with_size(
+            iced::Settings {
+                default_font: ncrs_ui_kit::APP_FONT,
+                ..iced::Settings::default()
+            },
+            size,
+            content,
+        );
+        let matches = simulator
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_reference_image("tests/snapshots/settings-platz-page.png")
+            .unwrap();
+        assert!(matches, "the Platz page differs from its image");
+    }
+}

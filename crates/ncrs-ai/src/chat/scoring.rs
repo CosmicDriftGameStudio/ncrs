@@ -135,6 +135,10 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
             text("choice", &option);
             ("answer", fields)
         }
+        ChatIntent::Space(ask) => {
+            text("ask", &Some(ask.word().to_owned()));
+            ("space", fields)
+        }
         ChatIntent::SmallTalk => ("smalltalk", fields),
         ChatIntent::LeaveAsIs => ("leave_as_is", fields),
         ChatIntent::Other => ("other", fields),

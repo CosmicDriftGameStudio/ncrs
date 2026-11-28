@@ -39,8 +39,8 @@ pub fn main_worktree_of(root: &Path) -> Option<PathBuf> {
 }
 
 fn main_worktree(repository: &gix::Repository) -> Option<PathBuf> {
-    let common = std::fs::canonicalize(repository.common_dir()).ok()?;
-    let own = std::fs::canonicalize(repository.git_dir()).ok()?;
+    let common = dunce::canonicalize(repository.common_dir()).ok()?;
+    let own = dunce::canonicalize(repository.git_dir()).ok()?;
     (common != own)
         .then(|| common.parent().map(Path::to_path_buf))
         .flatten()

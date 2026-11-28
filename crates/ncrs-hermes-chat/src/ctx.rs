@@ -41,6 +41,10 @@ pub struct Ctx {
     /// Whether the build may change files: a locked trial lets Hermes read but
     /// not file, trash or undo.
     pub changes_allowed: bool,
+    /// The App Store build: it removes no worktrees, so the card offers none.
+    pub store_build: bool,
+    /// The name of the drive the card is about.
+    pub drive_name: String,
     /// `None` in a build without the local language model.
     pub model: Option<Arc<dyn ChatModel>>,
 }

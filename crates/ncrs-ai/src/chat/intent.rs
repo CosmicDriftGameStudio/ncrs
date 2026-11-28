@@ -87,6 +87,41 @@ impl NameBlock {
     }
 }
 
+/// What the user wants of the space on the drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceAsk {
+    /// "Why is the disk full?": measure and explain.
+    Why,
+    /// "Delete all the safe ones".
+    DeleteSafe,
+    /// "Clear away the merged worktrees".
+    RemoveWorktrees,
+    /// "Show me the overview": open the Platz tab.
+    Overview,
+}
+
+impl SpaceAsk {
+    /// The word the model and the eval rows use.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Why => "why",
+            Self::DeleteSafe => "delete_safe",
+            Self::RemoveWorktrees => "remove_worktrees",
+            Self::Overview => "overview",
+        }
+    }
+}
+
+/// What is known of a folder when the model is asked to say something about
+/// it: no content, only where it is, how big and when it changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderFacts {
+    pub path: String,
+    pub size_bytes: u64,
+    /// A calendar date as the caller shows it; `None` when unknown.
+    pub modified: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatIntent {
     TidyFolder {
@@ -128,6 +163,9 @@ pub enum ChatIntent {
     },
     /// A greeting, thanks or "what can you do?": Hermes says what it does.
     SmallTalk,
+    /// A question about the space on the drive, or a request to free it; the
+    /// run itself always goes through the Platz tab and its confirm.
+    Space(SpaceAsk),
     /// "Keep everything as it is", "never mind": nothing is to be changed.
     LeaveAsIs,
     Other,
@@ -176,6 +214,12 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         previous: &Levels,
         sentence: &str,
     ) -> Result<Revision, AiError>;
+    /// One short sentence for each folder, in the order given, from its path,
+    /// size and date only. The model only explains; what may be deleted is
+    /// decided by code. A model that cannot do it says so with an error.
+    fn describe_folders(&self, _folders: &[FolderFacts]) -> Result<Vec<String>, AiError> {
+        Err(AiError::Model("this model does not describe folders"))
+    }
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

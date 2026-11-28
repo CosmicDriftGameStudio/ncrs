@@ -53,6 +53,8 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
         ai_on: true,
         changes_allowed: true,
         model: None,
+        store_build: false,
+        drive_name: "Macintosh HD".to_owned(),
         favourites: Vec::new(),
         resolve_folder: |path| Ok(path.to_path_buf()),
         now: chrono::Local

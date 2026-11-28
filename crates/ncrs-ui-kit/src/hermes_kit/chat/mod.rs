@@ -5,11 +5,13 @@ mod bubble;
 mod cards;
 mod input;
 mod list;
+mod space_card;
 
 pub use bubble::*;
 pub use cards::*;
 pub use input::*;
 pub use list::*;
+pub use space_card::*;
 
 use iced::widget::{column, container, scrollable, Space};
 use iced::{alignment, Element, Length};

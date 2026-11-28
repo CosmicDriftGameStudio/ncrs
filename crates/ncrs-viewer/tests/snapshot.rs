@@ -46,6 +46,7 @@ mod ui_tests {
         let state = state_with_readme(dir.path());
         let palette = ThemePreset::Cosmic.palette();
         let ctx = ViewCtx {
+            disk_warning: None,
             lang: Language::English,
             palette: &palette,
             home: dir.path(),

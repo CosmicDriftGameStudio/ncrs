@@ -48,9 +48,9 @@ The migration into feature crates is done. The crates by kind:
 
 - Feature: `ncrs-search`, `ncrs-files`, `ncrs-ops`, `ncrs-palette`, `ncrs-settings`, `ncrs-hermes-ui`,
   `ncrs-hermes-chat`, `ncrs-remote`, `ncrs-compare`, `ncrs-filing-view`, `ncrs-monitor`, `ncrs-notes`,
-  `ncrs-updates`, `ncrs-viewer`, `ncrs-repos`.
+  `ncrs-updates`, `ncrs-viewer`, `ncrs-repos`, `ncrs-space-view`.
 - Backend (no UI): `ncrs-fs`, `ncrs-index`, `ncrs-index-types` (index data types without the database), `ncrs-intake`, `ncrs-pipeline`, `ncrs-ai`, `ncrs-filing`, `ncrs-config`,
-  `ncrs-jobs`, `ncrs-ocr-vision`, `ncrs-user-verify`, `ncrs-priority`, `ncrs-sandbox`, `ncrs-console`, `ncrs-store`.
+  `ncrs-jobs`, `ncrs-ocr-vision`, `ncrs-user-verify`, `ncrs-priority`, `ncrs-sandbox`, `ncrs-console`, `ncrs-store`, `ncrs-os-probe`, `ncrs-space`.
 - Kit: `ncrs-ui-kit`. Core: `ncrs-core`. Strings: `ncrs-i18n`.
 
 The `ncrs` crate (`src/app/`,

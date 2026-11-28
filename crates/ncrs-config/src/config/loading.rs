@@ -126,7 +126,12 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
         line_at(source.as_bytes(), offset)
     })
     .map_err(|err| invalid(err.span, err.reason))?;
+    config.space_keys = TabKeys::from_section(&config.keys, "space", |offset| {
+        line_at(source.as_bytes(), offset)
+    })
+    .map_err(|err| invalid(err.span, err.reason))?;
     config.repos = crate::repos::resolve_repos(&config.repos_section);
+    config.space = crate::space::resolve_space_at(&config.space_section, home);
     config.git = crate::git::resolve_git(&config.git_section);
     if !config.theme.entries.is_empty() {
         let vscode = load_vscode(&config.theme, path, home);

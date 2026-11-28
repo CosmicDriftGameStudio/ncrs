@@ -12,6 +12,7 @@ impl App {
 
     pub(in crate::app) fn monitor_view_ctx(&self) -> ncrs_monitor::ViewCtx<'_> {
         ncrs_monitor::ViewCtx {
+            disk_warning: self.disk_warning_percent(),
             lang: self.lang,
             palette: &self.palette,
             window_size: self.window_size,
@@ -65,9 +66,11 @@ impl App {
         self.notice = None;
     }
 
-    fn run_monitor_action(&mut self, action: Ask) -> Task<Message> {
+    pub(in crate::app) fn run_monitor_action(&mut self, action: Ask) -> Task<Message> {
         match action {
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::Opened | Ask::Closed => Task::none(),
+            Ask::OpenSpace => self.open_space(),
             Ask::CopyToClipboard(text) => {
                 let notice = self.lang.text(Msg::MonitorNoticeCopied).to_owned();
                 Task::batch([iced::clipboard::write(text), self.show_notice(notice)])

@@ -24,3 +24,5 @@ bulk ::= "{\"intent\":\"bulk_move\"" (",\"filter_kind\":" str)? (",\"filter_send
 smalltalk ::= "{\"intent\":\"smalltalk\"}"
 leave ::= "{\"intent\":\"leave_as_is\"}"
 other ::= "{\"intent\":\"other\"}"
+spaceask ::= "\"why\"" | "\"delete_safe\"" | "\"remove_worktrees\"" | "\"overview\""
+space ::= "{\"intent\":\"space\",\"ask\":" spaceask "}"

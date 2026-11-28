@@ -39,6 +39,8 @@ pub enum SettingChange {
     Notes(ncrs_core::notes_sync::NotesSettings),
     /// The `[repos]` settings of the Repos tab, all of them as they are to be written.
     Repos(ncrs_config::repos::ReposSettings),
+    /// The `[space]` settings of the Platz page, all of them as they are to be written.
+    Space(ncrs_config::space::SpaceSettings),
     /// The `[git]` settings: how a pull joins and how often the Git tab fetches.
     Git(ncrs_config::git::GitSettings),
     Load(Load),
@@ -138,8 +140,26 @@ pub enum SettingField {
     Color(ColorRole),
     AiEndpoint,
     AiModel,
+    /// The percent at which the drive counts as full, on the Platz page.
+    SpaceWarnFrom,
     /// Where an entry for one of the own details is typed.
     Own(OwnDetail),
+}
+
+/// A drive as the Platz page lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriveRow {
+    pub name: String,
+    pub total: u64,
+    pub used: u64,
+    /// The drive the home folder lies on.
+    pub is_home: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceListKey {
+    Add,
+    Remove,
 }
 
 /// An entry of the terminal list on the programs page.
@@ -248,6 +268,12 @@ pub enum SettingsMessage {
     TogglePause,
     /// The app read the facts the Index page shows.
     FactsLoaded(LoadedFacts),
+    /// The drives of this computer, measured after the tab opened.
+    DrivesLoaded(Vec<DriveRow>),
+    /// A key of the Platz page that works on the folder list under the cursor.
+    SpaceListKey(SpaceListKey),
+    /// The disk warning in the status bar was pressed.
+    AskWhyDiskFull,
     /// The terminals and monospace fonts of this machine, read after the tab
     /// opened.
     SystemLoaded {

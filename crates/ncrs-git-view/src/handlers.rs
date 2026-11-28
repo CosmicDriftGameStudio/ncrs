@@ -339,7 +339,10 @@ fn select_change(state: &mut State, side: ChangeSide, index: usize) -> Outcome {
         return quiet(Task::none());
     }
     local.selected = Some((side, index));
+    local.focus = crate::wip::focus_of(side);
+    local.diff_open = true;
     local.diff = None;
+    state.area = crate::state::Area::Detail;
     quiet(load::actions(state))
 }
 

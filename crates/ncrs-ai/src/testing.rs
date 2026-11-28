@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
-use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn};
+use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn, FolderFacts};
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
@@ -85,6 +85,8 @@ pub struct ScriptedChatModel {
     depths: Mutex<Vec<Option<usize>>>,
     revised: Mutex<Vec<(Levels, String)>>,
     revisions: Mutex<VecDeque<Result<Revision, AiError>>>,
+    notes: Mutex<VecDeque<Result<Vec<String>, AiError>>>,
+    noted: Mutex<Vec<Vec<FolderFacts>>>,
 }
 
 impl ScriptedChatModel {
@@ -109,6 +111,8 @@ impl ScriptedChatModel {
             depths: Mutex::new(Vec::new()),
             revised: Mutex::new(Vec::new()),
             revisions: Mutex::new(VecDeque::new()),
+            notes: Mutex::new(VecDeque::new()),
+            noted: Mutex::new(Vec::new()),
         }
     }
 
@@ -143,6 +147,22 @@ impl ScriptedChatModel {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(revision);
+    }
+
+    /// The next answer of `describe_folders`.
+    pub fn push_notes(&self, notes: Result<Vec<String>, AiError>) {
+        self.notes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(notes);
+    }
+
+    /// The folders each `describe_folders` was asked about, in order.
+    pub fn noted(&self) -> Vec<Vec<FolderFacts>> {
+        self.noted
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The descriptions `generate_rule` was asked, in order.
@@ -277,6 +297,18 @@ impl ChatModel for ScriptedChatModel {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Err(AiError::Model("no scripted revision")))
+    }
+
+    fn describe_folders(&self, folders: &[FolderFacts]) -> Result<Vec<String>, AiError> {
+        self.noted
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(folders.to_vec());
+        self.notes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Err(AiError::Model("no scripted notes")))
     }
 
     fn status(&self) -> LocalModelStatus {

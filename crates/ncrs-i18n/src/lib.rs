@@ -366,6 +366,8 @@ mod tests {
             Msg::ColumnName
                 // The same word in both languages, like ColumnName.
                 | Msg::TrashColumnName
+                // The abbreviation for seconds is the same in German.
+                | Msg::SpaceTookSeconds
                 | Msg::SettingsUsageTokens
                 | Msg::RulesFormName
                 | Msg::SortingFieldTargetName
@@ -437,6 +439,23 @@ mod tests {
                 | Msg::GitViewWorktreeWip
                 | Msg::GitViewDiffSides
                 | Msg::GitViewStatusDiffRight
+                // Tool names and folder names of the Platz tab, the same in every language.
+                | Msg::SpaceCatalogSccache
+                | Msg::SpaceCatalogDerivedData
+                // Names that German writes like English: Backups, Downloads, Hermes, Worktrees, Auto.
+                | Msg::SpaceDecideBackups
+                | Msg::SpaceDecideDownloads
+                | Msg::SpaceRulesHermesHead
+                | Msg::SettingsSpaceWorktreesLabel
+                | Msg::SettingsSpaceDepthAuto
+                // Only placeholders and the punctuation between them.
+                | Msg::SpaceLegendEntry
+                | Msg::SpaceDecideOther
+                | Msg::SpaceConfirmWithWorktreesCount
+                | Msg::SpaceLogSpan
+                | Msg::MonitorSpacePercent
+                | Msg::HermesChatSpaceCardDrive
+                | Msg::HermesChatSpaceWhyHead
                 // A number and a unit, the same in every language.
                 | Msg::SplitterWidth
                 | Msg::SettingsHermesSectionChats
@@ -542,6 +561,28 @@ mod tests {
                 // dialog.
                 | Msg::RemoteHost
                 | Msg::RemotePort
+                // Platz: only placeholders and the signs between them.
+                | Msg::HermesChatSpaceAlsoMany
+                | Msg::HermesChatSpaceAlsoOne
+                | Msg::HermesChatSpaceDayDated
+                | Msg::HermesChatSpaceHintPart
+                | Msg::SettingsSpaceWarnUnit
+                // Platz: words German writes like English (Caches, Name, Hermes, Audio, Video,
+                // PDF, Installer), key names, operating systems and tool names.
+                | Msg::HermesChatSpaceRowCaches
+                | Msg::SpaceDecideColumnName
+                | Msg::SpaceDecideHermesLabel
+                | Msg::SpaceDecideKindAudio
+                | Msg::SpaceDecideKindInstallerWindows
+                | Msg::SpaceDecideKindPdf
+                | Msg::SpaceDecideKindVideo
+                | Msg::SpaceKeyNameEscape
+                | Msg::SpaceKeyNameTab
+                | Msg::SpaceRulesCheckToolHint
+                | Msg::SpaceRulesOsLinux
+                | Msg::SpaceRulesOsMacos
+                | Msg::SpaceRulesOsWindows
+                | Msg::SpaceRulesPackageTools
         )
     }
 

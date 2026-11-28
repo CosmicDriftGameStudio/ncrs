@@ -322,3 +322,197 @@ fn reconcile_takes_a_trashed_item_as_done_and_an_untouched_one_as_interrupted() 
     assert_eq!(items[1].state, JournalState::Skipped);
     assert!(kept.path.exists());
 }
+
+fn own_item(path: &Path) -> crate::execute::trash::OwnTrashItem {
+    let meta = fs::metadata(path).unwrap();
+    crate::execute::trash::OwnTrashItem {
+        path: path.to_path_buf(),
+        size: meta.len(),
+        modified: meta.modified().ok(),
+    }
+}
+
+fn journaled_own(
+    setup: &Setup,
+    bin: &Bin,
+    items: &[crate::execute::trash::OwnTrashItem],
+) -> TrashReport {
+    let run = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        items,
+        &bin.trash,
+        false,
+    );
+    TrashReport {
+        trashed: run.gone.len(),
+        skipped: run.refused.len(),
+    }
+}
+
+#[test]
+fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/old.dmg", "installer");
+    let item = own_item(&file);
+
+    let report = journaled_own(&setup, &bin, &[item]);
+
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 1,
+            skipped: 0
+        }
+    );
+    assert!(!file.exists());
+    let undone = undo_with_trash(
+        &setup.index,
+        last_batch(&setup),
+        std::slice::from_ref(&setup.root),
+        Some(&bin.trash),
+    )
+    .unwrap();
+    assert_eq!(undone, UndoReport { undone: 1, left: 0 });
+    assert_eq!(fs::read_to_string(&file).unwrap(), "installer");
+}
+
+#[test]
+fn the_run_undo_of_an_own_trash_run_brings_the_files_back_without_given_roots() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let first = setup.write("downloads/a.dmg", "installer");
+    let second = setup.write("downloads/b.dmg", "other");
+    let items = [own_item(&first), own_item(&second)];
+
+    journaled_own(&setup, &bin, &items);
+    assert!(!first.exists() && !second.exists());
+
+    let undone = crate::chat_work::undo_run(&setup.index, &bin.trash, last_batch(&setup)).unwrap();
+
+    assert_eq!(undone, UndoReport { undone: 2, left: 0 });
+    assert_eq!(fs::read_to_string(&first).unwrap(), "installer");
+    assert_eq!(fs::read_to_string(&second).unwrap(), "other");
+}
+
+#[test]
+fn an_own_file_that_changed_since_it_was_shown_stays() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/notes.txt", "short");
+    let item = own_item(&file);
+    fs::write(&file, "much longer than before").unwrap();
+
+    let report = journaled_own(&setup, &bin, &[item]);
+
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 0,
+            skipped: 1
+        }
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "much longer than before"
+    );
+}
+
+#[test]
+fn an_own_item_outside_the_root_stays() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let outside = setup._dir.path().join("elsewhere.txt");
+    fs::write(&outside, "x").unwrap();
+    let item = own_item(&outside);
+
+    let report = journaled_own(&setup, &bin, &[item]);
+
+    assert_eq!(
+        report,
+        TrashReport {
+            trashed: 0,
+            skipped: 1
+        }
+    );
+    assert!(outside.exists());
+}
+
+#[test]
+fn empty_after_deletes_only_the_entry_this_run_made() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let old_file = setup.write("downloads/report.pdf", "old one");
+    bin.trash.trash(&old_file).unwrap();
+    let file = setup.write("downloads/report.pdf", "new one");
+    let item = own_item(&file);
+
+    let run =
+        crate::execute::trash_own_items(None, "Cleared", &setup.root, &[item], &bin.trash, true);
+
+    assert_eq!(run.gone, vec![file.clone()]);
+    let left = bin.trash.list().unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].original, file);
+    assert_eq!(
+        fs::read_to_string(Path::new(&left[0].key)).unwrap(),
+        "old one"
+    );
+}
+
+#[test]
+fn a_folder_with_a_changed_file_inside_stays_with_and_without_the_journal() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let inner = setup.write("projects/app/main.rs", "fn main() {}");
+    let folder = inner.parent().unwrap().to_path_buf();
+    let item = own_item(&folder);
+    fs::write(&inner, "fn main() { more() }").unwrap();
+    let changed = vec![crate::execute::SkipReason::SourceChanged];
+
+    let plain = crate::execute::trash_own_items(
+        None,
+        "Cleared",
+        &setup.root,
+        std::slice::from_ref(&item),
+        &bin.trash,
+        true,
+    );
+    let journaled = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+        true,
+    );
+
+    assert!(plain.gone.is_empty() && journaled.gone.is_empty());
+    assert_eq!(plain.refused, changed);
+    assert_eq!(journaled.refused, changed);
+    assert!(inner.exists());
+}
+
+#[test]
+fn a_journal_error_after_every_item_was_handled_counts_no_item() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/a.txt", "a");
+    let item = own_item(&file);
+
+    let run = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+        false,
+    );
+
+    assert_eq!(run.gone, vec![file]);
+    assert!(run.refused.is_empty());
+    assert!(run.batch.is_some());
+    assert!(run.batch_error.is_none());
+}

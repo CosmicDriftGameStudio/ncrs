@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::facts::{LoadedFacts, ModelKind};
-use crate::message::{SettingChange, SettingField, TerminalChoice};
+use crate::message::{DriveRow, SettingChange, SettingField, TerminalChoice};
 use ncrs_ai::{ConsentPurpose, ConsentedOrigins};
 use ncrs_config::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
@@ -36,6 +36,8 @@ pub const SYSTEM_SECTION: &str = "[system]";
 pub const NOTES_SECTION: &str = "[notes]";
 /// Where the Git page keeps its values.
 pub const REPOS_SECTION: &str = "[repos]";
+/// Where the Platz page keeps its values.
+pub const SPACE_SECTION: &str = "[space]";
 pub const COLUMNS_SECTION: &str = "[columns]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
@@ -87,6 +89,8 @@ pub struct SettingsState {
     /// The terminals found on this computer when the tab opened; looked up
     /// then, not on every frame.
     pub terminals: Vec<KnownTerminal>,
+    /// The drives found after the tab opened, for the Platz page.
+    pub space_drives: Vec<DriveRow>,
     /// The Explorer menu and default folder opener switches as the system has
     /// them; read after the tab opened, changed by the switches.
     pub integration: ncrs_handoff::integration::State,
@@ -141,6 +145,8 @@ pub enum FieldProblem {
     /// A file type row that opens with an own program, but names none.
     NoProgram,
     NotAnIban,
+    /// The warning level is not a number in the range the config takes.
+    WarnFromRange,
     /// The write failed; the text is already worded.
     Write(String),
 }
@@ -168,6 +174,7 @@ impl SettingsState {
             provider: None,
             sandboxed,
             terminals: Vec::new(),
+            space_drives: Vec::new(),
             integration: ncrs_handoff::integration::State::default(),
             terminal_own: false,
             model_to_remove: None,
@@ -305,6 +312,10 @@ impl SettingsState {
             SettingField::Color(role) => self.saved_color(role).unwrap_or_default().to_owned(),
             SettingField::AiEndpoint => ai_text(ai.and_then(|section| section.endpoint.as_ref())),
             SettingField::AiModel => ai_text(ai.and_then(|section| section.model.as_ref())),
+            SettingField::SpaceWarnFrom => self
+                .config()
+                .map(|config| config.space.warn_from_percent.to_string())
+                .unwrap_or_default(),
             SettingField::Own(_) => String::new(),
         }
     }
@@ -380,6 +391,7 @@ impl SettingsState {
             SettingField::Program(kind) => program_change(kind, text.trim()),
             SettingField::Color(role) => color_change(role, text.trim()),
             SettingField::AiEndpoint | SettingField::AiModel => self.http_change(),
+            SettingField::SpaceWarnFrom => self.warn_from_change(text.trim()),
             SettingField::Own(detail) => {
                 let entry = text.trim();
                 if entry.is_empty() {
@@ -432,8 +444,25 @@ impl SettingsState {
             SettingField::AiEndpoint | SettingField::AiModel => {
                 self.provider() == AiProviderName::Http
             }
-            SettingField::Program(_) | SettingField::Color(_) | SettingField::Own(_) => true,
+            SettingField::Program(_)
+            | SettingField::Color(_)
+            | SettingField::SpaceWarnFrom
+            | SettingField::Own(_) => true,
         }
+    }
+
+    fn warn_from_change(&self, text: &str) -> Checked {
+        let percent = text
+            .parse::<u8>()
+            .ok()
+            .filter(|percent| ncrs_config::space::WARN_FROM_RANGE.contains(percent))
+            .ok_or((SettingField::SpaceWarnFrom, FieldProblem::WarnFromRange))?;
+        let mut next = self
+            .config()
+            .map(|config| config.space.clone())
+            .unwrap_or_default();
+        next.warn_from_percent = percent;
+        Ok(SettingChange::Space(next))
     }
 
     pub fn http_change(&self) -> Result<SettingChange, (SettingField, FieldProblem)> {
@@ -597,6 +626,7 @@ fn page_of(field: SettingField) -> SettingsFeature {
         SettingField::Color(_) => SettingsFeature::Look,
         SettingField::Program(_) => SettingsFeature::Programs,
         SettingField::AiEndpoint | SettingField::AiModel => SettingsFeature::Ai,
+        SettingField::SpaceWarnFrom => SettingsFeature::Space,
         SettingField::Own(_) => SettingsFeature::Index,
     }
 }
@@ -627,6 +657,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::GitView(_)
         | SettingChange::Appearance(_)
         | SettingChange::System(_) => Vec::new(),
+        SettingChange::Space(_) => vec![SettingField::SpaceWarnFrom],
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
     }
 }

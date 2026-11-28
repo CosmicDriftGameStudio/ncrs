@@ -233,6 +233,7 @@ fn dispatch(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             (Task::none(), action)
         }
         Message::Escape => escape(state, ctx),
+        Message::AskWhyDiskFull => (Task::none(), Some(Action::AskWhyDiskFull)),
         Message::Close => {
             state.close();
             (Task::none(), Some(Action::Close))

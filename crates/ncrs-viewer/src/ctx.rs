@@ -16,6 +16,8 @@ pub struct Ctx {
 /// What `view` reads from the app.
 #[derive(Debug, Clone, Copy)]
 pub struct ViewCtx<'a> {
+    /// The used share of the drive, once it is past the warn level.
+    pub disk_warning: Option<u8>,
     pub lang: Language,
     pub palette: &'a Palette,
     pub home: &'a Path,

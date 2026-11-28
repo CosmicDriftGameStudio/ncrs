@@ -27,6 +27,7 @@ pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
 pub const NOTES_TAB_ID: &str = "title-tab-notes";
 pub const FILING_TAB_ID: &str = "title-tab-filing";
 pub const REPOS_TAB_ID: &str = "title-tab-repos";
+pub const SPACE_TAB_ID: &str = "title-tab-space";
 pub const GIT_TAB_ID: &str = "title-tab-git";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 /// Characters of room the cross of a hit list tab takes from its title.
@@ -74,6 +75,8 @@ pub enum PageTab {
     Notes,
     /// The Repos tab, every repository of the machine.
     Repos,
+    /// The Platz tab: what takes the space on the drive; the name of the measured drive, once there is one.
+    Space(Option<String>),
     /// The filing tab; the title is already worded.
     Filing(String),
     /// A Git tab; the title is already worded, the name is the repository alone.
@@ -249,6 +252,19 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 REPOS_TAB_ID,
                 open.active,
                 (ShownTab::Repos, Message::CloseRepos),
+                fit,
+            ),
+            PageTab::Space(drive) => page_tab(
+                &match drive {
+                    Some(name) => ncrs_i18n::fill_template(
+                        lang.text(Msg::SpaceTabTitleDrive),
+                        &[("{drive}", name)],
+                    ),
+                    None => lang.text(Msg::SpaceTabTitle).to_owned(),
+                },
+                SPACE_TAB_ID,
+                open.active,
+                (ShownTab::Space, Message::CloseSpace),
                 fit,
             ),
             PageTab::Git(id, title, name) => page_tab_named(

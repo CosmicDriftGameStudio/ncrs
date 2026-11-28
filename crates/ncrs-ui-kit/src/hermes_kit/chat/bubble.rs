@@ -24,7 +24,7 @@ const BOLD_MARK: &str = "**";
 const PATH_OPACITY: f32 = 0.8;
 
 /// The text with its `**bold**` stretches as spans.
-fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
+pub fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
     content
         .split(BOLD_MARK)
         .enumerate()
@@ -38,6 +38,14 @@ fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
             }
         })
         .collect()
+}
+
+/// The dim, centred line above the first message of a day.
+pub fn day_mark<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
+    container(small(content.to_owned(), palette.dim_text))
+        .width(Length::Fill)
+        .align_x(alignment::Horizontal::Center)
+        .into()
 }
 
 /// A paragraph of the chat; `**bold**` is set in bold.
@@ -230,15 +238,34 @@ pub fn chat_chip<'a, M: Clone + 'a>(
     on_press: M,
     palette: &Palette,
 ) -> Element<'a, M> {
-    button(
-        text(label.to_owned())
-            .size(CHAT_TEXT)
-            .wrapping(Wrapping::None),
-    )
-    .padding([CHIP_PAD_Y, CHIP_PAD_X])
-    .on_press(on_press)
-    .style(chip_style(palette, primary))
-    .into()
+    chat_chip_keyed(label, primary, None, on_press, palette)
+}
+
+/// [`chat_chip`] with the key that presses it shown after the label.
+pub fn chat_chip_keyed<'a, M: Clone + 'a>(
+    label: &str,
+    primary: bool,
+    key: Option<&str>,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let words = text(label.to_owned())
+        .size(CHAT_TEXT)
+        .wrapping(Wrapping::None);
+    let content: Element<'a, M> = match key {
+        Some(key_name) => Row::new()
+            .push(words)
+            .push(crate::kit::key_cap(key_name, palette))
+            .spacing(spacing::XS)
+            .align_y(alignment::Vertical::Center)
+            .into(),
+        None => words.into(),
+    };
+    button(content)
+        .padding([CHIP_PAD_Y, CHIP_PAD_X])
+        .on_press(on_press)
+        .style(chip_style(palette, primary))
+        .into()
 }
 
 /// Chips side by side that move to the next line where the row is full.

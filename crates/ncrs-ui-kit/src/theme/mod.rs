@@ -10,6 +10,7 @@ use crate::palette::{contrast_ratio, Palette};
 pub mod git;
 mod links;
 mod settings;
+pub mod space;
 pub use links::{link_button, named_link_button};
 pub use settings::{feature_item, focused_setting, marked_setting};
 

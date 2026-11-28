@@ -31,7 +31,14 @@ pub struct MeasuredTree {
 /// through, so entering one shows its size without another walk. A hard link
 /// is counted in the folder the walk met it in first.
 pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX)
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        |_| {},
+        Duration::MAX,
+        Keep::default(),
+    )
 }
 
 /// How often a running walk reports what it has counted so far.
@@ -47,7 +54,31 @@ pub fn measure_folder_tree_reporting(
     report_every: Duration,
     on_running: impl FnMut(u64),
 ) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of, on_running, report_every)
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        on_running,
+        report_every,
+        Keep::default(),
+    )
+}
+
+/// [`measure_folder_tree_reporting`] that keeps a size only for the folders down to `max_depth`
+/// below the root (1 = its direct subfolders), without the cap on their number. Deeper
+/// bytes roll up into the folder at that depth.
+pub fn measure_folder_depth(
+    root: &Path,
+    cancel: &AtomicBool,
+    max_depth: usize,
+    report_every: Duration,
+    on_running: impl FnMut(u64),
+) -> Option<MeasuredTree> {
+    let keep = Keep {
+        max_folders: usize::MAX,
+        max_depth,
+    };
+    measure_tree_on(root, cancel, device_of, on_running, report_every, keep)
 }
 
 #[cfg(unix)]
@@ -66,7 +97,15 @@ fn measure_folder_on(
     cancel: &AtomicBool,
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
 ) -> Option<FolderSize> {
-    measure_tree_on(root, cancel, device_of, |_| {}, Duration::MAX).map(|tree| tree.total)
+    measure_tree_on(
+        root,
+        cancel,
+        device_of,
+        |_| {},
+        Duration::MAX,
+        Keep::default(),
+    )
+    .map(|tree| tree.total)
 }
 
 fn measure_tree_on(
@@ -75,6 +114,7 @@ fn measure_tree_on(
     device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
     mut on_running: impl FnMut(u64),
     report_every: Duration,
+    keep: Keep,
 ) -> Option<MeasuredTree> {
     let mut running: u64 = 0;
     let mut last_report = Instant::now();
@@ -90,8 +130,8 @@ fn measure_tree_on(
     }];
     // Each folder still to read, with the entry of `counted` its bytes go to:
     // its own, or its nearest ancestor's once the walk stopped keeping them.
-    let mut pending: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
-    while let Some((folder, owner)) = pending.pop() {
+    let mut pending: Vec<(PathBuf, usize, usize)> = vec![(root.to_path_buf(), 0, 0)];
+    while let Some((folder, owner, depth)) = pending.pop() {
         if cancel.load(Ordering::Relaxed) {
             return None;
         }
@@ -115,16 +155,16 @@ fn measure_tree_on(
             if metadata.is_dir() {
                 if root_device.is_some() && device_of(&path, &metadata) != root_device {
                     mark_partial(&mut counted, owner);
-                } else if counted.len() <= KEPT_FOLDERS {
+                } else if counted.len() <= keep.max_folders && depth < keep.max_depth {
                     counted.push(Counted {
                         path: path.clone(),
                         parent: Some(owner),
                         bytes: 0,
                         partial: false,
                     });
-                    pending.push((path, counted.len() - 1));
+                    pending.push((path, counted.len() - 1, depth + 1));
                 } else {
-                    pending.push((path, owner));
+                    pending.push((path, owner, depth + 1));
                 }
             } else if seen.first_time(&metadata) {
                 add_bytes(&mut counted, owner, metadata.len());
@@ -172,6 +212,21 @@ fn mark_partial(counted: &mut [Counted], index: usize) {
 fn add_bytes(counted: &mut [Counted], index: usize, bytes: u64) {
     if let Some(entry) = counted.get_mut(index) {
         entry.bytes = entry.bytes.saturating_add(bytes);
+    }
+}
+
+/// What a walk keeps a size for.
+struct Keep {
+    max_folders: usize,
+    max_depth: usize,
+}
+
+impl Default for Keep {
+    fn default() -> Self {
+        Self {
+            max_folders: KEPT_FOLDERS,
+            max_depth: usize::MAX,
+        }
     }
 }
 
@@ -230,6 +285,42 @@ mod tests {
                 partial: false
             })
         );
+    }
+
+    #[test]
+    fn a_depth_walk_keeps_folders_down_to_the_depth_and_counts_the_rest_in() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("tree/one/a.txt"), 10);
+        write(&root.path().join("tree/one/two/b.txt"), 20);
+        write(&root.path().join("tree/one/two/three/c.txt"), 5);
+
+        let tree = measure_folder_depth(
+            &root.path().join("tree"),
+            &running(),
+            2,
+            Duration::MAX,
+            |_| {},
+        )
+        .unwrap();
+
+        let kept: Vec<_> = tree
+            .below
+            .iter()
+            .map(|(path, size)| {
+                (
+                    path.strip_prefix(root.path()).unwrap().to_owned(),
+                    size.bytes,
+                )
+            })
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                (PathBuf::from("tree/one"), 35),
+                (PathBuf::from("tree/one/two"), 25)
+            ]
+        );
+        assert_eq!(tree.total.bytes, 35);
     }
 
     #[test]
@@ -362,6 +453,7 @@ mod tests {
             device_of,
             |bytes| reported.push(bytes),
             Duration::ZERO,
+            Keep::default(),
         )
         .unwrap();
 

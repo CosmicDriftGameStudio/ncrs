@@ -11,6 +11,7 @@ Intents and fields:
 - explain: ONLY a why-question about where a given file ended up (warum liegt X dort). Not for "wo ist ..." (that is search). file (file name).
 - open_folder: ONLY look into / open / show the contents of ONE named folder, nothing is moved or changed ("öffne /Bank", "zeig mir /Archiv/Versicherung", "was liegt in Scans", "open ~/Documents/Taxes"). folder (the path or name as said). Not documents found by their content (that is search), not cleaning up (tidy_folder).
 - bulk_move: move all documents of a certain kind, sender or year to a folder. Only when the message asks to move/put/pack such documents somewhere. If the source is a named folder, it is tidy_folder instead. Optional filter_kind, filter_sender, filter_year (4-digit); target (folder path, required). A message that only asks to find or show documents is search, never bulk_move.
+- space: about the free space on the drive. ask: "why" (why is the disk full, where did the space go, was frisst meinen Platz), "delete_safe" (delete all the safe ones, mach alle sicheren mal, räum die Caches weg), "remove_worktrees" (remove the merged worktrees, räum die gemergten Worktrees weg), "overview" (show the overview of the space, zeig mir die Übersicht, öffne Platz schaffen). Not for cleaning up one named folder of documents (that is tidy_folder).
 - answer: the message picks one of the options of Hermes' last question. Only if a last question is given; if the message is a correction or a new request instead, ignore the question. choice must be one of the options given.
 - smalltalk: a greeting, thanks, or a question about what Hermes can do or who it is ("hi", "hallo", "danke", "what can you do?", "was kannst du?"). Not a request for a joke or a fact (that is other). No fields.
 - leave_as_is: the user wants nothing changed ("keep everything as it is", "lass alles so wie es ist", "never mind, forget it", "doch nichts ändern"). Only when it is neither taking back an action (that is undo: "zurücksetzen", "wie vorher") nor a pick from Hermes' last question ("nö stopp" after a question is answer). No fields.
@@ -58,6 +59,34 @@ Previous request: none
 Previous message: none
 Message: what is in Archiv/Versicherung?
 {"intent":"open_folder","folder":"Archiv/Versicherung"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: warum ist die platte voll
+{"intent":"space","ask":"why"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: mach alle sicheren mal
+{"intent":"space","ask":"delete_safe"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: räum die gemergten worktrees weg
+{"intent":"space","ask":"remove_worktrees"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: zeig mir die übersicht
+{"intent":"space","ask":"overview"}
 
 Hermes' last question: none
 Previous search: none

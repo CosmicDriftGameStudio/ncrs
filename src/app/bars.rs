@@ -72,6 +72,16 @@ impl App {
     /// along it is, how many wait, and whether Escape will stop it.
     pub(in crate::app) fn job_status(&self) -> Option<statusbar::JobStatus> {
         let Some(running) = self.jobs.running() else {
+            if let Some(tick) = self.space_progress {
+                return Some(statusbar::JobStatus {
+                    label: self.lang.text(Msg::SpaceTabTitle),
+                    done: tick.done,
+                    total: tick.total,
+                    waiting: 0,
+                    abortable: false,
+                    detail: None,
+                });
+            }
             // The folder size walks do not run through the queue.
             let progress = self.panels.folder_size_progress()?;
             return Some(statusbar::JobStatus {
@@ -200,6 +210,7 @@ impl App {
             notes: self.notes.is_open(),
             filing: self.filing_view.session.is_some(),
             repos: self.repos.is_some(),
+            space: self.space.is_some(),
             git: self.git_tabs.ids(),
             hermes: self.hermes_chat.open,
         }
@@ -227,6 +238,10 @@ impl App {
 
     pub(in crate::app) fn repos_shown(&self) -> bool {
         self.repos.is_some() && self.shown_tab == ShownTab::Repos
+    }
+
+    pub(in crate::app) fn space_shown(&self) -> bool {
+        self.space.is_some() && self.shown_tab == ShownTab::Space
     }
 
     pub(in crate::app) fn filing_shown(&self) -> bool {
@@ -268,6 +283,17 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::Repos,
                 active: self.shown_tab == ShownTab::Repos,
+            });
+        }
+        if self.space.is_some() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Space(
+                    self.space_last_scan
+                        .as_ref()
+                        .map(|scan| scan.volume_name.clone())
+                        .filter(|name| !name.is_empty()),
+                ),
+                active: self.shown_tab == ShownTab::Space,
             });
         }
         for (id, state) in self.git_tabs.iter() {

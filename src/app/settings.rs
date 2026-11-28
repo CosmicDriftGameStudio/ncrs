@@ -200,6 +200,7 @@ impl App {
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::ReadTextlessAgain => self.read_textless_again(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
@@ -393,10 +394,14 @@ impl App {
                     page_focus,
                 ))
             });
+        let space_free = self.space_free_text();
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
             failure: self.settings_status_failure(),
             notice: self.notice.as_deref(),
+            space_free,
+            disk_warning: self.disk_warning_percent(),
+            platz_keys: state.feature == ncrs_config::SettingsFeature::Space,
             lang: self.lang,
             palette: &self.palette,
         })
@@ -448,6 +453,11 @@ impl App {
                     return Task::none();
                 }
                 self.update_repos(ncrs_repos::Message::Rescan)
+            }
+            SettingChange::Space(settings) => {
+                self.space_settings = settings;
+                self.refresh_space_facts();
+                self.update_space(ncrs_space_view::Message::Rescan)
             }
             SettingChange::Git(settings) => {
                 self.git_settings = settings;
@@ -685,7 +695,8 @@ impl App {
                 let reloads = [PanelSide::Left, PanelSide::Right]
                     .map(|each| self.reload_keeping_cursor(each));
                 let notice = self.show_notice(text);
-                Task::batch(reloads.into_iter().chain([notice]))
+                let remeasured = self.update_space(ncrs_space_view::Message::Rescan);
+                Task::batch(reloads.into_iter().chain([notice, remeasured]))
             }
             Err(text) => {
                 self.set_status_error(&text);

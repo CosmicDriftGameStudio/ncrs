@@ -7,7 +7,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{button, key_button, segmented, Tone};
 use ncrs_ui_kit::markdown_view::markdown_view;
 use ncrs_ui_kit::page_scroll::page_scroll;
-use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, DiskWarning, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line, page_source};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
@@ -48,7 +48,11 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         header(state, doc, ctx),
         theme::horizontal_rule(palette.border_inactive),
         page_scroll(PAGE_ID, body),
-        page_status_bar(bar, palette),
+        page_status_bar(
+            bar,
+            DiskWarning::of(ctx.disk_warning, ctx.lang, Message::AskWhyDiskFull),
+            palette
+        ),
     ]
     .width(Length::Fill)
     .height(Length::Fill)

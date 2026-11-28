@@ -55,6 +55,7 @@ pub use ncrs_jobs as jobs;
 mod git_keys;
 mod keymap;
 mod repos_keys;
+mod space_keys;
 pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]
 mod menu;

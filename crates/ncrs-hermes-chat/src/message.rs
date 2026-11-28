@@ -1,7 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use ncrs_ai::ChatIntent;
 use ncrs_filing::chat_work::ChatResult;
+use ncrs_space::{RunLog, Scan};
 
 use crate::state::{ChipReply, Step};
 
@@ -57,6 +59,16 @@ pub enum Message {
     HermesReady,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
+    /// "Why is the disk full?" asked from the Platz tab: the same as the typed sentence; sent by the app.
+    SpaceAsked,
+    /// The measure the chat asked for; sent by the app.
+    SpaceMeasured(Arc<Scan>),
+    SpaceMeasureFailed(String),
+    /// The sentences of the model for the folders the user decides about, or
+    /// why there are none.
+    SpaceDescribed(Result<Vec<String>, String>),
+    /// The run of the Platz tab that the chat asked for; sent by the app.
+    SpaceRunDone(Arc<RunLog>),
 }
 
 impl Message {
@@ -74,6 +86,10 @@ impl Message {
                 | Self::RuleAnswered(_)
                 | Self::TypedFolderResolved { .. }
                 | Self::NamedFoldersResolved { .. }
+                | Self::SpaceMeasured(_)
+                | Self::SpaceMeasureFailed(_)
+                | Self::SpaceDescribed(_)
+                | Self::SpaceRunDone(_)
         )
     }
 }
@@ -91,7 +107,8 @@ impl PartialEq for Message {
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
-            | (Self::WorkTick, Self::WorkTick) => true,
+            | (Self::WorkTick, Self::WorkTick)
+            | (Self::SpaceAsked, Self::SpaceAsked) => true,
             (Self::List(left), Self::List(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))

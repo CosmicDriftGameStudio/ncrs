@@ -16,6 +16,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network", "component", "user"] }
 ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+# One statvfs of the home folder for the disk hint.
+ncrs-os-probe = { path = "../ncrs-os-probe", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 
 [features]
@@ -27,6 +29,7 @@ sandbox = ["sysinfo/apple-app-store"]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
 iced_test = "0.14"
+tempfile = "3.27"
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 
 [lints]

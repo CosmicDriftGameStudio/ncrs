@@ -73,6 +73,7 @@ impl App {
 
     pub(in crate::app) fn git_area(&self) -> Container<'_, Message> {
         let ctx = ncrs_git_view::ViewCtx {
+            disk_warning: self.disk_warning_percent(),
             lang: self.lang,
             palette: &self.palette,
             date_format: self.columns.date_format,
@@ -216,6 +217,7 @@ impl App {
 
     fn run_git_action(&mut self, action: Ask) -> Task<Message> {
         match action {
+            Ask::AskWhyDiskFull => self.update_hermes_chat(ncrs_hermes_chat::Message::SpaceAsked),
             Ask::Close => Task::none(),
             Ask::OpenWorktreeTab(root) => self.open_git_tab_at(root),
             Ask::ViewFile(file) => self.open_in_viewer(file),

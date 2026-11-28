@@ -15,6 +15,15 @@ impl App {
 
     /// The Git actions, while a Git tab is shown that offers them.
     pub(in crate::app) fn command_palette_git_commands(&self) -> Vec<GitCommandEntry> {
+        if self.space_shown() {
+            return ncrs_space_view::commands(self.lang, &self.space_keys)
+                .into_iter()
+                .map(|(label, shortcut)| GitCommandEntry {
+                    label,
+                    shortcut: Some(shortcut).filter(|key| !key.is_empty()),
+                })
+                .collect();
+        }
         if self.repos_shown() {
             return ncrs_repos::commands(self.lang, &self.repos_keys)
                 .into_iter()
@@ -149,6 +158,12 @@ impl App {
             // up.
             Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
             Some(CommandPaletteAction::RunGit(place)) => {
+                if self.space_shown() {
+                    return match ncrs_space_view::message_of_command(place) {
+                        Some(space_message) => task.chain(self.update_space(space_message)),
+                        None => task,
+                    };
+                }
                 if self.repos_shown() {
                     return match ncrs_repos::message_of_command(place) {
                         Some(repos_message) => task.chain(self.update_repos(repos_message)),
@@ -189,6 +204,11 @@ impl App {
     /// key would do, and it counts among the recent commands.
     pub(in crate::app) fn run_command(&mut self, action: KeyAction) -> Task<Message> {
         self.remember_command(action);
+        if action == KeyAction::RestoreLastDeletion && self.space_decide_open() {
+            return self.update_space(ncrs_space_view::Message::Decide(
+                ncrs_space_view::DecideMessage::Undo,
+            ));
+        }
         self.update(action.message())
     }
 

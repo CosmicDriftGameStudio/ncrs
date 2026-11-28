@@ -273,6 +273,38 @@ fn a_dirty_or_locked_worktree_stays_with_its_branch() {
 }
 
 #[test]
+fn a_merged_worktree_with_a_changed_file_is_not_merged() {
+    let repo = repo();
+    let folder = merged_worktree(&repo);
+    let listed = |checkout: &Repo| refs(checkout.path(), &go()).unwrap().worktrees;
+    assert!(listed(&repo)
+        .iter()
+        .any(|tree| !tree.is_main && tree.merged));
+
+    write(&folder, "scratch.txt", "x\n");
+    let dirty = listed(&repo);
+    let linked = dirty.iter().find(|tree| !tree.is_main).unwrap();
+    assert_eq!(linked.wip, 1);
+    assert!(!linked.merged);
+}
+
+#[test]
+fn the_main_worktree_is_found_by_its_path_when_read_from_a_linked_one() {
+    let repo = repo();
+    let folder = merged_worktree(&repo);
+    let from_linked = refs(&folder, &go()).unwrap().worktrees;
+    let main: Vec<_> = from_linked.iter().filter(|tree| tree.is_main).collect();
+    assert_eq!(main.len(), 1);
+    assert_eq!(
+        std::fs::canonicalize(&main[0].path).unwrap(),
+        std::fs::canonicalize(repo.path()).unwrap()
+    );
+    let linked = from_linked.iter().find(|tree| !tree.is_main).unwrap();
+    assert!(linked.is_current);
+    assert!(linked.merged);
+}
+
+#[test]
 fn a_branch_that_moved_after_the_scan_is_left_alone() {
     let repo = repo();
     repo.git.create_branch("done", "main", false).unwrap();
