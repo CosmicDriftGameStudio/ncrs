@@ -793,7 +793,7 @@ mod ui_tests {
         never_touch_folders.push(home.join("Documents/Tax"));
         let never_touch: Vec<String> = never_touch_folders
             .iter()
-            .map(|folder| format!("\"{}\"", folder.display()))
+            .map(|folder| format!("'{}'", folder.display()))
             .collect();
         let mut state = state_of(&format!(
             "[space]\nwarn_drives = [\"Macintosh HD\", \"Backup\"]\ncatalog_off = []\nown_regenerable = [\"/home/test/work/build-cache\"]\nnever_touch = [{}]\n",
