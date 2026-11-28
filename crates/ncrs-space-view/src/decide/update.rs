@@ -159,7 +159,7 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
                 bytes,
                 emptied: state.emptying,
             });
-            state.can_undo = true;
+            state.can_undo = !state.emptying && !paths.is_empty();
             quiet(Task::none())
         }
         DecideMessage::Undone(count) => {

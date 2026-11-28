@@ -881,3 +881,48 @@ fn open_decide_settles_the_result_banner_and_opens_the_pane() {
     assert!(state.result().is_none());
     assert!(state.decide().is_some());
 }
+
+#[test]
+fn a_run_that_emptied_the_trash_or_moved_nothing_offers_no_undo() {
+    let mut ctx = ctx();
+    ctx.trash_can_purge = true;
+    let (mut state, _) = tab(small_scan(), &ctx);
+    open_downloads(&mut state, &ctx);
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::Loaded {
+            folder: path(&format!("{HOME}/Downloads")),
+            groups: Box::new(downloads()),
+        }),
+        &ctx,
+    );
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::ToggleEmptyTrash),
+        &ctx,
+    );
+    let actions = send(&mut state, Message::Decide(DecideMessage::Trash), &ctx);
+    let [Action::TrashOwn { items, .. }] = actions.as_slice() else {
+        panic!("one TrashOwn action, got {actions:?}");
+    };
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::Trashed(vec![items[0].path.clone()])),
+        &ctx,
+    );
+    assert!(!state.decide().unwrap().can_undo());
+    assert!(send(&mut state, Message::Decide(DecideMessage::Undo), &ctx).is_empty());
+
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::ToggleEmptyTrash),
+        &ctx,
+    );
+    send(&mut state, Message::Decide(DecideMessage::Trash), &ctx);
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::Trashed(Vec::new())),
+        &ctx,
+    );
+    assert!(!state.decide().unwrap().can_undo());
+}

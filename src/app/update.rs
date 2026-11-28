@@ -483,7 +483,8 @@ impl App {
                 paths,
                 failed,
                 batch,
-            } => self.space_trashed(paths, failed, batch),
+                emptied,
+            } => self.space_trashed(paths, failed, batch, emptied),
             Message::SpaceTrashFailed(reason) => {
                 self.set_status_error(&reason);
                 Task::none()

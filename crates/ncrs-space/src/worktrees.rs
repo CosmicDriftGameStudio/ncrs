@@ -260,11 +260,11 @@ pub fn remove_worktrees(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        let outcome = remove_one(worktree, probes, unknown, stop);
+        let (outcome, use_checked) = remove_one(worktree, probes, unknown, stop);
         log.rows.push(LogRow {
             path: worktree.path.clone(),
             size: worktree.size.bytes,
-            use_checked: outcome.is_ok(),
+            use_checked,
             last_used: worktree.modified,
             outcome,
         });
@@ -273,13 +273,14 @@ pub fn remove_worktrees(
     log
 }
 
+/// The outcome, and whether the in-use check got a real answer.
 fn remove_one(
     worktree: &WorktreeSpace,
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
     stop: &Arc<AtomicBool>,
-) -> Result<u64, Skip> {
-    check_subject(
+) -> (Result<u64, Skip>, bool) {
+    let checked = check_subject(
         &Subject {
             path: &worktree.path,
             tools: &[],
@@ -289,7 +290,14 @@ fn remove_one(
         },
         probes,
         unknown,
-    )?;
+    );
+    match checked {
+        Ok(answered) => (remove_merged(worktree, stop), answered),
+        Err(skip) => (Err(skip), false),
+    }
+}
+
+fn remove_merged(worktree: &WorktreeSpace, stop: &Arc<AtomicBool>) -> Result<u64, Skip> {
     let still_merged = merged_in(&worktree.repo, stop)
         .into_iter()
         .find(|candidate| candidate.path == worktree.path)

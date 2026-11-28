@@ -332,6 +332,25 @@ fn own_item(path: &Path) -> crate::execute::trash::OwnTrashItem {
     }
 }
 
+fn journaled_own(
+    setup: &Setup,
+    bin: &Bin,
+    items: &[crate::execute::trash::OwnTrashItem],
+) -> TrashReport {
+    let run = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        items,
+        &bin.trash,
+        false,
+    );
+    TrashReport {
+        trashed: run.gone.len(),
+        skipped: run.refused.len(),
+    }
+}
+
 #[test]
 fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
     let setup = Setup::new();
@@ -339,14 +358,7 @@ fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
     let file = setup.write("downloads/old.dmg", "installer");
     let item = own_item(&file);
 
-    let report = crate::execute::trash::trash_run_own(
-        &setup.index,
-        "Cleared",
-        &setup.root,
-        &[item],
-        &bin.trash,
-    )
-    .unwrap();
+    let report = journaled_own(&setup, &bin, &[item]);
 
     assert_eq!(
         report,
@@ -375,14 +387,7 @@ fn an_own_file_that_changed_since_it_was_shown_stays() {
     let item = own_item(&file);
     fs::write(&file, "much longer than before").unwrap();
 
-    let report = crate::execute::trash::trash_run_own(
-        &setup.index,
-        "Cleared",
-        &setup.root,
-        &[item],
-        &bin.trash,
-    )
-    .unwrap();
+    let report = journaled_own(&setup, &bin, &[item]);
 
     assert_eq!(
         report,
@@ -405,14 +410,7 @@ fn an_own_item_outside_the_root_stays() {
     fs::write(&outside, "x").unwrap();
     let item = own_item(&outside);
 
-    let report = crate::execute::trash::trash_run_own(
-        &setup.index,
-        "Cleared",
-        &setup.root,
-        &[item],
-        &bin.trash,
-    )
-    .unwrap();
+    let report = journaled_own(&setup, &bin, &[item]);
 
     assert_eq!(
         report,
@@ -477,4 +475,26 @@ fn a_folder_with_a_changed_file_inside_stays_with_and_without_the_journal() {
     assert_eq!(plain.refused, changed);
     assert_eq!(journaled.refused, changed);
     assert!(inner.exists());
+}
+
+#[test]
+fn a_journal_error_after_every_item_was_handled_counts_no_item() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let file = setup.write("downloads/a.txt", "a");
+    let item = own_item(&file);
+
+    let run = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+        false,
+    );
+
+    assert_eq!(run.gone, vec![file]);
+    assert!(run.refused.is_empty());
+    assert!(run.batch.is_some());
+    assert!(run.batch_error.is_none());
 }

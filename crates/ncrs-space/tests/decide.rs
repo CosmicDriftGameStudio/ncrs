@@ -234,6 +234,25 @@ mod decide_flow {
     }
 
     #[test]
+    fn a_download_is_not_its_own_copy_when_downloads_lies_below_the_search_root() {
+        let home = tempfile::tempdir().unwrap();
+        let downloads = home.path().join("Downloads");
+        fs::create_dir_all(&downloads).unwrap();
+        write(&downloads, "invoice.pdf", &"x".repeat(5000));
+
+        let groups = ncrs_space::decide::sort_downloads_with(
+            &downloads,
+            &FakeApps::with(&[]),
+            &AtomicBool::new(false),
+            SystemTime::now(),
+            &[home.path().to_path_buf()],
+        );
+
+        assert!(groups.elsewhere.is_empty());
+        assert_eq!(names(&groups.rest), ["invoice.pdf"]);
+    }
+
+    #[test]
     fn a_copy_outside_downloads_makes_the_download_redundant() {
         let home = tempfile::tempdir().unwrap();
         let downloads = home.path().join("Downloads");

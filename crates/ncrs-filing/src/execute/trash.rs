@@ -131,17 +131,10 @@ fn refusal_own(root: &Path, item: &OwnTrashItem) -> Result<ContentHash, SkipReas
     }
 }
 
-/// Puts your own files and folders in the trash, each only while it is still
-/// as it was shown (size and change time). Journaled as a `Hermes` batch of
-/// the trash kind, so the same undo puts them back.
-pub fn trash_run_own(
-    index: &Index,
-    name: &str,
-    root: &Path,
-    items: &[OwnTrashItem],
-    trash: &dyn Trash,
-) -> Result<TrashReport, ExecuteError> {
-    let planned: Vec<Planned> = items
+/// Each own item with its checks done: only an item still as it was shown (size and
+/// change time) has no `check`.
+fn plan_own(root: &Path, items: &[OwnTrashItem]) -> Vec<Planned> {
+    items
         .iter()
         .map(|item| match refusal_own(root, item) {
             Ok(hash) => Planned {
@@ -155,8 +148,7 @@ pub fn trash_run_own(
                 check: Some(reason),
             },
         })
-        .collect();
-    run_planned(index, name, root, planned, trash)
+        .collect()
 }
 
 /// Why this item must not be trashed, if there is a reason.
@@ -303,9 +295,12 @@ pub struct OwnTrashRun {
     pub refused: Vec<SkipReason>,
     /// The journal batch of the run, when there was an index: what undoes it.
     pub batch: Option<BatchId>,
+    /// The journal failed after the items were handled; no item is counted for it.
+    pub batch_error: Option<String>,
 }
 
-/// Puts own items in the trash like [`trash_run_own`], journaled when there
+/// Puts your own files and folders in the trash, each only while it is still
+/// as it was shown (size and change time), journaled when there
 /// is an index, with the same checks (without the content hash) when there is
 /// none. With `empty_after` only the entries this run created are deleted for
 /// good: the ones that were not listed before it and come from a trashed place.
@@ -343,39 +338,29 @@ fn journaled_own_run(
     items: &[OwnTrashItem],
     trash: &dyn Trash,
 ) -> OwnTrashRun {
-    let planned = items
-        .iter()
-        .map(|item| match refusal_own(root, item) {
-            Ok(hash) => Planned {
-                path: item.path.clone(),
-                hash,
-                check: None,
-            },
-            Err(reason) => Planned {
-                path: item.path.clone(),
-                hash: ContentHash([0; 32]),
-                check: Some(reason),
-            },
-        })
-        .collect();
+    let planned = plan_own(root, items);
     match run_planned_detailed(index, name, root, planned, trash) {
         Ok(run) => {
             let mut refused = run.refused;
-            if let Some(err) = run.error {
-                // The run stopped: what was not reached stays, what went is still reported.
+            let batch_error = run.error.map(|err| err.to_string());
+            if let Some(err) = &batch_error {
+                // What was not reached stays; what went is still reported. An error after
+                // every item was handled counts no item.
                 let unreached = items.len().saturating_sub(run.gone.len() + refused.len());
-                refused.extend(vec![SkipReason::Failed(err.to_string()); unreached.max(1)]);
+                refused.extend(vec![SkipReason::Failed(err.clone()); unreached]);
             }
             OwnTrashRun {
                 gone: run.gone,
                 refused,
                 batch: Some(run.batch),
+                batch_error,
             }
         }
         Err(err) => OwnTrashRun {
             gone: Vec::new(),
             refused: vec![SkipReason::Failed(err.to_string()); items.len()],
             batch: None,
+            batch_error: None,
         },
     }
 }

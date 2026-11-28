@@ -249,10 +249,11 @@ impl App {
                 .await
                 .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string())), None))
             },
-            |(paths, failed, batch)| Message::SpaceTrashed {
+            move |(paths, failed, batch)| Message::SpaceTrashed {
                 paths,
                 failed,
                 batch,
+                emptied: empty_after,
             },
         )
     }
@@ -262,6 +263,7 @@ impl App {
         paths: Vec<PathBuf>,
         failed: Option<(usize, String)>,
         batch: Option<ncrs_index::BatchId>,
+        emptied: bool,
     ) -> Task<Message> {
         if let Some((count, reason)) = failed {
             let shown = ncrs_i18n::fill_template(
@@ -270,7 +272,10 @@ impl App {
             );
             self.set_status_error(&shown);
         }
-        if !paths.is_empty() {
+        if paths.is_empty() || emptied {
+            self.last_own_trash.clear();
+            self.last_own_batch = None;
+        } else {
             self.last_own_trash.clone_from(&paths);
             self.last_own_batch = batch;
         }

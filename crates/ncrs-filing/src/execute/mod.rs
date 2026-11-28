@@ -29,8 +29,8 @@ pub use respell::is_respelling;
 use respell::{is_same_entry, respell, respell_back, restore_respelled};
 pub use run_steps::{open_run_batch, run_one};
 pub use trash::{
-    restore_own_items, trash_can_restore, trash_own_items, trash_run, trash_run_own, OwnTrashItem,
-    OwnTrashRun, TrashItem, TrashReport,
+    restore_own_items, trash_can_restore, trash_own_items, trash_run, OwnTrashItem, OwnTrashRun,
+    TrashItem, TrashReport,
 };
 
 /// One move. Paths are absolute.

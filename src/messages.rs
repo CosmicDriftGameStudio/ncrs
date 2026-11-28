@@ -200,6 +200,8 @@ pub enum Message {
         paths: Vec<std::path::PathBuf>,
         failed: Option<(usize, String)>,
         batch: Option<ncrs_index::BatchId>,
+        /// The trash was emptied of these files: there is nothing to put back.
+        emptied: bool,
     },
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),

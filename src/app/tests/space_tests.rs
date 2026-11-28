@@ -238,8 +238,11 @@ async fn own_files_go_to_the_trash_and_come_back_without_hermes() {
 
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSpace));
-    drop(app.space_trashed(run.gone, None, None));
+    drop(app.space_trashed(run.gone.clone(), None, None, false));
     assert_eq!(app.last_own_trash, paths);
+    drop(app.space_trashed(run.gone.clone(), None, None, true));
+    assert!(app.last_own_trash.is_empty(), "an emptied run has no undo");
+    drop(app.space_trashed(run.gone, None, None, false));
 
     assert_eq!(
         ncrs_filing::execute::restore_own_items(&trash, &app.last_own_trash),

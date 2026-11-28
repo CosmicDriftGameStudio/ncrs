@@ -157,7 +157,7 @@ pub fn sort_downloads_with(
         .filter(|item| !extras.contains(item.path.as_path()))
         .cloned()
         .collect();
-    groups.elsewhere = copies_elsewhere(&remaining, also_look_in, stop);
+    groups.elsewhere = copies_elsewhere(&remaining, folder, also_look_in, stop);
     let copied: HashSet<&Path> = groups
         .elsewhere
         .iter()
@@ -268,7 +268,12 @@ fn installed_app_of(item: &DownloadItem, apps: &dyn InstalledApps) -> Option<Ins
 
 /// Files below `roots` with the same content as an item. Hidden folders, links and
 /// `node_modules` are not entered; the walk ends after a fixed number of files.
-fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool) -> Vec<Matched> {
+fn copies_elsewhere(
+    items: &[DownloadItem],
+    downloads: &Path,
+    roots: &[PathBuf],
+    stop: &AtomicBool,
+) -> Vec<Matched> {
     let wanted: HashSet<u64> = items
         .iter()
         .filter(|item| !item.is_folder && item.size >= ELSEWHERE_MIN_BYTES)
@@ -279,8 +284,17 @@ fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool
     }
     let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
     let mut seen = 0;
+    let skip = fs::canonicalize(downloads).ok();
     for root in roots {
-        walk_for_sizes(root, &wanted, &mut by_size, &mut seen, 0, stop);
+        walk_for_sizes(
+            root,
+            skip.as_deref(),
+            &wanted,
+            &mut by_size,
+            &mut seen,
+            0,
+            stop,
+        );
     }
     let mut matched = Vec::new();
     for item in items.iter().filter(|item| !item.is_folder) {
@@ -294,9 +308,13 @@ fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool
         let Ok(hash) = hash_path(&item.path) else {
             continue;
         };
-        let same_content = candidates
-            .iter()
-            .find(|candidate| hash_path(candidate).is_ok_and(|other| other == hash));
+        let itself = fs::canonicalize(&item.path).ok();
+        let same_content = candidates.iter().find(|candidate| {
+            itself
+                .as_ref()
+                .is_none_or(|own| fs::canonicalize(candidate).ok().as_ref() != Some(own))
+                && hash_path(candidate).is_ok_and(|other| other == hash)
+        });
         if let Some(copy) = same_content {
             matched.push(Matched {
                 item: item.clone(),
@@ -308,14 +326,19 @@ fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool
     matched
 }
 
+/// `skip` is the canonical Downloads folder: a copy there is no copy elsewhere.
 fn walk_for_sizes(
     folder: &Path,
+    skip: Option<&Path>,
     wanted: &HashSet<u64>,
     found: &mut HashMap<u64, Vec<PathBuf>>,
     seen: &mut usize,
     depth: usize,
     stop: &AtomicBool,
 ) {
+    if skip.is_some_and(|downloads| fs::canonicalize(folder).is_ok_and(|own| own == downloads)) {
+        return;
+    }
     let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
@@ -334,7 +357,7 @@ fn walk_for_sizes(
         }
         if kind.is_dir() {
             if depth < ELSEWHERE_MAX_DEPTH {
-                walk_for_sizes(&path, wanted, found, seen, depth + 1, stop);
+                walk_for_sizes(&path, skip, wanted, found, seen, depth + 1, stop);
             }
         } else if let Ok(meta) = entry.metadata() {
             if meta.is_file() {

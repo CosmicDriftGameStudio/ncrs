@@ -252,3 +252,23 @@ fn a_set_stop_flag_removes_no_worktree() {
 fn stop_flag(set: bool) -> std::sync::Arc<AtomicBool> {
     std::sync::Arc::new(AtomicBool::new(set))
 }
+
+#[test]
+fn a_removed_worktree_log_row_says_the_check_did_not_answer_after_a_confirm_without_processes() {
+    let (_dir, repo, _linked) = merged();
+    let found = merged_worktrees(&[repo], &stop());
+    let probes = Fake {
+        processes: None,
+        folder: ncrs_space::FolderUse::Free,
+    };
+
+    let log = remove_worktrees(
+        &found,
+        &probes,
+        UnknownUse::AllowAfterConfirm,
+        &stop_flag(false),
+    );
+
+    log.rows[0].outcome.as_ref().unwrap();
+    assert!(!log.rows[0].use_checked);
+}
