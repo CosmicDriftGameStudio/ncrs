@@ -29,11 +29,11 @@ fn catalog_name(id: CatalogId, ctx: ViewCtx<'_>) -> String {
         .to_owned()
 }
 
-fn entry<'a>(name: String, hint: Option<Msg>, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+fn entry<'a>(name: String, hint_msg: Option<Msg>, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let mut line = row![card_text(name, ctx.palette)]
         .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
-    if let Some(hint) = hint {
+    if let Some(hint) = hint_msg {
         line = line.push(card_note(ctx.lang.text(hint), ctx.palette));
     }
     dot_line(line.into(), ctx.palette)

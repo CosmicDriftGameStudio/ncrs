@@ -89,18 +89,18 @@ pub fn confirm_list<'a, M: Clone + 'a>(
         right: spacing::XL,
     });
     let mut inside = column![scrollable(body).height(scroll_height)];
-    if let Some(sum) = sum {
+    if let Some(shown_sum) = sum {
         inside = inside
             .push(theme::horizontal_rule(palette.border_inactive))
             .push(
                 container(
                     row![
-                        text(sum.label)
+                        text(shown_sum.label)
                             .size(font_size::BODY)
                             .font(APP_FONT_BOLD)
                             .wrapping(Wrapping::None),
                         iced::widget::Space::new().width(Length::Fill),
-                        text(sum.size_text)
+                        text(shown_sum.size_text)
                             .size(font_size::BODY)
                             .font(APP_FONT_BOLD)
                             .wrapping(Wrapping::None),

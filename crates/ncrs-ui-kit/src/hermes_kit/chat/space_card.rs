@@ -232,8 +232,8 @@ pub fn space_card<'a, M: Clone + 'a>(
     if let Some(also) = &view.also {
         content = content.push(line(also, palette.dim_text, false));
     }
-    if let Some(actions) = actions {
-        content = content.push(actions);
+    if let Some(action_row) = actions {
+        content = content.push(action_row);
     }
     content = content.push(line(&view.footer, palette.dim_text, false));
     let colors = *palette;

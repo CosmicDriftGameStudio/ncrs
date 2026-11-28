@@ -5,14 +5,14 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Availability {
+pub enum Availability {
     Available,
     Unavailable,
 }
 
 /// The size of the devices of `which`, not of the whole devices folder. `None` when stopped.
 #[cfg(all(target_os = "macos", not(feature = "sandbox")))]
-pub(crate) fn device_bytes(devices: &Path, which: Availability, stop: &AtomicBool) -> Option<u64> {
+pub fn device_bytes(devices: &Path, which: Availability, stop: &AtomicBool) -> Option<u64> {
     let word = match which {
         Availability::Available => "available",
         Availability::Unavailable => "unavailable",
@@ -32,17 +32,13 @@ pub(crate) fn device_bytes(devices: &Path, which: Availability, stop: &AtomicBoo
 }
 
 #[cfg(not(all(target_os = "macos", not(feature = "sandbox"))))]
-pub(crate) fn device_bytes(
-    _devices: &Path,
-    _which: Availability,
-    _stop: &AtomicBool,
-) -> Option<u64> {
+pub fn device_bytes(_devices: &Path, _which: Availability, _stop: &AtomicBool) -> Option<u64> {
     Some(0)
 }
 
 /// The UUID in parentheses of a `simctl list` line.
 #[cfg(any(all(target_os = "macos", not(feature = "sandbox")), test))]
-pub(crate) fn device_id_of(line: &str) -> Option<&str> {
+pub fn device_id_of(line: &str) -> Option<&str> {
     line.split(['(', ')'])
         .map(str::trim)
         .find(|part| part.len() == 36 && part.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))

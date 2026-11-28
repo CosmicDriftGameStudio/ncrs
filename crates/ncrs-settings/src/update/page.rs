@@ -423,8 +423,8 @@ fn load_drives(home: std::path::PathBuf) -> Task<Message> {
                     .map(|drive| {
                         let space = drive.space();
                         crate::message::DriveRow {
-                            total: space.map_or(0, |space| space.total),
-                            used: space.map_or(0, |space| space.total - space.available),
+                            total: space.map_or(0, |measured| measured.total),
+                            used: space.map_or(0, |measured| measured.total - measured.available),
                             is_home: drive.is_home_drive,
                             name: drive.name,
                         }

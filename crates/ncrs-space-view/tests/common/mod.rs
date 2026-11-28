@@ -149,24 +149,24 @@ pub fn crowded_scan(processes_known: bool) -> Arc<Scan> {
         entries.push(catalog(
             &format!("/Users/marc/Library/Caches/{name}"),
             CatalogId::AppCache(name),
-            (place as u64 + 1) * GIB / 2,
+            u64::div_euclid((place as u64 + 1) * GIB, 2),
         ));
     }
-    for place in 0..24_u64 {
+    for place in 0..24 {
         entries.push(catalog(
             &format!("/Users/marc/.cargo-target/ncrs-{place}"),
             CatalogId::CargoTarget,
-            (place + 2) * GIB / 3,
+            u64::div_euclid((place + 2) * GIB, 3),
         ));
     }
-    for place in 0..22_u64 {
+    for place in 0..22 {
         entries.push(worktree(
             &format!("/Users/marc/code/ncrs/.wt/branch-{place}"),
             &format!("feat/branch-{place}"),
-            (place + 1) * GIB / 4,
+            u64::div_euclid((place + 1) * GIB, 4),
         ));
     }
-    for place in 0..7_u64 {
+    for place in 0..7 {
         entries.push(decide(
             &format!("/Users/marc/Documents/archive-{place}"),
             (place + 3) * GIB,
@@ -189,7 +189,7 @@ pub fn crowded_scan(processes_known: bool) -> Arc<Scan> {
 pub fn tab(scan: Arc<Scan>, ctx: &Ctx) -> (State, Vec<Action>) {
     let (mut state, _task) = open(ctx);
     let run = state.scan_run();
-    let (_task, actions) = update(
+    let (_scan_task, actions) = update(
         &mut state,
         Message::Scanned {
             run,

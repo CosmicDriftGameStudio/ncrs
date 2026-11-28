@@ -109,7 +109,7 @@ fn an_unmerged_worktree_is_not_listed() {
 #[test]
 fn removing_goes_through_git_and_takes_the_branch_with_it() {
     let (_dir, repo, linked) = merged();
-    let found = merged_worktrees(&[repo.clone()], &stop());
+    let found = merged_worktrees(std::slice::from_ref(&repo), &stop());
 
     let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip);
 
@@ -160,7 +160,7 @@ fn an_unmerged_worktree_is_counted_as_open_and_a_dirty_one_as_changes() {
     git(&linked, &["add", "."]);
     git(&linked, &["commit", "-q", "-m", "more"]);
 
-    let found = scan_worktrees(&[repo.clone()], &stop());
+    let found = scan_worktrees(std::slice::from_ref(&repo), &stop());
 
     assert!(found.merged.is_empty());
     assert_eq!(found.kept.len(), 1);

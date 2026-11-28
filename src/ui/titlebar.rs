@@ -256,9 +256,9 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
             ),
             PageTab::Space(drive) => page_tab(
                 &match drive {
-                    Some(drive) => ncrs_i18n::fill_template(
+                    Some(name) => ncrs_i18n::fill_template(
                         lang.text(Msg::SpaceTabTitleDrive),
-                        &[("{drive}", drive)],
+                        &[("{drive}", name)],
                     ),
                     None => lang.text(Msg::SpaceTabTitle).to_owned(),
                 },

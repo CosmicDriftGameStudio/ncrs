@@ -16,7 +16,7 @@ use crate::{failed, FolderUse, Holder, UnknownWhy};
 
 const MAX_FILES: usize = 2000;
 
-pub(crate) fn folder_use(folder: &Path) -> FolderUse {
+pub fn folder_use(folder: &Path) -> FolderUse {
     let files = match files_under(folder) {
         Ok(Some(files)) => files,
         Ok(None) => return FolderUse::Unknown(UnknownWhy::TooManyFiles),
@@ -39,12 +39,12 @@ fn files_under(folder: &Path) -> std::io::Result<Option<Vec<PathBuf>>> {
     let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(next) = pending.pop() {
-        for entry in fs::read_dir(&next)? {
-            let entry = entry?;
+        for read in fs::read_dir(&next)? {
+            let entry = read?;
             let kind = entry.file_type()?;
             if kind.is_dir() {
                 pending.push(entry.path());
-            } else if kind.is_file() {
+            } else if entry.metadata()?.is_file() {
                 if files.len() == MAX_FILES {
                     return Ok(None);
                 }
@@ -90,8 +90,8 @@ struct Session(u32);
 impl Session {
     #[allow(unsafe_code)]
     fn start() -> Result<Self, u32> {
-        let mut handle = 0_u32;
-        let mut key = [0_u16; CCH_RM_SESSION_KEY as usize + 1];
+        let mut handle: u32 = 0;
+        let mut key = [0; CCH_RM_SESSION_KEY as usize + 1];
         // SAFETY: `handle` is a live `u32` and `key` has the room of
         // CCH_RM_SESSION_KEY characters plus the NUL the call writes.
         let code = unsafe { RmStartSession(&mut handle, 0, key.as_mut_ptr()) };
@@ -104,7 +104,7 @@ impl Session {
 
     #[allow(unsafe_code)]
     fn register(&self, files: &[*const u16]) -> Result<(), u32> {
-        let count = u32::try_from(files.len()).map_err(|_| ERROR_MORE_DATA)?;
+        let count = u32::try_from(files.len()).map_err(|_too_many| ERROR_MORE_DATA)?;
         // SAFETY: `files` holds `count` pointers to NUL-terminated names that
         // the caller keeps alive for the call; no applications or services are
         // passed, with null pointers and zero counts.
@@ -128,9 +128,9 @@ impl Session {
 
     #[allow(unsafe_code)]
     fn list(&self) -> Result<Vec<RM_PROCESS_INFO>, u32> {
-        let mut needed = 0_u32;
-        let mut have = 0_u32;
-        let mut reasons = 0_u32;
+        let mut needed: u32 = 0;
+        let mut have: u32 = 0;
+        let mut reasons: u32 = 0;
         // SAFETY: with a null array and `have` 0 the call only reports the
         // count it needs; the out pointers point to live `u32`s.
         let code = unsafe {
@@ -150,10 +150,10 @@ impl Session {
         }
         // Processes may join between the two calls.
         let mut infos = vec![RM_PROCESS_INFO::default(); needed as usize + 8];
-        have = u32::try_from(infos.len()).map_err(|_| ERROR_MORE_DATA)?;
+        have = u32::try_from(infos.len()).map_err(|_too_many| ERROR_MORE_DATA)?;
         // SAFETY: `infos` has `have` elements, which the call fills in part
         // and reports how many in `have`; the other pointers are live `u32`s.
-        let code = unsafe {
+        let second_code = unsafe {
             RmGetList(
                 self.0,
                 &mut needed,
@@ -162,8 +162,8 @@ impl Session {
                 &mut reasons,
             )
         };
-        if code != ERROR_SUCCESS {
-            return Err(code);
+        if second_code != ERROR_SUCCESS {
+            return Err(second_code);
         }
         infos.truncate(have as usize);
         Ok(infos)

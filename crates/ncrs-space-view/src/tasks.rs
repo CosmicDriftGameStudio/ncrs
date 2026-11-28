@@ -78,7 +78,7 @@ pub fn delete(
             let mut progress = output.clone();
             let done = tokio::task::spawn_blocking(move || {
                 let safe_count = plan.safe.len();
-                let mut done_rows = 0_usize;
+                let mut done_rows: usize = 0;
                 let mut log = ncrs_space::delete_safe(
                     &plan.safe,
                     &SystemProbes,
@@ -148,9 +148,9 @@ pub fn load_decide(folder: PathBuf, is_downloads: bool, home: PathBuf) -> Task<M
             .unwrap_or_default();
             (folder, groups)
         },
-        |(folder, groups)| {
+        |(loaded_folder, groups)| {
             Message::Decide(DecideMessage::Loaded {
-                folder,
+                folder: loaded_folder,
                 groups: Box::new(groups),
             })
         },
@@ -187,7 +187,7 @@ fn children_of(folder: &Path, stop: &AtomicBool) -> DownloadGroups {
             })
         })
         .collect();
-    items.sort_by(|left, right| right.size.cmp(&left.size));
+    items.sort_by_key(|left| std::cmp::Reverse(left.size));
     DownloadGroups {
         rest: items,
         ..DownloadGroups::default()
@@ -198,10 +198,10 @@ fn children_of(folder: &Path, stop: &AtomicBool) -> DownloadGroups {
 pub fn read_log(dir: Option<PathBuf>) -> Task<Message> {
     Task::perform(
         async move {
-            let Some(dir) = dir else {
+            let Some(log_dir) = dir else {
                 return Vec::new();
             };
-            tokio::task::spawn_blocking(move || log_rows(&dir))
+            tokio::task::spawn_blocking(move || log_rows(&log_dir))
                 .await
                 .unwrap_or_default()
         },

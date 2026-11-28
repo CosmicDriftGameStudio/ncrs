@@ -18,7 +18,7 @@ fn nothing() -> Outcome {
 }
 
 /// What the overview does with a message; `None` when it is not the overview's.
-pub(crate) fn update(state: &mut State, message: &DecideMessage, ctx: &Ctx) -> Option<Outcome> {
+pub fn update(state: &mut State, message: &DecideMessage, ctx: &Ctx) -> Option<Outcome> {
     let on_side = state.decide.as_ref()?.area == DecideArea::Side;
     match message {
         DecideMessage::SidePressed(path) => Some(press(state, path, ctx)),

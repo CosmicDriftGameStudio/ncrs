@@ -789,9 +789,9 @@ mod ui_tests {
     fn the_platz_page_at_marcs_window_size() {
         let size = Size::new(1740.0, 1900.0);
         let home = Path::new("/home/test");
-        let mut never_touch = ncrs_config::space::default_never_touch(home);
-        never_touch.push(home.join("Documents/Tax"));
-        let never_touch: Vec<String> = never_touch
+        let mut never_touch_folders = ncrs_config::space::default_never_touch(home);
+        never_touch_folders.push(home.join("Documents/Tax"));
+        let never_touch: Vec<String> = never_touch_folders
             .iter()
             .map(|folder| format!("\"{}\"", folder.display()))
             .collect();

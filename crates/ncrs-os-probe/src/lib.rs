@@ -67,13 +67,13 @@ pub struct VolumeSpace {
 /// Blocking; gives up after `limit`. The check then runs on in the background
 /// until it ends by itself.
 pub fn folder_in_use(folder: &Path, limit: Duration) -> FolderUse {
-    let folder = folder.to_path_buf();
+    let owned_folder = folder.to_path_buf();
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("folder-in-use".to_owned())
         .spawn(move || {
             // The receiver is gone after a timeout; nobody waits for the answer then.
-            drop(sender.send(platform::folder_use(&folder)));
+            drop(sender.send(platform::folder_use(&owned_folder)));
         });
     if let Err(err) = spawned {
         return FolderUse::Unknown(UnknownWhy::Failed(err.to_string()));

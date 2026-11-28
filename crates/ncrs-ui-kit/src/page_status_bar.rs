@@ -48,8 +48,8 @@ pub struct DiskWarning<M> {
 impl<M> DiskWarning<M> {
     /// The warning of a page that has the used share of the drive, when it is past the warn level.
     pub fn of(percent: Option<u8>, lang: ncrs_i18n::Language, on_press: M) -> Option<Self> {
-        percent.map(|percent| Self {
-            percent,
+        percent.map(|used_percent| Self {
+            percent: used_percent,
             lang,
             on_press,
         })
@@ -200,8 +200,8 @@ pub fn page_status_bar<'a, M: Clone + 'a>(
     if let Some(right) = bar.right {
         line = line.push(small(right.to_owned(), palette.dim_text));
     }
-    if let Some(warning) = warning {
-        line = line.push(warning_segment(disk_segment(warning), palette));
+    if let Some(shown_warning) = warning {
+        line = line.push(warning_segment(disk_segment(shown_warning), palette));
     }
     container(column![
         theme::horizontal_rule(palette.border_inactive),

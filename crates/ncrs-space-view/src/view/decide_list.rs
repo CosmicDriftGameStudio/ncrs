@@ -38,7 +38,7 @@ fn marked<'a>(content: Element<'a, Message>, is_cursor: bool) -> Element<'a, Mes
 }
 
 /// What Hermes says about the folder, and the bar of what is chosen and what is not.
-pub(super) fn hermes<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+pub fn hermes<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let chosen = pane.chosen_bytes();
     let rest = pane.total_bytes().saturating_sub(chosen);
@@ -152,7 +152,7 @@ fn group_view<'a>(
     );
     let mut body = column![marked(head, head_cursor)];
     if is_open {
-        for entry in &group.items[..pane.shown_len(group)] {
+        for entry in group.items.get(..pane.shown_len(group)).unwrap_or_default() {
             body = body.push(item_row(entry, biggest_item, pane, ctx));
         }
         let (hidden, bytes) = pane.hidden_of(group);
@@ -211,7 +211,7 @@ fn groups<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 }
 
 /// The column titles above the scrolling groups.
-pub(super) fn list<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+pub fn list<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     column![
         file_columns_header(
             [
@@ -234,7 +234,7 @@ pub(super) fn list<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, M
 }
 
 /// The folder as a heading line: its name, then where it is, how big and when it was measured.
-pub(super) fn folder_line<'a>(
+pub fn folder_line<'a>(
     pane: &'a DecideState,
     summary: String,
     ctx: ViewCtx<'a>,

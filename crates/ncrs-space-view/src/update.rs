@@ -487,9 +487,9 @@ fn scanned(state: &mut State, ctx: &Ctx, run: u64, scan: Option<Arc<ncrs_space::
         .is_some_and(|measuring| measuring.stop.load(Ordering::Relaxed));
     state.measuring = None;
     match scan {
-        Some(scan) => {
-            state.take_scan(Arc::clone(&scan), &ctx.home, ctx.store_build);
-            (Task::none(), vec![Action::Measured(scan)])
+        Some(measured) => {
+            state.take_scan(Arc::clone(&measured), &ctx.home, ctx.store_build);
+            (Task::none(), vec![Action::Measured(measured)])
         }
         None => {
             if !stopped {

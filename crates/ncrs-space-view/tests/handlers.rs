@@ -351,8 +351,8 @@ fn escape_stops_a_measure_and_only_then_closes_the_tab() {
     let run = state.scan_run();
     send(&mut state, Message::Scanned { run, scan: None }, &ctx);
     assert!(state.failure().is_none(), "a stopped measure is no failure");
-    let actions = send(&mut state, Message::Escape, &ctx);
-    assert_eq!(actions, [Action::Closed]);
+    let closing = send(&mut state, Message::Escape, &ctx);
+    assert_eq!(closing, [Action::Closed]);
 }
 
 #[test]

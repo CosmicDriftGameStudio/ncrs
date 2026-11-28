@@ -19,11 +19,7 @@ use crate::rows::GROUP_ORDER;
 use crate::state::State;
 use crate::texts::{group_title, row_name};
 
-pub(super) fn view<'a>(
-    pane: &'a DecideState,
-    state: &'a State,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
+pub fn view<'a>(pane: &'a DecideState, state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let biggest = state.rows().iter().map(|row| row.bytes).max().unwrap_or(0);
     let mut list = column![];

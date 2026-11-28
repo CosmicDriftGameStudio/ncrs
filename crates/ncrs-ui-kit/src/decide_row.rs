@@ -55,7 +55,7 @@ fn bar<'a, M: 'a>(fraction: f32, color: Color, width: f32, palette: &Palette) ->
         0
     } else {
         ((fraction.clamp(0.0, 1.0) * f32::from(FileColumns::BAR_PORTIONS)).round() as u16)
-            .max(FileColumns::BAR_PORTIONS / 60)
+            .max(FileColumns::BAR_PORTIONS.div_euclid(60))
     };
     let part = |portion: u16, tint: Color| {
         container("")

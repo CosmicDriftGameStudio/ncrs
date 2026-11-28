@@ -195,11 +195,13 @@ impl App {
                     let (unchanged, changed): (Vec<_>, Vec<_>) = items
                         .into_iter()
                         .partition(|item| !changed_since_measure(item));
-                    let (gone, failed) = trash_items(trash.as_ref(), &unchanged, empty_after);
-                    let failed = match (failed, changed.len()) {
+                    let (gone, trash_failed) = trash_items(trash.as_ref(), &unchanged, empty_after);
+                    let failed = match (trash_failed, changed.len()) {
                         (failed, 0) => failed,
                         (None, count) => Some((count, changed_reason)),
-                        (Some((count, reason)), changed) => Some((count + changed, reason)),
+                        (Some((count, reason)), changed_count) => {
+                            Some((count + changed_count, reason))
+                        }
                     };
                     (gone, failed)
                 })
@@ -275,9 +277,9 @@ impl App {
         scan: Option<Arc<ncrs_space::Scan>>,
     ) -> Task<Message> {
         match scan {
-            Some(scan) => {
-                self.space_last_scan = Some(Arc::clone(&scan));
-                self.update_hermes_chat(HermesChatMessage::SpaceMeasured(scan))
+            Some(measured) => {
+                self.space_last_scan = Some(Arc::clone(&measured));
+                self.update_hermes_chat(HermesChatMessage::SpaceMeasured(measured))
             }
             None => {
                 let reason = ncrs_os_probe::volume_space(&self.home)
@@ -294,11 +296,11 @@ impl App {
         &mut self,
         kind: ncrs_hermes_chat::SpaceRunKind,
     ) -> Task<Message> {
-        let kind = match kind {
+        let asked = match kind {
             ncrs_hermes_chat::SpaceRunKind::DeleteSafe => ConfirmKind::Safe,
             ncrs_hermes_chat::SpaceRunKind::RemoveWorktrees => ConfirmKind::Worktrees,
         };
-        self.space_run_ask = Some(kind);
+        self.space_run_ask = Some(asked);
         let was_open = self.space.is_some();
         let opened = self.open_space();
         let ready = self
@@ -306,7 +308,7 @@ impl App {
             .as_ref()
             .is_some_and(|state| state.scan().is_some() && !state.is_measuring());
         let confirm = if was_open && ready {
-            self.update_space(message_of_run(kind))
+            self.update_space(message_of_run(asked))
         } else {
             Task::none()
         };
@@ -415,10 +417,10 @@ impl App {
         volume: Option<ncrs_os_probe::VolumeSpace>,
     ) {
         self.home_volume = volume;
-        let hint = volume.and_then(|volume| {
-            ncrs_monitor::disk_hint(volume, self.space_settings.warn_from_percent)
+        let measured_hint = volume.and_then(|measured| {
+            ncrs_monitor::disk_hint(measured, self.space_settings.warn_from_percent)
         });
-        let Some(hint) = hint else {
+        let Some(hint) = measured_hint else {
             self.space_hint = None;
             return;
         };

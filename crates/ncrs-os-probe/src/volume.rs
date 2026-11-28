@@ -46,8 +46,8 @@ fn platform_volume_space(path: &Path) -> io::Result<VolumeSpace> {
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 
     let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-    let mut available = 0_u64;
-    let mut total = 0_u64;
+    let mut available: u64 = 0;
+    let mut total: u64 = 0;
     // SAFETY: `wide` is NUL-terminated and alive for the call; the two out
     // pointers point to live `u64`s and the third (total free) may be null.
     let ok = unsafe {

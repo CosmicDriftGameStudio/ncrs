@@ -120,19 +120,19 @@ mod ui_tests {
         send(&mut state, Message::DeleteSafe, &app);
         send(&mut state, Message::ConfirmAccept, &app);
         let run = state.running().unwrap().run;
-        let freed: u64 = (0..24_u64)
+        let freed: u64 = (0..24)
             .filter(|place| *place != 5)
-            .map(|place| (place + 2) * GIB / 3)
+            .map(|place| u64::div_euclid((place + 2) * GIB, 3))
             .sum();
         let free_after = 78 * GIB + freed;
-        let rows = (0..24_u64)
+        let rows = (0..24)
             .map(|place| LogRow {
                 path: path(&format!("/Users/marc/.cargo-target/ncrs-{place}")),
-                size: (place + 2) * GIB / 3,
+                size: u64::div_euclid((place + 2) * GIB, 3),
                 outcome: if place == 5 {
                     Err(Skip::UseUnknown)
                 } else {
-                    Ok((place + 2) * GIB / 3)
+                    Ok(u64::div_euclid((place + 2) * GIB, 3))
                 },
                 last_used: None,
                 use_checked: false,

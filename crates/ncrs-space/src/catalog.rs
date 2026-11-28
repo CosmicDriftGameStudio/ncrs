@@ -211,12 +211,6 @@ pub fn catalog_for(
         Os::Linux => Some(env_path("XDG_CACHE_HOME").unwrap_or_else(|| home.join(".cache"))),
         Os::Windows => None,
     };
-    let in_app_data = |tool: &str, below: &str| {
-        local_app_data
-            .as_ref()
-            .map(|root| root.join(tool).join(below))
-    };
-
     let cargo_home = env_path("CARGO_HOME").unwrap_or_else(|| home.join(".cargo"));
     add(
         CatalogId::CargoRegistryCache,
@@ -224,44 +218,14 @@ pub fn catalog_for(
         false,
     );
 
-    let sccache = env_path("SCCACHE_DIR").or_else(|| match os {
-        Os::MacOs => cache_root.as_ref().map(|root| root.join("Mozilla.sccache")),
-        Os::Linux => cache_root.as_ref().map(|root| root.join("sccache")),
-        Os::Windows => in_app_data("Mozilla", "sccache/cache"),
-    });
-    if let Some(path) = sccache {
-        add(CatalogId::Sccache, path, false);
-    }
-
-    let yarn = match os {
-        Os::MacOs => cache_root.as_ref().map(|root| root.join("Yarn")),
-        Os::Linux => cache_root.as_ref().map(|root| root.join("yarn")),
-        Os::Windows => in_app_data("Yarn", "Cache"),
+    let roots = CacheRoots {
+        os,
+        home,
+        cache_root: cache_root.as_deref(),
+        local_app_data: local_app_data.as_deref(),
     };
-    let pip = match os {
-        Os::MacOs | Os::Linux => cache_root.as_ref().map(|root| root.join("pip")),
-        Os::Windows => in_app_data("pip", "Cache"),
-    };
-    let pnpm = match os {
-        Os::MacOs => Some(home.join("Library/pnpm/store")),
-        Os::Linux => Some(home.join(".local/share/pnpm/store")),
-        Os::Windows => in_app_data("pnpm", "store"),
-    };
-    let npm = match os {
-        Os::Windows => in_app_data("npm-cache", "_cacache"),
-        Os::MacOs | Os::Linux => Some(home.join(".npm/_cacache")),
-    };
-    for (id, path) in [
-        (CatalogId::Yarn, yarn),
-        (CatalogId::Pip, pip),
-        (CatalogId::Pnpm, pnpm),
-        (CatalogId::Npm, npm),
-        (CatalogId::Bun, Some(home.join(".bun/install/cache"))),
-        (CatalogId::Gradle, Some(home.join(".gradle/caches"))),
-    ] {
-        if let Some(path) = path {
-            add(id, path, false);
-        }
+    for (id, folder) in tool_caches(&roots, env_path("SCCACHE_DIR")) {
+        add(id, folder, false);
     }
 
     if os == Os::MacOs {
@@ -284,14 +248,8 @@ pub fn catalog_for(
         }
     }
 
-    for &name in KNOWN_APP_CACHES {
-        let path = match os {
-            Os::Windows => in_app_data(name, "Cache"),
-            Os::MacOs | Os::Linux => cache_root.as_ref().map(|root| root.join(name)),
-        };
-        if let Some(path) = path {
-            add(CatalogId::AppCache(name), path, false);
-        }
+    for (id, folder) in app_caches(&roots) {
+        add(id, folder, false);
     }
 
     for project in project_folders(repos) {
@@ -355,15 +313,87 @@ pub fn catalog_for(
     places
 }
 
+/// Where the per-user cache folders of this system are.
+struct CacheRoots<'a> {
+    os: Os,
+    home: &'a Path,
+    cache_root: Option<&'a Path>,
+    local_app_data: Option<&'a Path>,
+}
+
+impl CacheRoots<'_> {
+    fn in_app_data(&self, tool: &str, below: &str) -> Option<PathBuf> {
+        self.local_app_data.map(|root| root.join(tool).join(below))
+    }
+
+    fn in_cache_root(&self, name: &str) -> Option<PathBuf> {
+        self.cache_root.map(|root| root.join(name))
+    }
+}
+
+/// The package manager and build caches that exist as a folder, in listing order.
+fn tool_caches(roots: &CacheRoots<'_>, sccache_dir: Option<PathBuf>) -> Vec<(CatalogId, PathBuf)> {
+    let home = roots.home;
+    let sccache = sccache_dir.or_else(|| match roots.os {
+        Os::MacOs => roots.in_cache_root("Mozilla.sccache"),
+        Os::Linux => roots.in_cache_root("sccache"),
+        Os::Windows => roots.in_app_data("Mozilla", "sccache/cache"),
+    });
+    let yarn = match roots.os {
+        Os::MacOs => roots.in_cache_root("Yarn"),
+        Os::Linux => roots.in_cache_root("yarn"),
+        Os::Windows => roots.in_app_data("Yarn", "Cache"),
+    };
+    let pip = match roots.os {
+        Os::MacOs | Os::Linux => roots.in_cache_root("pip"),
+        Os::Windows => roots.in_app_data("pip", "Cache"),
+    };
+    let pnpm = match roots.os {
+        Os::MacOs => Some(home.join("Library/pnpm/store")),
+        Os::Linux => Some(home.join(".local/share/pnpm/store")),
+        Os::Windows => roots.in_app_data("pnpm", "store"),
+    };
+    let npm = match roots.os {
+        Os::Windows => roots.in_app_data("npm-cache", "_cacache"),
+        Os::MacOs | Os::Linux => Some(home.join(".npm/_cacache")),
+    };
+    [
+        (CatalogId::Sccache, sccache),
+        (CatalogId::Yarn, yarn),
+        (CatalogId::Pip, pip),
+        (CatalogId::Pnpm, pnpm),
+        (CatalogId::Npm, npm),
+        (CatalogId::Bun, Some(home.join(".bun/install/cache"))),
+        (CatalogId::Gradle, Some(home.join(".gradle/caches"))),
+    ]
+    .into_iter()
+    .filter_map(|(id, folder)| folder.map(|known| (id, known)))
+    .collect()
+}
+
+/// The cache folders of the known apps, in listing order.
+fn app_caches(roots: &CacheRoots<'_>) -> Vec<(CatalogId, PathBuf)> {
+    KNOWN_APP_CACHES
+        .iter()
+        .filter_map(|&name| {
+            let folder = match roots.os {
+                Os::Windows => roots.in_app_data(name, "Cache"),
+                Os::MacOs | Os::Linux => roots.in_cache_root(name),
+            };
+            folder.map(|known| (CatalogId::AppCache(name), known))
+        })
+        .collect()
+}
+
 /// Whether `path` is `root` or lies below it, compared by path components.
-pub(crate) fn is_under_any(path: &Path, roots: &[PathBuf]) -> bool {
+pub fn is_under_any(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
 /// A real folder (a symlink does not count), or with `files_too` a real file.
 fn exists_exactly(path: &Path, files_too: bool) -> bool {
     std::fs::symlink_metadata(path)
-        .is_ok_and(|found| found.file_type().is_dir() || (files_too && found.file_type().is_file()))
+        .is_ok_and(|found| found.is_dir() || (files_too && found.is_file()))
 }
 
 /// The repositories and their linked worktrees, each once.
@@ -518,9 +548,9 @@ fn is_stale_node_modules(project: &Path) -> bool {
                 .ok()
         })
         .max();
-    newest.is_some_and(|newest| {
+    newest.is_some_and(|modified| {
         SystemTime::now()
-            .duration_since(newest)
+            .duration_since(modified)
             .is_ok_and(|age| age > NODE_MODULES_STALE_AFTER)
     })
 }

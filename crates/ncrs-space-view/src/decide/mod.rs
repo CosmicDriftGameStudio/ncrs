@@ -14,8 +14,8 @@ use ncrs_ui_kit::kit::Check;
 
 pub use ncrs_space::InstalledApp;
 
-pub(crate) use side::update as side_update;
-pub(crate) use update::{open, reload, update};
+pub use side::update as side_update;
+pub use update::{open, reload, update};
 
 /// The id of the scrollable around the items.
 pub const DECIDE_LIST_ID: &str = "space-decide-list";
@@ -97,7 +97,7 @@ impl DecideArea {
 
 /// One stop of the keyboard in the list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DecideKey {
+pub enum DecideKey {
     Head(DecideGroupKind),
     Item(PathBuf),
     /// The row that opens the rest of a long group.
@@ -157,21 +157,21 @@ pub enum DecideMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecideState {
-    pub(crate) folder: PathBuf,
-    pub(crate) is_downloads: bool,
-    pub(crate) groups: Vec<DecideGroup>,
-    pub(crate) loaded: bool,
-    pub(crate) chosen: HashSet<PathBuf>,
-    pub(crate) folded: HashSet<DecideGroupKind>,
-    pub(crate) expanded: HashSet<DecideGroupKind>,
-    pub(crate) cursor: Option<DecideKey>,
-    pub(crate) area: DecideArea,
+    pub folder: PathBuf,
+    pub is_downloads: bool,
+    pub groups: Vec<DecideGroup>,
+    pub loaded: bool,
+    pub chosen: HashSet<PathBuf>,
+    pub folded: HashSet<DecideGroupKind>,
+    pub expanded: HashSet<DecideGroupKind>,
+    pub cursor: Option<DecideKey>,
+    pub area: DecideArea,
     /// The row of the overview under the keys.
-    pub(crate) side_cursor: PathBuf,
-    pub(crate) empty_after: bool,
-    pub(crate) emptying: bool,
-    pub(crate) notice: Option<DecideNotice>,
-    pub(crate) can_undo: bool,
+    pub side_cursor: PathBuf,
+    pub empty_after: bool,
+    pub emptying: bool,
+    pub notice: Option<DecideNotice>,
+    pub can_undo: bool,
 }
 
 impl DecideState {
@@ -249,10 +249,10 @@ impl DecideState {
 
     /// The items of the group that are not shown: how many and how big.
     pub fn hidden_of(&self, group: &DecideGroup) -> (usize, u64) {
-        let hidden = &group.items[self.shown_len(group)..];
+        let hidden = group.items.get(self.shown_len(group)..).unwrap_or_default();
         let bytes = hidden
             .iter()
-            .fold(0_u64, |sum, entry| sum.saturating_add(entry.item.size));
+            .fold(0, |sum: u64, entry| sum.saturating_add(entry.item.size));
         (hidden.len(), bytes)
     }
 
@@ -267,7 +267,10 @@ impl DecideState {
             }
             let shown = self.shown_len(group);
             keys.extend(
-                group.items[..shown]
+                group
+                    .items
+                    .get(..shown)
+                    .unwrap_or_default()
                     .iter()
                     .map(|entry| DecideKey::Item(entry.item.path.clone())),
             );
@@ -325,21 +328,21 @@ impl DecideState {
             .iter()
             .flat_map(|group| group.items.iter())
             .filter(|entry| self.chosen.contains(&entry.item.path))
-            .fold(0, |sum, entry| sum.saturating_add(entry.item.size))
+            .fold(0, |sum: u64, entry| sum.saturating_add(entry.item.size))
     }
 
     pub fn total_bytes(&self) -> u64 {
         self.groups
             .iter()
             .flat_map(|group| group.items.iter())
-            .fold(0, |sum, entry| sum.saturating_add(entry.item.size))
+            .fold(0, |sum: u64, entry| sum.saturating_add(entry.item.size))
     }
 
     pub fn group_bytes(group: &DecideGroup) -> u64 {
         group
             .items
             .iter()
-            .fold(0, |sum, entry| sum.saturating_add(entry.item.size))
+            .fold(0, |sum: u64, entry| sum.saturating_add(entry.item.size))
     }
 
     /// Whether all, some or none of the group is chosen.

@@ -24,8 +24,8 @@ fn palette() -> Palette {
 #[test]
 fn the_confirm_list_keeps_its_columns_apart() {
     let p = palette();
-    let lines = (0..4_u64)
-        .map(|place| ConfirmLine {
+    let lines = (0..4)
+        .map(|place: u64| ConfirmLine {
             name: format!("Rust build ncrs-{place}"),
             path: format!("~/.cargo-target/ncrs-{place}"),
             check: Some("no cargo/rustc is running".to_owned()),

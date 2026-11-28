@@ -196,7 +196,7 @@ pub fn scan(
         entries.retain(|entry| entry.device.is_none() || entry.device == home_device);
     }
     partial |= entries.iter().any(|entry| entry.size.partial);
-    entries.sort_by(|left, right| right.size.bytes.cmp(&left.size.bytes));
+    entries.sort_by_key(|left| std::cmp::Reverse(left.size.bytes));
 
     Some(Scan {
         volume: volume.unwrap_or(VolumeSpace {

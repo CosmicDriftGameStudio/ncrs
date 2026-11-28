@@ -9,7 +9,7 @@ use crate::catalog::CatalogId;
 use crate::scan::{Entry, EntryKind};
 
 /// How long one look at the open files of a folder may take.
-pub(crate) const FOLDER_USE_LIMIT: Duration = Duration::from_secs(5);
+pub const FOLDER_USE_LIMIT: Duration = Duration::from_secs(5);
 
 /// Where the answers about running processes come from; a fake in tests.
 pub trait ProcessSource: Send + Sync {
@@ -68,7 +68,7 @@ impl Skip {
 impl Skip {
     /// Reads back what the run log wrote for a skipped row (`tool-running brew 1234`).
     pub fn from_log_words(words: &str) -> Option<Self> {
-        let words = words.trim();
+        let trimmed = words.trim();
         let holder = |rest: &str| {
             let (name, pid) = rest.trim().rsplit_once(' ')?;
             Some(Holder {
@@ -76,7 +76,7 @@ impl Skip {
                 name: name.to_owned(),
             })
         };
-        let (code, rest) = words.split_once(' ').unwrap_or((words, ""));
+        let (code, rest) = trimmed.split_once(' ').unwrap_or((trimmed, ""));
         match code {
             "tool-running" => holder(rest).map(Self::ToolRunning),
             "folder-open" => holder(rest).map(Self::FolderOpen),
@@ -93,7 +93,7 @@ impl Skip {
 }
 
 /// What a check compares the folder on the disk against.
-pub(crate) struct Subject<'a> {
+pub struct Subject<'a> {
     pub path: &'a Path,
     pub tools: &'a [&'static str],
     /// `None` when the size cannot be measured again from the path.
@@ -112,7 +112,7 @@ pub fn check_before_delete(
 
 /// [`check_before_delete`] that also says whether the in-use check got a real answer
 /// (`true`), or was let through because it could not tell and the user allowed that.
-pub(crate) fn check_entry(
+pub fn check_entry(
     entry: &Entry,
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
@@ -138,7 +138,7 @@ pub(crate) fn check_entry(
     )
 }
 
-pub(crate) fn check_subject(
+pub fn check_subject(
     subject: &Subject<'_>,
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
@@ -187,7 +187,7 @@ pub(crate) fn check_subject(
     Ok(answered)
 }
 
-pub(crate) fn measured_bytes(path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {
+pub fn measured_bytes(path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {
     if metadata.is_dir() {
         let never = AtomicBool::new(false);
         ncrs_fs::measure_folder(path, &never).map(|size| size.bytes)
@@ -196,19 +196,19 @@ pub(crate) fn measured_bytes(path: &Path, metadata: &std::fs::Metadata) -> Optio
     }
 }
 
-pub(crate) fn runs_tool(holder: &Holder, tools: &[&str]) -> bool {
-    let name = holder.name.to_lowercase();
-    let name = name.strip_suffix(".exe").unwrap_or(&name);
+pub fn runs_tool(holder: &Holder, tools: &[&str]) -> bool {
+    let lowered = holder.name.to_lowercase();
+    let name = lowered.strip_suffix(".exe").unwrap_or(&lowered);
     tools.iter().any(|tool| tool.to_lowercase() == name)
 }
 
 #[cfg(unix)]
-pub(crate) fn device_of(metadata: &std::fs::Metadata) -> Option<u64> {
+pub fn device_of(metadata: &std::fs::Metadata) -> Option<u64> {
     use std::os::unix::fs::MetadataExt as _;
     Some(metadata.dev())
 }
 
 #[cfg(not(unix))]
-pub(crate) fn device_of(_metadata: &std::fs::Metadata) -> Option<u64> {
+pub fn device_of(_metadata: &std::fs::Metadata) -> Option<u64> {
     None
 }

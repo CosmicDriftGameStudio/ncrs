@@ -1,6 +1,6 @@
 //! The chat as a messenger column, built from the kit.
 
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone as _};
 use iced::widget::{column, operation, Row};
 use iced::{Element, Length, Task};
 use ncrs_i18n::{Language, Msg};

@@ -243,10 +243,10 @@ fn hermes_chat_key(
         ncrs_hermes_chat::ChatKey::DeleteChat => Some(Message::HermesChat(
             HermesChatMessage::List(ncrs_hermes_chat::ListMessage::KeyDelete),
         )),
-        key @ (ncrs_hermes_chat::ChatKey::SpaceDeleteSafe
+        chat_key @ (ncrs_hermes_chat::ChatKey::SpaceDeleteSafe
         | ncrs_hermes_chat::ChatKey::SpaceRemoveWorktrees
         | ncrs_hermes_chat::ChatKey::SpaceOverview
-        | ncrs_hermes_chat::ChatKey::FocusInput) => Some(Message::HermesChatKey(key)),
+        | ncrs_hermes_chat::ChatKey::FocusInput) => Some(Message::HermesChatKey(chat_key)),
         ncrs_hermes_chat::ChatKey::Pass | ncrs_hermes_chat::ChatKey::Type => quit(),
         ncrs_hermes_chat::ChatKey::Swallow => None,
     }

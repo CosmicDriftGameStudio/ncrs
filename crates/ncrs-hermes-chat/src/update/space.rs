@@ -127,14 +127,14 @@ pub fn described(state: &mut State, ctx: &Ctx, result: Result<Vec<String>, Strin
     let Some(asked) = state.describing.take() else {
         return;
     };
-    let card = state.thread.iter_mut().rev().find_map(|entry| match entry {
+    let latest_card = state.thread.iter_mut().rev().find_map(|entry| match entry {
         Entry::Hermes { parts, .. } => parts.iter_mut().find_map(|part| match part {
             Part::Space(card) => Some(card),
             _ => None,
         }),
         _ => None,
     });
-    let Some(card) = card else {
+    let Some(card) = latest_card else {
         return;
     };
     match result {

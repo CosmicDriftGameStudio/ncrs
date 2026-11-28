@@ -80,14 +80,14 @@ fn only_what_exists_is_listed_and_a_symlink_is_not() {
         let elsewhere = TempDir::new().unwrap();
         std::fs::create_dir_all(home.path().join(".gradle")).unwrap();
         std::os::unix::fs::symlink(elsewhere.path(), home.path().join(".gradle/caches")).unwrap();
-        let places = catalog(
+        let through_symlink = catalog(
             Os::Linux,
             home.path(),
             &no_env,
             &[],
             &SpaceSettings::default(),
         );
-        assert_eq!(ids(&places), [CatalogId::Bun]);
+        assert_eq!(ids(&through_symlink), [CatalogId::Bun]);
     }
 }
 
@@ -108,7 +108,7 @@ fn a_worktree_of_a_listed_repo_gets_its_target_too() {
         Os::Linux,
         home.path(),
         &no_env,
-        &[repo.clone()],
+        std::slice::from_ref(&repo),
         &SpaceSettings::default(),
     );
 

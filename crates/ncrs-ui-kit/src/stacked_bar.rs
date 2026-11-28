@@ -28,7 +28,7 @@ pub fn segment_portions(segments: &[BarSegment]) -> Vec<u16> {
         .iter()
         .map(|segment| match segment.portion {
             0 => 0,
-            share => u16::try_from(share.saturating_mul(PORTIONS) / total)
+            share => u16::try_from(share.saturating_mul(PORTIONS).div_euclid(total))
                 .unwrap_or(u16::MAX)
                 .max(1),
         })
@@ -57,7 +57,7 @@ pub fn stacked_bar_striped<'a, M: 'a>(
             continue;
         }
         if striped == Some(place) {
-            let stripe = (portion / STRIPES).max(1);
+            let stripe = portion.div_euclid(STRIPES).max(1);
             let mut left = portion;
             let mut solid = true;
             while left > 0 {

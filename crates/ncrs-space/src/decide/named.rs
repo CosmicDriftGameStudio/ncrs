@@ -37,11 +37,7 @@ const MODEL_FOLDERS: [&str; 7] = [
 const MODEL_WORD: &str = "model";
 const CORE_SIMULATOR: &str = "Library/Developer/CoreSimulator";
 
-pub(super) fn named_entries(
-    home: &Path,
-    settings: &SpaceSettings,
-    stop: &AtomicBool,
-) -> Vec<Entry> {
+pub fn named_entries(home: &Path, settings: &SpaceSettings, stop: &AtomicBool) -> Vec<Entry> {
     let mut places: Vec<(PathBuf, DecideKind)> = Vec::new();
     for path in session_log_folders(home) {
         places.push((path, DecideKind::SessionLogs));

@@ -31,9 +31,7 @@ fn read_usage(path: &Path) -> FileUsage {
         .arg(path)
         .output();
     match output {
-        Ok(output) if output.status.success() => {
-            parse_usage(&String::from_utf8_lossy(&output.stdout))
-        }
+        Ok(done) if done.status.success() => parse_usage(&String::from_utf8_lossy(&done.stdout)),
         Ok(_) | Err(_) => FileUsage::default(),
     }
 }
@@ -46,7 +44,7 @@ fn read_usage(_path: &Path) -> FileUsage {
 /// The output of `mdls -raw` for the date and the count: both values, separated by a NUL
 /// (or a line break); `(null)` for one the system does not have.
 #[cfg(any(all(target_os = "macos", not(feature = "sandbox")), test))]
-pub(crate) fn parse_usage(raw: &str) -> FileUsage {
+pub fn parse_usage(raw: &str) -> FileUsage {
     let mut values = raw.split(['\0', '\n']).map(str::trim);
     let last_opened = values.next().and_then(parse_date);
     let open_count = values.next().and_then(|count| count.parse().ok());
@@ -81,18 +79,19 @@ fn parse_date(text: &str) -> Option<SystemTime> {
         - offset;
     u64::try_from(epoch)
         .ok()
-        .map(|seconds| UNIX_EPOCH + Duration::from_secs(seconds))
+        .map(|since_epoch| UNIX_EPOCH + Duration::from_secs(since_epoch))
 }
 
 /// Days since 1970-01-01 of a proleptic Gregorian date.
 #[cfg(any(all(target_os = "macos", not(feature = "sandbox")), test))]
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let year_of_era = year.rem_euclid(400);
-    let shifted_month = (month + 9) % 12;
-    let day_of_year = (153 * shifted_month + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let march_year = if month <= 2 { year - 1 } else { year };
+    let era = march_year.div_euclid(400);
+    let year_of_era = march_year.rem_euclid(400);
+    let shifted_month = (month + 9).rem_euclid(12);
+    let day_of_year = (153 * shifted_month + 2).div_euclid(5) + day - 1;
+    let day_of_era =
+        year_of_era * 365 + year_of_era.div_euclid(4) - year_of_era.div_euclid(100) + day_of_year;
     era * 146_097 + day_of_era - 719_468
 }
 
@@ -101,7 +100,7 @@ mod tests {
     use super::*;
 
     fn seconds(time: Option<SystemTime>) -> Option<u64> {
-        time.and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        time.and_then(|at| at.duration_since(UNIX_EPOCH).ok())
             .map(|since| since.as_secs())
     }
 

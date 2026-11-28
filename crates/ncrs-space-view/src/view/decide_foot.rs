@@ -88,11 +88,7 @@ fn summary(pane: &DecideState, state: &State, ctx: ViewCtx<'_>) -> String {
     )
 }
 
-pub(super) fn view<'a>(
-    pane: &'a DecideState,
-    state: &'a State,
-    ctx: ViewCtx<'a>,
-) -> Element<'a, Message> {
+pub fn view<'a>(pane: &'a DecideState, state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let trash_label = fill_plural(
         Msg::SpaceDecideTrashButtonOne,

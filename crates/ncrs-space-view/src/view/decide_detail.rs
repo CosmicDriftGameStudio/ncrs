@@ -166,7 +166,7 @@ fn selection_section<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a,
     .into()
 }
 
-pub(super) fn view<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+pub fn view<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
     let mut sections = column![].width(Length::Fill);
     if let Some(entry) = pane.cursor_item() {

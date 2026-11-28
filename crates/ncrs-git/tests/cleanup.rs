@@ -276,7 +276,7 @@ fn a_dirty_or_locked_worktree_stays_with_its_branch() {
 fn a_merged_worktree_with_a_changed_file_is_not_merged() {
     let repo = repo();
     let folder = merged_worktree(&repo);
-    let listed = |repo: &Repo| refs(repo.path(), &go()).unwrap().worktrees;
+    let listed = |checkout: &Repo| refs(checkout.path(), &go()).unwrap().worktrees;
     assert!(listed(&repo)
         .iter()
         .any(|tree| !tree.is_main && tree.merged));

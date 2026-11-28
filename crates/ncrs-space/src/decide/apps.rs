@@ -18,7 +18,7 @@ pub trait InstalledApps {
 /// name that is only a number with dots, with or without a leading "v".
 pub fn version_of_installer(file_name: &str) -> Option<String> {
     let stem = Path::new(file_name).file_stem()?.to_str()?;
-    stem.split(|character: char| matches!(character, ' ' | '-' | '_'))
+    stem.split([' ', '-', '_'])
         .skip(1)
         .map(|word| word.strip_prefix(['v', 'V']).unwrap_or(word))
         .find(|word| is_dotted_number(word))
@@ -46,13 +46,13 @@ fn number_parts(version: &str) -> Option<Vec<u64>> {
 
 /// How the installed version compares with the installer's; trailing zeros do not count ("17" is "17.0").
 pub fn compare_versions(installed: Option<&str>, installer: Option<&str>) -> VersionRelation {
-    let (Some(installed), Some(installer)) = (
+    let (Some(installed_parts), Some(installer_parts)) = (
         installed.and_then(number_parts),
         installer.and_then(number_parts),
     ) else {
         return VersionRelation::Unknown;
     };
-    match installed.cmp(&installer) {
+    match installed_parts.cmp(&installer_parts) {
         std::cmp::Ordering::Equal => VersionRelation::Same,
         std::cmp::Ordering::Greater => VersionRelation::InstalledNewer,
         std::cmp::Ordering::Less => VersionRelation::InstalledOlder,
@@ -89,7 +89,7 @@ pub fn app_name_of_installer(file_name: &str) -> Option<String> {
     let stem = Path::new(file_name).file_stem()?.to_str()?;
     // The first word is always part of the name: "1Password" starts with a digit.
     let words: Vec<&str> = stem
-        .split(|character: char| matches!(character, ' ' | '-' | '_'))
+        .split([' ', '-', '_'])
         .filter(|word| !word.is_empty())
         .enumerate()
         .take_while(|(position, word)| *position == 0 || !ends_the_name(word))
@@ -200,14 +200,14 @@ fn bundle_version(_app: &Path) -> Option<String> {
 
 /// The string after the `CFBundleShortVersionString` key of an XML plist.
 #[cfg(any(target_os = "macos", test))]
-pub(super) fn plist_version(text: &str) -> Option<String> {
+pub fn plist_version(text: &str) -> Option<String> {
     let after_key = text.split_once("<key>CFBundleShortVersionString</key>")?.1;
-    let value = after_key
+    let raw_value = after_key
         .split_once("<string>")?
         .1
         .split_once("</string>")?
         .0;
-    let value = value.trim();
+    let value = raw_value.trim();
     (!value.is_empty()).then(|| value.to_owned())
 }
 
@@ -272,15 +272,15 @@ fn collect_desktop_entries(folder: &Path, known: &mut Vec<(String, PathBuf)>) {
 }
 
 /// The untranslated `Name=` of the `[Desktop Entry]` group.
-pub(super) fn desktop_name(text: &str) -> Option<String> {
+pub fn desktop_name(text: &str) -> Option<String> {
     let mut in_entry = false;
-    for line in text.lines() {
-        let line = line.trim();
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
         if line.starts_with('[') {
             in_entry = line == "[Desktop Entry]";
         } else if in_entry {
             if let Some(name) = line.strip_prefix("Name=") {
-                return Some(name.trim().to_owned()).filter(|name| !name.is_empty());
+                return Some(name.trim().to_owned()).filter(|found| !found.is_empty());
             }
         }
     }

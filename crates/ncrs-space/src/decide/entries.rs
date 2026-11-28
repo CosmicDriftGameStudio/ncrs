@@ -40,7 +40,7 @@ pub fn decide_entries(home: &Path, settings: &SpaceSettings, stop: &AtomicBool) 
         settings,
         stop,
     ));
-    entries.sort_by(|first, second| second.size.bytes.cmp(&first.size.bytes));
+    entries.sort_by_key(|first| std::cmp::Reverse(first.size.bytes));
     entries
 }
 
@@ -60,7 +60,7 @@ fn downloads_entries(
 }
 
 /// One entry per item of the groups, in the order of the groups.
-pub(super) fn entries_of_groups(groups: DownloadGroups) -> Vec<Entry> {
+pub fn entries_of_groups(groups: DownloadGroups) -> Vec<Entry> {
     let mut entries = Vec::new();
     let mut add = |item: &DownloadItem, kind: DecideKind, reason: DecideReason| {
         entries.push(entry_of(item, kind, reason));
@@ -203,12 +203,12 @@ fn is_left_alone(home: &Path, path: &Path) -> bool {
 }
 
 #[cfg(unix)]
-pub(super) fn device_of_path(path: &Path) -> Option<u64> {
+pub fn device_of_path(path: &Path) -> Option<u64> {
     use std::os::unix::fs::MetadataExt as _;
     fs::symlink_metadata(path).ok().map(|meta| meta.dev())
 }
 
 #[cfg(not(unix))]
-pub(super) fn device_of_path(_path: &Path) -> Option<u64> {
+pub fn device_of_path(_path: &Path) -> Option<u64> {
     None
 }

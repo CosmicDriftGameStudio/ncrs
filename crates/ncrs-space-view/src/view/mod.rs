@@ -59,7 +59,7 @@ fn menu_rows(state: &State, ctx: ViewCtx<'_>) -> Vec<MenuRow<Message>> {
         let label = ctx.keys.label(item.key);
         let entry = PopupEntry {
             label: ctx.lang.text(item.label).to_owned(),
-            key: Some(label).filter(|label| !label.is_empty()),
+            key: Some(label).filter(|text| !text.is_empty()),
             is_selected: index == state.menu_cursor(),
             on_press: item.enabled.then_some(Message::MenuPicked(item.entry)),
             on_hover: item.enabled.then_some(Message::MenuCursor(index)),
@@ -270,7 +270,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 }
 
 /// What `{ago}` and `{took}` of the measured line are.
-pub(crate) fn measured_line(state: &State, ctx: ViewCtx<'_>) -> String {
+pub fn measured_line(state: &State, ctx: ViewCtx<'_>) -> String {
     match state.scan() {
         Some(scan) => fill_template(
             ctx.lang.text(Msg::SpaceMeasured),

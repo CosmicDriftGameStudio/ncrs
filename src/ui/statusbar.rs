@@ -328,6 +328,21 @@ fn version_badge<'a, M: Clone + 'a>(
     )
 }
 
+/// The width the path field takes: what it shows, within the limits of the bar.
+fn path_width_of<M>(panel: &PanelState, path_bar_input: &PathBar<'_, M>) -> f32 {
+    let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
+        (Some(hit), _) => hit.text.chars().count(),
+        (None, Some(typed)) => typed.chars().count(),
+        (None, None) => panel.path.display().to_string().chars().count(),
+    };
+    if path_bar_input.hit_line.is_some() {
+        (estimated_text_width(path_chars, font_size::FILE) + HIT_HINT_WIDTH).min(HIT_LINE_MAX_WIDTH)
+    } else {
+        (estimated_text_width(path_chars, font_size::FILE) + PATH_EXTRA_WIDTH)
+            .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
+    }
+}
+
 /// The bottom bar: path, then the running job, then the failure of the last
 /// job, the panel's read error, or the selected entry; at the right the
 /// notice or the filing progress.
@@ -364,17 +379,7 @@ pub fn view<'a, M: Clone + 'a>(
         test_folder,
         date_format,
     } = activity;
-    let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
-        (Some(hit), _) => hit.text.chars().count(),
-        (None, Some(typed)) => typed.chars().count(),
-        (None, None) => panel.path.display().to_string().chars().count(),
-    };
-    let path_width = if path_bar_input.hit_line.is_some() {
-        (estimated_text_width(path_chars, font_size::FILE) + HIT_HINT_WIDTH).min(HIT_LINE_MAX_WIDTH)
-    } else {
-        (estimated_text_width(path_chars, font_size::FILE) + PATH_EXTRA_WIDTH)
-            .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
-    };
+    let path_width = path_width_of(panel, &path_bar_input);
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {

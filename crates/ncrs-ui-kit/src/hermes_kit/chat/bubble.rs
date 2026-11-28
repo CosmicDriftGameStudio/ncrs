@@ -24,7 +24,7 @@ const BOLD_MARK: &str = "**";
 const PATH_OPACITY: f32 = 0.8;
 
 /// The text with its `**bold**` stretches as spans.
-pub(super) fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
+pub fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
     content
         .split(BOLD_MARK)
         .enumerate()
@@ -253,9 +253,9 @@ pub fn chat_chip_keyed<'a, M: Clone + 'a>(
         .size(CHAT_TEXT)
         .wrapping(Wrapping::None);
     let content: Element<'a, M> = match key {
-        Some(key) => Row::new()
+        Some(key_name) => Row::new()
             .push(words)
-            .push(crate::kit::key_cap(key, palette))
+            .push(crate::kit::key_cap(key_name, palette))
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center)
             .into(),

@@ -269,7 +269,7 @@ fn drives_block<'a>(state: &State, lang: Language, palette: &Palette) -> Option<
 
 /// The level a drive that is `used_percent` full is drawn in when the
 /// warning starts at `warn_from_percent`.
-pub(crate) fn drive_level(used_percent: f32, warn_from_percent: u8) -> MeterLevel {
+pub fn drive_level(used_percent: f32, warn_from_percent: u8) -> MeterLevel {
     meter_level_from(used_percent, f32::from(warn_from_percent))
 }
 

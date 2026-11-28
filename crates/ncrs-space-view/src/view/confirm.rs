@@ -45,12 +45,12 @@ fn lines(ask: &ConfirmState, state: &State, ctx: ViewCtx<'_>) -> Vec<ConfirmLine
         .map(|(path, bytes)| {
             let row: Option<&DisplayRow> = state.row_by_path(path);
             let (name, check, color) = match row {
-                Some(row) => (
-                    row_name(row, ctx.lang),
-                    row_check(row, ctx.processes_known, ctx.lang)
+                Some(listed) => (
+                    row_name(listed, ctx.lang),
+                    row_check(listed, ctx.processes_known, ctx.lang)
                         .filter(|(tone, _)| *tone == CheckTone::Ok)
                         .map(|(_, words)| words),
-                    group_color(row.group, ctx.palette),
+                    group_color(listed.group, ctx.palette),
                 ),
                 None => (file_name(path), None, theme::space::safe(ctx.palette)),
             };
@@ -113,8 +113,8 @@ pub fn dialog<'a>(
     .spacing(spacing::M);
     list = list.push(kit::dim(ctx.lang.text(Msg::SpaceConfirmRecheck), palette));
     if ask.offers_worktrees(ctx.store_build) {
-        let worktree_bytes = ask.worktrees.iter().fold(0_u64, |sum, worktree| {
-            sum.saturating_add(worktree.size.bytes)
+        let worktree_bytes = ask.worktrees.iter().fold(0, |so_far: u64, worktree| {
+            so_far.saturating_add(worktree.size.bytes)
         });
         let label = format!(
             "{} {}",

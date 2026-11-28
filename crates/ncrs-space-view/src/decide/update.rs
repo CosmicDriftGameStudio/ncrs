@@ -20,13 +20,13 @@ use crate::update::Outcome;
 const PAGE_ROWS: isize = 10;
 
 /// Opens the pane for a folder of the overview and reads it off the UI thread.
-pub(crate) fn open(folder: PathBuf, is_downloads: bool, ctx: &Ctx) -> (DecideState, Task<Message>) {
+pub fn open(folder: PathBuf, is_downloads: bool, ctx: &Ctx) -> (DecideState, Task<Message>) {
     let task = tasks::load_decide(folder.clone(), is_downloads, ctx.home.clone());
     (DecideState::new(folder, is_downloads), task)
 }
 
 /// Reads the folder again, as the Rescan of the tab does while the pane is open.
-pub(crate) fn reload(state: &DecideState, ctx: &Ctx) -> Task<Message> {
+pub fn reload(state: &DecideState, ctx: &Ctx) -> Task<Message> {
     tasks::load_decide(state.folder.clone(), state.is_downloads, ctx.home.clone())
 }
 
@@ -38,7 +38,7 @@ fn scroll_to_cursor() -> Task<Message> {
     row_into_view(DECIDE_LIST_ID, FOCUSED_ROW_ID)
 }
 
-pub(crate) fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Outcome {
+pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Outcome {
     match message {
         DecideMessage::Loaded { folder, groups } => {
             if folder == state.folder {

@@ -160,7 +160,11 @@ impl fs::Trash for FolderTrash {
     fn trash(&self, path: &Path) -> Result<(), String> {
         let name = path.file_name().ok_or("no file name")?;
         std::fs::rename(path, self.folder.join(name)).map_err(|err| err.to_string())?;
-        self.entries.lock().unwrap().push(fs::TrashedItem {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|poisoned| poisoned.to_string())?;
+        entries.push(fs::TrashedItem {
             original: path.to_path_buf(),
             deleted_at: 0,
             key: name.to_owned(),
@@ -173,7 +177,11 @@ impl fs::Trash for FolderTrash {
     }
 
     fn list(&self) -> Result<Vec<fs::TrashedItem>, String> {
-        Ok(self.entries.lock().unwrap().clone())
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|poisoned| poisoned.to_string())?;
+        Ok(entries.clone())
     }
 
     fn restore(&self, item: &fs::TrashedItem) -> Result<(), fs::RestoreError> {

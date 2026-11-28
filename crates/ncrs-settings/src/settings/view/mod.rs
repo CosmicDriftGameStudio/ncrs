@@ -25,7 +25,7 @@ use notes_page::notes_groups;
 pub use page::focus_facts;
 use page::*;
 use space_page::space_groups;
-pub(crate) use space_page::space_list_target;
+pub use space_page::space_list_target;
 use system_page::system_groups;
 use type_rows::by_type_group;
 use usage_page::usage_sections;

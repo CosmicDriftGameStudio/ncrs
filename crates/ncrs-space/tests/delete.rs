@@ -169,7 +169,7 @@ fn a_row_let_through_after_the_confirm_says_the_check_did_not_answer() {
         |_| {},
     );
 
-    assert!(log.rows[0].outcome.is_ok());
+    log.rows[0].outcome.as_ref().unwrap();
     assert!(!log.rows[0].use_checked);
 }
 

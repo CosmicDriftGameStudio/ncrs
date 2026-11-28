@@ -6,8 +6,8 @@ use std::path::Path;
 
 use crate::{failed, FolderUse, Holder};
 
-pub(crate) fn folder_use(folder: &Path) -> FolderUse {
-    let folder = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+pub fn folder_use(folder: &Path) -> FolderUse {
+    let canonical = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let processes = match fs::read_dir("/proc") {
         Ok(processes) => processes,
         Err(err) => return failed(&err),
@@ -21,7 +21,7 @@ pub(crate) fn folder_use(folder: &Path) -> FolderUse {
         else {
             continue;
         };
-        if holds(&process.path(), &folder) {
+        if holds(&process.path(), &canonical) {
             let name = fs::read_to_string(process.path().join("comm"))
                 .map(|text| text.trim().to_owned())
                 .unwrap_or_default();

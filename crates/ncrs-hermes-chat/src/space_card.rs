@@ -99,7 +99,9 @@ pub fn percent(part: u64, whole: u64) -> u64 {
     if whole == 0 {
         return 0;
     }
-    part.saturating_mul(100).saturating_add(whole / 2) / whole
+    part.saturating_mul(100)
+        .saturating_add(whole.div_euclid(2))
+        .div_euclid(whole)
 }
 
 fn took_text(took: Duration) -> String {
@@ -107,7 +109,7 @@ fn took_text(took: Duration) -> String {
     if seconds >= SECONDS_PER_MINUTE {
         format!(
             "{} min {} s",
-            seconds / SECONDS_PER_MINUTE,
+            seconds.div_euclid(SECONDS_PER_MINUTE),
             seconds % SECONDS_PER_MINUTE
         )
     } else {
@@ -292,7 +294,7 @@ fn sum(scan: &Scan, group: Group) -> u64 {
         .iter()
         .filter(|entry| entry.group == group)
         .map(|entry| entry.size.bytes)
-        .fold(0_u64, u64::saturating_add)
+        .fold(0, u64::saturating_add)
 }
 
 /// What entries lie together in one row of the table.
@@ -314,7 +316,7 @@ fn place_of(ctx: &Ctx, index: usize, entry: &Entry) -> Place {
         | EntryKind::Catalog(CatalogId::UnavailableSimulators) => return Place::Simulators,
         _ => {}
     }
-    if let Some(root) = parent.filter(|parent| cache_roots.contains(parent)) {
+    if let Some(root) = parent.filter(|folder| cache_roots.contains(folder)) {
         return Place::CacheRoot(root);
     }
     if entry.group == Group::Decide && entry.path.starts_with(ctx.home.join("Downloads")) {
@@ -337,7 +339,7 @@ fn parts_of(entries: &[&Entry]) -> Vec<(SpaceBand, u64)> {
                 .iter()
                 .filter(|entry| entry.group == group)
                 .map(|entry| entry.size.bytes)
-                .fold(0_u64, u64::saturating_add);
+                .fold(0, u64::saturating_add);
             (bytes > 0).then_some((group_band(group), bytes))
         })
         .collect()
@@ -354,7 +356,7 @@ fn draft(
     let bytes = parts
         .iter()
         .map(|(_, bytes)| *bytes)
-        .fold(0_u64, u64::saturating_add);
+        .fold(0, u64::saturating_add);
     let chips: Vec<(SpaceBand, String)> = parts
         .iter()
         .map(|(band, _)| *band)
@@ -416,7 +418,7 @@ fn parts_hint(ctx: &Ctx, entries: &[&Entry]) -> String {
             .iter()
             .filter(|entry| entry.group == group)
             .collect();
-        members.sort_by(|left, right| right.size.bytes.cmp(&left.size.bytes));
+        members.sort_by_key(|left| std::cmp::Reverse(left.size.bytes));
         let listed: Vec<String> = members
             .iter()
             .take(SHOWN_PARTS)
@@ -521,7 +523,7 @@ fn simulators_draft(ctx: &Ctx, entries: &[&Entry]) -> Draft {
             .iter()
             .filter(|entry| entry.group == group)
             .map(|entry| entry.size.bytes)
-            .fold(0_u64, u64::saturating_add)
+            .fold(0, u64::saturating_add)
     };
     let hint = fill(
         lang,
@@ -580,7 +582,7 @@ fn drafts(ctx: &Ctx, scan: &Scan) -> Vec<Draft> {
             })
         })
         .collect();
-    made.sort_by(|left, right| right.row.bytes.cmp(&left.row.bytes));
+    made.sort_by_key(|left| std::cmp::Reverse(left.row.bytes));
     made
 }
 

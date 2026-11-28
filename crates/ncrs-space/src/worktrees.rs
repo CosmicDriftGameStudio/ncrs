@@ -146,7 +146,7 @@ pub fn worktree_roots(
         root.kept_list.push(worktree.clone());
     }
     let mut found: Vec<WorktreeRoot> = roots.into_values().collect();
-    found.sort_by(|left, right| right.total.bytes.cmp(&left.total.bytes));
+    found.sort_by_key(|left| std::cmp::Reverse(left.total.bytes));
     found
 }
 

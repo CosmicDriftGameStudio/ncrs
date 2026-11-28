@@ -76,42 +76,42 @@ impl ResultState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CursorKey {
+pub enum CursorKey {
     Head(Group),
     Row(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MenuState {
+pub struct MenuState {
     pub path: PathBuf,
     pub cursor: usize,
 }
 
 #[derive(Debug, Default)]
 pub struct State {
-    pub(crate) scan: Option<Arc<Scan>>,
-    pub(crate) rows: Vec<DisplayRow>,
-    pub(crate) scan_run: u64,
-    pub(crate) run_id: u64,
-    pub(crate) measuring: Option<Measuring>,
-    pub(crate) folded: HashSet<Group>,
-    pub(crate) unticked: HashSet<PathBuf>,
-    pub(crate) cursor: Option<CursorKey>,
-    pub(crate) filter: String,
-    pub(crate) filter_focused: bool,
-    pub(crate) menu: Option<MenuState>,
-    pub(crate) confirm: Option<ConfirmState>,
-    pub(crate) running: Option<Running>,
-    pub(crate) result: Option<ResultState>,
-    pub(crate) failure: Option<String>,
-    pub(crate) list_scroll: f32,
-    pub(crate) decide: Option<DecideState>,
-    pub(crate) show_rules: bool,
+    pub scan: Option<Arc<Scan>>,
+    pub rows: Vec<DisplayRow>,
+    pub scan_run: u64,
+    pub run_id: u64,
+    pub measuring: Option<Measuring>,
+    pub folded: HashSet<Group>,
+    pub unticked: HashSet<PathBuf>,
+    pub cursor: Option<CursorKey>,
+    pub filter: String,
+    pub filter_focused: bool,
+    pub menu: Option<MenuState>,
+    pub confirm: Option<ConfirmState>,
+    pub running: Option<Running>,
+    pub result: Option<ResultState>,
+    pub failure: Option<String>,
+    pub list_scroll: f32,
+    pub decide: Option<DecideState>,
+    pub show_rules: bool,
     /// All merged worktrees are listed, not only the first ones.
-    pub(crate) worktrees_expanded: bool,
+    pub worktrees_expanded: bool,
     /// A measure that ended while the result was up: the rows follow when it closes, so
     /// the deleted ones stay in the list as the run left them.
-    pub(crate) pending_scan: Option<Arc<Scan>>,
+    pub pending_scan: Option<Arc<Scan>>,
 }
 
 impl State {
@@ -335,10 +335,7 @@ impl State {
             return 0;
         };
         self.group_rows(group)
-            .filter_map(|row| match result.logged(&row.path)?.outcome {
-                Ok(freed) => Some(freed),
-                Err(_) => None,
-            })
+            .filter_map(|row| result.logged(&row.path)?.outcome.as_ref().ok().copied())
             .fold(0, u64::saturating_add)
     }
 

@@ -33,7 +33,7 @@ pub fn drive_name_of(path: &Path, home: &Path) -> Option<String> {
     drive_holding(&drives(home), path).map(|drive| drive.name.clone())
 }
 
-pub(crate) fn drives_of(volumes: Vec<Volume>, home: &Path) -> Vec<Drive> {
+pub fn drives_of(volumes: Vec<Volume>, home: &Path) -> Vec<Drive> {
     let mut found: Vec<Drive> = volumes
         .into_iter()
         .filter(|volume| !volume.path.starts_with(home))

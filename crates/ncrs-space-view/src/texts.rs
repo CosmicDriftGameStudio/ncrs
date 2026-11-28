@@ -210,15 +210,19 @@ pub fn ago_text(now: SystemTime, then: SystemTime) -> String {
     let seconds = now.duration_since(then).map_or(0, |ago| ago.as_secs());
     match seconds {
         0..=59 => format!("{seconds} s"),
-        60..=3599 => format!("{} min", seconds / 60),
-        3600..=86_399 => format!("{} h", seconds / 3600),
-        _ => format!("{} d", seconds / 86_400),
+        60..=3599 => format!("{} min", seconds.div_euclid(60)),
+        3600..=86_399 => format!("{} h", seconds.div_euclid(3600)),
+        _ => format!("{} d", seconds.div_euclid(86_400)),
     }
 }
 
 pub fn took_text(took: Duration) -> String {
     if took.as_secs() >= 60 {
-        format!("{} min {} s", took.as_secs() / 60, took.as_secs() % 60)
+        format!(
+            "{} min {} s",
+            took.as_secs().div_euclid(60),
+            took.as_secs() % 60
+        )
     } else {
         format!("{:.1} s", took.as_secs_f64())
     }
@@ -229,7 +233,7 @@ pub fn percent_of(bytes: u64, total: u64) -> u64 {
     if total == 0 || bytes == 0 {
         return 0;
     }
-    (bytes.saturating_mul(100) / total).max(1)
+    bytes.saturating_mul(100).div_euclid(total).max(1)
 }
 
 #[cfg(test)]

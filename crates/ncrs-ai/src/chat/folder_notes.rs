@@ -24,7 +24,7 @@ pub fn folder_notes_message(folders: &[FolderFacts]) -> String {
             format!(
                 "{} | {} MB | last change {}",
                 folder.path,
-                folder.size_bytes / BYTES_PER_MEGABYTE,
+                folder.size_bytes.div_euclid(BYTES_PER_MEGABYTE),
                 changed
             )
         })
@@ -87,9 +87,9 @@ mod tests {
 
     #[test]
     fn a_wrong_count_or_a_bad_note_is_no_use() {
-        assert!(parse_folder_notes(r#"{"notes":["Eins."]}"#, 2).is_err());
-        assert!(parse_folder_notes(r#"{"notes":[""]}"#, 1).is_err());
-        assert!(parse_folder_notes(r#"{"notes":[3]}"#, 1).is_err());
-        assert!(parse_folder_notes("nonsense", 1).is_err());
+        parse_folder_notes(r#"{"notes":["Eins."]}"#, 2).unwrap_err();
+        parse_folder_notes(r#"{"notes":[""]}"#, 1).unwrap_err();
+        parse_folder_notes(r#"{"notes":[3]}"#, 1).unwrap_err();
+        parse_folder_notes("nonsense", 1).unwrap_err();
     }
 }

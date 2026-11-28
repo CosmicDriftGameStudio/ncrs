@@ -19,7 +19,8 @@ pub fn disk_hint(volume: VolumeSpace, warn_from: u8) -> Option<DiskHint> {
         return None;
     }
     let used = volume.total.saturating_sub(volume.available);
-    let percent = u8::try_from(u128::from(used) * 100 / u128::from(volume.total)).unwrap_or(100);
+    let percent =
+        u8::try_from((u128::from(used) * 100).div_euclid(u128::from(volume.total))).unwrap_or(100);
     (percent >= warn_from).then_some(DiskHint {
         used_percent: percent,
         available: volume.available,

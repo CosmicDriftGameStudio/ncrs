@@ -412,32 +412,6 @@ pub fn danger_outline_button(
     }
 }
 
-/// The button of an action the warning is about: outlined and inked in the warning orange.
-pub fn warning_outline_button(
-    palette: &Palette,
-) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    let orange = git::orange();
-    move |_theme, status| {
-        let disabled = matches!(status, button::Status::Disabled);
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: hovered.then(|| Background::Color(orange.scale_alpha(HOVER_ALPHA))),
-            text_color: if disabled { colors.dim_text } else { orange },
-            border: Border {
-                color: if disabled {
-                    colors.border_inactive
-                } else {
-                    orange
-                },
-                width: spacing::BORDER_WIDTH,
-                radius: radius::CORNER.into(),
-            },
-            ..button::Style::default()
-        }
-    }
-}
-
 /// A button on a row filled in the accent: outlined in the ink of the row, lit while the pointer is over it.
 pub fn on_accent_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;

@@ -52,7 +52,7 @@ fn filled_portions(fraction: f32) -> u16 {
         return 0;
     }
     let portions = (fraction.clamp(0.0, 1.0) * f32::from(BAR_PORTIONS)).round() as u16;
-    portions.max(BAR_PORTIONS / 60)
+    portions.max(BAR_PORTIONS.div_euclid(60))
 }
 
 /// The bar of a row against the biggest of the list.
@@ -85,7 +85,7 @@ fn bar_of<'a, M: 'a>(
     let mut bar = row![];
     if filled > 0 {
         if hatched {
-            let stripe = (filled / (2 * HATCH_STRIPES)).max(1);
+            let stripe = filled.div_euclid(2 * HATCH_STRIPES).max(1);
             let mut left = filled;
             while left > 0 {
                 let width = stripe.min(left);
@@ -205,10 +205,10 @@ pub fn size_row_ext<'a, M: Clone + 'a>(
     ];
     let reason: Element<'a, M> = match item.outcome {
         Some((outcome, words)) => {
-            let ink = outcome.color(palette);
+            let outcome_ink = outcome.color(palette);
             row![
-                icon(outcome.icon(), ink),
-                line(words, font_size::SMALL, ink)
+                icon(outcome.icon(), outcome_ink),
+                line(words, font_size::SMALL, outcome_ink)
             ]
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center)
@@ -326,6 +326,14 @@ pub fn size_row_header<'a, M: 'a>(header: SizeRowHeader, palette: &Palette) -> E
     .into()
 }
 
+impl<M> std::fmt::Debug for SizeRowExt<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SizeRowExt")
+            .field("gone", &self.gone)
+            .finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,16 +341,8 @@ mod tests {
     #[test]
     fn a_small_row_keeps_a_visible_bar_and_an_empty_one_has_none() {
         assert_eq!(filled_portions(0.0), 0);
-        assert!(filled_portions(0.001) >= BAR_PORTIONS / 60);
+        assert!(filled_portions(0.001) >= BAR_PORTIONS.div_euclid(60));
         assert_eq!(filled_portions(1.0), BAR_PORTIONS);
         assert_eq!(filled_portions(5.0), BAR_PORTIONS);
-    }
-}
-
-impl<M> std::fmt::Debug for SizeRowExt<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SizeRowExt")
-            .field("gone", &self.gone)
-            .finish_non_exhaustive()
     }
 }

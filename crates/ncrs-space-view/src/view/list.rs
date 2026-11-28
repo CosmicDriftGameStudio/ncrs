@@ -220,7 +220,7 @@ fn group_view<'a>(
     };
     let bytes: u64 = rows
         .iter()
-        .fold(0, |sum, row| sum.saturating_add(row.bytes));
+        .fold(0, |sum: u64, row| sum.saturating_add(row.bytes));
     let sum_text = if in_result && group == Group::Safe {
         fill_template(
             ctx.lang.text(Msg::SpaceGroupSafeResultSum),
@@ -271,7 +271,7 @@ fn group_view<'a>(
         if !hidden.is_empty() {
             let hidden_bytes = hidden
                 .iter()
-                .fold(0_u64, |sum, row| sum.saturating_add(row.bytes));
+                .fold(0, |sum: u64, row| sum.saturating_add(row.bytes));
             body = body.push(folded_row(
                 &fill_count_size(
                     Msg::SpaceGroupMoreWorktrees,
@@ -299,7 +299,7 @@ fn worktree_summary<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Messa
         .group_rows(Group::Worktrees)
         .filter(|row| !state.is_done(row))
         .collect();
-    let bytes_of = |rows: &[&DisplayRow]| rows.iter().fold(0_u64, |sum, row| sum + row.bytes);
+    let bytes_of = |rows: &[&DisplayRow]| rows.iter().fold(0, |sum, row| sum + row.bytes);
     let line =
         |name: String, path: String, reason: String, bytes: u64, gone: bool, palette: &Palette| {
             size_row_ext(

@@ -250,8 +250,8 @@ fn space_list_key(
             actions.push(Action::PickFolder(target.kind));
             Task::none()
         }
-        (SpaceListKey::Remove, Some(position)) => change_space(settings, ctx, |current| {
-            let mut next = current.clone();
+        (SpaceListKey::Remove, Some(position)) => change_space(settings, ctx, |before| {
+            let mut next = before.clone();
             match target.kind {
                 AddAs::SpaceRegenerable => next.own_regenerable.remove(position),
                 _ => next.never_touch.remove(position),

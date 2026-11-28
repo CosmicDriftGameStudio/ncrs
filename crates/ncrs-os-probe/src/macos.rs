@@ -23,11 +23,11 @@ const CWD_INFO_SIZE: usize = size_of::<libc::proc_vnodepathinfo>();
 const CWD_PATH_OFFSET: usize = size_of::<libc::vnode_info>();
 const PATH_BYTES: usize = 1024;
 
-pub(crate) fn folder_use(folder: &Path) -> FolderUse {
-    let folder = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+pub fn folder_use(folder: &Path) -> FolderUse {
+    let canonical = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut held = Vec::new();
     for pid in all_pids() {
-        if process_holds(pid, &folder) {
+        if process_holds(pid, &canonical) {
             held.push(Holder {
                 pid: u32::try_from(pid).unwrap_or(0),
                 name: process_name(pid),
@@ -64,10 +64,15 @@ fn all_pids() -> Vec<c_int> {
         return Vec::new();
     }
     // Room for processes that start between the two calls.
-    let capacity = usize::try_from(wanted).unwrap_or(0) / size_of::<c_int>() + 64;
+    let capacity = usize::try_from(wanted)
+        .unwrap_or(0)
+        .div_euclid(size_of::<c_int>())
+        + 64;
     let mut pids: Vec<c_int> = vec![0; capacity];
     let bytes = list_all_pids(Some(&mut pids));
-    let count = usize::try_from(bytes).unwrap_or(0) / size_of::<c_int>();
+    let count = usize::try_from(bytes)
+        .unwrap_or(0)
+        .div_euclid(size_of::<c_int>());
     pids.truncate(count);
     pids.retain(|pid| *pid > 0);
     pids
@@ -89,7 +94,7 @@ fn list_all_pids(into: Option<&mut [c_int]>) -> c_int {
 }
 
 fn cwd_of(pid: c_int) -> Option<PathBuf> {
-    let mut buffer = vec![0_u8; CWD_INFO_SIZE];
+    let mut buffer: Vec<u8> = vec![0; CWD_INFO_SIZE];
     let got = pid_info(pid, libc::PROC_PIDVNODEPATHINFO, &mut buffer)?;
     (got >= CWD_PATH_OFFSET + PATH_BYTES)
         .then(|| path_from(&buffer, CWD_PATH_OFFSET))
@@ -100,7 +105,7 @@ fn open_files_of(pid: c_int) -> Vec<PathBuf> {
     let Some(wanted) = descriptor_list_size(pid) else {
         return Vec::new();
     };
-    let capacity = wanted / size_of::<libc::proc_fdinfo>() + 8;
+    let capacity = wanted.div_euclid(size_of::<libc::proc_fdinfo>()) + 8;
     let mut descriptors = vec![
         libc::proc_fdinfo {
             proc_fd: 0,
@@ -111,13 +116,13 @@ fn open_files_of(pid: c_int) -> Vec<PathBuf> {
     let Some(bytes) = list_descriptors(pid, &mut descriptors) else {
         return Vec::new();
     };
-    descriptors.truncate(bytes / size_of::<libc::proc_fdinfo>());
+    descriptors.truncate(bytes.div_euclid(size_of::<libc::proc_fdinfo>()));
     let mut paths = Vec::new();
     for descriptor in descriptors {
         if descriptor.proc_fdtype != u32::try_from(libc::PROX_FDTYPE_VNODE).unwrap_or(u32::MAX) {
             continue;
         }
-        let mut buffer = vec![0_u8; FD_INFO_SIZE];
+        let mut buffer: Vec<u8> = vec![0; FD_INFO_SIZE];
         let Some(got) = fd_info(pid, descriptor.proc_fd, &mut buffer) else {
             continue;
         };
@@ -135,14 +140,14 @@ fn pid_info(pid: c_int, flavor: c_int, buffer: &mut [u8]) -> Option<usize> {
     // kernel writes at most `size` bytes and reports failure as a value <= 0.
     let got =
         unsafe { libc::proc_pidinfo(pid, flavor, 0, buffer.as_mut_ptr().cast::<c_void>(), size) };
-    usize::try_from(got).ok().filter(|got| *got > 0)
+    usize::try_from(got).ok().filter(|&written| written > 0)
 }
 
 #[allow(unsafe_code)]
 fn descriptor_list_size(pid: c_int) -> Option<usize> {
     // SAFETY: a null buffer with size 0 only asks for the size the list needs.
     let got = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
-    usize::try_from(got).ok().filter(|got| *got > 0)
+    usize::try_from(got).ok().filter(|&written| written > 0)
 }
 
 #[allow(unsafe_code)]
@@ -159,7 +164,7 @@ fn list_descriptors(pid: c_int, descriptors: &mut [libc::proc_fdinfo]) -> Option
             size,
         )
     };
-    usize::try_from(got).ok().filter(|got| *got > 0)
+    usize::try_from(got).ok().filter(|&written| written > 0)
 }
 
 #[allow(unsafe_code)]
@@ -176,12 +181,12 @@ fn fd_info(pid: c_int, descriptor: c_int, buffer: &mut [u8]) -> Option<usize> {
             size,
         )
     };
-    usize::try_from(got).ok().filter(|got| *got > 0)
+    usize::try_from(got).ok().filter(|&written| written > 0)
 }
 
 #[allow(unsafe_code)]
 fn process_name(pid: c_int) -> String {
-    let mut buffer = vec![0_u8; 256];
+    let mut buffer: Vec<u8> = vec![0; 256];
     let size = u32::try_from(buffer.len()).unwrap_or(0);
     // SAFETY: `buffer` is `size` writable bytes that outlive the call; the
     // kernel NUL-terminates inside them.

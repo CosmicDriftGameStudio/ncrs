@@ -139,7 +139,7 @@ pub fn resolve_space_at(section: &SpaceSection, home: Option<&Path>) -> SpaceSet
     let depth = match &section.depth {
         Some(DepthValue::Levels(levels)) => u8::try_from(*levels)
             .ok()
-            .filter(|levels| DEPTH_CHOICES.contains(levels))
+            .filter(|depth| DEPTH_CHOICES.contains(depth))
             .map_or(Depth::Auto, Depth::Levels),
         Some(DepthValue::Word(_)) | None => Depth::Auto,
     };
@@ -269,7 +269,7 @@ mod tests {
                 DEFAULT_WARN_FROM_PERCENT
             );
         }
-        for written in [50_u8, 75, 99] {
+        for written in [50, 75, 99] {
             let section = SpaceSection {
                 warn_from_percent: Some(i64::from(written)),
                 ..SpaceSection::default()

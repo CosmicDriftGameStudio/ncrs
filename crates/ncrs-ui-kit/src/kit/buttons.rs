@@ -140,7 +140,7 @@ fn tone_style(
     let danger = theme::danger_button(palette);
     let danger_outline = theme::danger_outline_button(palette);
     let on_accent = theme::on_accent_button(palette);
-    let warning = theme::warning_outline_button(palette);
+    let warning = theme::space::warning_outline_button(palette);
     move |theme, status| {
         let disabled = matches!(status, widget_button::Status::Disabled);
         // A disabled button keeps its fill and outline, only fainter: without

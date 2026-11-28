@@ -143,13 +143,13 @@ pub fn sort_downloads_with(
         .iter()
         .map(|matched| matched.item.path.as_path())
         .collect();
-    let remaining: Vec<DownloadItem> = remaining
+    let unmatched: Vec<DownloadItem> = remaining
         .iter()
         .filter(|item| !copied.contains(item.path.as_path()))
         .cloned()
         .collect();
 
-    for item in remaining {
+    for item in unmatched {
         let untouched = item
             .touched
             .is_some_and(|touched| now.duration_since(touched).is_ok_and(|age| age >= YEAR));
@@ -274,10 +274,10 @@ fn copies_elsewhere(items: &[DownloadItem], roots: &[PathBuf], stop: &AtomicBool
         let Ok(hash) = hash_path(&item.path) else {
             continue;
         };
-        let copy = candidates
+        let same_content = candidates
             .iter()
             .find(|candidate| hash_path(candidate).is_ok_and(|other| other == hash));
-        if let Some(copy) = copy {
+        if let Some(copy) = same_content {
             matched.push(Matched {
                 item: item.clone(),
                 with: copy.clone(),
@@ -316,9 +316,9 @@ fn walk_for_sizes(
             if depth < ELSEWHERE_MAX_DEPTH {
                 walk_for_sizes(&path, wanted, found, seen, depth + 1, stop);
             }
-        } else if kind.is_file() {
-            *seen += 1;
-            if let Ok(meta) = entry.metadata() {
+        } else if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                *seen += 1;
                 if wanted.contains(&meta.len()) {
                     found.entry(meta.len()).or_default().push(path);
                 }

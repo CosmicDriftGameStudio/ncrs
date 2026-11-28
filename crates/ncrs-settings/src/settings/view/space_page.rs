@@ -244,7 +244,7 @@ fn drive_rows<'a>(current: &SpaceSettings, view: &SettingsView<'a>) -> Vec<Setti
 
 /// The folder list a key of the Platz page works on, and the folder under the cursor in it.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ListTarget {
+pub struct ListTarget {
     pub kind: AddAs,
     pub folder: Option<usize>,
 }
@@ -252,7 +252,7 @@ pub(crate) struct ListTarget {
 /// Which list the row `row` (counted among the rows with a key) belongs to. The rows are keyed in
 /// the order `space_groups` builds them: warning field, drives, safe places, own folders (each,
 /// then the add button), protected folders (the same).
-pub(crate) fn space_list_target(
+pub fn space_list_target(
     row: usize,
     current: &SpaceSettings,
     drives: &[DriveRow],
@@ -283,7 +283,7 @@ pub(crate) fn space_list_target(
 
 /// The catalog entries the page switches on and off: the ones this system
 /// has a place for, and that the build may touch.
-pub(crate) fn listed_catalog(os: Os, sandboxed: bool) -> Vec<CatalogId> {
+pub fn listed_catalog(os: Os, sandboxed: bool) -> Vec<CatalogId> {
     let mut listed = vec![
         CatalogId::CargoTarget,
         CatalogId::CargoTargetHome,
@@ -349,7 +349,7 @@ fn catalog_texts(id: CatalogId) -> Option<(Msg, Msg)> {
 }
 
 /// `current` with the entry `id` switched: off when it was on, on when it was off.
-pub(crate) fn with_catalog_toggled(current: &SpaceSettings, id: CatalogId) -> SpaceSettings {
+pub fn with_catalog_toggled(current: &SpaceSettings, id: CatalogId) -> SpaceSettings {
     let mut next = current.clone();
     let name = id.name();
     if next.catalog_off.iter().any(|off| off == name) {
@@ -520,9 +520,11 @@ mod tests {
 
     #[test]
     fn the_keys_of_the_lists_find_their_folder() {
-        let mut current = SpaceSettings::default();
-        current.own_regenerable = vec!["/a".into(), "/b".into()];
-        current.never_touch = vec!["/c".into()];
+        let current = SpaceSettings {
+            own_regenerable: vec!["/a".into(), "/b".into()],
+            never_touch: vec!["/c".into()],
+            ..SpaceSettings::default()
+        };
         let drives = vec![DriveRow {
             name: "Macintosh HD".into(),
             total: 10,
@@ -558,8 +560,10 @@ mod tests {
 
     #[test]
     fn a_drive_that_is_not_connected_stays_listed() {
-        let mut current = SpaceSettings::default();
-        current.warn_drives = vec!["Archiv".into()];
+        let current = SpaceSettings {
+            warn_drives: vec!["Archiv".into()],
+            ..SpaceSettings::default()
+        };
         let entries = drive_entries(&current, &[]);
         assert_eq!(entries.len(), 1);
         assert!(entries[0].on && entries[0].measured.is_none());
