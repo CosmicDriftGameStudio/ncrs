@@ -255,12 +255,17 @@ pub fn actions<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     .spacing(spacing::L)
     .align_y(alignment::Vertical::Center);
     if !ctx.store_build {
-        line = line.push(kit::key_button(
-            &fill_size(
+        let worktrees_label = if worktrees_ticked > 0 {
+            fill_size(
                 Msg::SpaceRemoveWorktrees,
                 state.open_ticked_bytes(Group::Worktrees),
                 ctx.lang,
-            ),
+            )
+        } else {
+            ctx.lang.text(Msg::SpaceRemoveWorktreesPlain).to_owned()
+        };
+        line = line.push(kit::key_button(
+            &worktrees_label,
             &ctx.keys.label(Shortcut::RemoveWorktrees),
             (idle && worktrees_ticked > 0).then_some(Message::RemoveWorktrees),
             Tone::DangerOutline,

@@ -15271,6 +15271,12 @@
       "de": "Gemergte Worktrees entfernen · {size}"
     },
     {
+      "key": "space.remove_worktrees_plain",
+      "context": "Same button as space.remove_worktrees without the size, shown while no worktree is ticked.",
+      "en": "Remove merged worktrees",
+      "de": "Gemergte Worktrees entfernen"
+    },
+    {
       "key": "space.remove_worktrees_also",
       "context": "Button on the result of the Platz tab: removes the merged worktrees as well, after the safe folders were deleted. {size} is their size.",
       "en": "Remove worktrees as well · {size}",
