@@ -38,20 +38,10 @@ fn git(folder: &Path, args: &[&str]) {
     assert!(status.success(), "git {args:?}");
 }
 
-/// The temp folder without links (`/var` is `/private/var` on a Mac). Windows gives a verbatim
-/// `\\?\` path, which git does not take as an argument, so the prefix goes.
-fn real(path: &Path) -> PathBuf {
-    let real = std::fs::canonicalize(path).unwrap();
-    match real.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
-        Some(plain) => PathBuf::from(plain),
-        None => real,
-    }
-}
-
 /// A repository on `main` with a linked worktree on `feat` whose commit is merged.
 fn merged() -> (TempDir, PathBuf, PathBuf) {
     let dir = TempDir::new().unwrap();
-    let repo = real(dir.path()).join("repo");
+    let repo = dunce::canonicalize(dir.path()).unwrap().join("repo");
     std::fs::create_dir_all(&repo).unwrap();
     git(&repo, &["init", "-q", "-b", "main"]);
     std::fs::write(repo.join("a.txt"), "a\n").unwrap();

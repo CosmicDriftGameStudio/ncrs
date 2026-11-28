@@ -525,8 +525,14 @@ mod tests {
             .cloned()
             .collect();
 
-        scene.trash.purge(&purged).unwrap();
+        let outcome = scene.trash.purge(&purged);
 
+        if cfg!(feature = "sandbox") {
+            assert!(outcome.is_err(), "the sandbox cannot reach the trash folder");
+            assert_eq!(scene.trash.list().unwrap().len(), 2);
+            return;
+        }
+        outcome.unwrap();
         let rest = scene.trash.list().unwrap();
         assert_eq!(rest.len(), 1);
         assert_eq!(rest[0].original, kept);

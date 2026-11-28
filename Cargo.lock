@@ -4600,6 +4600,7 @@ dependencies = [
 name = "ncrs-git"
 version = "0.0.0"
 dependencies = [
+ "dunce",
  "getrandom 0.4.3",
  "gix",
  "tempfile",
@@ -4945,6 +4946,7 @@ dependencies = [
 name = "ncrs-space"
 version = "0.0.0"
 dependencies = [
+ "dunce",
  "ncrs-config",
  "ncrs-core",
  "ncrs-fs",

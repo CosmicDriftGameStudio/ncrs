@@ -16,6 +16,8 @@ ncrs-git = { path = "../ncrs-git", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-os-probe = { path = "../ncrs-os-probe", version = "0.0.0" }
+# See ncrs-git: resolved folders without the verbatim prefix on Windows.
+dunce = "1"
 
 [features]
 # The App Store build: no process list, no worktree removal, no simulators.

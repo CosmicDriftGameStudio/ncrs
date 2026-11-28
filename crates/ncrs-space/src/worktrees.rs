@@ -337,7 +337,7 @@ fn main_folders(repos: &[PathBuf]) -> Vec<PathBuf> {
     let mut folders: Vec<PathBuf> = Vec::new();
     for repo in repos {
         let main = main_worktree_of(repo)
-            .or_else(|| std::fs::canonicalize(repo).ok())
+            .or_else(|| dunce::canonicalize(repo).ok())
             .unwrap_or_else(|| repo.clone());
         if !folders.contains(&main) {
             folders.push(main);
