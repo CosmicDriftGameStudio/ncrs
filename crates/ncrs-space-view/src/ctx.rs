@@ -69,4 +69,6 @@ pub struct ViewCtx<'a> {
     pub trash_can_purge: bool,
     /// The drive counts as full from this used share on.
     pub warn_from_percent: u8,
+    /// The label of the key that opens the tab from anywhere; `None` when it is unbound.
+    pub open_key: Option<&'a str>,
 }

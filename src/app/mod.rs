@@ -282,10 +282,16 @@ pub struct App {
     space_last_scan: Option<Arc<ncrs_space::Scan>>,
     /// The run Hermes asked the tab for: its confirm opens once the measure is in, and the result goes back.
     space_run_ask: Option<ncrs_space_view::ConfirmKind>,
+    /// The confirm of a run Hermes asked for is up; the user has neither accepted nor cancelled it.
+    space_chat_confirm: bool,
+    /// The user accepted a run Hermes asked for: its end is answered in the chat.
+    space_chat_run: bool,
     /// How far the delete run of the tab has come, for the status bar.
     space_progress: Option<fs::transfer::Tick>,
     /// What the last trash run of the Platz tab moved, for its undo.
     last_own_trash: Vec<PathBuf>,
+    /// The journal batch of that run, when the index was open: its undo.
+    last_own_batch: Option<ncrs_index::BatchId>,
     /// The drive is nearly full: the hint in the status bar.
     space_hint: Option<ncrs_monitor::DiskHint>,
     /// The drive of the home folder as last measured, whether or not it is nearly full.

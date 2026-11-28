@@ -134,6 +134,9 @@ pub struct Place {
     pub tools: &'static [&'static str],
 }
 
+/// Tools whose Windows cache lies directly in `%LOCALAPPDATA%`, without a `Cache` folder.
+const WINDOWS_CACHE_AT_ROOT: &[&str] = &["ms-playwright", "go-build"];
+
 /// Folder names of tools whose cache is regenerated on the next run, under the OS cache folder.
 const KNOWN_APP_CACHES: &[&str] = &[
     "ms-playwright",
@@ -309,7 +312,7 @@ pub fn catalog_for(
             .iter()
             .any(|off| off == place.id.name())
     });
-    places.retain(|place| !is_under_any(&place.path, &settings.never_touch));
+    places.retain(|place| !touches_protected(&place.path, &settings.never_touch));
     places
 }
 
@@ -324,6 +327,10 @@ struct CacheRoots<'a> {
 impl CacheRoots<'_> {
     fn in_app_data(&self, tool: &str, below: &str) -> Option<PathBuf> {
         self.local_app_data.map(|root| root.join(tool).join(below))
+    }
+
+    fn in_app_data_root(&self, tool: &str) -> Option<PathBuf> {
+        self.local_app_data.map(|root| root.join(tool))
     }
 
     fn in_cache_root(&self, name: &str) -> Option<PathBuf> {
@@ -377,6 +384,9 @@ fn app_caches(roots: &CacheRoots<'_>) -> Vec<(CatalogId, PathBuf)> {
         .iter()
         .filter_map(|&name| {
             let folder = match roots.os {
+                Os::Windows if WINDOWS_CACHE_AT_ROOT.contains(&name) => {
+                    roots.in_app_data_root(name)
+                }
                 Os::Windows => roots.in_app_data(name, "Cache"),
                 Os::MacOs | Os::Linux => roots.in_cache_root(name),
             };
@@ -385,9 +395,12 @@ fn app_caches(roots: &CacheRoots<'_>) -> Vec<(CatalogId, PathBuf)> {
         .collect()
 }
 
-/// Whether `path` is `root` or lies below it, compared by path components.
-pub fn is_under_any(path: &Path, roots: &[PathBuf]) -> bool {
-    roots.iter().any(|root| path.starts_with(root))
+/// Whether `path` is a protected folder, lies below one, or holds one: deleting it would
+/// take the protected folder with it. Compared by path components.
+pub fn touches_protected(path: &Path, protected: &[PathBuf]) -> bool {
+    protected
+        .iter()
+        .any(|root| path.starts_with(root) || root.starts_with(path))
 }
 
 /// A real folder (a symlink does not count), or with `files_too` a real file.

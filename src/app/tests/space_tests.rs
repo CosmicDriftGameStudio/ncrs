@@ -1,7 +1,6 @@
 //! The Platz tab: opened by its key, the commands of the other tabs that open it,
 //! and the keys that must not be taken for a tap of Option.
 
-use crate::app::space::{restore_items, trash_items};
 use crate::app::*;
 use iced::keyboard::key::Named;
 use iced::{event, keyboard, Event};
@@ -190,6 +189,31 @@ impl fs::Trash for FolderTrash {
     }
 }
 
+fn own_item(path: &Path) -> ncrs_filing::execute::OwnTrashItem {
+    let meta = std::fs::metadata(path).unwrap();
+    ncrs_filing::execute::OwnTrashItem {
+        path: path.to_path_buf(),
+        size: meta.len(),
+        modified: meta.modified().ok(),
+    }
+}
+
+fn empty_scan() -> Arc<ncrs_space::Scan> {
+    Arc::new(ncrs_space::Scan {
+        volume: ncrs_os_probe::VolumeSpace {
+            total: 100,
+            available: 50,
+        },
+        volume_name: String::new(),
+        worktree_roots: Vec::new(),
+        entries: Vec::new(),
+        partial: false,
+        processes_known: true,
+        measured_at: std::time::SystemTime::UNIX_EPOCH,
+        took: std::time::Duration::ZERO,
+    })
+}
+
 #[tokio::test]
 async fn own_files_go_to_the_trash_and_come_back_without_hermes() {
     let work = tempfile::tempdir().unwrap();
@@ -201,45 +225,75 @@ async fn own_files_go_to_the_trash_and_come_back_without_hermes() {
     for path in &paths {
         std::fs::write(path, "x").unwrap();
     }
-    let items: Vec<_> = paths
-        .iter()
-        .map(|path| ncrs_filing::execute::OwnTrashItem {
-            path: path.clone(),
-            size: 1,
-            modified: None,
-        })
-        .collect();
+    let items: Vec<_> = paths.iter().map(|path| own_item(path)).collect();
     let trash = FolderTrash {
         folder: bin.path().to_path_buf(),
         entries: std::sync::Mutex::default(),
     };
-    let (gone, failed) = trash_items(&trash, &items, false);
-    assert_eq!(gone, paths);
-    assert!(failed.is_none());
+    let run =
+        ncrs_filing::execute::trash_own_items(None, "Cleared", work.path(), &items, &trash, false);
+    assert_eq!(run.gone, paths);
+    assert!(run.refused.is_empty());
     assert!(paths.iter().all(|path| !path.exists()));
 
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSpace));
-    drop(app.space_trashed(gone, None));
+    drop(app.space_trashed(run.gone, None, None));
     assert_eq!(app.last_own_trash, paths);
 
-    assert_eq!(restore_items(&trash, &app.last_own_trash), Ok(2));
+    assert_eq!(
+        ncrs_filing::execute::restore_own_items(&trash, &app.last_own_trash),
+        Ok(2)
+    );
     assert!(paths.iter().all(|path| path.exists()));
 }
 
-#[test]
-fn a_file_changed_since_the_measure_is_not_trashed() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let path = dir.path().join("model.bin");
-    std::fs::write(&path, b"a").expect("write");
-    let measured = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
-    let item = |modified| ncrs_filing::execute::OwnTrashItem {
-        path: path.clone(),
-        size: 1,
-        modified,
+#[tokio::test]
+async fn a_folder_that_changed_inside_is_not_trashed_by_the_pane() {
+    let work = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let inner = work.path().join("app/main.rs");
+    std::fs::create_dir_all(inner.parent().unwrap()).unwrap();
+    std::fs::write(&inner, "fn main() {}").unwrap();
+    let item = own_item(inner.parent().unwrap());
+    std::fs::write(&inner, "fn main() { changed() }").unwrap();
+    let trash = FolderTrash {
+        folder: bin.path().to_path_buf(),
+        entries: std::sync::Mutex::default(),
     };
-    assert!(!crate::app::space::changed_since_measure(&item(measured)));
-    assert!(!crate::app::space::changed_since_measure(&item(None)));
-    let earlier = measured.map(|time| time - std::time::Duration::from_secs(60));
-    assert!(crate::app::space::changed_since_measure(&item(earlier)));
+    let run =
+        ncrs_filing::execute::trash_own_items(None, "Cleared", work.path(), &[item], &trash, true);
+    assert!(run.gone.is_empty());
+    assert!(inner.exists());
+}
+
+#[tokio::test]
+async fn a_cancelled_chat_run_is_not_asked_again_and_a_manual_run_is_not_answered() {
+    let mut app = App::with_fixed_panels();
+    drop(
+        app.run_hermes_chat_action(ncrs_hermes_chat::Action::SpaceRun(
+            ncrs_hermes_chat::SpaceRunKind::DeleteSafe,
+        )),
+    );
+    drop(app.run_space_action(ncrs_space_view::Action::Measured(empty_scan())));
+    assert_eq!(app.space_run_ask, None);
+    assert!(
+        !app.space_chat_confirm,
+        "no confirm opened: nothing to delete"
+    );
+
+    drop(app.run_space_action(ncrs_space_view::Action::Measured(empty_scan())));
+    assert_eq!(app.space_run_ask, None);
+    assert!(!app.space_chat_confirm);
+
+    drop(
+        app.run_space_action(ncrs_space_view::Action::RunDone(Arc::new(
+            ncrs_space::RunLog {
+                started: std::time::SystemTime::UNIX_EPOCH,
+                finished: std::time::SystemTime::UNIX_EPOCH,
+                rows: Vec::new(),
+            },
+        ))),
+    );
+    assert!(!app.space_chat_run);
 }

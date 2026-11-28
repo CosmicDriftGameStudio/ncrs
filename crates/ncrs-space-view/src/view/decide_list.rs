@@ -11,11 +11,10 @@ use ncrs_ui_kit::decide_row::{
 use ncrs_ui_kit::format::size_shown;
 use ncrs_ui_kit::kit::{self, Check};
 use ncrs_ui_kit::page_scroll::page_scroll_padded;
-use ncrs_ui_kit::page_text::page_line;
+use ncrs_ui_kit::page_text::{bold_line, caps_label, page_line};
 use ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID;
 use ncrs_ui_kit::stacked_bar::{stacked_bar, BarSegment};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
-use ncrs_ui_kit::APP_FONT_BOLD;
 
 use super::decide_text::{day, file_name, group_msg, hint_msg, reason_text};
 use crate::ctx::ViewCtx;
@@ -68,12 +67,10 @@ pub fn hermes<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Messag
     let mut block = column![].spacing(spacing::M);
     if pane.is_downloads() {
         block = block
-            .push(
-                iced::widget::text(ctx.lang.text(Msg::SpaceDecideHermesLabel).to_uppercase())
-                    .size(font_size::SMALL)
-                    .font(APP_FONT_BOLD)
-                    .color(theme::git::purple(palette)),
-            )
+            .push(caps_label(
+                ctx.lang.text(Msg::SpaceDecideHermesLabel),
+                theme::git::purple(palette),
+            ))
             .push(kit::paragraph(
                 ctx.lang.text(Msg::SpaceDecideHermesDownloads),
                 palette,
@@ -247,10 +244,7 @@ pub fn folder_line<'a>(
     };
     container(
         row![
-            iced::widget::text(name)
-                .size(font_size::ROW)
-                .font(APP_FONT_BOLD)
-                .color(palette.text),
+            bold_line(name, font_size::ROW, palette.text),
             page_line(summary, font_size::SMALL, palette.dim_text),
         ]
         .spacing(spacing::L)

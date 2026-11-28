@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use ncrs_config::space::{warns_for_drive, SpaceSettings};
 use ncrs_os_probe::VolumeSpace;
 
 pub const THROTTLE_SECONDS: i64 = 24 * 60 * 60;
@@ -25,6 +26,19 @@ pub fn disk_hint(volume: VolumeSpace, warn_from: u8) -> Option<DiskHint> {
         used_percent: percent,
         available: volume.available,
     })
+}
+
+/// The hint for the drive of the home folder, called `home_drive_name`: none when the user
+/// turned the warning off for it, else [`disk_hint`] at the warn level of the settings.
+pub fn home_disk_hint(
+    volume: VolumeSpace,
+    settings: &SpaceSettings,
+    home_drive_name: &str,
+) -> Option<DiskHint> {
+    if !warns_for_drive(settings, home_drive_name, true) {
+        return None;
+    }
+    disk_hint(volume, settings.warn_from_percent)
 }
 
 /// The space of the volume the home folder lies on; `None` when the system
@@ -101,6 +115,17 @@ mod tests {
     fn the_threshold_is_the_users_not_a_fixed_one() {
         assert!(disk_hint(volume(100 * GB, 40 * GB), 90).is_none());
         assert!(disk_hint(volume(100 * GB, 40 * GB), 60).is_some());
+    }
+
+    #[test]
+    fn no_hint_for_the_home_drive_when_its_warning_is_off() {
+        let full = volume(100 * GB, GB);
+        let mut settings = SpaceSettings::default();
+        assert!(home_disk_hint(full, &settings, "Macintosh HD").is_some());
+        settings.warn_drives = Some(Vec::new());
+        assert!(home_disk_hint(full, &settings, "Macintosh HD").is_none());
+        settings.warn_drives = Some(vec!["Macintosh HD".to_owned()]);
+        assert!(home_disk_hint(full, &settings, "Macintosh HD").is_some());
     }
 
     #[test]

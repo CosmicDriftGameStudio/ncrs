@@ -8,6 +8,7 @@ use ncrs_fs::measure_folder;
 use ncrs_intake::hash_path;
 
 use super::apps::{app_name_of_installer, compare_versions, version_of_installer, InstalledApps};
+use crate::catalog::touches_protected;
 use crate::facts::InstalledApp;
 
 const INSTALLER_EXTENSIONS: [&str; 6] = ["dmg", "pkg", "xip", "exe", "msi", "appimage"];
@@ -67,6 +68,25 @@ pub struct DownloadGroups {
     pub elsewhere: Vec<Matched>,
     pub untouched_year: Vec<DownloadItem>,
     pub rest: Vec<DownloadItem>,
+}
+
+impl DownloadGroups {
+    /// The groups without the items that touch a protected folder (see
+    /// [`touches_protected`]): they are neither offered nor picked.
+    #[must_use]
+    pub fn without_protected(mut self, protected: &[PathBuf]) -> Self {
+        let free = |item: &DownloadItem| !touches_protected(&item.path, protected);
+        self.installed.retain(|matched| free(&matched.item));
+        self.unpacked.retain(|matched| free(&matched.item));
+        self.elsewhere.retain(|matched| free(&matched.item));
+        for set in &mut self.duplicates {
+            set.extra.retain(free);
+        }
+        self.duplicates.retain(|set| !set.extra.is_empty());
+        self.untouched_year.retain(free);
+        self.rest.retain(free);
+        self
+    }
 }
 
 /// Sorts what lies directly in `folder`. When `stop` is set the groups found so

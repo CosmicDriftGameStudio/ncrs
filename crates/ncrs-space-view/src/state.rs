@@ -7,6 +7,7 @@ use ncrs_space::{Group, LoggedRun, RunLog, Scan, UnknownUse};
 
 use crate::confirm::{ConfirmKind, ConfirmState, RunPlan};
 use crate::decide::DecideState;
+use crate::message::DecideTarget;
 use crate::rows::{matches_filter, rows_of, DisplayRow, Item, GROUP_ORDER};
 
 /// A measure that runs: the flag stops it, `bytes` is what it has counted so far.
@@ -112,6 +113,8 @@ pub struct State {
     /// A measure that ended while the result was up: the rows follow when it closes, so
     /// the deleted ones stay in the list as the run left them.
     pub pending_scan: Option<Arc<Scan>>,
+    /// A folder to open in the decide pane as soon as the running measure ends.
+    pub pending_decide: Option<DecideTarget>,
 }
 
 impl State {
@@ -123,7 +126,13 @@ impl State {
     /// Drive line, chips, status bar and result banner all read this one place.
     pub fn volume_now(&self) -> Option<ncrs_space::VolumeSpace> {
         let scan = self.pending_scan.as_ref().or(self.scan.as_ref())?;
-        Some(scan.volume)
+        let mut volume = scan.volume;
+        if self.pending_scan.is_none() {
+            if let Some(free) = self.result.as_ref().and_then(|result| result.free_after) {
+                volume.available = free;
+            }
+        }
+        Some(volume)
     }
 
     /// The number of the measure that runs or ran last; its answers carry it.

@@ -149,7 +149,7 @@ pub fn check_subject(
     if metadata.file_type().is_symlink() {
         return Err(Skip::Symlink);
     }
-    if subject.device.is_some() && device_of(&metadata) != subject.device {
+    if subject.device.is_some() && device_of(subject.path, &metadata) != subject.device {
         return Err(Skip::OtherDrive);
     }
     match probes.processes() {
@@ -203,12 +203,17 @@ pub fn runs_tool(holder: &Holder, tools: &[&str]) -> bool {
 }
 
 #[cfg(unix)]
-pub fn device_of(metadata: &std::fs::Metadata) -> Option<u64> {
+pub fn device_of(_path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {
     use std::os::unix::fs::MetadataExt as _;
     Some(metadata.dev())
 }
 
-#[cfg(not(unix))]
-pub fn device_of(_metadata: &std::fs::Metadata) -> Option<u64> {
+#[cfg(windows)]
+pub fn device_of(path: &Path, _metadata: &std::fs::Metadata) -> Option<u64> {
+    ncrs_os_probe::volume_serial_of(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn device_of(_path: &Path, _metadata: &std::fs::Metadata) -> Option<u64> {
     None
 }

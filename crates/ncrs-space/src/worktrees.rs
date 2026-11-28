@@ -22,6 +22,8 @@ pub struct WorktreeSpace {
     pub branch: String,
     pub size: FolderSize,
     pub modified: Option<SystemTime>,
+    /// Git-ignored files (`.env`, local notes) that `git worktree remove` would delete for good.
+    pub ignored_files: Vec<String>,
 }
 
 /// Why a linked worktree stays although it exists.
@@ -33,6 +35,8 @@ pub enum KeptWhy {
     Changes,
     /// It is merged and clean, but a process runs in it or has a file open.
     InUse,
+    /// It is merged and clean, but holds git-ignored files that git would delete for good.
+    IgnoredFiles,
     /// Locked, detached or the folder ncrs itself works in.
     Other,
 }
@@ -190,12 +194,26 @@ fn collect(repos: &[PathBuf], stop: &AtomicBool, with_kept: bool) -> WorktreeSca
                 return found;
             };
             let modified = modified_of(&worktree.path);
+            if !worktree.ignored_files.is_empty() {
+                if with_kept {
+                    found.kept.push(KeptWorktree {
+                        repo: repo.clone(),
+                        branch: Some(worktree.branch.name),
+                        path: worktree.path,
+                        size,
+                        modified,
+                        why: KeptWhy::IgnoredFiles,
+                    });
+                }
+                continue;
+            }
             found.merged.push(WorktreeSpace {
                 repo: repo.clone(),
                 branch: worktree.branch.name,
                 path: worktree.path,
                 size,
                 modified,
+                ignored_files: worktree.ignored_files,
             });
         }
         if !with_kept {
@@ -235,11 +253,14 @@ pub fn remove_worktrees(
     worktrees: &[WorktreeSpace],
     probes: &dyn ProcessSource,
     unknown: UnknownUse,
+    stop: &Arc<AtomicBool>,
 ) -> RunLog {
     let mut log = RunLog::new(SystemTime::now());
-    let stop = Arc::new(AtomicBool::new(false));
     for worktree in worktrees {
-        let outcome = remove_one(worktree, probes, unknown, &stop);
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        let outcome = remove_one(worktree, probes, unknown, stop);
         log.rows.push(LogRow {
             path: worktree.path.clone(),
             size: worktree.size.bytes,
@@ -273,6 +294,9 @@ fn remove_one(
         .into_iter()
         .find(|candidate| candidate.path == worktree.path)
         .ok_or(Skip::Changed)?;
+    if !still_merged.ignored_files.is_empty() {
+        return Err(Skip::Changed);
+    }
     let git = Git::open(&worktree.repo).map_err(|error| Skip::Failed(error.to_string()))?;
     let report = git
         .clean_up(&CleanupPlan {

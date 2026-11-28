@@ -199,6 +199,7 @@ pub enum Message {
     SpaceTrashed {
         paths: Vec<std::path::PathBuf>,
         failed: Option<(usize, String)>,
+        batch: Option<ncrs_index::BatchId>,
     },
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),

@@ -276,7 +276,7 @@ pub fn measured_line(state: &State, ctx: ViewCtx<'_>) -> String {
             ctx.lang.text(Msg::SpaceMeasured),
             &[
                 ("{ago}", &crate::texts::ago_text(ctx.now, scan.measured_at)),
-                ("{took}", &crate::texts::took_text(scan.took)),
+                ("{took}", &crate::texts::took_text(scan.took, ctx.lang)),
             ],
         ),
         None => String::new(),

@@ -16699,6 +16699,24 @@
       "de": "seit dem Messen geändert"
     },
     {
+      "key": "space.decide_trash_run_name",
+      "context": "Name of the history entry for a run of the Platz tab that moved files to the trash, shown in the list of past runs where it can be undone. Short, no full stop.",
+      "en": "Platz: moved to the trash",
+      "de": "Platz: in den Papierkorb gelegt"
+    },
+    {
+      "key": "space.took_seconds",
+      "context": "How long a measure took, under one minute, in the Hermes chat sentence about the drive. {seconds} is the number; the unit is the abbreviation for seconds.",
+      "en": "{seconds} s",
+      "de": "{seconds} s"
+    },
+    {
+      "key": "space.took_minutes",
+      "context": "How long a measure took, one minute or more, in the Hermes chat sentence about the drive. {minutes} and {seconds} are numbers; keep the abbreviations for minutes and seconds.",
+      "en": "{minutes} min {seconds} s",
+      "de": "{minutes} Min. {seconds} s"
+    },
+    {
       "key": "space.decide_hermes_label",
       "context": "Small label above the sentence Hermes says in the pane in which you decide, naming who speaks.",
       "en": "Hermes",

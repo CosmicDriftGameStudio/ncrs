@@ -17,6 +17,24 @@ pub fn page_line<'a, M: 'a>(content: impl Into<String>, size: f32, color: Color)
         .into()
 }
 
+/// A small bold label in capitals, in the given color.
+pub fn caps_label<'a, M: 'a>(content: &str, color: Color) -> Element<'a, M> {
+    text(content.to_uppercase())
+        .size(font_size::SMALL)
+        .font(crate::APP_FONT_BOLD)
+        .color(color)
+        .into()
+}
+
+/// A bold text in a chosen size and color.
+pub fn bold_line<'a, M: 'a>(content: impl Into<String>, size: f32, color: Color) -> Element<'a, M> {
+    text(content.into())
+        .size(size)
+        .font(crate::APP_FONT_BOLD)
+        .color(color)
+        .into()
+}
+
 /// The heading of a block of a page: bold, in the text color.
 pub fn page_heading<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
     text(content.to_owned())

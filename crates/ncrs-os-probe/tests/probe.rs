@@ -118,4 +118,33 @@ mod probe {
         assert!(space.total >= space.available, "{space:?}");
         assert!(space.available > 0, "{space:?}");
     }
+    #[cfg(windows)]
+    #[test]
+    fn a_single_open_file_and_a_big_folder_both_get_a_real_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("open.txt");
+        let _open = std::fs::File::create(&path).unwrap();
+        for index in 0..2500 {
+            std::fs::write(dir.path().join(format!("f{index}.txt")), "x").unwrap();
+        }
+
+        assert!(matches!(folder_in_use(&path, GENEROUS), FolderUse::Held(_)));
+        assert!(matches!(
+            folder_in_use(dir.path(), GENEROUS),
+            FolderUse::Held(_)
+        ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_path_and_its_folder_lie_on_the_same_volume() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.txt");
+        std::fs::write(&path, "x").unwrap();
+
+        let folder = ncrs_os_probe::volume_serial_of(dir.path());
+
+        assert!(folder.is_some());
+        assert_eq!(folder, ncrs_os_probe::volume_serial_of(&path));
+    }
 }

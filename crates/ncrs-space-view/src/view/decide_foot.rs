@@ -114,7 +114,8 @@ pub fn view<'a>(pane: &'a DecideState, state: &'a State, ctx: ViewCtx<'a>) -> El
         kit::key_button(
             &trash_label,
             &ctx.keys.label(Shortcut::Trash),
-            (pane.chosen_count() > 0).then_some(Message::Decide(DecideMessage::Trash)),
+            (pane.chosen_count() > 0 && !pane.is_trashing())
+                .then_some(Message::Decide(DecideMessage::Trash)),
             Tone::Primary,
             palette,
         ),

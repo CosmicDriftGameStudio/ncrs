@@ -15,6 +15,7 @@ pub use downloads::{
     DuplicateSet, Matched,
 };
 pub use entries::decide_entries;
+pub use named::session_log_items;
 
 /// Why an entry of your own is shown for a decision.
 #[derive(Debug, Clone, PartialEq, Eq)]

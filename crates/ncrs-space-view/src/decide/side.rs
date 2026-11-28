@@ -67,7 +67,7 @@ fn open_row(state: &mut State, path: &std::path::Path, ctx: &Ctx) -> Outcome {
         return nothing();
     };
     let shown = state.decide.as_ref().map(|pane| pane.folder.as_path());
-    if row.group != Group::Decide || shown == Some(path) {
+    if row.group != Group::Decide || !row.can_trash() || shown == Some(path) {
         return nothing();
     }
     let is_downloads = row.kind == RowKind::Downloads;

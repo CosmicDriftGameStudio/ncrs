@@ -15,7 +15,9 @@ mod scan;
 mod simulators;
 mod worktrees;
 
-pub use catalog::{cargo_project_name, catalog, catalog_for, CatalogId, Os, Place};
+pub use catalog::{
+    cargo_project_name, catalog, catalog_for, touches_protected, CatalogId, Os, Place,
+};
 pub use catalog_texts::catalog_msgs;
 pub use checks::{check_before_delete, ProcessSource, Skip, SystemProbes, UnknownUse};
 pub use delete::delete_safe;

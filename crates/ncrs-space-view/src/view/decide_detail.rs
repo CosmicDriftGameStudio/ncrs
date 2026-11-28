@@ -7,9 +7,8 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format::{shown_path, size_shown};
 use ncrs_ui_kit::git_lines::fact_row;
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::page_text::page_line;
+use ncrs_ui_kit::page_text::{bold_line, caps_label, page_line};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
-use ncrs_ui_kit::APP_FONT_BOLD;
 
 use super::decide_text::{day, file_name, group_msg, kind_text, why_lines};
 use crate::ctx::ViewCtx;
@@ -19,11 +18,7 @@ use crate::shortcuts::Shortcut;
 use crate::texts::fill_plural;
 
 fn heading<'a>(label: &str, ctx: ViewCtx<'a>) -> Element<'a, Message> {
-    iced::widget::text(label.to_uppercase())
-        .size(font_size::SMALL)
-        .font(APP_FONT_BOLD)
-        .color(ctx.palette.dim_text)
-        .into()
+    caps_label(label, ctx.palette.dim_text)
 }
 
 fn fact<'a>(label: &str, value: String, ctx: ViewCtx<'a>) -> Element<'a, Message> {
@@ -70,10 +65,7 @@ fn item_section<'a>(
 ) -> Element<'a, Message> {
     let palette = ctx.palette;
     let mut side = column![
-        iced::widget::text(file_name(&entry.item.path))
-            .size(font_size::BODY)
-            .font(APP_FONT_BOLD)
-            .color(palette.text),
+        bold_line(file_name(&entry.item.path), font_size::BODY, palette.text),
         page_line(
             shown_path(&entry.item.path, ctx.home),
             font_size::SMALL,

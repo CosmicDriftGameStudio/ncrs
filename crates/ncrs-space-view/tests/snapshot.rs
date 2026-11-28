@@ -47,6 +47,11 @@ mod ui_tests {
             processes_known: app.processes_known,
             trash_can_purge: app.trash_can_purge,
             warn_from_percent: 90,
+            open_key: Some(if cfg!(target_os = "macos") {
+                "\u{2318}\u{2325}P"
+            } else {
+                "Ctrl+Alt+P"
+            }),
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {

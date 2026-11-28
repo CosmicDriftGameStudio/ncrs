@@ -72,6 +72,7 @@ pub fn banner<'a>(
                     .finished
                     .duration_since(done.log.started)
                     .unwrap_or_default(),
+                ctx.lang,
             ),
             font_size::BODY,
             palette.dim_text,

@@ -8,7 +8,7 @@ use ncrs_core::FolderSize;
 use ncrs_fs::{measure_folder_depth, RUNNING_REPORT_INTERVAL};
 use ncrs_os_probe::{FolderUse, Holder, VolumeSpace};
 
-use crate::catalog::{catalog_for, is_under_any, CatalogId, Os};
+use crate::catalog::{catalog_for, touches_protected, CatalogId, Os};
 use crate::checks::{device_of, runs_tool, ProcessSource, FOLDER_USE_LIMIT};
 use crate::decide::DecideKind;
 use crate::drives::drive_name_of;
@@ -85,7 +85,7 @@ pub fn scan(
     let mut partial = volume.is_none();
     let home_device = std::fs::symlink_metadata(&request.home)
         .ok()
-        .and_then(|metadata| device_of(&metadata));
+        .and_then(|metadata| device_of(&request.home, &metadata));
     let processes = probes.processes();
     let processes_known = processes.is_some();
     let env = |name: &str| std::env::var_os(name);
@@ -158,7 +158,7 @@ pub fn scan(
         }
         let device = std::fs::symlink_metadata(&worktree.path)
             .ok()
-            .and_then(|metadata| device_of(&metadata));
+            .and_then(|metadata| device_of(&worktree.path, &metadata));
         let (group, held_by, use_check) = use_of(
             &worktree.path,
             &[],
@@ -191,7 +191,7 @@ pub fn scan(
         return None;
     }
 
-    entries.retain(|entry| !is_under_any(&entry.path, &settings.never_touch));
+    entries.retain(|entry| !touches_protected(&entry.path, &settings.never_touch));
     if !settings.other_drives && home_device.is_some() {
         entries.retain(|entry| entry.device.is_none() || entry.device == home_device);
     }
@@ -252,7 +252,7 @@ fn measure(
     Some(Some(Measured {
         size,
         modified: metadata.modified().ok(),
-        device: device_of(&metadata),
+        device: device_of(path, &metadata),
     }))
 }
 

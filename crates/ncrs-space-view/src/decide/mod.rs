@@ -170,6 +170,8 @@ pub struct DecideState {
     pub side_cursor: PathBuf,
     pub empty_after: bool,
     pub emptying: bool,
+    /// A trash run is under way: a second press waits for its answer.
+    pub trashing: bool,
     pub notice: Option<DecideNotice>,
     pub can_undo: bool,
 }
@@ -189,6 +191,7 @@ impl DecideState {
             area: DecideArea::default(),
             empty_after: false,
             emptying: false,
+            trashing: false,
             notice: None,
             can_undo: false,
         }
@@ -224,6 +227,10 @@ impl DecideState {
 
     pub const fn notice(&self) -> Option<DecideNotice> {
         self.notice
+    }
+
+    pub const fn is_trashing(&self) -> bool {
+        self.trashing
     }
 
     pub const fn can_undo(&self) -> bool {

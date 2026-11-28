@@ -25,7 +25,7 @@ pub use decide::{
     DecideState, DECIDE_LIST_ID,
 };
 pub use keys::{space_key, AppKey, KeyMode, KeyOverride, SpaceKeys, SpaceKeysError};
-pub use message::{Finished, MenuEntry, Message};
+pub use message::{DecideTarget, Finished, MenuEntry, Message};
 pub use rows::{DisplayRow, Item, RowKind};
 pub use shortcuts::{commands, message_of_command, Shortcut};
 pub use state::{Measuring, ResultState, Running, State};

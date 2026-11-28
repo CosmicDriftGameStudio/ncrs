@@ -24,6 +24,13 @@ pub struct Finished {
     pub log_error: Option<String>,
 }
 
+/// A folder of the overview that Hermes sends the user to decide on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecideTarget {
+    Downloads,
+    SessionLogs,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     // Keys of the list.
@@ -62,6 +69,8 @@ pub enum Message {
     ExpandWorktrees,
     /// The button of a decide row: the cursor goes there and the pane opens.
     RowOpened(PathBuf),
+    /// Settles the result, then opens the folder's decide pane; once the measure ends if it runs.
+    OpenDecide(DecideTarget),
     OpenMenuAt(PathBuf),
     CloseMenu,
     MenuCursor(usize),

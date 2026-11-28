@@ -748,3 +748,136 @@ fn the_simulators_row_cannot_go_to_the_trash_but_the_backups_row_can() {
     send(&mut state, Message::Enter, &app);
     assert!(state.decide().is_some());
 }
+
+#[test]
+fn the_side_overview_does_not_open_the_simulators_either() {
+    let simulators = format!("{HOME}/Library/Developer/CoreSimulator");
+    let backups = format!("{HOME}/Backups");
+    let place =
+        |folder: &str, kind: DecideKind| entry(folder, Group::Decide, EntryKind::Decide(kind), GIB);
+    let scan = scan_of(
+        vec![
+            place(&simulators, DecideKind::Simulators),
+            place(&backups, DecideKind::Backups),
+        ],
+        true,
+    );
+    let app = ctx();
+    let (mut state, _) = tab(scan, &app);
+    send(&mut state, Message::RowPressed(path(&backups)), &app);
+    send(&mut state, Message::Enter, &app);
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::SidePressed(path(&simulators))),
+        &app,
+    );
+    assert_eq!(state.decide().unwrap().folder(), path(&backups));
+}
+
+#[test]
+fn a_second_trash_press_waits_for_the_answer_of_the_first() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    open_downloads(&mut state, &ctx);
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::Loaded {
+            folder: path(&format!("{HOME}/Downloads")),
+            groups: Box::new(downloads()),
+        }),
+        &ctx,
+    );
+    let first = send(&mut state, Message::Decide(DecideMessage::Trash), &ctx);
+    assert_eq!(first.len(), 1);
+    assert!(send(&mut state, Message::Decide(DecideMessage::Trash), &ctx).is_empty());
+    send(
+        &mut state,
+        Message::Decide(DecideMessage::Trashed(Vec::new())),
+        &ctx,
+    );
+    assert!(!state.decide().unwrap().is_trashing());
+}
+
+#[test]
+fn free_now_is_the_free_space_after_the_run_while_the_measure_runs() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    finished_run(&mut state, &ctx);
+    assert!(state.is_measuring());
+    assert_eq!(state.volume_now().unwrap().available, 118 * GIB);
+}
+
+#[test]
+fn a_second_run_records_the_free_space_of_the_newer_measure_as_before() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    finished_run(&mut state, &ctx);
+    let newer = scan_with_free(118 * GIB);
+    let run = state.scan_run();
+    send(
+        &mut state,
+        Message::Scanned {
+            run,
+            scan: Some(newer),
+        },
+        &ctx,
+    );
+    send(&mut state, Message::Retry, &ctx);
+    send(&mut state, Message::ConfirmAccept, &ctx);
+    assert_eq!(state.running().unwrap().free_before, 118 * GIB);
+}
+
+fn scan_with_free(free: u64) -> Arc<ncrs_space::Scan> {
+    let mut scan = (*small_scan()).clone();
+    scan.volume.available = free;
+    Arc::new(scan)
+}
+
+#[test]
+fn open_decide_waits_for_the_measure_and_then_opens_the_downloads() {
+    let ctx = ctx();
+    let (mut state, _task) = ncrs_space_view::open(&ctx);
+    send(
+        &mut state,
+        Message::OpenDecide(ncrs_space_view::DecideTarget::Downloads),
+        &ctx,
+    );
+    assert!(state.decide().is_none());
+    let run = state.scan_run();
+    send(
+        &mut state,
+        Message::Scanned {
+            run,
+            scan: Some(small_scan()),
+        },
+        &ctx,
+    );
+    assert_eq!(
+        state.decide().unwrap().folder(),
+        path(&format!("{HOME}/Downloads"))
+    );
+}
+
+#[test]
+fn open_decide_settles_the_result_banner_and_opens_the_pane() {
+    let ctx = ctx();
+    let (mut state, _) = tab(small_scan(), &ctx);
+    finished_run(&mut state, &ctx);
+    let run = state.scan_run();
+    send(
+        &mut state,
+        Message::Scanned {
+            run,
+            scan: Some(small_scan()),
+        },
+        &ctx,
+    );
+    assert!(state.result().is_some());
+    send(
+        &mut state,
+        Message::OpenDecide(ncrs_space_view::DecideTarget::Downloads),
+        &ctx,
+    );
+    assert!(state.result().is_none());
+    assert!(state.decide().is_some());
+}

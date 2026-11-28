@@ -23,8 +23,9 @@ pub enum Depth {
 pub struct SpaceSettings {
     /// The drive counts as full from this used share on.
     pub warn_from_percent: u8,
-    /// Names (volume labels) of the drives the warning is for. Empty: the drive of the home folder only.
-    pub warn_drives: Vec<String>,
+    /// Names (volume labels) of the drives the warning is for. `None`: the drive of the home
+    /// folder only; `Some` of an empty list: no drive.
+    pub warn_drives: Option<Vec<String>>,
     /// Catalog entries switched off, by their name in the catalog (`ncrs_space::CatalogId::name`).
     pub catalog_off: Vec<String>,
     /// Folders of the user's own that a tool regenerates; treated as safe.
@@ -39,7 +40,7 @@ impl Default for SpaceSettings {
     fn default() -> Self {
         Self {
             warn_from_percent: DEFAULT_WARN_FROM_PERCENT,
-            warn_drives: Vec::new(),
+            warn_drives: None,
             catalog_off: vec![NODE_MODULES_STALE.to_owned()],
             own_regenerable: Vec::new(),
             never_touch: Vec::new(),
@@ -95,8 +96,33 @@ pub fn default_never_touch(home: &Path) -> Vec<PathBuf> {
     folders
 }
 
-/// Where iCloud, Dropbox and OneDrive keep their files, whether or not the service is installed.
+/// Names in the home folder that start like these are sync roots too (`OneDrive - Company`).
+const CLOUD_PREFIXES: [&str; 2] = ["OneDrive", "Dropbox"];
+/// The variables the OneDrive client sets to its sync roots.
+const ONEDRIVE_VARIABLES: [&str; 3] = ["OneDrive", "OneDriveCommercial", "OneDriveConsumer"];
+
+/// Where iCloud, Dropbox and OneDrive keep their files, whether or not the service is installed:
+/// the fixed places, the folders of home that start like a sync root and the OneDrive variables.
 pub fn cloud_folders(home: &Path) -> Vec<PathBuf> {
+    let names: Vec<String> = std::fs::read_dir(home)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .collect();
+    let from_environment: Vec<PathBuf> = ONEDRIVE_VARIABLES
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .collect();
+    cloud_folders_in(home, &names, &from_environment)
+}
+
+fn cloud_folders_in(
+    home: &Path,
+    home_names: &[String],
+    from_environment: &[PathBuf],
+) -> Vec<PathBuf> {
     let mut folders = Vec::new();
     if cfg!(target_os = "macos") {
         folders.push(home.join("Library/Mobile Documents"));
@@ -107,6 +133,15 @@ pub fn cloud_folders(home: &Path) -> Vec<PathBuf> {
     }
     folders.push(home.join("Dropbox"));
     folders.push(home.join("OneDrive"));
+    let by_prefix = home_names
+        .iter()
+        .filter(|name| CLOUD_PREFIXES.iter().any(|prefix| name.starts_with(prefix)))
+        .map(|name| home.join(name));
+    for folder in by_prefix.chain(from_environment.iter().cloned()) {
+        if !folders.contains(&folder) {
+            folders.push(folder);
+        }
+    }
     folders
 }
 
@@ -117,10 +152,9 @@ pub fn is_cloud_folder(folder: &Path, home: &Path) -> bool {
 
 /// Whether the drive-full warning is for the drive called `name`.
 pub fn warns_for_drive(settings: &SpaceSettings, name: &str, is_home_drive: bool) -> bool {
-    if settings.warn_drives.is_empty() {
-        is_home_drive
-    } else {
-        settings.warn_drives.iter().any(|listed| listed == name)
+    match &settings.warn_drives {
+        None => is_home_drive,
+        Some(listed) => listed.iter().any(|drive| drive == name),
     }
 }
 
@@ -158,11 +192,13 @@ pub fn resolve_space_at(section: &SpaceSection, home: Option<&Path>) -> SpaceSet
             .warn_drives
             .as_ref()
             .map_or(defaults.warn_drives, |listed| {
-                listed
-                    .iter()
-                    .map(|name| name.trim().to_owned())
-                    .filter(|name| !name.is_empty())
-                    .collect()
+                Some(
+                    listed
+                        .iter()
+                        .map(|name| name.trim().to_owned())
+                        .filter(|name| !name.is_empty())
+                        .collect(),
+                )
             }),
         catalog_off: section
             .catalog_off
@@ -240,9 +276,38 @@ mod tests {
         let mut settings = SpaceSettings::default();
         assert!(warns_for_drive(&settings, "Macintosh HD", true));
         assert!(!warns_for_drive(&settings, "Archiv", false));
-        settings.warn_drives = vec!["Archiv".to_owned()];
+        settings.warn_drives = Some(vec!["Archiv".to_owned()]);
         assert!(!warns_for_drive(&settings, "Macintosh HD", true));
         assert!(warns_for_drive(&settings, "Archiv", false));
+    }
+
+    #[test]
+    fn an_explicit_empty_list_turns_the_warning_off_for_every_drive() {
+        let section = SpaceSection {
+            warn_drives: Some(Vec::new()),
+            ..SpaceSection::default()
+        };
+        let settings = resolve_space_at(&section, None);
+        assert_eq!(settings.warn_drives, Some(Vec::new()));
+        assert!(!warns_for_drive(&settings, "Macintosh HD", true));
+    }
+
+    #[test]
+    fn cloud_folders_cover_onedrive_for_business_and_the_environment_paths() {
+        let home = Path::new("/home/a");
+        let folders = cloud_folders_in(
+            home,
+            &[
+                "OneDrive - Org".to_owned(),
+                "Dropbox (Team)".to_owned(),
+                "Music".to_owned(),
+            ],
+            &[PathBuf::from("/data/OneDriveCommercial")],
+        );
+        assert!(folders.contains(&home.join("OneDrive - Org")));
+        assert!(folders.contains(&home.join("Dropbox (Team)")));
+        assert!(!folders.contains(&home.join("Music")));
+        assert!(folders.contains(&PathBuf::from("/data/OneDriveCommercial")));
     }
 
     #[test]
@@ -253,7 +318,7 @@ mod tests {
         };
         assert_eq!(
             resolve_space_at(&section, None).warn_drives,
-            vec!["Archiv".to_owned()]
+            Some(vec!["Archiv".to_owned()])
         );
     }
 

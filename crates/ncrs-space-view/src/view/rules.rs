@@ -17,12 +17,6 @@ use crate::message::Message;
 
 const RULES_SCROLL_ID: &str = "space-rules";
 
-const OPEN_TAB_KEY: &str = if cfg!(target_os = "macos") {
-    "\u{2318}\u{2325}P"
-} else {
-    "Ctrl+Alt+P"
-};
-
 fn catalog_name(id: CatalogId, ctx: ViewCtx<'_>) -> String {
     fill_template(ctx.lang.text(catalog_msgs(id).0), &[("{name}", "")])
         .trim()
@@ -183,21 +177,27 @@ fn never_card<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
 
 fn keys_card<'a>(ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
-    info_card(
-        ctx.lang.text(Msg::SpaceRulesKeysHead),
-        None,
-        vec![
-            card_text(ctx.lang.text(Msg::SpaceRulesKeysText), palette),
-            key_row("Space", ctx.lang.text(Msg::SpaceRulesKeyEntry), palette),
-            key_row(
-                OPEN_TAB_KEY,
-                ctx.lang.text(Msg::SpaceRulesKeyEverywhere),
-                palette,
-            ),
-            key_row("F1", ctx.lang.text(Msg::SpaceRulesKeyCommands), palette),
-        ],
+    let mut lines = vec![
+        card_text(ctx.lang.text(Msg::SpaceRulesKeysText), palette),
+        key_row(
+            ctx.lang.text(Msg::SpaceKeyNameSpace),
+            ctx.lang.text(Msg::SpaceRulesKeyEntry),
+            palette,
+        ),
+    ];
+    if let Some(open_key) = ctx.open_key {
+        lines.push(key_row(
+            open_key,
+            ctx.lang.text(Msg::SpaceRulesKeyEverywhere),
+            palette,
+        ));
+    }
+    lines.push(key_row(
+        "F1",
+        ctx.lang.text(Msg::SpaceRulesKeyCommands),
         palette,
-    )
+    ));
+    info_card(ctx.lang.text(Msg::SpaceRulesKeysHead), None, lines, palette)
 }
 
 /// The colours of the bars and what they stand for.

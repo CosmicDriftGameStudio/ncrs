@@ -423,4 +423,69 @@ mod decide_flow {
         assert!(DecideKind::Backups.can_trash());
         assert!(DecideKind::SessionLogs.can_trash());
     }
+    fn sparse(path: &Path, len: u64) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        File::create(path).unwrap().set_len(len).unwrap();
+    }
+
+    #[test]
+    fn big_folders_below_app_data_are_left_alone() {
+        let home = tempfile::tempdir().unwrap();
+        let big = 600 * 1024 * 1024;
+        sparse(&home.path().join("AppData/Local/Docker/disk.img"), big);
+        sparse(&home.path().join("Projects/render/out.bin"), big);
+
+        let found = kinds_of(&decide_entries(
+            home.path(),
+            &SpaceSettings::default(),
+            &AtomicBool::new(false),
+        ));
+
+        let big_folders: Vec<&PathBuf> = found
+            .iter()
+            .filter(|(kind, _)| *kind == DecideKind::BigFolder)
+            .map(|(_, path)| path)
+            .collect();
+        assert_eq!(big_folders, [&home.path().join("Projects/render")]);
+    }
+
+    #[test]
+    fn session_logs_offer_the_logs_of_a_project_but_never_its_memory() {
+        let home = tempfile::tempdir().unwrap();
+        let logs = home.path().join(".claude/projects");
+        fill(&logs.join("plain/a.jsonl"), 100);
+        fill(&logs.join("kept/memory/MEMORY.md"), 300);
+        fill(&logs.join("kept/b.jsonl"), 200);
+
+        let entries = decide_entries(
+            home.path(),
+            &SpaceSettings::default(),
+            &AtomicBool::new(false),
+        );
+
+        let log_entry = entries
+            .iter()
+            .find(|entry| entry.kind == EntryKind::Decide(DecideKind::SessionLogs))
+            .unwrap();
+        assert_eq!(log_entry.size.bytes, 300);
+        let mut offered: Vec<PathBuf> = ncrs_space::decide::session_log_items(&logs).unwrap();
+        offered.sort();
+        assert_eq!(
+            offered,
+            [logs.join("kept/b.jsonl"), logs.join("plain/a.jsonl")]
+        );
+    }
+
+    #[test]
+    fn download_groups_drop_items_that_touch_a_protected_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        fill(&dir.path().join("client/keep/a"), 10);
+        fill(&dir.path().join("other/a"), 10);
+        let groups = sort_downloads(dir.path(), &FakeApps::with(&[]), &AtomicBool::new(false));
+        assert_eq!(groups.rest.len(), 2);
+
+        let kept = groups.without_protected(&[dir.path().join("client/keep")]);
+
+        assert_eq!(names(&kept.rest), ["other"]);
+    }
 }

@@ -61,6 +61,7 @@ impl App {
                     processes_known: self.space_processes_known,
                     trash_can_purge: self.trash.can_purge(),
                     warn_from_percent: self.space_settings.warn_from_percent,
+                    open_key: Some(self.monitor.space.key.as_str()).filter(|key| !key.is_empty()),
                 };
                 ncrs_space_view::view(state, ctx).map(Message::Space)
             }
@@ -111,6 +112,7 @@ impl App {
         }
         self.space = None;
         self.space_run_ask = None;
+        self.space_chat_confirm = false;
         self.space_progress = None;
         self.follow_opened_pages(was_open);
     }
@@ -119,6 +121,12 @@ impl App {
         &mut self,
         message: ncrs_space_view::Message,
     ) -> Task<Message> {
+        if matches!(
+            message,
+            ncrs_space_view::Message::ConfirmCancel | ncrs_space_view::Message::Escape
+        ) {
+            self.space_chat_confirm = false;
+        }
         let ctx = self.space_ctx();
         let Some(state) = self.space.as_mut() else {
             return Task::none();
@@ -128,6 +136,18 @@ impl App {
             .into_iter()
             .map(|action| self.run_space_action(action));
         Task::batch(std::iter::once(task.map(Message::Space)).chain(asked))
+    }
+
+    /// Opens the confirm of a run the chat asked for; with nothing to delete no confirm
+    /// opens and the run is not the chat's to answer.
+    fn confirm_run_for_chat(&mut self, kind: ConfirmKind) -> Task<Message> {
+        self.space_chat_confirm = true;
+        let task = self.update_space(message_of_run(kind));
+        self.space_chat_confirm = self
+            .space
+            .as_ref()
+            .is_some_and(|state| state.confirm().is_some());
+        task
     }
 
     pub(in crate::app) fn run_space_action(&mut self, action: Ask) -> Task<Message> {
@@ -140,20 +160,24 @@ impl App {
             Ask::GrantHome => self.update_grant(GrantMessage::Open),
             Ask::Measured(scan) => {
                 self.space_last_scan = Some(scan);
-                match self.space_run_ask {
-                    Some(kind) => self.update_space(message_of_run(kind)),
+                match self.space_run_ask.take() {
+                    Some(kind) => self.confirm_run_for_chat(kind),
                     None => Task::none(),
                 }
             }
             Ask::RunDone(log) => {
                 self.space_progress = None;
-                if self.space_run_ask.take().is_some() {
+                self.space_chat_confirm = false;
+                if std::mem::take(&mut self.space_chat_run) {
                     self.update_hermes_chat(HermesChatMessage::SpaceRunDone(log))
                 } else {
                     Task::none()
                 }
             }
             Ask::SetJobProgress(tick) => {
+                if std::mem::take(&mut self.space_chat_confirm) {
+                    self.space_chat_run = true;
+                }
                 self.space_progress = Some(tick);
                 Task::none()
             }
@@ -183,32 +207,53 @@ impl App {
 
     fn trash_own_files(
         &mut self,
-        _root: PathBuf,
+        root: PathBuf,
         items: Vec<ncrs_filing::execute::OwnTrashItem>,
         empty_after: bool,
     ) -> Task<Message> {
         let trash = Arc::clone(&self.trash);
+        let access = self
+            .hermes
+            .filing
+            .as_ref()
+            .and_then(|module| module.sorting_access(Arc::clone(&self.trash)));
         let changed_reason = self.lang.text(Msg::SpaceDecideChanged).to_owned();
+        let run_name = self.lang.text(Msg::SpaceDecideTrashRunName).to_owned();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
-                    let (unchanged, changed): (Vec<_>, Vec<_>) = items
-                        .into_iter()
-                        .partition(|item| !changed_since_measure(item));
-                    let (gone, trash_failed) = trash_items(trash.as_ref(), &unchanged, empty_after);
-                    let failed = match (trash_failed, changed.len()) {
-                        (failed, 0) => failed,
-                        (None, count) => Some((count, changed_reason)),
-                        (Some((count, reason)), changed_count) => {
-                            Some((count + changed_count, reason))
-                        }
+                    let run = match access {
+                        Some(sorting) => sorting.trash_own(&run_name, &root, &items, empty_after),
+                        None => ncrs_filing::execute::trash_own_items(
+                            None,
+                            &run_name,
+                            &root,
+                            &items,
+                            trash.as_ref(),
+                            empty_after,
+                        ),
                     };
-                    (gone, failed)
+                    let failed = run.refused.first().map(|first| {
+                        let reason = match first {
+                            ncrs_filing::execute::SkipReason::Failed(detail) => detail.clone(),
+                            ncrs_filing::execute::SkipReason::SourceChanged
+                            | ncrs_filing::execute::SkipReason::SourceMissing => {
+                                changed_reason.clone()
+                            }
+                            other => other.text(),
+                        };
+                        (run.refused.len(), reason)
+                    });
+                    (run.gone, failed, run.batch)
                 })
                 .await
-                .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string()))))
+                .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string())), None))
             },
-            |(paths, failed)| Message::SpaceTrashed { paths, failed },
+            |(paths, failed, batch)| Message::SpaceTrashed {
+                paths,
+                failed,
+                batch,
+            },
         )
     }
 
@@ -216,6 +261,7 @@ impl App {
         &mut self,
         paths: Vec<PathBuf>,
         failed: Option<(usize, String)>,
+        batch: Option<ncrs_index::BatchId>,
     ) -> Task<Message> {
         if let Some((count, reason)) = failed {
             let shown = ncrs_i18n::fill_template(
@@ -224,7 +270,10 @@ impl App {
             );
             self.set_status_error(&shown);
         }
-        self.last_own_trash.clone_from(&paths);
+        if !paths.is_empty() {
+            self.last_own_trash.clone_from(&paths);
+            self.last_own_batch = batch;
+        }
         self.update_space(ncrs_space_view::Message::Decide(
             ncrs_space_view::DecideMessage::Trashed(paths),
         ))
@@ -233,11 +282,20 @@ impl App {
     fn undo_own_trash(&mut self) -> Task<Message> {
         let trash = Arc::clone(&self.trash);
         let wanted = std::mem::take(&mut self.last_own_trash);
+        let journaled = self.last_own_batch.take().zip(
+            self.hermes
+                .filing
+                .as_ref()
+                .and_then(|module| module.sorting_access(Arc::clone(&self.trash))),
+        );
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || restore_items(trash.as_ref(), &wanted))
-                    .await
-                    .unwrap_or_else(|failure| Err(failure.to_string()))
+                tokio::task::spawn_blocking(move || match journaled {
+                    Some((batch, access)) => access.undo(batch).map(|report| report.undone),
+                    None => ncrs_filing::execute::restore_own_items(trash.as_ref(), &wanted),
+                })
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
             },
             |result| match result {
                 Ok(count) => Message::Space(ncrs_space_view::Message::Decide(
@@ -308,7 +366,8 @@ impl App {
             .as_ref()
             .is_some_and(|state| state.scan().is_some() && !state.is_measuring());
         let confirm = if was_open && ready {
-            self.update_space(message_of_run(asked))
+            self.space_run_ask = None;
+            self.confirm_run_for_chat(asked)
         } else {
             Task::none()
         };
@@ -321,37 +380,18 @@ impl App {
         target: ncrs_hermes_chat::SpaceDecideTarget,
     ) -> Task<Message> {
         let opened = self.open_space();
-        let downloads = self.home.join("Downloads");
-        let row = self.space_last_scan.as_ref().and_then(|scan| {
-            scan.entries
-                .iter()
-                .find(|entry| {
-                    entry.group == ncrs_space::Group::Decide
-                        && match target {
-                            ncrs_hermes_chat::SpaceDecideTarget::Downloads => {
-                                entry.path == downloads
-                            }
-                            ncrs_hermes_chat::SpaceDecideTarget::SessionLogs => matches!(
-                                entry.kind,
-                                ncrs_space::EntryKind::Decide(
-                                    ncrs_space::decide::DecideKind::SessionLogs
-                                )
-                            ),
-                        }
-                })
-                .map(|entry| entry.path.clone())
-        });
-        let ready = self
-            .space
-            .as_ref()
-            .is_some_and(|state| state.scan().is_some() && !state.is_measuring());
-        match row {
-            Some(path) if ready => Task::batch([
-                opened,
-                self.update_space(ncrs_space_view::Message::RowOpened(path)),
-            ]),
-            _ => opened,
-        }
+        let folder = match target {
+            ncrs_hermes_chat::SpaceDecideTarget::Downloads => {
+                ncrs_space_view::DecideTarget::Downloads
+            }
+            ncrs_hermes_chat::SpaceDecideTarget::SessionLogs => {
+                ncrs_space_view::DecideTarget::SessionLogs
+            }
+        };
+        Task::batch([
+            opened,
+            self.update_space(ncrs_space_view::Message::OpenDecide(folder)),
+        ])
     }
 
     /// The key of a card button of the chat, or the key back to the input.
@@ -417,8 +457,9 @@ impl App {
         volume: Option<ncrs_os_probe::VolumeSpace>,
     ) {
         self.home_volume = volume;
+        let drive_name = self.space_drive_name();
         let measured_hint = volume.and_then(|measured| {
-            ncrs_monitor::disk_hint(measured, self.space_settings.warn_from_percent)
+            ncrs_monitor::home_disk_hint(measured, &self.space_settings, &drive_name)
         });
         let Some(hint) = measured_hint else {
             self.space_hint = None;
@@ -498,55 +539,4 @@ fn message_of_run(kind: ConfirmKind) -> ncrs_space_view::Message {
 pub(in crate::app) fn processes_known() -> bool {
     static KNOWN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *KNOWN.get_or_init(|| ncrs_os_probe::running_processes().is_some())
-}
-
-/// What went to the trash, and the first reason (with the count) of those that did not.
-/// A file whose modification time differs from the one measured is not the file the user
-/// saw; same rule as the checks of `ncrs-space`.
-pub(in crate::app) fn changed_since_measure(item: &ncrs_filing::execute::OwnTrashItem) -> bool {
-    item.modified.is_some()
-        && std::fs::metadata(&item.path)
-            .and_then(|meta| meta.modified())
-            .ok()
-            != item.modified
-}
-
-pub(in crate::app) fn trash_items(
-    trash: &dyn fs::Trash,
-    items: &[ncrs_filing::execute::OwnTrashItem],
-    empty_after: bool,
-) -> (Vec<PathBuf>, Option<(usize, String)>) {
-    let mut gone = Vec::new();
-    let mut failures = Vec::new();
-    for item in items {
-        match trash.trash(&item.path) {
-            Ok(()) => gone.push(item.path.clone()),
-            Err(reason) => failures.push(reason),
-        }
-    }
-    if empty_after && trash.can_purge() {
-        if let Ok(listed) = trash.list() {
-            let entries: Vec<_> = listed
-                .into_iter()
-                .filter(|entry| gone.contains(&entry.original))
-                .collect();
-            drop(trash.purge(&entries));
-        }
-    }
-    let failed = failures
-        .first()
-        .map(|first| (failures.len(), first.clone()));
-    (gone, failed)
-}
-
-pub(in crate::app) fn restore_items(
-    trash: &dyn fs::Trash,
-    wanted: &[PathBuf],
-) -> Result<usize, String> {
-    let listed = trash.list()?;
-    Ok(listed
-        .iter()
-        .filter(|entry| wanted.contains(&entry.original))
-        .filter(|entry| trash.restore(entry).is_ok())
-        .count())
 }

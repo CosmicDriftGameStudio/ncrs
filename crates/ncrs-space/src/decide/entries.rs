@@ -12,6 +12,7 @@ use super::{
     sort_downloads_with, DecideKind, DownloadGroups, DownloadItem, InstalledApps, Matched,
     SystemInstalledApps,
 };
+use crate::catalog::touches_protected;
 use crate::facts::{DecideReason, EntryFacts};
 use crate::scan::{Entry, EntryKind, Group};
 
@@ -156,10 +157,7 @@ fn big_folder_entries(
                 .iter()
                 .any(|known| path.starts_with(known) || known.starts_with(path))
             && !is_left_alone(home, path)
-            && !settings
-                .never_touch
-                .iter()
-                .any(|never| path.starts_with(never))
+            && !touches_protected(path, &settings.never_touch)
     };
     let big: Vec<_> = tree
         .below
@@ -191,14 +189,20 @@ fn big_folder_entries(
         .collect()
 }
 
-/// Hidden folders and the macOS library hold app data, not files of the user's own.
+/// Hidden folders, the macOS library and the Windows `AppData` hold app data, not files of
+/// the user's own.
 fn is_left_alone(home: &Path, path: &Path) -> bool {
     path.strip_prefix(home).is_ok_and(|relative| {
-        relative.components().any(|part| {
-            part.as_os_str()
-                .to_str()
-                .is_some_and(|name| name.starts_with('.') || name == "Library")
-        })
+        let mut parts = relative.components();
+        let first_is_app_data = parts
+            .next()
+            .is_some_and(|part| part.as_os_str().to_str() == Some("AppData"));
+        first_is_app_data
+            || relative.components().any(|part| {
+                part.as_os_str()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with('.') || name == "Library")
+            })
     })
 }
 
@@ -208,7 +212,12 @@ pub fn device_of_path(path: &Path) -> Option<u64> {
     fs::symlink_metadata(path).ok().map(|meta| meta.dev())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub fn device_of_path(path: &Path) -> Option<u64> {
+    ncrs_os_probe::volume_serial_of(path)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn device_of_path(_path: &Path) -> Option<u64> {
     None
 }

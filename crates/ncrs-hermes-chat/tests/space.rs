@@ -70,6 +70,7 @@ mod tests {
                         branch: "feat/old".to_owned(),
                         size: size(20),
                         modified: None,
+                        ignored_files: Vec::new(),
                     }),
                     20,
                 ),
@@ -107,7 +108,7 @@ mod tests {
         };
         let mut entries = vec![entry(".claude/projects", DecideKind::SessionLogs)];
         if downloads {
-            entries.push(entry("Downloads", DecideKind::BigFolder));
+            entries.push(entry("Downloads/old.dmg", DecideKind::BigFolder));
         }
         Arc::new(Scan {
             volume: VolumeSpace {

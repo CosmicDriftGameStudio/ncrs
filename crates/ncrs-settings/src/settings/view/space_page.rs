@@ -159,14 +159,13 @@ struct DriveEntry<'d> {
 
 /// The drives the warning is for: the listed ones, or the drive of the home folder when none is listed.
 fn warned_drives(current: &SpaceSettings, drives: &[DriveRow]) -> Vec<String> {
-    if current.warn_drives.is_empty() {
-        drives
+    match &current.warn_drives {
+        None => drives
             .iter()
             .filter(|drive| drive.is_home)
             .map(|drive| drive.name.clone())
-            .collect()
-    } else {
-        current.warn_drives.clone()
+            .collect(),
+        Some(listed) => listed.clone(),
     }
 }
 
@@ -185,6 +184,7 @@ fn drive_entries<'d>(current: &SpaceSettings, drives: &'d [DriveRow]) -> Vec<Dri
         current
             .warn_drives
             .iter()
+            .flatten()
             .filter(|name| !drives.iter().any(|drive| &drive.name == *name))
             .map(|name| DriveEntry {
                 name: name.clone(),
@@ -203,7 +203,7 @@ fn with_drive_toggled(current: &SpaceSettings, drives: &[DriveRow], name: &str) 
         listed.push(name.to_owned());
     }
     let mut next = current.clone();
-    next.warn_drives = listed;
+    next.warn_drives = Some(listed);
     next
 }
 
@@ -559,9 +559,25 @@ mod tests {
     }
 
     #[test]
+    fn the_home_drive_can_be_turned_off_and_stays_off() {
+        let home = DriveRow {
+            is_home: true,
+            name: "Macintosh HD".into(),
+            total: 100,
+            used: 50,
+        };
+        let drives = [home];
+        let current = SpaceSettings::default();
+        assert!(drive_entries(&current, &drives)[0].on);
+        let off = with_drive_toggled(&current, &drives, "Macintosh HD");
+        assert_eq!(off.warn_drives, Some(Vec::new()));
+        assert!(!drive_entries(&off, &drives)[0].on);
+    }
+
+    #[test]
     fn a_drive_that_is_not_connected_stays_listed() {
         let current = SpaceSettings {
-            warn_drives: vec!["Archiv".into()],
+            warn_drives: Some(vec!["Archiv".into()]),
             ..SpaceSettings::default()
         };
         let entries = drive_entries(&current, &[]);

@@ -1,12 +1,18 @@
 //! Restart Manager: it names the processes that hold given files open. It
-//! works on files, not folders, so the files under the folder are registered,
-//! up to a cap; a bigger folder is unknown.
+//! works on files, not folders, so the files under a folder are registered in
+//! batches in one session; the caller's time limit is the only bound.
 
 use std::fs;
 use std::os::windows::ffi::OsStrExt as _;
+use std::os::windows::fs::OpenOptionsExt as _;
+use std::os::windows::io::AsRawHandle as _;
 use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS};
+use windows_sys::Win32::Storage::FileSystem::{
+    GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+};
 use windows_sys::Win32::System::RestartManager::{
     RmEndSession, RmGetList, RmRegisterResources, RmStartSession, CCH_RM_SESSION_KEY,
     RM_PROCESS_INFO,
@@ -14,57 +20,55 @@ use windows_sys::Win32::System::RestartManager::{
 
 use crate::{failed, FolderUse, Holder, UnknownWhy};
 
-const MAX_FILES: usize = 2000;
+const BATCH: usize = 1000;
+
+/// What went wrong while collecting the holders.
+enum Trouble {
+    Disk(std::io::Error),
+    Manager(u32),
+}
 
 pub fn folder_use(folder: &Path) -> FolderUse {
-    let files = match files_under(folder) {
-        Ok(Some(files)) => files,
-        Ok(None) => return FolderUse::Unknown(UnknownWhy::TooManyFiles),
-        Err(err) => return failed(&err),
-    };
-    if files.is_empty() {
-        return FolderUse::Free;
-    }
-    match holders_of(&files) {
+    match holders_under(folder) {
         Ok(held) if held.is_empty() => FolderUse::Free,
         Ok(held) => FolderUse::Held(held),
-        Err(code) => FolderUse::Unknown(UnknownWhy::Failed(format!(
+        Err(Trouble::Disk(err)) => failed(&err),
+        Err(Trouble::Manager(code)) => FolderUse::Unknown(UnknownWhy::Failed(format!(
             "Restart Manager answered {code}"
         ))),
     }
 }
 
-/// `None` when there are more than [`MAX_FILES`].
-fn files_under(folder: &Path) -> std::io::Result<Option<Vec<PathBuf>>> {
-    let mut files = Vec::new();
-    let mut pending = vec![folder.to_path_buf()];
-    while let Some(next) = pending.pop() {
-        for read in fs::read_dir(&next)? {
-            let entry = read?;
-            let kind = entry.file_type()?;
-            if kind.is_dir() {
-                pending.push(entry.path());
-            } else if entry.metadata()?.is_file() {
-                if files.len() == MAX_FILES {
-                    return Ok(None);
+/// The processes that hold the file, or any file below the folder, open.
+fn holders_under(path: &Path) -> Result<Vec<Holder>, Trouble> {
+    let metadata = fs::symlink_metadata(path).map_err(Trouble::Disk)?;
+    let session = Session::start().map_err(Trouble::Manager)?;
+    if metadata.is_file() {
+        register_files(&session, &[path.to_path_buf()]).map_err(Trouble::Manager)?;
+    } else {
+        let mut batch: Vec<PathBuf> = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(next) = pending.pop() {
+            for read in fs::read_dir(&next).map_err(Trouble::Disk)? {
+                let entry = read.map_err(Trouble::Disk)?;
+                if entry.file_type().map_err(Trouble::Disk)?.is_dir() {
+                    pending.push(entry.path());
+                } else if entry.metadata().map_err(Trouble::Disk)?.is_file() {
+                    batch.push(entry.path());
+                    if batch.len() == BATCH {
+                        register_files(&session, &batch).map_err(Trouble::Manager)?;
+                        batch.clear();
+                    }
                 }
-                files.push(entry.path());
             }
         }
+        if !batch.is_empty() {
+            register_files(&session, &batch).map_err(Trouble::Manager)?;
+        }
     }
-    Ok(Some(files))
-}
-
-fn holders_of(files: &[PathBuf]) -> Result<Vec<Holder>, u32> {
-    let session = Session::start()?;
-    let wide: Vec<Vec<u16>> = files
-        .iter()
-        .map(|file| file.as_os_str().encode_wide().chain(Some(0)).collect())
-        .collect();
-    let pointers: Vec<*const u16> = wide.iter().map(|name| name.as_ptr()).collect();
-    session.register(&pointers)?;
     let mut held: Vec<Holder> = session
-        .list()?
+        .list()
+        .map_err(Trouble::Manager)?
         .into_iter()
         .map(|info| Holder {
             pid: info.Process.dwProcessId,
@@ -74,6 +78,33 @@ fn holders_of(files: &[PathBuf]) -> Result<Vec<Holder>, u32> {
     held.sort_by_key(|holder| holder.pid);
     held.dedup_by_key(|holder| holder.pid);
     Ok(held)
+}
+
+fn register_files(session: &Session, files: &[PathBuf]) -> Result<(), u32> {
+    let wide: Vec<Vec<u16>> = files
+        .iter()
+        .map(|file| file.as_os_str().encode_wide().chain(Some(0)).collect())
+        .collect();
+    let pointers: Vec<*const u16> = wide.iter().map(|name| name.as_ptr()).collect();
+    session.register(&pointers)
+}
+
+/// The serial number of the volume the path lies on, the Windows counterpart of the unix
+/// device number. `None` when the path cannot be opened.
+#[allow(unsafe_code)]
+pub fn volume_serial_of(path: &Path) -> Option<u64> {
+    let file = fs::OpenOptions::new()
+        .access_mode(0)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .ok()?;
+    // SAFETY: an all-zero BY_HANDLE_FILE_INFORMATION is a valid plain-data value.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: the handle belongs to `file`, which lives past the call, and `info` is a
+    // live struct the call fills in.
+    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
+    (ok != 0).then_some(u64::from(info.dwVolumeSerialNumber))
 }
 
 fn name_of(units: &[u16]) -> String {

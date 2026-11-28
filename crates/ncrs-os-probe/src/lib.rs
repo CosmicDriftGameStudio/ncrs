@@ -29,6 +29,8 @@ mod processes;
 mod usage;
 mod volume;
 
+#[cfg(windows)]
+pub use platform::volume_serial_of;
 pub use processes::running_processes;
 pub use usage::{file_usage, FileUsage};
 pub use volume::volume_space;
@@ -53,7 +55,7 @@ pub enum UnknownWhy {
     /// The platform or the sandbox does not let ncrs look.
     NotAllowed,
     TimedOut,
-    /// More files under the folder than one check looks at.
+    /// More files under the folder than one check looks at; no platform reports it now.
     TooManyFiles,
     Failed(String),
 }

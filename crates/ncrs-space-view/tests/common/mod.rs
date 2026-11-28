@@ -69,6 +69,7 @@ pub fn worktree(path: &str, branch: &str, bytes: u64) -> Entry {
         branch: branch.to_owned(),
         size: size(bytes),
         modified: Some(now() - Duration::from_secs(20 * 86_400)),
+        ignored_files: Vec::new(),
     };
     entry(path, Group::Worktrees, EntryKind::Worktree(space), bytes)
 }

@@ -11,6 +11,7 @@ use ncrs_fs::measure_folder;
 
 use super::entries::device_of_path;
 use super::DecideKind;
+use crate::catalog::touches_protected;
 use crate::facts::EntryFacts;
 use crate::scan::{Entry, EntryKind, Group};
 use crate::simulators::{device_bytes, Availability};
@@ -57,14 +58,16 @@ pub fn named_entries(home: &Path, settings: &SpaceSettings, stop: &AtomicBool) -
         let overlaps = taken
             .iter()
             .any(|known| path.starts_with(known) || known.starts_with(&path));
-        let never = settings
-            .never_touch
-            .iter()
-            .any(|never| path.starts_with(never));
+        let never = touches_protected(&path, &settings.never_touch);
         if !is_real_folder || overlaps || never {
             continue;
         }
-        let Some(size) = measure_folder(&path, stop) else {
+        let measured = if kind == DecideKind::SessionLogs {
+            session_log_size(&path, stop)
+        } else {
+            measure_folder(&path, stop)
+        };
+        let Some(size) = measured else {
             return entries;
         };
         if size.bytes == 0 {
@@ -77,6 +80,59 @@ pub fn named_entries(home: &Path, settings: &SpaceSettings, stop: &AtomicBool) -
         entries.push(simulators);
     }
     entries
+}
+
+/// What a Claude `projects` folder offers: the logs inside each project folder (session files
+/// and folders), never its `memory` folder, which keeps the persistent agent memory. `None`
+/// when `folder` is not such a folder.
+pub fn session_log_items(folder: &Path) -> Option<Vec<PathBuf>> {
+    let is_claude_projects = folder.file_name().is_some_and(|name| name == "projects")
+        && folder
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name.to_string_lossy().starts_with(CLAUDE_PREFIX));
+    if !is_claude_projects {
+        return None;
+    }
+    let mut items = Vec::new();
+    for project in fs::read_dir(folder).into_iter().flatten().flatten() {
+        let path = project.path();
+        let is_folder = fs::symlink_metadata(&path).is_ok_and(|found| found.file_type().is_dir());
+        if !is_folder {
+            items.push(path);
+            continue;
+        }
+        for log in fs::read_dir(&path).into_iter().flatten().flatten() {
+            if log.file_name() != "memory" {
+                items.push(log.path());
+            }
+        }
+    }
+    Some(items)
+}
+
+/// The size of the session logs without the `memory` folders.
+fn session_log_size(logs: &Path, stop: &AtomicBool) -> Option<ncrs_core::FolderSize> {
+    let Some(items) = session_log_items(logs) else {
+        return measure_folder(logs, stop);
+    };
+    let mut total = ncrs_core::FolderSize {
+        bytes: 0,
+        partial: false,
+    };
+    for path in items {
+        let size = match fs::symlink_metadata(&path) {
+            Ok(found) if found.file_type().is_dir() => measure_folder(&path, stop)?,
+            Ok(found) => ncrs_core::FolderSize {
+                bytes: found.len(),
+                partial: false,
+            },
+            Err(_unreadable) => continue,
+        };
+        total.bytes = total.bytes.saturating_add(size.bytes);
+        total.partial |= size.partial;
+    }
+    Some(total)
 }
 
 fn entry(path: PathBuf, kind: DecideKind, size: ncrs_core::FolderSize) -> Entry {

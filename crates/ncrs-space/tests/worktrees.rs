@@ -111,7 +111,7 @@ fn removing_goes_through_git_and_takes_the_branch_with_it() {
     let (_dir, repo, linked) = merged();
     let found = merged_worktrees(std::slice::from_ref(&repo), &stop());
 
-    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip);
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip, &stop_flag(false));
 
     assert_eq!(log.rows[0].outcome, Ok(found[0].size.bytes));
     assert!(!linked.exists());
@@ -129,7 +129,7 @@ fn a_worktree_that_gained_a_file_after_the_scan_stays() {
     let found = merged_worktrees(&[repo], &stop());
     std::fs::write(linked.join("late.txt"), "late\n").unwrap();
 
-    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip);
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip, &stop_flag(false));
 
     assert_eq!(log.rows[0].outcome, Err(Skip::Changed));
     assert!(linked.join("late.txt").exists());
@@ -147,7 +147,7 @@ fn a_worktree_in_use_stays() {
         ..Fake::quiet()
     };
 
-    let log = remove_worktrees(&found, &probes, UnknownUse::Skip);
+    let log = remove_worktrees(&found, &probes, UnknownUse::Skip, &stop_flag(false));
 
     assert!(matches!(log.rows[0].outcome, Err(Skip::FolderOpen(_))));
     assert!(linked.exists());
@@ -202,7 +202,53 @@ fn a_removed_worktree_log_row_says_the_check_answered() {
     let (_dir, repo, _linked) = merged();
     let found = merged_worktrees(&[repo], &stop());
 
-    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip);
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip, &stop_flag(false));
 
     assert!(log.rows[0].use_checked);
+}
+
+fn ignore_env_files(repo: &Path) {
+    std::fs::write(repo.join(".git/info/exclude"), ".env\n").unwrap();
+}
+
+#[test]
+fn a_merged_worktree_with_an_ignored_file_stays_and_is_counted_as_ignored_files() {
+    let (_dir, repo, linked) = merged();
+    ignore_env_files(&repo);
+    std::fs::write(linked.join(".env"), "SECRET=1\n").unwrap();
+
+    assert!(merged_worktrees(std::slice::from_ref(&repo), &stop()).is_empty());
+    let scan = scan_worktrees(&[repo], &stop());
+
+    assert!(scan.merged.is_empty());
+    assert_eq!(scan.kept.len(), 1);
+    assert_eq!(scan.kept[0].why, KeptWhy::IgnoredFiles);
+}
+
+#[test]
+fn a_worktree_that_gained_an_ignored_file_after_the_scan_stays() {
+    let (_dir, repo, linked) = merged();
+    ignore_env_files(&repo);
+    let found = merged_worktrees(&[repo], &stop());
+    std::fs::write(linked.join(".env"), "SECRET=1\n").unwrap();
+
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip, &stop_flag(false));
+
+    assert_eq!(log.rows[0].outcome, Err(Skip::Changed));
+    assert!(linked.join(".env").exists());
+}
+
+#[test]
+fn a_set_stop_flag_removes_no_worktree() {
+    let (_dir, repo, linked) = merged();
+    let found = merged_worktrees(&[repo], &stop());
+
+    let log = remove_worktrees(&found, &Fake::quiet(), UnknownUse::Skip, &stop_flag(true));
+
+    assert!(log.rows.is_empty());
+    assert!(linked.exists());
+}
+
+fn stop_flag(set: bool) -> std::sync::Arc<AtomicBool> {
+    std::sync::Arc::new(AtomicBool::new(set))
 }

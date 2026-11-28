@@ -479,7 +479,11 @@ impl App {
                 Task::none()
             }
             Message::SpaceHermesMeasured(scan) => self.space_measured_for_chat(scan),
-            Message::SpaceTrashed { paths, failed } => self.space_trashed(paths, failed),
+            Message::SpaceTrashed {
+                paths,
+                failed,
+                batch,
+            } => self.space_trashed(paths, failed, batch),
             Message::SpaceTrashFailed(reason) => {
                 self.set_status_error(&reason);
                 Task::none()

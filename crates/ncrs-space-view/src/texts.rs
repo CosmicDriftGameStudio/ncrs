@@ -216,15 +216,21 @@ pub fn ago_text(now: SystemTime, then: SystemTime) -> String {
     }
 }
 
-pub fn took_text(took: Duration) -> String {
-    if took.as_secs() >= 60 {
-        format!(
-            "{} min {} s",
-            took.as_secs().div_euclid(60),
-            took.as_secs() % 60
+pub fn took_text(took: Duration, lang: Language) -> String {
+    let seconds = took.as_secs();
+    if seconds >= 60 {
+        fill_template(
+            lang.text(Msg::SpaceTookMinutes),
+            &[
+                ("{minutes}", &seconds.div_euclid(60).to_string()),
+                ("{seconds}", &seconds.rem_euclid(60).to_string()),
+            ],
         )
     } else {
-        format!("{:.1} s", took.as_secs_f64())
+        fill_template(
+            lang.text(Msg::SpaceTookSeconds),
+            &[("{seconds}", &format!("{:.1}", took.as_secs_f64()))],
+        )
     }
 }
 

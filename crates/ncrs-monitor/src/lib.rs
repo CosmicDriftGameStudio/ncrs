@@ -32,7 +32,8 @@ pub use snapshot::{
     TaskStatus, Usage,
 };
 pub use space_hint::{
-    disk_hint, load_stamp, measure_home, save_stamp, stamp_file_beside, DiskHint, HintStamp,
+    disk_hint, home_disk_hint, load_stamp, measure_home, save_stamp, stamp_file_beside, DiskHint,
+    HintStamp,
 };
 pub use state::{SpaceFacts, State, KILL_OFFERED};
 pub use status::status_text;

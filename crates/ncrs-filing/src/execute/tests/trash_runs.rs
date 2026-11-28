@@ -423,3 +423,58 @@ fn an_own_item_outside_the_root_stays() {
     );
     assert!(outside.exists());
 }
+
+#[test]
+fn empty_after_deletes_only_the_entry_this_run_made() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let old_file = setup.write("downloads/report.pdf", "old one");
+    bin.trash.trash(&old_file).unwrap();
+    let file = setup.write("downloads/report.pdf", "new one");
+    let item = own_item(&file);
+
+    let run =
+        crate::execute::trash_own_items(None, "Cleared", &setup.root, &[item], &bin.trash, true);
+
+    assert_eq!(run.gone, vec![file.clone()]);
+    let left = bin.trash.list().unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].original, file);
+    assert_eq!(
+        fs::read_to_string(Path::new(&left[0].key)).unwrap(),
+        "old one"
+    );
+}
+
+#[test]
+fn a_folder_with_a_changed_file_inside_stays_with_and_without_the_journal() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let inner = setup.write("projects/app/main.rs", "fn main() {}");
+    let folder = inner.parent().unwrap().to_path_buf();
+    let item = own_item(&folder);
+    fs::write(&inner, "fn main() { more() }").unwrap();
+    let changed = vec![crate::execute::SkipReason::SourceChanged];
+
+    let plain = crate::execute::trash_own_items(
+        None,
+        "Cleared",
+        &setup.root,
+        std::slice::from_ref(&item),
+        &bin.trash,
+        true,
+    );
+    let journaled = crate::execute::trash_own_items(
+        Some(&setup.index),
+        "Cleared",
+        &setup.root,
+        &[item],
+        &bin.trash,
+        true,
+    );
+
+    assert!(plain.gone.is_empty() && journaled.gone.is_empty());
+    assert_eq!(plain.refused, changed);
+    assert_eq!(journaled.refused, changed);
+    assert!(inner.exists());
+}

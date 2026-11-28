@@ -104,16 +104,29 @@ pub fn percent(part: u64, whole: u64) -> u64 {
         .div_euclid(whole)
 }
 
-fn took_text(took: Duration) -> String {
+fn took_text(lang: Language, took: Duration) -> String {
     let seconds = took.as_secs();
     if seconds >= SECONDS_PER_MINUTE {
-        format!(
-            "{} min {} s",
-            seconds.div_euclid(SECONDS_PER_MINUTE),
-            seconds % SECONDS_PER_MINUTE
+        fill(
+            lang,
+            Msg::SpaceTookMinutes,
+            &[
+                (
+                    "minutes",
+                    &seconds.div_euclid(SECONDS_PER_MINUTE).to_string(),
+                ),
+                (
+                    "seconds",
+                    &seconds.rem_euclid(SECONDS_PER_MINUTE).to_string(),
+                ),
+            ],
         )
     } else {
-        format!("{seconds} s")
+        fill(
+            lang,
+            Msg::SpaceTookSeconds,
+            &[("seconds", &seconds.to_string())],
+        )
     }
 }
 
@@ -709,7 +722,8 @@ pub fn build(scan: &Scan, ctx: &Ctx) -> Built {
             .iter()
             .filter(|entry| entry.group == Group::Decide)
     };
-    let has_downloads = decide_entries().any(|entry| entry.path == ctx.home.join("Downloads"));
+    let downloads = ctx.home.join("Downloads");
+    let has_downloads = decide_entries().any(|entry| entry.path.starts_with(&downloads));
     let has_session_logs = decide_entries()
         .any(|entry| matches!(entry.kind, EntryKind::Decide(DecideKind::SessionLogs)));
     let rest = all.split_off(TABLE_ROWS.min(all.len()));
@@ -753,7 +767,7 @@ pub fn build(scan: &Scan, ctx: &Ctx) -> Built {
             ("total", &shown(total)),
             ("free", &shown(free)),
             ("percent", &percent(used, total).to_string()),
-            ("took", &took_text(scan.took)),
+            ("took", &took_text(lang, scan.took)),
         ],
     );
     Built {
@@ -849,7 +863,12 @@ mod tests {
 
     #[test]
     fn a_long_scan_is_told_in_minutes() {
-        assert_eq!(took_text(Duration::from_secs(72)), "1 min 12 s");
-        assert_eq!(took_text(Duration::from_secs(9)), "9 s");
+        let lang = Language::English;
+        assert_eq!(took_text(lang, Duration::from_secs(72)), "1 min 12 s");
+        assert_eq!(took_text(lang, Duration::from_secs(9)), "9 s");
+        assert_eq!(
+            took_text(Language::German, Duration::from_secs(72)),
+            "1 Min. 12 s"
+        );
     }
 }

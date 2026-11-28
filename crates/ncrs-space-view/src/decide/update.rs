@@ -21,13 +21,23 @@ const PAGE_ROWS: isize = 10;
 
 /// Opens the pane for a folder of the overview and reads it off the UI thread.
 pub fn open(folder: PathBuf, is_downloads: bool, ctx: &Ctx) -> (DecideState, Task<Message>) {
-    let task = tasks::load_decide(folder.clone(), is_downloads, ctx.home.clone());
+    let task = tasks::load_decide(
+        folder.clone(),
+        is_downloads,
+        ctx.home.clone(),
+        ctx.settings.never_touch.clone(),
+    );
     (DecideState::new(folder, is_downloads), task)
 }
 
 /// Reads the folder again, as the Rescan of the tab does while the pane is open.
 pub fn reload(state: &DecideState, ctx: &Ctx) -> Task<Message> {
-    tasks::load_decide(state.folder.clone(), state.is_downloads, ctx.home.clone())
+    tasks::load_decide(
+        state.folder.clone(),
+        state.is_downloads,
+        ctx.home.clone(),
+        ctx.settings.never_touch.clone(),
+    )
 }
 
 fn quiet(task: Task<Message>) -> Outcome {
@@ -116,9 +126,10 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
         DecideMessage::SidePressed(_) => quiet(Task::none()),
         DecideMessage::Trash => {
             let items = state.chosen_items();
-            if items.is_empty() {
+            if items.is_empty() || state.trashing {
                 return quiet(Task::none());
             }
+            state.trashing = true;
             state.emptying = state.empty_after && ctx.trash_can_purge;
             let action = Action::TrashOwn {
                 root: state.folder.clone(),
@@ -141,6 +152,7 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
             quiet(Task::none())
         }
         DecideMessage::Trashed(paths) => {
+            state.trashing = false;
             let bytes = remove_items(state, &paths);
             state.notice = Some(DecideNotice::Trashed {
                 count: paths.len(),
@@ -157,6 +169,7 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
                 state.folder.clone(),
                 state.is_downloads,
                 ctx.home.clone(),
+                ctx.settings.never_touch.clone(),
             ))
         }
     }

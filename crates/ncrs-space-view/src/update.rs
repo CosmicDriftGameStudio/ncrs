@@ -6,6 +6,7 @@ use iced::widget::operation;
 use iced::Task;
 use ncrs_fs::transfer::Tick;
 use ncrs_i18n::Msg;
+use ncrs_space::decide::DecideKind;
 use ncrs_space::{Entry, EntryKind, Group, WorktreeSpace};
 use ncrs_ui_kit::confirm::ConfirmFocus;
 use ncrs_ui_kit::row_scroll::{row_into_view, FOCUSED_ROW_ID};
@@ -15,7 +16,7 @@ use crate::confirm::{ConfirmKind, ConfirmState};
 use crate::ctx::Ctx;
 use crate::decide::{self, DecideMessage};
 use crate::menu::{menu_items, next_enabled};
-use crate::message::{MenuEntry, Message};
+use crate::message::{DecideTarget, MenuEntry, Message};
 use crate::rows::{DisplayRow, RowKind};
 use crate::state::{CursorKey, Measuring, MenuState, ResultState, Running, State};
 use crate::tasks;
@@ -149,6 +150,7 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Outcome {
             state.cursor = Some(CursorKey::Row(path));
             enter(state, ctx)
         }
+        Message::OpenDecide(target) => open_decide(state, target, ctx),
         Message::ExpandWorktrees => {
             state.worktrees_expanded = true;
             nothing()
@@ -419,6 +421,30 @@ fn enter(state: &mut State, ctx: &Ctx) -> Outcome {
     }
 }
 
+/// Settles a result that is up, then opens the folder now, or when the measure that runs ends.
+fn open_decide(state: &mut State, target: DecideTarget, ctx: &Ctx) -> Outcome {
+    if state.result.is_some() {
+        state.settle_result(&ctx.home, ctx.store_build);
+    }
+    if state.measuring.is_some() {
+        state.pending_decide = Some(target);
+        return nothing();
+    }
+    open_target(state, target, ctx)
+}
+
+fn open_target(state: &mut State, target: DecideTarget, ctx: &Ctx) -> Outcome {
+    let found = state.rows.iter().find(|row| match target {
+        DecideTarget::Downloads => row.kind == RowKind::Downloads,
+        DecideTarget::SessionLogs => row.kind == RowKind::Place(DecideKind::SessionLogs),
+    });
+    let Some(path) = found.map(|row| row.path.clone()) else {
+        return nothing();
+    };
+    state.cursor = Some(CursorKey::Row(path));
+    enter(state, ctx)
+}
+
 /// The first of: the menu, the dialog, the filter, the decide pane, the log, the result, a
 /// run or measure that goes on, a filter text. Nothing left: the tab may close.
 fn escape(state: &mut State, ctx: &Ctx) -> Outcome {
@@ -489,9 +515,15 @@ fn scanned(state: &mut State, ctx: &Ctx, run: u64, scan: Option<Arc<ncrs_space::
     match scan {
         Some(measured) => {
             state.take_scan(Arc::clone(&measured), &ctx.home, ctx.store_build);
-            (Task::none(), vec![Action::Measured(measured)])
+            let (task, mut actions) = match state.pending_decide.take() {
+                Some(target) => open_target(state, target, ctx),
+                None => nothing(),
+            };
+            actions.insert(0, Action::Measured(measured));
+            (task, actions)
         }
         None => {
+            state.pending_decide = None;
             if !stopped {
                 state.failure = Some(ncrs_i18n::fill_template(
                     ctx.lang.text(Msg::SpaceFailed),
@@ -622,7 +654,7 @@ fn accept(state: &mut State, ctx: &Ctx) -> Outcome {
     }
     state.run_id += 1;
     let stop = Arc::new(AtomicBool::new(false));
-    let free_before = state.scan.as_ref().map_or(0, |scan| scan.volume.available);
+    let free_before = state.volume_now().map_or(0, |volume| volume.available);
     state.running = Some(Running {
         run: state.run_id,
         stop: Arc::clone(&stop),

@@ -366,6 +366,8 @@ mod tests {
             Msg::ColumnName
                 // The same word in both languages, like ColumnName.
                 | Msg::TrashColumnName
+                // The abbreviation for seconds is the same in German.
+                | Msg::SpaceTookSeconds
                 | Msg::SettingsUsageTokens
                 | Msg::RulesFormName
                 | Msg::SortingFieldTargetName

@@ -7,8 +7,8 @@ use std::sync::Arc;
 use iced::futures::SinkExt as _;
 use iced::Task;
 use ncrs_core::FolderSize;
-use ncrs_space::decide::{DownloadGroups, DownloadItem, SystemInstalledApps};
-use ncrs_space::{Os, ScanRequest, SystemProbes};
+use ncrs_space::decide::{session_log_items, DownloadGroups, DownloadItem, SystemInstalledApps};
+use ncrs_space::{touches_protected, Os, ScanRequest, SystemProbes};
 
 use crate::confirm::RunPlan;
 use crate::decide::DecideMessage;
@@ -93,8 +93,12 @@ pub fn delete(
                     },
                 );
                 if !plan.worktrees.is_empty() && !stop.load(std::sync::atomic::Ordering::Relaxed) {
-                    let removed =
-                        ncrs_space::remove_worktrees(&plan.worktrees, &SystemProbes, plan.unknown);
+                    let removed = ncrs_space::remove_worktrees(
+                        &plan.worktrees,
+                        &SystemProbes,
+                        plan.unknown,
+                        &stop,
+                    );
                     log.finished = removed.finished;
                     log.rows.extend(removed.rows);
                     drop(progress.try_send(Message::RunProgress {
@@ -126,7 +130,12 @@ pub fn delete(
 }
 
 /// The Downloads folder sorted by reason, or the items of a big folder with their sizes.
-pub fn load_decide(folder: PathBuf, is_downloads: bool, home: PathBuf) -> Task<Message> {
+pub fn load_decide(
+    folder: PathBuf,
+    is_downloads: bool,
+    home: PathBuf,
+    never_touch: Vec<PathBuf>,
+) -> Task<Message> {
     Task::perform(
         async move {
             let read = folder.clone();
@@ -140,8 +149,9 @@ pub fn load_decide(folder: PathBuf, is_downloads: bool, home: PathBuf) -> Task<M
                         std::time::SystemTime::now(),
                         &[home.join("Documents")],
                     )
+                    .without_protected(&never_touch)
                 } else {
-                    children_of(&read, &never)
+                    children_of(&read, &never, &never_touch)
                 }
             })
             .await
@@ -157,15 +167,23 @@ pub fn load_decide(folder: PathBuf, is_downloads: bool, home: PathBuf) -> Task<M
     )
 }
 
-/// What lies directly in a folder, biggest first, as one group; links and unreadable items are left out.
-fn children_of(folder: &Path, stop: &AtomicBool) -> DownloadGroups {
-    let Ok(listing) = std::fs::read_dir(folder) else {
-        return DownloadGroups::default();
+/// What lies directly in a folder, biggest first, as one group; links, unreadable items,
+/// protected folders are left out. In the Claude `projects` folder the items are the logs inside
+/// each project folder, never its `memory`.
+fn children_of(folder: &Path, stop: &AtomicBool, never_touch: &[PathBuf]) -> DownloadGroups {
+    let paths: Vec<PathBuf> = match session_log_items(folder) {
+        Some(logs) => logs,
+        None => match std::fs::read_dir(folder) {
+            Ok(listing) => listing.flatten().map(|entry| entry.path()).collect(),
+            Err(_unreadable) => return DownloadGroups::default(),
+        },
     };
-    let mut items: Vec<DownloadItem> = listing
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
+    let mut items: Vec<DownloadItem> = paths
+        .into_iter()
+        .filter_map(|path| {
+            if touches_protected(&path, never_touch) {
+                return None;
+            }
             let metadata = std::fs::symlink_metadata(&path).ok()?;
             if metadata.file_type().is_symlink() {
                 return None;

@@ -208,8 +208,65 @@ fn windows_reads_local_app_data_and_takes_only_week_old_temp_files() {
 
 fn old(path: &Path, days: u64) {
     let then = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
+    #[cfg(windows)]
+    let file = {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        // Setting times needs write access, and a folder opens only with backup semantics.
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        std::fs::File::options()
+            .write(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(path)
+            .unwrap()
+    };
+    #[cfg(not(windows))]
     let file = std::fs::File::open(path).unwrap();
     file.set_modified(then).unwrap();
+}
+
+#[test]
+fn a_protected_folder_inside_an_own_regenerable_folder_keeps_it_out() {
+    let home = TempDir::new().unwrap();
+    let own = home.path().join("proj/build");
+    write(&own.join("keep/a"), 5);
+    let settings = SpaceSettings {
+        own_regenerable: vec![own.clone()],
+        never_touch: vec![own.join("keep")],
+        ..SpaceSettings::default()
+    };
+
+    assert!(catalog(Os::Linux, home.path(), &no_env, &[], &settings).is_empty());
+}
+
+#[test]
+fn windows_playwright_and_go_build_caches_lie_directly_in_local_app_data() {
+    let home = TempDir::new().unwrap();
+    let local = home.path().join("AppData/Local");
+    write(&local.join("ms-playwright/a"), 5);
+    write(&local.join("go-build/a"), 5);
+    let local_value = local.clone();
+    let env = move |name: &str| match name {
+        "LOCALAPPDATA" => Some(local_value.clone().into_os_string()),
+        _ => None,
+    };
+
+    let places = catalog(
+        Os::Windows,
+        home.path(),
+        &env,
+        &[],
+        &SpaceSettings::default(),
+    );
+
+    let mut found = ids(&places);
+    found.sort_by_key(|id| id.name());
+    assert_eq!(
+        found,
+        [
+            CatalogId::AppCache("go-build"),
+            CatalogId::AppCache("ms-playwright")
+        ]
+    );
 }
 
 /// A repository with a `.git/worktrees/<name>/gitdir` entry for each of `worktrees`.
