@@ -19,7 +19,8 @@ pub struct FileColumns;
 
 impl FileColumns {
     pub const TICK: f32 = 32.0;
-    pub const NAME: f32 = 300.0;
+    pub const NAME_PORTION: u16 = 3;
+    pub const REASON_PORTION: u16 = 2;
     pub const DATE: f32 = 100.0;
     pub const SIZE: f32 = 80.0;
     pub const BAR: f32 = 120.0;
@@ -85,8 +86,12 @@ pub fn file_columns_header<'a, M: 'a>(labels: [&str; 4], palette: &Palette) -> E
         container(
             row![
                 cell(Space::new(), FileColumns::TICK),
-                cell(title(name), FileColumns::NAME),
-                container(title(reason)).width(Length::Fill).clip(true),
+                container(title(name))
+                    .width(Length::FillPortion(FileColumns::NAME_PORTION))
+                    .clip(true),
+                container(title(reason))
+                    .width(Length::FillPortion(FileColumns::REASON_PORTION))
+                    .clip(true),
                 cell(title(date), FileColumns::DATE),
                 container(title(size_title))
                     .width(FileColumns::SIZE)
@@ -276,9 +281,11 @@ pub fn file_row<'a, M: Clone + 'a>(item: FileRow<M>, palette: &Palette) -> Eleme
     };
     let cells = row![
         cell(tick, FileColumns::TICK),
-        cell(one_line(item.name, font_size::BODY, ink), FileColumns::NAME),
+        container(one_line(item.name, font_size::BODY, ink))
+            .width(Length::FillPortion(FileColumns::NAME_PORTION))
+            .clip(true),
         container(one_line(item.reason, font_size::SMALL, dim_ink))
-            .width(Length::Fill)
+            .width(Length::FillPortion(FileColumns::REASON_PORTION))
             .clip(true),
         cell(
             one_line(item.date, font_size::SMALL, dim_ink),
@@ -319,7 +326,6 @@ pub fn more_row<'a, M: Clone + 'a>(
         container(one_line(text_line, font_size::SMALL, ink))
             .width(Length::Fill)
             .clip(true),
-        Space::new().width(FileColumns::DATE),
         container(one_line(size_text, font_size::SMALL, ink))
             .width(FileColumns::SIZE)
             .align_x(alignment::Horizontal::Right),

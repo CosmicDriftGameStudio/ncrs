@@ -549,7 +549,7 @@ fn the_list_keys_drive_the_pane_while_it_is_open_and_escape_goes_back() {
 
 #[test]
 fn the_trash_gets_the_chosen_files_and_undo_asks_the_app_to_put_them_back() {
-    let ctx = ctx();
+    let mut ctx = ctx();
     let (mut state, _) = tab(small_scan(), &ctx);
     open_downloads(&mut state, &ctx);
     send(
@@ -581,7 +581,7 @@ fn the_trash_gets_the_chosen_files_and_undo_asks_the_app_to_put_them_back() {
     );
     let pane = state.decide().unwrap();
     assert_eq!(pane.chosen_count(), 0);
-    assert!(pane.can_undo());
+    ctx.can_undo_trash = true;
     assert_eq!(
         send(&mut state, Message::Decide(DecideMessage::Undo), &ctx),
         [Action::UndoTrash]
@@ -883,9 +883,8 @@ fn open_decide_settles_the_result_banner_and_opens_the_pane() {
 }
 
 #[test]
-fn a_run_that_emptied_the_trash_or_moved_nothing_offers_no_undo() {
+fn undo_follows_what_the_app_can_bring_back_not_the_pane() {
     let mut ctx = ctx();
-    ctx.trash_can_purge = true;
     let (mut state, _) = tab(small_scan(), &ctx);
     open_downloads(&mut state, &ctx);
     send(
@@ -896,33 +895,17 @@ fn a_run_that_emptied_the_trash_or_moved_nothing_offers_no_undo() {
         }),
         &ctx,
     );
-    send(
-        &mut state,
-        Message::Decide(DecideMessage::ToggleEmptyTrash),
-        &ctx,
-    );
-    let actions = send(&mut state, Message::Decide(DecideMessage::Trash), &ctx);
-    let [Action::TrashOwn { items, .. }] = actions.as_slice() else {
-        panic!("one TrashOwn action, got {actions:?}");
-    };
-    send(
-        &mut state,
-        Message::Decide(DecideMessage::Trashed(vec![items[0].path.clone()])),
-        &ctx,
-    );
-    assert!(!state.decide().unwrap().can_undo());
     assert!(send(&mut state, Message::Decide(DecideMessage::Undo), &ctx).is_empty());
-
-    send(
-        &mut state,
-        Message::Decide(DecideMessage::ToggleEmptyTrash),
-        &ctx,
+    ctx.can_undo_trash = true;
+    assert_eq!(
+        send(&mut state, Message::Decide(DecideMessage::Undo), &ctx),
+        [Action::UndoTrash]
     );
-    send(&mut state, Message::Decide(DecideMessage::Trash), &ctx);
-    send(
-        &mut state,
-        Message::Decide(DecideMessage::Trashed(Vec::new())),
-        &ctx,
+    send(&mut state, Message::Escape, &ctx);
+    open_downloads(&mut state, &ctx);
+    assert_eq!(
+        send(&mut state, Message::Decide(DecideMessage::Undo), &ctx),
+        [Action::UndoTrash],
+        "a reopened pane still offers the undo"
     );
-    assert!(!state.decide().unwrap().can_undo());
 }

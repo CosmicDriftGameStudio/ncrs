@@ -173,7 +173,6 @@ pub struct DecideState {
     /// A trash run is under way: a second press waits for its answer.
     pub trashing: bool,
     pub notice: Option<DecideNotice>,
-    pub can_undo: bool,
 }
 
 impl DecideState {
@@ -193,7 +192,6 @@ impl DecideState {
             emptying: false,
             trashing: false,
             notice: None,
-            can_undo: false,
         }
     }
 
@@ -231,10 +229,6 @@ impl DecideState {
 
     pub const fn is_trashing(&self) -> bool {
         self.trashing
-    }
-
-    pub const fn can_undo(&self) -> bool {
-        self.can_undo
     }
 
     pub fn is_chosen(&self, path: &std::path::Path) -> bool {
@@ -364,16 +358,6 @@ impl DecideState {
             all if all == group.items.len() => Check::On,
             _ => Check::Mixed,
         }
-    }
-
-    /// How many groups have everything chosen, and how many groups there are.
-    pub fn groups_chosen(&self) -> (usize, usize) {
-        let chosen = self
-            .groups
-            .iter()
-            .filter(|group| !group.items.is_empty() && self.group_check(group) == Check::On)
-            .count();
-        (chosen, self.groups.len())
     }
 
     /// The chosen items as the trash run takes them, in the order of the list.

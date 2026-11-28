@@ -380,6 +380,24 @@ fn an_own_file_goes_to_the_trash_and_the_undo_brings_it_back() {
 }
 
 #[test]
+fn the_run_undo_of_an_own_trash_run_brings_the_files_back_without_given_roots() {
+    let setup = Setup::new();
+    let bin = bin(&setup);
+    let first = setup.write("downloads/a.dmg", "installer");
+    let second = setup.write("downloads/b.dmg", "other");
+    let items = [own_item(&first), own_item(&second)];
+
+    journaled_own(&setup, &bin, &items);
+    assert!(!first.exists() && !second.exists());
+
+    let undone = crate::chat_work::undo_run(&setup.index, &bin.trash, last_batch(&setup)).unwrap();
+
+    assert_eq!(undone, UndoReport { undone: 2, left: 0 });
+    assert_eq!(fs::read_to_string(&first).unwrap(), "installer");
+    assert_eq!(fs::read_to_string(&second).unwrap(), "other");
+}
+
+#[test]
 fn an_own_file_that_changed_since_it_was_shown_stays() {
     let setup = Setup::new();
     let bin = bin(&setup);

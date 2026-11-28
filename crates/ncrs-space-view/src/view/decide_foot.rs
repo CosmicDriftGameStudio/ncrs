@@ -1,12 +1,12 @@
 //! The foot of the decide pane: what goes to the trash and what it means, the choice to empty
 //! the trash afterwards, how far the choice gets, and the buttons.
 
-use iced::widget::{column, container, row, Space};
+use iced::widget::{column, container, row};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::format::size_shown;
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::page_text::page_line;
+use ncrs_ui_kit::page_text::page_wrapped;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 use crate::ctx::ViewCtx;
@@ -74,15 +74,13 @@ fn note<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 }
 
 fn summary(pane: &DecideState, state: &State, ctx: ViewCtx<'_>) -> String {
-    let (groups, total) = pane.groups_chosen();
     let free = state.scan().map_or(0, |scan| {
         scan.volume.available.saturating_add(pane.chosen_bytes())
     });
     ncrs_i18n::fill_template(
         ctx.lang.text(Msg::SpaceDecideSummary),
         &[
-            ("{groups}", &groups.to_string()),
-            ("{total}", &total.to_string()),
+            ("{count}", &pane.chosen_count().to_string()),
             ("{free}", &size_shown(free, ctx.lang)),
         ],
     )
@@ -98,12 +96,11 @@ pub fn view<'a>(pane: &'a DecideState, state: &'a State, ctx: ViewCtx<'a>) -> El
         ctx.lang,
     );
     let foot = row![
-        page_line(
+        page_wrapped(
             summary(pane, state, ctx),
             font_size::SMALL,
             palette.dim_text
         ),
-        Space::new().width(Length::Fill),
         kit::key_button(
             ctx.lang.text(Msg::DialogCancel),
             "Esc",

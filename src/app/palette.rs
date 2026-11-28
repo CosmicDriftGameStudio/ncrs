@@ -204,6 +204,11 @@ impl App {
     /// key would do, and it counts among the recent commands.
     pub(in crate::app) fn run_command(&mut self, action: KeyAction) -> Task<Message> {
         self.remember_command(action);
+        if action == KeyAction::RestoreLastDeletion && self.space_decide_open() {
+            return self.update_space(ncrs_space_view::Message::Decide(
+                ncrs_space_view::DecideMessage::Undo,
+            ));
+        }
         self.update(action.message())
     }
 

@@ -28,6 +28,8 @@ pub struct Ctx {
     pub log_dir: Option<PathBuf>,
     /// The trash can empty single files (Linux, Windows): "empty the trash afterwards" is offered.
     pub trash_can_purge: bool,
+    /// The app holds a run of its own trash that Undo can bring back.
+    pub can_undo_trash: bool,
     pub window: Size,
     pub now: SystemTime,
 }
@@ -44,6 +46,7 @@ impl Ctx {
             store_build: false,
             log_dir: None,
             trash_can_purge: false,
+            can_undo_trash: false,
             window: Size::new(1740.0, 1130.0),
             now: SystemTime::UNIX_EPOCH,
         }
@@ -67,6 +70,7 @@ pub struct ViewCtx<'a> {
     pub store_build: bool,
     pub processes_known: bool,
     pub trash_can_purge: bool,
+    pub can_undo_trash: bool,
     /// The drive counts as full from this used share on.
     pub warn_from_percent: u8,
     /// The label of the key that opens the tab from anywhere; `None` when it is unbound.

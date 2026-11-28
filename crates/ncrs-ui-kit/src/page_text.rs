@@ -17,6 +17,20 @@ pub fn page_line<'a, M: 'a>(content: impl Into<String>, size: f32, color: Color)
         .into()
 }
 
+/// A line that wraps at words and takes the width it is given, for text that must give way to its neighbours.
+pub fn page_wrapped<'a, M: 'a>(
+    content: impl Into<String>,
+    size: f32,
+    color: Color,
+) -> Element<'a, M> {
+    text(content.into())
+        .size(size)
+        .color(color)
+        .width(Length::Fill)
+        .wrapping(Wrapping::Word)
+        .into()
+}
+
 /// A small bold label in capitals, in the given color.
 pub fn caps_label<'a, M: 'a>(content: &str, color: Color) -> Element<'a, M> {
     text(content.to_uppercase())

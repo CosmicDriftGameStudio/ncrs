@@ -196,10 +196,17 @@ pub enum Message {
     SpaceHermesMeasured(Option<std::sync::Arc<ncrs_space::Scan>>),
     /// Putting the files of the Platz tab in the trash, or bringing them back, failed.
     SpaceTrashFailed(String),
+    /// The undo of the last own-trash run came back: how many files returned and how many stayed.
+    SpaceUndone {
+        undone: usize,
+        left: usize,
+    },
     SpaceTrashed {
         paths: Vec<std::path::PathBuf>,
         failed: Option<(usize, String)>,
         batch: Option<ncrs_index::BatchId>,
+        /// The history of the run could not be written: there is nothing to undo it with.
+        batch_error: Option<String>,
         /// The trash was emptied of these files: there is nothing to put back.
         emptied: bool,
     },

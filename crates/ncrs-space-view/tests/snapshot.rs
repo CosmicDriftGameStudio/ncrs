@@ -46,6 +46,7 @@ mod ui_tests {
             store_build: app.store_build,
             processes_known: app.processes_known,
             trash_can_purge: app.trash_can_purge,
+            can_undo_trash: app.can_undo_trash,
             warn_from_percent: 90,
             open_key: Some(if cfg!(target_os = "macos") {
                 "\u{2318}\u{2325}P"

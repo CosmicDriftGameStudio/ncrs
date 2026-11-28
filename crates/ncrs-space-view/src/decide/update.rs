@@ -139,7 +139,7 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
             (Task::none(), vec![action])
         }
         DecideMessage::Undo => {
-            if state.can_undo {
+            if ctx.can_undo_trash {
                 (Task::none(), vec![Action::UndoTrash])
             } else {
                 quiet(Task::none())
@@ -159,12 +159,10 @@ pub fn update(state: &mut DecideState, message: DecideMessage, ctx: &Ctx) -> Out
                 bytes,
                 emptied: state.emptying,
             });
-            state.can_undo = !state.emptying && !paths.is_empty();
             quiet(Task::none())
         }
         DecideMessage::Undone(count) => {
             state.notice = Some(DecideNotice::Undone { count });
-            state.can_undo = false;
             quiet(tasks::load_decide(
                 state.folder.clone(),
                 state.is_downloads,

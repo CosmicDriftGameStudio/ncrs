@@ -15427,6 +15427,12 @@
       "de": "läuft gerade, übersprungen"
     },
     {
+      "key": "space.group_worktrees_many_hint",
+      "context": "Dimmed text after the heading of the merged worktrees when they live in several folders. {folders} is how many folders, {total} how many worktrees there are, {size} their size, {kept} how many stay.",
+      "en": "{folders} folders · {total} worktrees, {size} · {kept} stay (open, unsaved, in use)",
+      "de": "{folders} Ordner · {total} Worktrees, {size} · {kept} bleiben (offen, ungesichert, in Benutzung)"
+    },
+    {
       "key": "space.group_worktrees_hint",
       "context": "Dimmed text after the heading of the merged worktrees. {folder} is the folder of the worktrees, {total} how many worktrees there are, {size} their size, {kept} how many stay.",
       "en": "{folder} · {total} worktrees, {size} · {kept} stay (open, unsaved, in use)",
@@ -16496,9 +16502,9 @@
     },
     {
       "key": "space.decide_summary",
-      "context": "Line at the bottom of the Decide pane. {groups} is how many groups are ticked, {total} how many there are, {free} the free space after the trash is emptied.",
-      "en": "{groups} of {total} groups chosen · {free} free afterwards, once the trash is emptied",
-      "de": "{groups} von {total} Gruppen gewählt · danach {free} frei, wenn der Papierkorb geleert ist"
+      "context": "Line at the bottom of the Decide pane. {count} is how many files are chosen, {free} the free space after the trash is emptied.",
+      "en": "Chosen: {count} · {free} free afterwards, once the trash is emptied",
+      "de": "Gewählt: {count} · danach {free} frei, wenn der Papierkorb geleert ist"
     },
     {
       "key": "space.decide_trash_button",
@@ -16663,6 +16669,24 @@
       "de": "{count} Dateien in den Papierkorb gelegt · {size}. Platz wird frei, wenn der Papierkorb geleert ist."
     },
     {
+      "key": "space.decide_undo_left",
+      "context": "Status bar after the undo of a trash run in the Platz tab when some files did not come back. {count} is how many.",
+      "en": "{count} files could not be put back: they were taken out of the trash, changed, or their old place is taken.",
+      "de": "{count} Dateien konnten nicht zurückgelegt werden: Sie sind nicht mehr im Papierkorb, haben sich geändert oder ihr alter Platz ist belegt."
+    },
+    {
+      "key": "space.decide_undo_left_one",
+      "context": "Status bar after the undo of a trash run in the Platz tab when exactly one file did not come back. Pairs with space.decide_undo_left.",
+      "en": "1 file could not be put back: it was taken out of the trash, changed, or its old place is taken.",
+      "de": "1 Datei konnte nicht zurückgelegt werden: Sie ist nicht mehr im Papierkorb, hat sich geändert oder ihr alter Platz ist belegt."
+    },
+    {
+      "key": "space.decide_history_failed",
+      "context": "Status bar when files went to the trash but the history of the run could not be written, so the run cannot be undone from the history. {reason} is the system's explanation.",
+      "en": "The history of this run could not be written: {reason}",
+      "de": "Der Verlauf dieses Laufs konnte nicht geschrieben werden: {reason}"
+    },
+    {
       "key": "space.decide_trash_failed",
       "context": "Status bar when some files of the Platz tab could not be moved to the trash. {count} is how many, {reason} the reason the system gave for the first.",
       "en": "{count} could not go to the trash: {reason}",
@@ -16730,7 +16754,7 @@
     },
     {
       "key": "space.decide_column_modified",
-      "context": "Column title above the date a file was last changed in the pane in which you decide.",
+      "context": "Column title above the date a file was last changed in the pane in which you decide, and the label of that date in the detail of a file outside Downloads.",
       "en": "Changed",
       "de": "Geändert"
     },

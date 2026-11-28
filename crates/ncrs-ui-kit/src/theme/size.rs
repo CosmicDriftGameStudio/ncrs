@@ -60,12 +60,14 @@ pub const CHECK_ROW: f32 = 28.0;
 pub const SIZE_BAR_WIDTH: f32 = 120.0;
 /// A row of a list of sizes: name and folder on two lines.
 pub const SIZE_ROW: f32 = 40.0;
-/// The room of the reason or the result at the right of a size row.
-pub const SIZE_REASON_WIDTH: f32 = 340.0;
+/// The share of the name column in a size row; the name always gets its part of the width.
+pub const SIZE_NAME_PORTION: u16 = 5;
+/// The share of the reason or the result at the right of a size row.
+pub const SIZE_REASON_PORTION: u16 = 3;
 /// The height of the bar that shows how a drive is filled.
 pub const STACKED_BAR: f32 = 14.0;
-/// The cell of the check of a size row.
-pub const SIZE_CHECK_WIDTH: f32 = 200.0;
+/// The share of the check of a size row; its text wraps instead of being cut.
+pub const SIZE_CHECK_PORTION: u16 = 4;
 /// The cell of the button at the end of a size row.
 pub const SIZE_ACTION_WIDTH: f32 = 150.0;
 /// The width of a time or a size column in a log line.

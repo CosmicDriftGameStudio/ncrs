@@ -110,6 +110,14 @@ fn bar_of<'a, M: 'a>(
     container(bar).width(size::SIZE_BAR_WIDTH).into()
 }
 
+fn wrapped_line<'a, M: 'a>(content: String, font: f32, ink: Color) -> Element<'a, M> {
+    text(content)
+        .size(font)
+        .color(ink)
+        .wrapping(Wrapping::Word)
+        .into()
+}
+
 fn line<'a, M: 'a>(content: String, font: f32, ink: Color) -> Element<'a, M> {
     text(content)
         .size(font)
@@ -208,13 +216,13 @@ pub fn size_row_ext<'a, M: Clone + 'a>(
             let outcome_ink = outcome.color(palette);
             row![
                 icon(outcome.icon(), outcome_ink),
-                line(words, font_size::SMALL, outcome_ink)
+                wrapped_line(words, font_size::SMALL, outcome_ink)
             ]
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center)
             .into()
         }
-        None => line(item.reason, font_size::SMALL, dim_ink),
+        None => wrapped_line(item.reason, font_size::SMALL, dim_ink),
     };
     let bar = if ext.gone {
         size_bar_hatched(item.fraction, item.color, palette)
@@ -224,8 +232,12 @@ pub fn size_row_ext<'a, M: Clone + 'a>(
     let mut cells = row![
         container(tick).width(TICK_CELL),
         bar,
-        container(names).width(Length::Fill).clip(true),
-        container(reason).width(size::SIZE_REASON_WIDTH).clip(true),
+        container(names)
+            .width(Length::FillPortion(size::SIZE_NAME_PORTION))
+            .clip(true),
+        container(reason)
+            .width(Length::FillPortion(size::SIZE_REASON_PORTION))
+            .clip(true),
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
@@ -241,11 +253,15 @@ pub fn size_row_ext<'a, M: Clone + 'a>(
                     CheckTone::Ok => format!("\u{2713} {words}"),
                     CheckTone::Decide | CheckTone::Blocked => words,
                 };
-                line(shown, font_size::SMALL, tint)
+                wrapped_line(shown, font_size::SMALL, tint)
             }
             None => Space::new().into(),
         };
-        cells = cells.push(container(cell).width(size::SIZE_CHECK_WIDTH).clip(true));
+        cells = cells.push(
+            container(cell)
+                .width(Length::FillPortion(size::SIZE_CHECK_PORTION))
+                .clip(true),
+        );
     }
     cells = cells.push(
         container(line(item.size_text, font_size::BODY, ink))
@@ -268,7 +284,9 @@ pub fn size_row_ext<'a, M: Clone + 'a>(
     let framed = container(cells)
         .padding([0.0, spacing::XL])
         .width(Length::Fill)
+        // Fixed: the list's scroll and menu maths count rows of exactly this height; two wrapped lines fit.
         .height(size::SIZE_ROW)
+        .clip(true)
         .align_y(alignment::Vertical::Center)
         .style(git::marked_row(palette, item.cursor, false));
     match item.on_press {
@@ -299,13 +317,14 @@ pub fn size_row_header<'a, M: 'a>(header: SizeRowHeader, palette: &Palette) -> E
     let mut cells = row![
         Space::new().width(TICK_CELL),
         container(label(header.bar)).width(size::SIZE_BAR_WIDTH),
-        container(label(header.name)).width(Length::Fill),
-        container(label(header.reason)).width(size::SIZE_REASON_WIDTH),
+        container(label(header.name)).width(Length::FillPortion(size::SIZE_NAME_PORTION)),
+        container(label(header.reason)).width(Length::FillPortion(size::SIZE_REASON_PORTION)),
     ]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     if let Some(check) = header.check {
-        cells = cells.push(container(label(check)).width(size::SIZE_CHECK_WIDTH));
+        cells = cells
+            .push(container(label(check)).width(Length::FillPortion(size::SIZE_CHECK_PORTION)));
     }
     cells = cells.push(
         container(label(header.size))

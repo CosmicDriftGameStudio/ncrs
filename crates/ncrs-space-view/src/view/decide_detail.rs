@@ -77,7 +77,11 @@ fn item_section<'a>(
             ctx
         ),
         fact(
-            ctx.lang.text(Msg::SpaceDecideDetailLoaded),
+            ctx.lang.text(if pane.is_downloads() {
+                Msg::SpaceDecideDetailLoaded
+            } else {
+                Msg::SpaceDecideColumnModified
+            }),
             day(entry.item.modified),
             ctx
         ),
@@ -146,7 +150,7 @@ fn selection_section<'a>(pane: &'a DecideState, ctx: ViewCtx<'a>) -> Element<'a,
             kit::key_button(
                 ctx.lang.text(Msg::SpaceDecideSelectionUndo),
                 &ctx.keys.label(Shortcut::UndoTrash),
-                pane.can_undo()
+                ctx.can_undo_trash
                     .then_some(Message::Decide(DecideMessage::Undo)),
                 Tone::Secondary,
                 palette,

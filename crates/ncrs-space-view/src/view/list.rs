@@ -156,10 +156,21 @@ fn head_hint(group: Group, state: &State, ctx: ViewCtx<'_>) -> Option<String> {
             let total_count: usize = roots.iter().map(|root| root.total.count).sum();
             let total_bytes: u64 = roots.iter().map(|root| root.total.bytes).sum();
             let kept: usize = roots.iter().map(|root| root.kept.count).sum();
+            let (message, place) = if roots.len() == 1 {
+                (
+                    Msg::SpaceGroupWorktreesHint,
+                    ("{folder}", shown_path(&first.folder, ctx.home)),
+                )
+            } else {
+                (
+                    Msg::SpaceGroupWorktreesManyHint,
+                    ("{folders}", roots.len().to_string()),
+                )
+            };
             fill_template(
-                ctx.lang.text(Msg::SpaceGroupWorktreesHint),
+                ctx.lang.text(message),
                 &[
-                    ("{folder}", &shown_path(&first.folder, ctx.home)),
+                    (place.0, &place.1),
                     ("{total}", &total_count.to_string()),
                     ("{size}", &size_shown(total_bytes, ctx.lang)),
                     ("{kept}", &kept.to_string()),

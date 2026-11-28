@@ -41,6 +41,7 @@ impl App {
             store_build: cfg!(feature = "sandbox"),
             log_dir: self.space_log_dir(),
             trash_can_purge: self.trash.can_purge(),
+            can_undo_trash: self.can_undo_trash(),
             window: self.window_size,
             now: std::time::SystemTime::now(),
         }
@@ -60,6 +61,7 @@ impl App {
                     store_build: cfg!(feature = "sandbox"),
                     processes_known: self.space_processes_known,
                     trash_can_purge: self.trash.can_purge(),
+                    can_undo_trash: self.can_undo_trash(),
                     warn_from_percent: self.space_settings.warn_from_percent,
                     open_key: Some(self.monitor.space.key.as_str()).filter(|key| !key.is_empty()),
                 };
@@ -244,15 +246,16 @@ impl App {
                         };
                         (run.refused.len(), reason)
                     });
-                    (run.gone, failed, run.batch)
+                    (run.gone, failed, run.batch, run.batch_error)
                 })
                 .await
-                .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string())), None))
+                .unwrap_or_else(|failure| (Vec::new(), Some((1, failure.to_string())), None, None))
             },
-            move |(paths, failed, batch)| Message::SpaceTrashed {
+            move |(paths, failed, batch, batch_error)| Message::SpaceTrashed {
                 paths,
                 failed,
                 batch,
+                batch_error,
                 emptied: empty_after,
             },
         )
@@ -263,14 +266,30 @@ impl App {
         paths: Vec<PathBuf>,
         failed: Option<(usize, String)>,
         batch: Option<ncrs_index::BatchId>,
+        batch_error: Option<String>,
         emptied: bool,
     ) -> Task<Message> {
-        if let Some((count, reason)) = failed {
-            let shown = ncrs_i18n::fill_template(
+        let history_note = batch_error.map(|reason| {
+            ncrs_i18n::fill_template(
+                self.lang.text(Msg::SpaceDecideHistoryFailed),
+                &[("{reason}", &reason)],
+            )
+        });
+        let failed_note = failed.map(|(count, reason)| {
+            ncrs_i18n::fill_template(
                 self.lang.text(Msg::SpaceDecideTrashFailed),
                 &[("{count}", &count.to_string()), ("{reason}", &reason)],
-            );
-            self.set_status_error(&shown);
+            )
+        });
+        let shown = match (failed_note, history_note) {
+            (Some(failed_text), Some(history_text)) => {
+                Some(format!("{failed_text} {history_text}"))
+            }
+            (Some(text), None) | (None, Some(text)) => Some(text),
+            (None, None) => None,
+        };
+        if let Some(text) = shown {
+            self.set_status_error(&text);
         }
         if paths.is_empty() || emptied {
             self.last_own_trash.clear();
@@ -284,9 +303,24 @@ impl App {
         ))
     }
 
-    fn undo_own_trash(&mut self) -> Task<Message> {
+    /// The Platz tab is shown with a decide pane: there the undo key takes back the
+    /// pane's trash run, not the last deletion of the file panels.
+    pub(in crate::app) fn space_decide_open(&self) -> bool {
+        self.space_shown()
+            && self
+                .space
+                .as_ref()
+                .is_some_and(|state| state.decide().is_some())
+    }
+
+    fn can_undo_trash(&self) -> bool {
+        !self.last_own_trash.is_empty() || self.last_own_batch.is_some()
+    }
+
+    pub(in crate::app) fn undo_own_trash(&mut self) -> Task<Message> {
         let trash = Arc::clone(&self.trash);
         let wanted = std::mem::take(&mut self.last_own_trash);
+        let expected = wanted.len();
         let journaled = self.last_own_batch.take().zip(
             self.hermes
                 .filing
@@ -296,19 +330,45 @@ impl App {
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || match journaled {
-                    Some((batch, access)) => access.undo(batch).map(|report| report.undone),
-                    None => ncrs_filing::execute::restore_own_items(trash.as_ref(), &wanted),
+                    Some((batch, access)) => access
+                        .undo(batch)
+                        .map(|report| (report.undone, report.left)),
+                    None => ncrs_filing::execute::restore_own_items(trash.as_ref(), &wanted)
+                        .map(|back| (back, wanted.len().saturating_sub(back))),
                 })
                 .await
                 .unwrap_or_else(|failure| Err(failure.to_string()))
             },
-            |result| match result {
-                Ok(count) => Message::Space(ncrs_space_view::Message::Decide(
-                    ncrs_space_view::DecideMessage::Undone(count),
-                )),
+            move |result| match result {
+                Ok((undone, left)) => Message::SpaceUndone {
+                    undone,
+                    left: if undone == 0 && left == 0 {
+                        expected
+                    } else {
+                        left
+                    },
+                },
                 Err(reason) => Message::SpaceTrashFailed(reason),
             },
         )
+    }
+
+    pub(in crate::app) fn space_undone(&mut self, undone: usize, left: usize) -> Task<Message> {
+        if left > 0 {
+            let template = if left == 1 {
+                Msg::SpaceDecideUndoLeftOne
+            } else {
+                Msg::SpaceDecideUndoLeft
+            };
+            let shown = ncrs_i18n::fill_template(
+                self.lang.text(template),
+                &[("{count}", &left.to_string())],
+            );
+            self.set_status_error(&shown);
+        }
+        self.update_space(ncrs_space_view::Message::Decide(
+            ncrs_space_view::DecideMessage::Undone(undone),
+        ))
     }
 
     /// The name of the drive the home folder lies on, for the chat's card.

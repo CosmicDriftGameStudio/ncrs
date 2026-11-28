@@ -483,12 +483,14 @@ impl App {
                 paths,
                 failed,
                 batch,
+                batch_error,
                 emptied,
-            } => self.space_trashed(paths, failed, batch, emptied),
+            } => self.space_trashed(paths, failed, batch, batch_error, emptied),
             Message::SpaceTrashFailed(reason) => {
                 self.set_status_error(&reason);
                 Task::none()
             }
+            Message::SpaceUndone { undone, left } => self.space_undone(undone, left),
             Message::HermesChatKey(key) => self.hermes_chat_key(key),
             Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
             Message::GitAsked(request) => self.route_git_request(request),
