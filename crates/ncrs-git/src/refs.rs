@@ -212,7 +212,7 @@ fn worktrees(
     main: Option<&DefaultBranch>,
     stop: &Arc<AtomicBool>,
 ) -> Result<Vec<WorktreeInfo>, GitError> {
-    let current = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let current = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let main_folder = crate::summary::main_worktree_of(root).unwrap_or_else(|| current.clone());
     let mut found = Vec::new();
     let all = repository
@@ -227,7 +227,7 @@ fn worktrees(
         if !path.exists() {
             continue;
         }
-        let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        let canonical = dunce::canonicalize(&path).unwrap_or_else(|_| path.clone());
         let is_main = canonical == main_folder;
         let Ok(state) = status(&path, stop) else {
             continue;
